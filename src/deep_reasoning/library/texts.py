@@ -101,6 +101,10 @@ def not_found(kind: str, name: str) -> str:
     return f"There is no {kind} '{name}' in the library."
 
 
+def no_version(kind: str, name: str, version: int) -> str:
+    return f"There is no version {version} of {kind} '{name}' in the library."
+
+
 def conflict_exists(kind: str, name: str, head: int) -> str:
     return f"{kind.capitalize()} '{name}' already exists, at version {head}."
 
