@@ -14,6 +14,11 @@ touches only `AGENTS.md` and `CLAUDE.md`, so every `file:line` below is also ups
 the agent-server facts · React 19.3, zustand 5.0.14, Playwright and Vitest as `package.json` pins them.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-02 · v2 · after D5's design (deep-reasoning `design/d5` `8086afb`, its §8.4) and the Conductor's note that
+  S1 adds `acp_subagents` to `ACPAgentProfile`. Stop trusting: the replay variable `ACP_SUBAGENT_TRANSCRIPTS` (now
+  D5's `OH_ACP_REPLAY_TRANSCRIPTS`, a path list) and the replay as a test inside the main spec (now its own file,
+  `mock-llm-acp-replay.spec.ts`, §6.3–§6.4); `SubagentLink` without `toolCallIds` (A.9). Added: stable test ids as a
+  contract (§4.12, `SUB-011`); §9.1 item 1 is agreed and §10 item 1 is now a sequencing note.
 - 2026-10-02 · v1 · first full-depth version. Every TypeScript block in Appendix A was typechecked under `strict`
   (TypeScript 6.0.2, with stubs for React, react-query, the client and Playwright) and formatted with Prettier at
   upstream's `.prettierrc.json`.
@@ -26,7 +31,8 @@ that does go into the fork is `specs/acp-subagent-sessions.md` (§4.11), in upst
 
 **Reading guide.** Gate B: §1–§3 (the reasoning, about 15 minutes). S1's designer and the Conductor: §9 (what C1
 needs S1 to change). C2's designer: §8 (every file both touch, with the rule for either landing order). D5's
-designer: §6.4 (the replay of D1's golden recordings through the forked Canvas) and §9.4. The Implementer reads
+designer: §6.4 (the replay of D1's golden recordings through the forked Canvas), §4.12 (the test ids E12 can rely
+on) and §9.4. The Implementer reads
 everything; Appendix A is the signature reference.
 
 ---
@@ -244,8 +250,9 @@ Michael.
 | `src/i18n/translation.json` | changed | ≈+530 | 31 keys × 15 languages (§4.10). |
 | `specs/acp-subagent-sessions.md` | new | 50 | Upstream's spec IDs `SUB-001`…`SUB-010` (§4.11). |
 | `__tests__/…`, `src/**/*.test.ts` | new/changed | 1,000 | §6.1–§6.2. |
-| `tests/e2e/mock-llm/conversations/mock-llm-acp-subagents.spec.ts` | new | 230 | §6.3. |
-| `tests/e2e/mock-llm/utils/acp-subagents.ts` | new | 200 | Shared helpers (A.9), reused by D5 and C2. |
+| `tests/e2e/mock-llm/conversations/mock-llm-acp-subagents.spec.ts` | new | 200 | §6.3. |
+| `tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts` | new | 50 | §6.3–§6.4: any transcripts named by `OH_ACP_REPLAY_TRANSCRIPTS`. |
+| `tests/e2e/mock-llm/utils/acp-subagents.ts` | new | 220 | Shared helpers (A.9), reused by D5 and C2. |
 | `tests/e2e/mock-llm/fixtures/acp-subagents/*.jsonl` | new | 150 | Three hand-written transcripts (§6.3). |
 | `.github/workflows/mock-llm-e2e.yml` | changed | +15 | Fetch the scripted agent from the pinned SDK (§6.3). |
 
@@ -378,8 +385,8 @@ their parent's flow, and `parent-session` children render in `UnplacedSubagents`
 **`EventMessage`'s ACP branch** (`event-message.tsx:236–240`) renders `AcpToolCallCell event={event} depth={0}`.
 
 **`AcpToolCallCell`** wraps today's `GenericEventMessageWrapper` in
-`<div data-testid="acp-tool-call" data-acp-tool-call-id={event.tool_call_id} data-acp-session-id={session}>` and
-renders `SubagentBlock cellKey={toolCallKey(...)} depth={depth + 1}` below the card, indented with a left rule. The
+`<div data-testid="acp-tool-call" data-acp-tool-call-id={event.tool_call_id} data-acp-session-id={session}
+data-acp-tool-call-status={event.status}>` (the session attribute absent for the root; §4.12) and renders `SubagentBlock cellKey={toolCallKey(...)} depth={depth + 1}` below the card, indented with a left rule. The
 card itself is unchanged, so the title ("Running …", `get-acp-tool-call-content.ts:37–42` strips the agent's `Run`),
 the details and the success mark are today's. The data attributes are what the E6 helpers read (§6.3).
 
@@ -542,6 +549,30 @@ implements or pins each:
 - **SUB-009** Agents without sub-agent sessions render as before.
 - **SUB-010** 50 sub-agents × 5 tool calls arriving at 60 events per second leave the chat responsive to scrolling
   within 1 s, with every sub-agent expanded.
+- **SUB-011** The test ids and data attributes of §4.12 are stable: renaming one is a breaking change for the
+  end-to-end tests that use them.
+
+### 4.12 Stable test ids
+
+D5's E12 drives the real desktop app and must not depend on text (D5 §8.4); C1's own Playwright helpers read the
+same hooks. These are a contract (`SUB-011`): each is a `data-testid` (or a data attribute on one) written inline, as
+upstream writes its test ids, and listed in `specs/acp-subagent-sessions.md` so a rename shows up in review.
+
+| Element | `data-testid` | Data attributes and states |
+|---|---|---|
+| An ACP tool call (a cell), root or child | `acp-tool-call` | `data-acp-tool-call-id`; `data-acp-session-id` (absent for the root); `data-acp-tool-call-status`: `pending`, `in_progress`, `completed`, `failed` |
+| The sub-agents of one cell | `subagent-block` | `data-subagent-count` |
+| Its summary toggle | `subagent-block-toggle` | `aria-expanded` |
+| One child | `subagent-row` | `data-acp-session-id`; `data-subagent-status`: §4.7's category (`running`, `waiting`, `done`, `stopped`, `limited`, `refused`, `unconfirmed`, `other`); `data-subagent-stale` when the state is the last known one |
+| Its toggle | `subagent-row-toggle` | `aria-expanded` |
+| Its title, status label, answer, tool-call count, cost | `subagent-title`, `subagent-status`, `subagent-answer`, `subagent-tool-calls`, `subagent-cost` | — |
+| Its Stop | `subagent-stop` | `data-subagent-stop`: `ready`, `stopping` or `withheld` (`aria-disabled` in the last two) |
+| Its expanded transcript, and the task at its top | `subagent-transcript`, `subagent-task` | — |
+| Children whose parent session is missing | `subagent-unplaced` | `data-missing-parent-session-id` |
+| "Loading earlier sub-agent activity…" | `subagent-loading-earlier` | — |
+
+The message box already has one (`chat-input`, `chat-input-field.tsx:71`); C1 adds none outside the tree. C2
+defines its own for the option picker, the slash menu's items and the header panel's button (D5 §8.4).
 
 ---
 
@@ -683,12 +714,20 @@ when `SCRIPTED_ACP_AGENT` is unset locally and fails in CI. Under the Docker con
 | `shows the same tree after reloading` | reload: the tree from REST equals the stored tree; no enabled Stop anywhere |
 | `places sub-agents without a spawning call and shows orphans apart` | `fallback-placement`: `child-m` sits after the root cell, where the task was sent; `child-a` at its announcement; `child-g` at its announcement once history is complete; `child-o` in the "could not be placed" block naming `ghost`, never in the root's flow |
 | `stays responsive while 50 sub-agents with 5 tool calls each stream in` | the generated fan-out, paced at 60 events/s (§9.1 item 2); every child expanded as it appears; `probeScrollResponsiveness` until the root completes: `maxScrollLatencyMs < 1000` (E6's null) and the rendered tree equals the stored one |
-| `golden recordings render the stored tree` | one test per file in `ACP_SUBAGENT_TRANSCRIPTS` (a glob; skipped when unset): rendered tree equals stored tree. D5 points it at D1's golden recordings (§6.4). |
+
+**The replay spec**, `tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts` (D5 §8.4's ask): one test per
+path in `OH_ACP_REPLAY_TRANSCRIPTS` (paths separated by the platform's path delimiter; the spec is skipped when the
+variable is unset or empty), named after the file. Each configures the scripted agent with `--transcript <path>`
+and `acp_subagents: true`, sends one message, waits for the turn to end, expands everything, and asserts that
+`readRenderedSubagentTree(page)` equals `readStoredSubagentTree(request, id)`: the same children, the same parent
+sessions, the same spawning calls, the same tool calls per child. In the fork's CI it plays C1's three transcripts
+and the generated fan-out's file as a smoke check; D5 points it at D1's recordings (§6.4).
 
 `readRenderedSubagentTree` reads nesting only: a row's parent is its nearest enclosing `subagent-row` (or the root),
-its call the nearest enclosing `acp-tool-call` inside that parent. A row's own attributes are never compared with
-themselves. `readStoredSubagentTree` keeps the newest `ACPSubagentEvent` per child from the events search route and
-nulls a `parentToolCallId` that names no stored call, which is exactly S1 §5 rule 2's placement.
+its call the nearest enclosing `acp-tool-call` inside that parent, its own calls the `acp-tool-call`s whose nearest
+enclosing row is it. A row's own attributes are never compared with themselves. `readStoredSubagentTree` keeps the
+newest `ACPSubagentEvent` per child and the `ACPToolCallEvent`s per session from the events search route, and nulls
+a `parentToolCallId` that names no stored call, which is exactly S1 §5 rule 2's placement.
 
 `probeScrollResponsiveness` schedules a scroll of the chat container every 250 ms and measures, for each, the time
 from when it was due to the next animation frame after it ran, so main-thread blocking counts; it also records long
@@ -697,11 +736,19 @@ own failure screenshots and videos stay as debugging artifacts.
 
 ### 6.4 The replay D5 runs (E6, second half)
 
-D5's cross-repo CI checks out the Canvas fork at its pinned tag and the SDK fork at its tag, builds the Canvas
-production bundle, sets `SCRIPTED_ACP_AGENT` to the SDK checkout's script and `ACP_SUBAGENT_TRANSCRIPTS` to D1's
-native golden recordings (`tests/acp/golden/*.native.jsonl` in deep-reasoning, outgoing-only, which S1's player
-replays with inferred wait points), and runs `npx playwright test --config=playwright.mock-llm.config.ts -g "golden
-recordings"`. Nothing in the test reads `_meta.deep_reasoner`; it compares parent links only.
+D5's `canvas-replay` job (D5 §7.5) checks out the Canvas fork at its pinned commit and the SDK fork at its pinned
+commit, and from the Canvas checkout runs
+`npx playwright test --config=playwright.mock-llm.config.ts tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts`
+with:
+
+- `OH_ACP_REPLAY_TRANSCRIPTS`: D1's native golden recordings (`tests/acp/golden/*.native.jsonl` in deep-reasoning,
+  joined with `:`), outgoing-only, which S1's player replays with inferred wait points;
+- `SCRIPTED_ACP_AGENT`: `<sdk checkout>/tests/fixtures/acp/scripted_agent.py`;
+- what the mock-LLM config already needs: `npm ci`, a built `build/` (`npm run build:app`), Playwright's Chromium, and
+  `MOCK_LLM_PYTHON` pointing at a virtualenv with `openhands-sdk` (the config starts the mock LLM server even though
+  this spec never calls it), as `.github/workflows/mock-llm-e2e.yml` sets them up.
+
+Nothing in the spec reads `_meta.deep_reasoner`; it compares parent links and tool calls per child only.
 
 ### 6.5 Mutation testing and upstream's guards
 
@@ -773,6 +820,7 @@ the slash menu, the option picker, header panels). Each rule lets either PR land
 | 12 | `config/defaults.json` | none (decision L) | none expected (S2 decision H: capability detection) | If C2 raises `minimumAgentServer`, C1 is unaffected. |
 | 13 | `specs/` | new `acp-subagent-sessions.md` | `canvas-extensions.md` (it already plans "conversation panels"), maybe a new file | Different files. |
 | 14 | `tests/e2e/mock-llm/test-mapping.json` | none | maybe a mapping | No overlap. |
+| 15 | Test ids for E12 (D5 §8.4) | §4.12, all inside the nested tree | the option picker, the slash menu's items, the header panel's button | No shared element; each lists its own in its spec file. |
 
 Files C1 changes that C2 should not need: `messages.tsx`, `event-message.tsx`, `handle-event-for-ui.ts`,
 `typing-indicator.tsx`, the transcript export, the shared-conversation route. If C2 does, the rule is the same:
@@ -784,7 +832,8 @@ separate hunks, and the second to land rebases.
 
 ### 9.1 S1 (the contract is S1 §5; these are the changes C1 needs, for the Conductor)
 
-1. **The opt-in must be storable on an ACP agent profile.** Canvas launches new conversations from the active
+1. **The opt-in must be storable on an ACP agent profile** — agreed: the Conductor has added it to S1's build
+   (D5 §8.2 asks the same, with the seed carrying it back). Canvas launches new conversations from the active
    agent profile, not from `agent_settings` (`use-create-conversation.ts:106–121`; the two are mutually exclusive
    launch sources). `ACPAgentProfile` (`profiles/agent_profile.py:223–291`) forbids extra keys (`:86`) and has no
    `acp_subagents`, and `_build_acp_settings` (`profiles/resolver.py:267–308`) forwards a fixed list. So with
@@ -826,8 +875,10 @@ scripted agent from the same ref. C3 lands first and the wiring commit follows (
 ### 9.4 D5
 
 D5's setup writes `acp_subagents: true` on the dr-acp **agent profile** it makes the default (which needs §9.1 item
-1), not only in `agent_settings`. D5's cross-repo CI runs §6.4. D5's layer-4 desktop flow ("see the nested tree") can
-use `expandAllSubagents` and `readRenderedSubagentTree` from A.9.
+1), not only in `agent_settings`. D5's `canvas-replay` job runs §6.4's replay spec with `OH_ACP_REPLAY_TRANSCRIPTS`
+(D5 §8.4's name, adopted). D5's E12 ("they appear nested under their cell, each with its state and cost, and one is
+stopped with its branch") selects through §4.12's test ids and can reuse `expandAllSubagents` and
+`readRenderedSubagentTree` from A.9 over CDP.
 
 ### 9.5 Observation for the Conductor, about S2 and C2 (not C1's to change)
 
@@ -842,7 +893,8 @@ match, `test_event_service.py:255–262`), so that query returns nothing unless 
 
 ## 10 · Open items
 
-1. **§9.1 item 1** (the opt-in on agent profiles) blocks C1's end-to-end tests and D5's setup until S1 takes it.
+1. **§9.1 item 1** (the opt-in on agent profiles) is agreed; C1's end-to-end tests need S1's build with it before
+   they can run, so C1's commit 6 lands after it.
 2. **E6's threshold in CI.** One second of scroll latency with all 50 children expanded is generous for a desktop,
    unmeasured on a 2-vCPU runner. If it fails there, §5's remedies apply before any threshold changes; a changed
    threshold goes back to Michael, since E6 is his.
@@ -1532,13 +1584,22 @@ export declare function configureScriptedAcpAgent(
   options: ScriptedAcpAgentOptions,
 ): Promise<void>;
 
-/** One parent link: who a child belongs to, and in which tool call. */
+/**
+ * Transcripts the replay spec plays, from `OH_ACP_REPLAY_TRANSCRIPTS`: file
+ * paths separated by the platform's path delimiter (`:` on Linux and macOS).
+ * Empty when unset.
+ */
+export declare const REPLAY_TRANSCRIPTS: readonly string[];
+
+/** One child as a tree shows it: its parent link and its own tool calls. */
 export interface SubagentLink {
   sessionId: string;
   /** null for the root session. */
   parentSessionId: string | null;
   /** null when the child is not placed inside a tool call. */
   parentToolCallId: string | null;
+  /** The child's own tool calls (not its children's), sorted by id. */
+  toolCallIds: readonly string[];
 }
 
 /** Expand every collapsed sub-agent block and row, until none is left. */
@@ -1546,16 +1607,18 @@ export declare function expandAllSubagents(page: Page): Promise<void>;
 
 /**
  * The tree as the DOM nests it: each row's parent is its nearest enclosing
- * row (or the root), and its tool call the nearest enclosing ACP cell that
- * belongs to that parent. Reads nesting only, never a row's own claims.
+ * row (or the root), its tool call the nearest enclosing ACP cell inside that
+ * parent, and its own calls the ACP cells whose nearest enclosing row is it.
+ * Reads nesting only, never a row's own claims.
  */
 export declare function readRenderedSubagentTree(
   page: Page,
 ): Promise<readonly SubagentLink[]>;
 
 /**
- * The tree as stored: the newest ACPSubagentEvent per child, from the events
- * search route; a `parentToolCallId` that names no stored call becomes null.
+ * The tree as stored: the newest ACPSubagentEvent per child and the
+ * ACPToolCallEvents per session, from the events search route; a
+ * `parentToolCallId` that names no stored call becomes null.
  */
 export declare function readStoredSubagentTree(
   request: APIRequestContext,
