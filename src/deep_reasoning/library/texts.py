@@ -105,6 +105,10 @@ def no_version(kind: str, name: str, version: int) -> str:
     return f"There is no version {version} of {kind} '{name}' in the library."
 
 
+def no_revision(rev: int, current: int) -> str:
+    return f"There is no revision {rev}: the library is at revision {current}."
+
+
 def conflict_exists(kind: str, name: str, head: int) -> str:
     return f"{kind.capitalize()} '{name}' already exists, at version {head}."
 

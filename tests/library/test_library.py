@@ -283,6 +283,17 @@ def test_state_as_of_an_old_revision(lib):
     assert lib.state().namespaces["a"].data == {"name": "a", "tools": ["llm"]}
 
 
+@pytest.mark.parametrize("rev", [0, 3])
+def test_a_revision_the_library_has_not_reached_is_not_found(lib, rev):
+    lib.put_namespace("name: a")
+    with pytest.raises(LibraryNotFound) as raised:
+        lib.state(rev=rev)
+    assert (
+        str(raised.value)
+        == f"There is no revision {rev}: the library is at revision 2."
+    )
+
+
 def test_check_reports_ungranted_tools_and_missing_spawn_targets(lib):
     lib.put_namespace("name: a\ntools: [llm, search]\nspawn: [a, b]")
     assert [p.model_dump() for p in lib.check()] == [

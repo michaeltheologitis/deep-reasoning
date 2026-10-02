@@ -221,3 +221,8 @@ class LibraryForbidden(LibraryError):
 class LibraryBadRequest(LibraryError):
     code = "bad_request"
     status = 400
+
+
+class LibraryNotJson(LibraryError):
+    code = "unsupported_media_type"
+    status = 415

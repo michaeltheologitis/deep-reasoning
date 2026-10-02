@@ -26,17 +26,13 @@ from deep_reasoning.library.records import (
     LibraryError,
     LibraryForbidden,
     LibraryNotFound,
+    LibraryNotJson,
 )
 
 Peer = tuple[str, int]
 JSON_TYPE = "application/json"
 BODY_METHODS = frozenset({"PUT", "POST"})
 PROC_NET = Path("/proc/net")
-
-
-class UnsupportedMediaType(LibraryError):
-    code = "unsupported_media_type"
-    status = 415
 
 
 def _proc_address(host: str, port: int) -> str:
@@ -96,7 +92,7 @@ def _refusal(
     content_type = headers.get("content-type", "").split(";")[0].strip().lower()
     # A cross-site form or text/plain fetch can POST without a preflight; JSON cannot.
     if scope["method"] in BODY_METHODS and content_type != JSON_TYPE:
-        return UnsupportedMediaType(texts.NOT_JSON)
+        return LibraryNotJson(texts.NOT_JSON)
     return None
 
 
@@ -125,11 +121,9 @@ class _Body(BaseModel):
     base_version: int | None = None
 
 
-class _ProfileBody(_Body):
-    decompositions: list[str] | None = None
+class _ListBody(_Body):
+    """A profile's or a namespace's: the YAML and its decompositions, in order."""
 
-
-class _NamespaceBody(_Body):
     decompositions: list[str] | None = None
 
 
@@ -233,7 +227,7 @@ def create_app(
         return lib.validate(sent.kind, sent.yaml, name=sent.name, source=sent.source)
 
     def put_profile(request: Request, body: bytes) -> Any:
-        sent = _parse(_ProfileBody, body)
+        sent = _parse(_ListBody, body)
         return lib.put_profile(
             sent.yaml,
             decompositions=sent.decompositions,
@@ -241,7 +235,7 @@ def create_app(
         )
 
     def put_namespace(request: Request, body: bytes) -> Any:
-        name, sent = request.path_params["name"], _parse(_NamespaceBody, body)
+        name, sent = request.path_params["name"], _parse(_ListBody, body)
         _key_matches(lib, "namespace", sent.yaml, name)
         existed = _exists(lambda: lib.namespace(name))
         record = lib.put_namespace(

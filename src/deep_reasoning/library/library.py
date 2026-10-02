@@ -287,7 +287,10 @@ class Library:
 
     def state(self, *, rev: int | None = None) -> LibraryState:
         with store.read(self.path) as conn:
-            as_of = store.current_rev(conn) if rev is None else rev
+            current = store.current_rev(conn)
+            if rev is not None and not 1 <= rev <= current:
+                raise LibraryNotFound(texts.no_revision(rev, current))
+            as_of = current if rev is None else rev
             return _state(self.path, store.heads(conn, rev=as_of), as_of)
 
     def profile(self) -> ProfileRecord:
@@ -404,8 +407,9 @@ class Library:
         shaped = shapes.validate_profile(text)
         with self._save("put profile", None) as w:
             head = self._base(w, "profile", PROFILE, base_version)
-            attached = decompositions if decompositions is not None else head.attached
-            _add(w, "profile", PROFILE, yaml=shaped.yaml, attached=attached)
+            if decompositions is None:
+                decompositions = head.attached
+            _add(w, "profile", PROFILE, yaml=shaped.yaml, attached=decompositions)
             return self._read_back(w, "profile", PROFILE)
 
     def put_namespace(
@@ -419,14 +423,9 @@ class Library:
         name = shaped.name
         with self._save("put namespace", name) as w:
             head = self._base(w, "namespace", name, base_version)
-            attached = (
-                decompositions
-                if decompositions is not None
-                else head.attached
-                if head
-                else []
-            )
-            _add(w, "namespace", name, yaml=shaped.yaml, attached=attached)
+            if decompositions is None:
+                decompositions = head.attached if head else []
+            _add(w, "namespace", name, yaml=shaped.yaml, attached=decompositions)
             return self._read_back(w, "namespace", name)
 
     def put_decomposition(
