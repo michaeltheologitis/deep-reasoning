@@ -10,15 +10,19 @@ dependencies = [
     "pydantic>=2.7",
     "pyyaml",
     "structlog",
+    "starlette>=0.40",
+    "uvicorn>=0.30",
     # deep_reasoner imports IPython.display at module level but declares it only in its dev group.
     "ipython",
 ]
 
 [project.scripts]
 dr-acp = "deep_reasoning.acp.cli:main"
+dr-library = "deep_reasoning.library.cli:main"
 
 [dependency-groups]
 dev = [
+    "httpx",
     "pytest",
     "jsonschema",
     "referencing",

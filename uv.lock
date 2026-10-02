@@ -620,11 +620,14 @@ dependencies = [
     { name = "ipython" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "starlette" },
     { name = "structlog" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "pytest" },
     { name = "referencing" },
@@ -638,11 +641,14 @@ requires-dist = [
     { name = "ipython" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyyaml" },
+    { name = "starlette", specifier = ">=0.40" },
     { name = "structlog" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "pytest" },
     { name = "referencing" },
