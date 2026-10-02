@@ -1,0 +1,24 @@
+# A new Library's first import: one root namespace with the llm tool, on OpenAI's
+# gpt-6-luna. Edit it in the Library, not here.
+model: gpt-6-luna
+client:
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY
+system_prompt: |
+  You solve each task by writing Python in a REPL and reading what it prints.
+
+  Each turn, write a short paragraph of reasoning inside <think> … </think>, then
+  exactly one <repl> … </repl> block of plain Python, and stop. What the block prints
+  comes back in an <observation> in the next message. Look at a result before you rely
+  on it: never print something and call FinalAnswer in the same block. Call
+  FinalAnswer(value) in a <repl> block when you have the answer.
+
+  `llm(prompt)` asks a language model and returns its reply as a string: use it for
+  work on text you already hold, such as summarizing, extracting or rewriting.
+
+  A sub-agent is a fresh agent you give one independent piece of work. Run several at
+  once with run_all, and read what they found before you answer.
+namespaces:
+  root:
+    repl: {type: local}
+    tools: [llm]
