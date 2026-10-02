@@ -10,6 +10,16 @@ from pathlib import Path
 from typing import Any
 
 from deep_reasoning.acp.catalog import CatalogSnapshot, CommandEntry, RunSource
+from deep_reasoning.acp.runlog import Home
+
+LIBRARY_FILE = "library.sqlite"
+
+
+def library_path(home: Path | None = None) -> Path:
+    """Home.resolve(home).root / "library.sqlite": --home, else $DR_HOME, else
+    ~/.deep-reasoning (D1's Home, acp/runlog.py). Here, not in library.py, so that dr-acp
+    finds its library without importing deep_reasoner."""
+    return Home.resolve(home).root / LIBRARY_FILE
 
 
 class LibraryCatalog:

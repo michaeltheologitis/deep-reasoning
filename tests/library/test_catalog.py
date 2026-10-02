@@ -112,8 +112,9 @@ def test_a_catalog_creates_its_library_from_the_starter_when_absent(tmp_path):
 def test_building_a_catalog_imports_nothing_of_deep_reasoner(tmp_path):
     probe = (
         "import sys\n"
-        "from deep_reasoning.library import LibraryCatalog\n"
-        f"LibraryCatalog({str(tmp_path / 'library.sqlite')!r})\n"
+        "from pathlib import Path\n"
+        "from deep_reasoning.library import LibraryCatalog, library_path\n"
+        f"LibraryCatalog(library_path(Path({str(tmp_path)!r})))\n"
         "assert 'deep_reasoner' not in sys.modules, sorted(sys.modules)\n"
     )
     subprocess.run([sys.executable, "-c", probe], check=True)

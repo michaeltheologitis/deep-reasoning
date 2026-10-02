@@ -8,7 +8,7 @@ builds its LibraryCatalog before it serves.
 import importlib
 from typing import Any
 
-from deep_reasoning.library.catalog import LibraryCatalog
+from deep_reasoning.library.catalog import LIBRARY_FILE, LibraryCatalog, library_path
 from deep_reasoning.library.records import (
     DecompositionMeta,
     DecompositionRecord,
@@ -29,12 +29,7 @@ from deep_reasoning.library.records import (
     ValidationResult,
 )
 
-_LAZY = {
-    "LIBRARY_FILE": "library",
-    "Library": "library",
-    "library_path": "library",
-    "Effective": "effective",
-}
+_LAZY = {"Library": "library", "Effective": "effective"}
 
 __all__ = [
     "LIBRARY_FILE",

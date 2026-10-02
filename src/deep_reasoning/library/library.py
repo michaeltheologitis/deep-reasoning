@@ -9,8 +9,8 @@ from typing import Any, Literal
 
 import yaml
 
-from deep_reasoning.acp.runlog import Home
 from deep_reasoning.library import configdir, shapes, store, texts
+from deep_reasoning.library.catalog import library_path
 from deep_reasoning.library.effective import Effective, effective
 from deep_reasoning.library.records import (
     Change,
@@ -35,16 +35,9 @@ from deep_reasoning.library.records import (
 )
 from deep_reasoning.library.store import Row, Writer
 
-LIBRARY_FILE = "library.sqlite"
 STARTER = Path(__file__).with_name("starter.yaml")
 ROOT = "root"
 PROFILE = "profile"
-
-
-def library_path(home: Path | None = None) -> Path:
-    """Home.resolve(home).root / "library.sqlite": --home, else $DR_HOME, else
-    ~/.deep-reasoning (D1's Home, acp/runlog.py)."""
-    return Home.resolve(home).root / LIBRARY_FILE
 
 
 def _refuse(sentence: str, loc: str) -> LibraryValidationError:
