@@ -2,12 +2,13 @@
 one SQLite file per user, every save an immutable version (D2).
 
 Library and Effective are imported on first use: they import deep_reasoner, and dr-acp
-reads the Library only once it needs it.
+builds its LibraryCatalog before it serves.
 """
 
 import importlib
 from typing import Any
 
+from deep_reasoning.library.catalog import LibraryCatalog
 from deep_reasoning.library.records import (
     DecompositionMeta,
     DecompositionRecord,
@@ -43,6 +44,7 @@ __all__ = [
     "HistoryEntry",
     "ImportReport",
     "Library",
+    "LibraryCatalog",
     "LibraryConflict",
     "LibraryError",
     "LibraryImportError",
