@@ -14,20 +14,40 @@ search snippets are marked as such inside the notes.
 
 ## Decided after the report: these override it
 
-The report recommends a custom web app speaking AG-UI. Discussion the same day changed course.
-Where the report and this list disagree, follow this list.
+The report recommends a custom web app speaking AG-UI, hosted for many users. Discussion on
+2026-10-02, including an executive meeting, changed course. Where the report and this list
+disagree, follow this list.
 
-1. **Self-hosted first.** A UW-hosted, multi-user website is a long-term goal, far in the future,
-   and out of scope for v1.
+1. **A local, single-user app only.** Someone installs it and runs it on their own machine. The
+   UW-hosted multi-user website is dropped as a goal, not deferred. Read every hosting section of
+   the report as background only.
 2. **Build on OpenHands, with deep_reasoner plugged in through ACP.** deep_reasoner runs as an
    ACP agent inside OpenHands (Agent Canvas and the agent-server). This replaces the report's
    custom app and AG-UI.
-3. **The sub-agent tree must be a real tree, not a flat list.** ACP v2 does not solve this:
-   it is a draft, and sub-agents are in its unstable schema. OpenHands' ACP bridge also
-   drops update types it does not know. So we change OpenHands: its bridge, and the Canvas
-   UI. We carry the change ourselves first and aim to upstream it.
-4. **A decompositions panel to the right of the chat.** Decompositions and namespaces are
-   stored in SQLite, with an editor. Custom tools are user-written.
-5. **deep_reasoner_beta is Dean's repo and stays untouched.** Everything we use from it, and
+3. **User experience first, so we fork OpenHands.** The sub-agent tree must be a real tree,
+   nested inside the chat, and the decompositions panel must sit next to the chat. Stock
+   OpenHands can do neither. A "companion app" beside stock OpenHands was considered and rejected
+   because it puts the tree beside the chat instead of inside it. Two forks, under
+   `michaeltheologitis/`:
+   - `OpenHands/OpenHands`, the Agent Canvas UI;
+   - `OpenHands/software-agent-sdk`: the agent-server, the ACP bridge, and the TypeScript client
+     Canvas uses.
+
+   Fork rules:
+   - Each fork's `main` mirrors upstream.
+   - Each change is a generic feature, on its own branch, shaped as an upstream PR. Examples:
+     ACP sub-agent sessions, a drawer-tab slot for extensions, forwarding ACP commands and config
+     options.
+   - Nothing deep_reasoner-specific goes into a fork; that stays in this repo.
+4. **ACP is not forked.** Sub-agent sessions, slash commands, config options and cost already
+   exist in ACP's upstream schema. Sub-agents are unstable as of 2026-09-30. Anything
+   deep_reasoner-specific travels in ACP's `_meta` extension fields. We pin upstream versions and
+   fork ACP only for something the protocol cannot express, and even then we propose it to ACP
+   as an RFD first.
+5. **Sub-agents use ACP's native sub-agent sessions** end to end, not tool calls carrying tree
+   data.
+6. **Storage, editing and tools.** Decompositions and namespaces are stored in SQLite, with an
+   editor. Custom tools are user-written.
+7. **deep_reasoner_beta is Dean's repo and stays untouched.** Everything we use from it, and
    everything we need from Dean, is recorded in
    [`docs/deep-reasoner-contract.md`](../../deep-reasoner-contract.md).

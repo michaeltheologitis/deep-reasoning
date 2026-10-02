@@ -105,8 +105,10 @@ session and translates the events in §1.4:
 | decompositions | slash commands |
 | namespaces | a session config option |
 
-OpenHands' ACP bridge and its Canvas UI do not render child sessions today; changing them is
-our work, in OpenHands, not Dean's.
+OpenHands' ACP bridge and its Canvas UI do not render child sessions today. Changing them is our
+work, not Dean's. It lives in our two OpenHands forks (`michaeltheologitis/software-agent-sdk`
+and `michaeltheologitis/OpenHands`), as generic, upstream-shaped features. ACP itself is not
+forked: sub-agent sessions are in its upstream (unstable) schema.
 
 ## 2. What we expect to stay stable
 
