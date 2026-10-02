@@ -1,0 +1,27 @@
+# The live tier: real runs on gpt-6-luna through dr-acp, started on demand.
+name: live
+
+on:
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: The model key is a repository secret
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::the OPENAI_API_KEY repository secret is not set"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+      - run: uv run pytest -m live -v -rA
