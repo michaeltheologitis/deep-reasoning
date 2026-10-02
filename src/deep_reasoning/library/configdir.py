@@ -176,11 +176,11 @@ def write_config(state: LibraryState, dest: Path, *, namespace: str) -> Manifest
         },
     )
     _write_yaml(dest / MANIFEST, manifest.model_dump(mode="json"), header)
-    main = {
-        **state.profile.data,
-        "entry_namespace": namespace,
-        "namespaces_dir": NAMESPACES_DIR,
-    }
+    main = dict(state.profile.data)
+    # Only a run in another namespace says so: an export re-imports as the same profile.
+    if namespace != state.profile.default_namespace:
+        main["entry_namespace"] = namespace
+    main["namespaces_dir"] = NAMESPACES_DIR
     if state.profile.decompositions:
         main["decompositions"] = [
             state.decompositions[name].data for name in state.profile.decompositions
