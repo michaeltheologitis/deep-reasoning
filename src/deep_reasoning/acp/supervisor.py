@@ -224,6 +224,7 @@ class RunHandle:
         )
         self._ticker.cancel()
         os.close(self._control_fd)
+        self._control_fd = -1  # a late _send fails on this, never on a reused fd
         self._route.release(self.run_id)
         self._session.on_run_end(reason)
         last = self._last_prompt_end
@@ -248,7 +249,12 @@ class RunHandle:
                     await self._outbox.update(session_id, update)
 
     async def prompt(
-        self, index: int, text: str, task: str, decomposition: str | None
+        self,
+        index: int,
+        text: str,
+        task: str,
+        decomposition: str | None,
+        dropped: list[str] | None = None,
     ) -> PromptEnd | RunEnd:
         """Log prompt.start, send Prompt, return the event that ended the prompt: its
         prompt.end, or the run.end of a run stopped, closed or crashed under it.
@@ -257,7 +263,13 @@ class RunHandle:
         """
         self._waiting = asyncio.get_running_loop().create_future()
         await self._log_and_send(
-            PromptStart(prompt=index, text=text, task=task, decomposition=decomposition)
+            PromptStart(
+                prompt=index,
+                text=text,
+                task=task,
+                decomposition=decomposition,
+                dropped=dropped or [],
+            )
         )
         self._send(Prompt(prompt=index, task=task, decomposition=decomposition))
         return await self._waiting

@@ -35,16 +35,18 @@ AGENT_CAPABILITIES = {
 }
 
 
-def prompt_text(blocks: list[Any]) -> str:
-    """Text blocks joined with newlines; a resource link contributes its uri on its own
-    line; other blocks are ignored (none is advertised)."""
-    parts = []
-    for block in blocks:
-        if block.type == "text":
-            parts.append(block.text)
-        elif block.type == "resource_link":
-            parts.append(block.uri)
-    return "\n".join(parts)
+def user_text(blocks: list[Any]) -> tuple[str, list[str]]:
+    """The user's own text, and the text blocks dropped from it.
+
+    The user's text is the first text block; each resource link adds its uri on a line
+    of its own. OpenHands' bridge sends the user's message as one text block, then its
+    images, then the turn's extensions and, on the first prompt, its system suffix, each
+    a text block of its own (_build_acp_prompt): every later text block is the client's
+    context, not the task. Images are ignored (none is advertised).
+    """
+    texts_ = [block.text for block in blocks if block.type == "text"]
+    links = [block.uri for block in blocks if block.type == "resource_link"]
+    return "\n".join([*texts_[:1], *links]), texts_[1:]
 
 
 class DrAcpAgent:
@@ -191,7 +193,8 @@ class DrAcpAgent:
     async def prompt(
         self, prompt: list[Any], session_id: str, **meta: Any
     ) -> dict[str, Any]:
-        result = await self._session(session_id).prompt(prompt_text(prompt))
+        text, dropped = user_text(prompt)
+        result = await self._session(session_id).prompt(text, dropped)
         return {
             "stopReason": result.stop_reason,
             "_meta": {"deep_reasoner": {"run": result.run, "outcome": result.outcome}},

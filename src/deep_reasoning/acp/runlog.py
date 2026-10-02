@@ -38,9 +38,10 @@ class RunStart(_Ev):
 class PromptStart(_Ev):
     kind: Literal["prompt.start"] = "prompt.start"
     prompt: int
-    text: str
-    task: str
+    text: str  # the user's own text
+    task: str  # the text without its slash command
     decomposition: str | None
+    dropped: list[str] = []  # the client's text blocks after the user's, never the task
 
 
 class StopRequest(_Ev):

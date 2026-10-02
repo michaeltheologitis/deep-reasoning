@@ -8,7 +8,16 @@ import pytest
 
 from deep_reasoning.acp import texts
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
-from tests.acp.harness import dr_acp, run, run_ids, scripted_env, write_config
+from tests.acp.harness import (
+    BRIDGE_EXTENSION,
+    BRIDGE_SYSTEM_SUFFIX,
+    BRIDGE_USER_SUFFIX,
+    dr_acp,
+    run,
+    run_ids,
+    scripted_env,
+    write_config,
+)
 from tests.acp.scenarios import BASE_CONFIG, repl, scripted
 
 PROGRAM = repl("FinalAnswer(task.upper())")
@@ -339,3 +348,32 @@ def test_a_config_that_cannot_be_materialized_answers_build_failed_without_a_run
         "prompt": None,
         "outcome": "build_failed",
     }
+
+
+def test_what_openhands_appends_to_a_prompt_never_reaches_the_task_and_is_logged(
+    tmp_path, home, work
+):
+    plan = {"Count to three.": [repl("FinalAnswer(3)")]}
+    appended = [BRIDGE_EXTENSION, BRIDGE_USER_SUFFIX, BRIDGE_SYSTEM_SUFFIX]
+
+    async def body():
+        async with FakeOpenAI(scripted(plan)) as model:
+            config = menu_config(tmp_path, model.base_url)
+            async with dr_acp(config, home) as client:
+                root = await client.open_session(work)
+                blocks = [acp.text_block(t) for t in ["Count to three.", *appended]]
+                response = await client.conn.prompt(session_id=root, prompt=blocks)
+                (run_id,) = run_ids(client.printer.updates)
+                return response, client.run_log(run_id), model.calls
+
+    response, log, calls = run(body())
+    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    prompt = next(e for e in log if e.kind == "prompt.start")
+    assert (prompt.text, prompt.task, prompt.dropped) == (
+        "Count to three.",
+        "Count to three.",
+        appended,
+    )
+    sent_to_the_model = " ".join(str(m["content"]) for c in calls for m in c.messages)
+    for text in appended:
+        assert text not in sent_to_the_model

@@ -7,13 +7,23 @@ import asyncio
 import json
 import signal
 
+import acp
 import pytest
 
 from deep_reasoning.acp import texts
+from deep_reasoning.acp.agent import user_text
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.acp.testing.tree import MessageNode, tree
 from tests.acp.golden import as_tree, normalized, play, read_golden, streams
-from tests.acp.harness import dr_acp, eventually, run, run_ids
+from tests.acp.harness import (
+    BRIDGE_EXTENSION,
+    BRIDGE_SYSTEM_SUFFIX,
+    BRIDGE_USER_SUFFIX,
+    dr_acp,
+    eventually,
+    run,
+    run_ids,
+)
 from tests.acp.scenarios import (
     BY_NAME,
     SCENARIOS,
@@ -289,3 +299,32 @@ def test_unknown_unstable_methods_answer_method_not_found(tmp_path, home, work):
         return caught.value
 
     assert run(body()).code == -32601
+
+
+def test_the_task_is_the_users_own_text_and_not_what_openhands_appends():
+    """The bridge's layout: the user's text, their images, the turn's extensions, and on
+    the first prompt its system suffix."""
+    blocks = [
+        acp.text_block("Which department is lighter?"),
+        acp.image_block(data="aGk=", mime_type="image/png"),
+        acp.text_block(BRIDGE_EXTENSION),
+        acp.text_block(BRIDGE_USER_SUFFIX),
+        acp.text_block(BRIDGE_SYSTEM_SUFFIX),
+    ]
+    assert user_text(blocks) == (
+        "Which department is lighter?",
+        [BRIDGE_EXTENSION, BRIDGE_USER_SUFFIX, BRIDGE_SYSTEM_SUFFIX],
+    )
+
+
+def test_resource_links_join_the_users_text_on_lines_of_their_own():
+    blocks = [
+        acp.text_block("Summarize these."),
+        acp.resource_link_block(name="cv", uri="file:///cv.pdf"),
+        acp.text_block(BRIDGE_SYSTEM_SUFFIX),
+        acp.resource_link_block(name="notes", uri="file:///notes.md"),
+    ]
+    assert user_text(blocks) == (
+        "Summarize these.\nfile:///cv.pdf\nfile:///notes.md",
+        [BRIDGE_SYSTEM_SUFFIX],
+    )

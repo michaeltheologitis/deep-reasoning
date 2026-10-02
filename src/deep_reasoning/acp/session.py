@@ -1,6 +1,7 @@
 """One ACP root session: its namespace, its commands, its prompts and its runs (§4.2)."""
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -132,18 +133,19 @@ class Session:
             self.offer(value)
         return self.options()
 
-    async def prompt(self, text: str) -> PromptResult:
-        """§4.2's seven steps."""
+    async def prompt(self, text: str, dropped: Sequence[str] = ()) -> PromptResult:
+        """§4.2's seven steps. dropped: the client's text blocks after the user's own,
+        recorded with the prompt and never part of its task."""
         if self.prompting:
             raise refusal(INVALID_REQUEST, texts.PROMPT_BUSY, "PROMPT_BUSY")
         self.prompting = True
         try:
             async with self.lock:
-                return await self._prompt(text)
+                return await self._prompt(text, list(dropped))
         finally:
             self.prompting = False
 
-    async def _prompt(self, text: str) -> PromptResult:
+    async def _prompt(self, text: str, dropped: list[str]) -> PromptResult:
         token = (
             text.split(maxsplit=1)[0] if text.startswith("/") and text.strip() else ""
         )
@@ -165,7 +167,11 @@ class Session:
         run_id = self.run.run_id
         self.prompts_in_run += 1
         ended = await self.run.prompt(
-            self.prompts_in_run, text, task, command.decomposition if command else None
+            self.prompts_in_run,
+            text,
+            task,
+            command.decomposition if command else None,
+            dropped,
         )
         outcome = ended.outcome if isinstance(ended, PromptEnd) else ended.reason
         return PromptResult(STOP_REASONS[outcome], run_id, outcome)

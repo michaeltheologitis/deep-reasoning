@@ -45,6 +45,28 @@ FAKE_PRICES = {
 }
 
 
+# What OpenHands' bridge appends to a user's text in a prompt, as it renders them:
+# per-turn extensions (MessageEvent.extended_content: a skill's knowledge, the agent
+# context's user_message_suffix, a hook's additional_context), then, on the first
+# prompt only, its system suffix (_build_acp_prompt, acp_agent.py:3572-3590).
+BRIDGE_EXTENSION = (
+    "<EXTRA_INFO>\n"
+    'The following information has been included based on a keyword match for "courses".\n'
+    "It may or may not be relevant to the user's request.\n\n"
+    "Course codes are four letters and three digits.\n"
+    "</EXTRA_INFO>"
+)
+BRIDGE_USER_SUFFIX = "Answer in one sentence."
+BRIDGE_SYSTEM_SUFFIX = (
+    "<CUSTOM_SECRETS>\n"
+    "### Credential Access\n"
+    "* If it still fails, report it to the user.\n\n"
+    "You have access to the following environment variables\n"
+    "\n* **$OPENAI_API_KEY**\n\n"
+    "</CUSTOM_SECRETS>"
+)
+
+
 def run(coro: Coroutine[Any, Any, Any]) -> Any:
     """Tests are plain functions; each runs its body on a fresh event loop."""
     return asyncio.run(coro)
