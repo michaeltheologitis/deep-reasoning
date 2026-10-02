@@ -13,12 +13,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-EXIT_USAGE = 2
-
 
 @dataclass(frozen=True)
 class Options:
-    config: Path | None  # --config PATH: a plain dr main.yaml; required until D2
+    config: Path | None  # --config PATH: a plain dr main.yaml; else the Library
     home: (
         Path | None
     )  # --home DIR, else $DR_HOME, else ~/.deep-reasoning (Home.resolve)
@@ -29,7 +27,11 @@ class Options:
 
 def parse_options(argv: Sequence[str] | None) -> Options:
     parser = argparse.ArgumentParser(prog="dr-acp", description=__doc__)
-    parser.add_argument("--config", type=Path, help="a plain dr main.yaml")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        help="a plain dr main.yaml (default: the Library at --home)",
+    )
     parser.add_argument(
         "--home", type=Path, help="run logs and sessions (default $DR_HOME)"
     )
@@ -78,24 +80,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     acp_fd = guard_stdout()
     options = parse_options(argv)
     # Everything of ours is imported only now, behind the stdout guard.
-    from deep_reasoning.acp import texts
     from deep_reasoning.acp.agent import DrAcpAgent
     from deep_reasoning.acp.catalog import ConfigCatalog
     from deep_reasoning.acp.costs import PriceTable
     from deep_reasoning.acp.route import DirectRoute
     from deep_reasoning.acp.runlog import Home
     from deep_reasoning.acp.wire import ClientMode, Outbox, serve
+    from deep_reasoning.library.catalog import LibraryCatalog, library_path
 
     configure_logging(options.log_level)
-    if options.config is None:
-        sys.stderr.write(texts.NEEDS_CONFIG + "\n")
-        return EXIT_USAGE
     home = Home.resolve(options.home)
-    catalog, route, prices = (
-        ConfigCatalog(options.config),
-        DirectRoute(),
-        PriceTable.load(home),
+    catalog = (
+        ConfigCatalog(options.config)
+        if options.config is not None
+        else LibraryCatalog(library_path(options.home))
     )
+    route, prices = DirectRoute(), PriceTable.load(home)
 
     def make_agent(outbox: Outbox, client: ClientMode) -> DrAcpAgent:
         return DrAcpAgent(
