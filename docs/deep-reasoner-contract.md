@@ -100,7 +100,7 @@ session and translates the events in §1.4:
 |---|---|
 | think text | `agent_thought_chunk` |
 | a REPL cell | `tool_call` (kind `execute`), then `tool_call_update` |
-| a sub-agent | its own ACP child session, announced with `subagent_update` (ACP's unstable Subagent Sessions draft) |
+| a sub-agent | its own ACP child session, announced with `subagent_update` (ACP's unstable Subagent Sessions draft). The REPL cell that spawned it travels as `_meta.openhands.parentToolCallId`; deep_reasoner's own node data travels as `_meta.deep_reasoner`, which no fork reads. A client that does not advertise `subagents` gets a labelled flat stream instead |
 | `FinalAnswer` / exhaustion | the final message, then `stopReason` |
 | decompositions | slash commands |
 | namespaces | a session config option |
