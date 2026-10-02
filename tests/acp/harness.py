@@ -178,7 +178,7 @@ def write_prices(home: Path) -> None:
 
 @contextlib.asynccontextmanager
 async def dr_acp(
-    config: Path,
+    config: Path | None,
     home: Path,
     *,
     native: bool = True,
@@ -187,15 +187,15 @@ async def dr_acp(
     command: tuple[str, ...] | None = None,
     initialize: bool = True,
 ) -> AsyncIterator[DrAcp]:
-    """Spawn dr-acp, connect, initialize; on exit close stdin and check what was sent."""
+    """Spawn dr-acp (on the Library at home when config is None), connect, initialize;
+    on exit close stdin and check what was sent."""
     write_prices(home)
     stderr = home / f"dr-acp-{len(list(home.glob('dr-acp-*.log')))}.log"
     argv = command or (DR_ACP,)
     with stderr.open("wb") as err:
         proc = await asyncio.create_subprocess_exec(
             *argv,
-            "--config",
-            str(config),
+            *(("--config", str(config)) if config is not None else ()),
             "--home",
             str(home),
             *args,

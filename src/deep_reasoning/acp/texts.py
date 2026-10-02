@@ -31,7 +31,6 @@ NAMESPACE_OPEN = (
     "The namespace this conversation runs in. Fixed after the first message."
 )
 NAMESPACE_FIXED_NOTE = "Fixed for this conversation."
-NEEDS_CONFIG = "dr-acp needs --config PATH (a dr main.yaml) until the Library exists."
 STOP_AT_NEXT_TURN = (
     "Stop requested: this agent and its sub-agents stop at their next turn, before their "
     "next model call. A cell that is already running finishes first."
