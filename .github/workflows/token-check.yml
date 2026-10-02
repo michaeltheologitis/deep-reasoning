@@ -1,0 +1,29 @@
+# Throwaway: checks that DEEP_REASONER_TOKEN lets CI read and install deep_reasoner_beta.
+# Lives only on the ci-token-check branch, which is deleted after the run.
+name: token-check
+on:
+  push:
+    branches: [ci-token-check]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Without the token, Dean's private repo is refused
+        run: |
+          if GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/DeanLight/deep_reasoner_beta.git HEAD; then
+            echo "UNEXPECTED: readable without a token"; else echo "refused without a token, as expected"; fi
+      - name: With DEEP_REASONER_TOKEN, it is readable
+        env:
+          TOKEN: ${{ secrets.DEEP_REASONER_TOKEN }}
+        run: |
+          test -n "$TOKEN" || { echo "DEEP_REASONER_TOKEN is missing or empty"; exit 1; }
+          git config --global url."https://x-access-token:${TOKEN}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+          git ls-remote https://github.com/DeanLight/deep_reasoner_beta.git HEAD
+      - uses: astral-sh/setup-uv@v6
+      - name: uv installs deep_reasoner at our pin
+        run: |
+          uv venv -q
+          uv pip install --no-deps "deep-reasoner @ git+https://github.com/DeanLight/deep_reasoner_beta@d7334ae6ea884617a377d9f1ce872530d898484c"
+          uv pip show deep-reasoner | head -3
