@@ -14,6 +14,6 @@ This file used to hold that record. Older references map like this:
 - §1.1 (building and running a run) is EXP-3, §1.2 (config shapes) EXP-5, §1.3 (custom tools)
   EXP-6, §1.4 (events) EXP-1, and §1.4's spawning-cell inference EXP-4.
 - §1.5 (how we expose deep_reasoner over ACP) is our own design, in the TASK-1 spec.
-- Ask A1 (distribution) is EXP-7, and A3 (cancellation) is EXP-2. The other asks, the questions
-  for Dean and bugs B1–B8 are not tracked, since nothing of ours depends on them; they are in
-  this file's history at `6acd2ea`.
+- Ask A3 (cancellation) is EXP-2. The other asks, the questions for Dean and bugs B1–B8 are not
+  tracked, since they are not technical dependencies of ours; they are in this file's history at
+  `6acd2ea`.
