@@ -1,5 +1,6 @@
 """How a run reaches its model, and what the worker's environment holds (§4.7, D5's seam)."""
 
+import fnmatch
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -34,13 +35,19 @@ class DirectRoute:
     def grant(
         self, *, session: str, run: str, upstream: Mapping[str, Any]
     ) -> RouteGrant:
-        raise NotImplementedError
+        return RouteGrant()
 
     def release(self, run: str) -> None:
-        raise NotImplementedError
+        return None
 
 
 def worker_env(base: Mapping[str, str], grant: RouteGrant) -> dict[str, str]:
     """base minus ALWAYS_REMOVED and grant.env_remove, plus grant.env_add and
     PYTHONUNBUFFERED=1."""
-    raise NotImplementedError
+    removed = (*ALWAYS_REMOVED, *grant.env_remove)
+    env = {
+        key: value
+        for key, value in base.items()
+        if not any(fnmatch.fnmatchcase(key, pattern) for pattern in removed)
+    }
+    return env | dict(grant.env_add) | {"PYTHONUNBUFFERED": "1"}

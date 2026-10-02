@@ -1,5 +1,7 @@
 """The run log: RunEvents, one JSON line each, and the session index (§4.4)."""
 
+import os
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -165,36 +167,56 @@ class Home:
     @classmethod
     def resolve(cls, flag: Path | None) -> "Home":
         """flag, else $DR_HOME, else ~/.deep-reasoning."""
-        raise NotImplementedError
+        if flag is not None:
+            return cls(flag)
+        if env := os.environ.get("DR_HOME"):
+            return cls(Path(env))
+        return cls(Path.home() / ".deep-reasoning")
 
     def run_dir(self, run: str) -> Path:
-        raise NotImplementedError
+        return self.root / "runs" / run
 
     def session_file(self, session: str) -> Path:
-        raise NotImplementedError
+        return self.root / "sessions" / f"{session}.json"
 
 
 class RunLog:
     """The append side of runs/<run>/events.jsonl. The front is its only writer."""
 
+    def __init__(self, path: Path, last_seq: int) -> None:
+        self._path = path
+        self._seq = last_seq
+
     @classmethod
     def create(cls, home: Home, run_id: str) -> "RunLog":
         """A new, empty log; creates the run directory."""
-        raise NotImplementedError
+        home.run_dir(run_id).mkdir(parents=True, exist_ok=True)
+        path = home.run_dir(run_id) / "events.jsonl"
+        path.touch()
+        return cls(path, 0)
 
     @classmethod
     def open(cls, home: Home, run_id: str) -> "RunLog":
         """An existing log, appended after its last event (replay marks a lost run)."""
-        raise NotImplementedError
+        events = list(cls.read(home, run_id))
+        return cls(
+            home.run_dir(run_id) / "events.jsonl", events[-1].seq if events else 0
+        )
 
     def append(self, ev: RunEvent) -> RunEvent:
         """Assign seq and t, write one line, flush."""
-        raise NotImplementedError
+        self._seq += 1
+        logged = ev.model_copy(update={"seq": self._seq, "t": time.time()})
+        with self._path.open("a", encoding="utf-8") as out:
+            out.write(logged.model_dump_json() + "\n")
+        return logged
 
     @staticmethod
     def read(home: Home, run_id: str) -> Iterator[RunEvent]:
         """Every event of the run, in order. Raises on v != 1."""
-        raise NotImplementedError
+        with (home.run_dir(run_id) / "events.jsonl").open(encoding="utf-8") as lines:
+            for line in lines:
+                yield RUN_EVENT.validate_json(line)
 
 
 class SessionIndex(BaseModel):
@@ -213,8 +235,13 @@ class SessionIndex(BaseModel):
 
     @classmethod
     def load(cls, home: Home, session: str) -> "SessionIndex | None":
-        raise NotImplementedError
+        path = home.session_file(session)
+        return cls.model_validate_json(path.read_text()) if path.exists() else None
 
     def save(self, home: Home) -> None:
         """Atomic: a temp file, then rename."""
-        raise NotImplementedError
+        path = home.session_file(self.session)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(".json.tmp")
+        temporary.write_text(self.model_dump_json())
+        temporary.replace(path)
