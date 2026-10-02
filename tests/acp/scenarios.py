@@ -289,6 +289,13 @@ def _conversation(run_dir: Path, node: int) -> list[dict[str, str]]:
 
 
 def _repl_turns(conversation: list[dict[str, str]]) -> int:
+    """The turns that ran a cell. When the system prompt sits inside the conversation
+    (deep_reasoner records a puppeteered turn before it, so its YAML writer does not
+    split the prefix off), the prompt and its demonstrations, from the first system
+    message to the last, ran nothing."""
+    systems = [i for i, turn in enumerate(conversation) if "system" in turn]
+    if systems:
+        conversation = conversation[: systems[0]] + conversation[systems[-1] + 1 :]
     return sum("<repl>" in turn.get("assistant", "") for turn in conversation)
 
 
