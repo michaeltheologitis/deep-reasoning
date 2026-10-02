@@ -21,11 +21,13 @@ class ModelRoute(Protocol):
     def release(self, run: str) -> None: ...
 
 
-# Glob patterns.
+# Glob patterns. The agent-server's own secrets: each opens its API, secrets included.
+# OPENHANDS_AUTOMATION_API_KEY is its session key as Canvas's launcher names it.
 ALWAYS_REMOVED: tuple[str, ...] = (
     "OH_SECRET_KEY",
     "OH_SESSION_API_KEYS_*",
     "SESSION_API_KEY",
+    "OPENHANDS_AUTOMATION_API_KEY",
 )
 
 
