@@ -1,16 +1,14 @@
 # What deep-reasoning needs from deep_reasoner
 
-A living record of everything this app uses from Dean's `deep_reasoner_beta`, how we expect it
-to behave, and what we are asking him for. It is written so that Dean, or an agent working in
-his repo, can read it without our context.
+A living record of everything this app uses from Dean's `deep_reasoner_beta` and how we expect
+it to behave. It is written so that Dean, or an agent working in his repo, can read it without
+our context. What we ask of him is tracked elsewhere: see §3.
 
 - **Owner:** Michael (deep-reasoning). **Counterpart:** Dean (deep_reasoner_beta).
 - **Pinned against:** `DeanLight/deep_reasoner_beta` at `d7334ae` (main, 2026-09-28). Every
   path and line number below is at that commit.
 - **Rule:** we do not change deep_reasoner_beta. If something cannot be done from outside, it
-  becomes an ask in §3. A branch or PR on Dean's repo happens only if he agrees.
-- **Status of the asks:** none has been raised as a GitHub issue yet (Michael's call,
-  2026-10-02). When one is raised, put its link next to it.
+  becomes an ask (§3). A branch or PR on Dean's repo happens only if he agrees.
 
 ## 1. What we use, surface by surface
 
@@ -83,7 +81,7 @@ how we draw the tree.** We never infer parentage from timing.
 **What we infer, and how:** which REPL cell spawned a child agent. A parent is blocked inside
 one cell while its children run, so a child's `agent.start` belongs to the parent's latest
 `agent.turn`. The cell's code is known before it runs, from that turn's `llm.call` `response`.
-Ask A6 would replace this inference with an explicit id.
+EXP-6 asks for an explicit id to replace this inference.
 
 **Known gaps we work around:**
 - `llm.call` and its usage accounting sit inside a disk-cached function, so a cache hit logs
@@ -118,45 +116,18 @@ We depend on everything in §1, especially:
 - the `factory_from` contract in §1.3.
 
 None of these is a documented public interface today; the events are debug-level internals.
-See ask A2.
+EXP-2 asks for that.
 
-## 3. Asks
+## 3. What we ask of Dean
 
-| # | Ask | Why we need it | Blocking? | Status |
-|---|---|---|---|---|
-| A1 | **Access and distribution.** How will self-hosters install deep_reasoner? The repo is private. Is a public release or PyPI planned, and under what license? | Anyone installing our app needs deep_reasoner | Blocks other people self-hosting; not our own development | Open (asked in the 2026-10-02 meeting) |
-| A2 | **Stability of §1**, or a heads-up before changing it. Ideally the §1.4 events become a documented interface, perhaps with a test in deep_reasoner | The tree view and the stored configs break silently otherwise | No; we pin a commit | Open |
-| A3 | **Cancellation** of a running agent, including mid-cell, and ideally per sub-agent | Our Stop button kills the worker process instead, which loses the REPL state | No (workaround) | Open |
-| A4 | **Resume a conversation after a restart**, rebuilding an agent from stored history | Today resume is in-memory only, so a restarted app shows old conversations read-only | No (workaround) | Open |
-| A5 | **Streaming** of model output (tokens) | Progress is shown per step, not as typing | No | Open |
-| A6 | **A `repl.start` event with a cell id**, and that id on child agents' `agent.start` | Replaces the inference in §1.4 | No (inferred today) | Open |
-| A7 | **Chat-backbone cost**, for example recording OpenRouter's `usage.cost` | Only Claude spend is counted | No (we compute it from `usage`) | Open |
+Our asks, our questions for him and the bugs we found reading his code are rows in the
+**Expectations** table in Michael's Notion,
+<https://app.notion.com/p/1fb9c801a17046e6888c1ed2b00e2797> (ask Michael for access). Each row
+has its status (`Open`, `Asked`, `Done`, `Dropped`), why we need it, and Dean's answer once it
+comes. From a session in this repo, `ase-skills expectations list --task 1` prints them.
 
-### Bugs we found while reading (FYI, for Dean)
-
-| # | Where | What |
-|---|---|---|
-| B1 | `deep_reasoner/v2/messages.py:185` | A tool that is an object, such as the `llm` tool, is described to the model as `fn(...)`, not by its binding name. It is visible in the committed `docs/running-agents.ipynb` output |
-| B2 | `deep_reasoner/tools/rag.py:296` | Every new `RagStore` deletes all collections in chromadb's shared in-memory backend. A second store, such as `kg` search, likely wipes `rag`'s corpus. Not confirmed at runtime |
-| B3 | `docs/configs/catalog/kg_agent.yaml:128` | `kg.enable_link_propagation("canonical")` passes `mode` positionally, but it is keyword-only (`deep_reasoner/tools/kg_main.py:877`), so it raises `TypeError` |
-| B4 | `docs/configs/catalog/crossover.yaml:61` | `worker` sets no `spawn:`, so it is unrestricted and can spawn into `admin` |
-| B5 | `docs/index.py:137`, `docs/observability.py:24`, `docs/reference.py:215`, `docs/running-agents.py:62`, `docs/knowledge-graph.py:220` | These pages say logs are "one YAML per turn"; it is one per node |
-| B6 | `deep_reasoner/v2/agent.py:306`, `deep_reasoner/v2/claude_reasoner.py:460`, `configs/example/claude.yaml:39` | These name a `--decomposition` flag; the flag is `--main-decomposition` |
-| B7 | `deep_reasoner/v2/repl_coro.py:313` | There is no execution timeout for in-process snippets, so a `while True` under `local` or `restricted` hangs the run |
-| B8 | `deep_reasoner/v2/cli.py:157` | `factory_from` builders do not receive `config_path`, though `deep_reasoner/tools/base.py:279` says every builder does |
-
-## 4. Questions for Dean, and his answers
-
-Raised in the 2026-10-02 meeting. Answers are recorded here as they come.
-
-| Question | Answer |
-|---|---|
-| Did "use ACP" mean deep_reasoner as an ACP agent inside OpenHands? Is the plug fine living in our repo? | pending |
-| A real tree via ACP's draft sub-agent sessions plus an OpenHands change, aimed upstream. Any objection, or OpenHands contacts? | pending |
-| Will §1 stay stable, or would he rather give us a proper event stream? (A2) | pending |
-| Distribution and license (A1) | pending |
-| Is any of A3–A6 already on his roadmap? | pending |
-| Where should asks go: GitHub issues on his repo, or his Notion? | pending |
-| Is the decomposition or namespace format about to change? | pending |
-| Is `factory_from` the right contract for user tools? | pending |
-| Default backbone and provider for the app (chat model or Claude Code)? | pending |
+They moved there from this file on 2026-10-02. Older references map like this:
+- asks A1–A7 are EXP-1 to EXP-7;
+- the meeting questions are EXP-8 to EXP-13, except three folded into rows above: stability
+  into EXP-2, distribution into EXP-1, and the roadmap question into EXP-3 to EXP-6;
+- bugs B1–B8 are EXP-14 to EXP-21.

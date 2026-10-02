@@ -48,6 +48,6 @@ disagree, follow this list.
    data.
 6. **Storage, editing and tools.** Decompositions and namespaces are stored in SQLite, with an
    editor. Custom tools are user-written.
-7. **deep_reasoner_beta is Dean's repo and stays untouched.** Everything we use from it, and
-   everything we need from Dean, is recorded in
-   [`docs/deep-reasoner-contract.md`](../../deep-reasoner-contract.md).
+7. **deep_reasoner_beta is Dean's repo and stays untouched.** Everything we use from it is
+   recorded in [`docs/deep-reasoner-contract.md`](../../deep-reasoner-contract.md); what we need
+   from Dean is in the Expectations table its §3 links to.
