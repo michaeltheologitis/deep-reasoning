@@ -10,6 +10,24 @@ D4's MCP note, §4, the 2026-10-02 amendment).
 
 **Revisions** (newest first; the Gate B reader approved the previous one, so each line says which
 sentences to stop trusting):
+- 2026-10-02 · v2 · after the Docwright wrote the live doc against v1 and returned nine problems.
+  Stop trusting: §7's `Printer` and `tree()` (now specified in §8.2: `Printer` never prints by
+  itself, `show()` prints from the calling cell, `wait_until()` waits for an update,
+  `subagents` is keyed by full session id and `commands` by root session, `tree()` returns a
+  `Tree` drawn per conversation and run); §6.3's interim and classification table (an agent
+  cancelled under a stopped target is `stopped`, not `failed`; `branch` and `siblings` are
+  redefined; a re-driven child is no longer stopped by an old request); §4.2's shutdown (1.4 s
+  on stdin EOF *or* SIGTERM, not 2 s on EOF), `RunHandle.close`, and the pump's `run.end` reason
+  after a failed or build-failed prompt (`failed`/`build_failed`, not `crashed`); the fresh-run
+  notice, which now comes from `run.start.after` in the run log and is an `agent_message_chunk`
+  ending in a blank line; §5.2's root closing messages, which gain
+  `_meta.deep_reasoner.{run,prompt,outcome}`, and idle updates, which gain `collateral`; §5.5's
+  errors (the sentence is the JSON-RPC `message`); §5.6's `StoppedByUser` row (Python prints the
+  qualified class name); §5.1's launch environment; §8.5 (a `docs` group to execute the live doc,
+  ruff). Added without changing earlier sentences: an unknown `session/cancel` id is logged
+  (§4.2); §4.6 decides that every decomposition is offered (D2 may mark programs, §10 item 6);
+  §8.1's test rows for the above. Every signature block is now valid, ruff-formatted Python with
+  one field per line (Michael's request). New departures from the spec: §3 items 12–15.
 - 2026-10-02 · v1 · first full-depth version.
 
 **Where this file lives, and why nothing trips over it.** `docs/design/` on the task branch. This
@@ -18,8 +36,9 @@ repo has no docs site (no `mkdocs.yml`), pytest is pointed at `tests/` only
 `docs/` is not in the wheel, and the sdist excludes `docs/` (§8.5). The PR split leaves it behind.
 
 **Reading guide.** Gate B: §1–§3 (about 12 minutes). S1, C1 and S2 design against §5, which is
-their contract. D2 against §4.6 and §4.4. D5 against §4.7. The Docwright and the Implementer read
-everything; §7 is the signature index.
+their contract. D2 against §4.6 and §4.4. D5 against §4.7 and §5.1. The Docwright and the
+Implementer read everything; the live doc's own contract is §5 plus §8.2 (`Printer`, `tree()`),
+and §7 is the signature index.
 
 ---
 
@@ -28,13 +47,15 @@ everything; §7 is the signature index.
 A stdio ACP agent. Each ACP root session owns at most one live deep_reasoner **run**, executed in a
 **worker** subprocess. The worker turns deep_reasoner's structlog events into our own
 **RunEvents**; the front process writes them to the **run log** and only then encodes them as ACP.
-Everything the client ever sees is a function of the run log.
+Everything the client ever sees about a run is a function of the run log. OpenHands starts one
+`dr-acp` per conversation (`_start_acp_server`, `acp_agent.py:2912`); `dr-acp` itself serves any
+number of sessions on one connection.
 
 ```text
 ACP client (agent-server bridge, S1)               $DR_HOME/
    │ stdio (JSON-RPC, ndjson)                         sessions/<session>.json      session index (§4.4)
    ▼                                                  runs/<run>/events.jsonl      RunEvents: the system of record
-dr-acp front  (asyncio, one process per bridge)       runs/<run>/worker.log        worker stdout+stderr
+dr-acp front  (asyncio, one process per connection)   runs/<run>/worker.log        worker stdout+stderr
    wire ── agent ── session ── run handle             runs/<run>/*.yaml            deep_reasoner's own node logs
                                  │   ▲
                  control pipe ───┘   └─── event pipe (RunEvents, JSON lines)
@@ -85,7 +106,9 @@ The order below is the order on the wire. Names in `code` are RunEvents (§4.4) 
    default namespace, each namespace's commands; in a thread, since `ConfigCatalog` imports
    deep_reasoner). It answers with a session id and the `namespace` select option, then sends
    `available_commands_update` for the default namespace. No worker starts: a preview session
-   (S2) costs a start-up and a catalog read.
+   (S2) costs a start-up and a catalog read. The commands arrive *after* the response, and ACP
+   Python 0.12.1 resolves `new_session` before it handles them, so a client that needs the menu
+   waits for that update (§5.4 rule 5; the live doc uses `Printer.wait_until`, §8.2).
 3. **`session/set_config_option namespace=…`** before the first prompt: the commands update for the
    new namespace goes out, then the response with the full options.
 4. **First prompt.** If its first token is an advertised command, the decomposition opens the run
@@ -111,7 +134,8 @@ The order below is the order on the wire. Names in `code` are RunEvents (§4.4) 
    turns `idle`/`cancelled` as it actually ends (the RFD: evidence, not acknowledgement).
 9. **Stop on the root:** the worker's process group is terminated within 2 s; every running child
    turns `idle`/`cancelled`, unfinished cells fail, the root says the REPL state is gone, and the
-   prompt answers `cancelled`. The next prompt starts a fresh run and says so.
+   prompt answers `cancelled`. The next prompt starts a fresh run and says so, in an
+   `agent_message_chunk` ahead of its answer.
 10. **Restart.** The bridge calls `session/load`; `dr-acp` replays every run of the session from the
     run log (user prompts included) before answering, marks a run that never ended as `lost`, and
     the next prompt starts fresh.
@@ -159,6 +183,28 @@ what was approved, it goes back to Michael.
     work but cost a restart and a replay.
 11. **A prompt `dr-acp` rejects without running anything** (a late slash command, a command with no
     task) is answered but not recorded: no run log holds it, so it does not replay after a restart.
+12. **The mock-up's `Printer` changes in four places (v2).** It never prints by itself: its
+    callbacks run in ACP Python's notification tasks, which carry the context of the cell that
+    built the connection, so under ipykernel 7.3 their prints land in no cell (verified by the
+    Docwright with nbclient 0.11); `printer.show()` prints from the calling cell instead. The
+    commands arrive after `session/new`'s response (§5.4 rule 5), so the mock-up's first cell
+    waits for them (`await printer.wait_until(...)`). `printer.commands` is keyed by root
+    session (`printer.commands[s.session_id]`), and `printer.subagents` by full session id, with
+    a short id such as `"n2"` still accepted when exactly one sub-agent has it: short ids repeat
+    in every run. §8.2.
+13. **`session/cancel` takes the full child session id (v2).** The mock-up's
+    `conn.cancel(session_id="n3")` used the printer's short form; `dr-acp` ignores an id it does
+    not know (a notification has no error reply) and logs it at WARNING. Short ids repeat in every
+    run and every conversation, so they cannot address a session (decision F). A client reads the
+    id from the announcement (`printer.subagents["n3"].session_id`).
+14. **The parent's cell output names `deep_reasoning.acp.worker.stop.StoppedByUser` (v2),** not the
+    mock-up's bare `StoppedByUser`: deep_reasoner formats a cell's exception with
+    `traceback.format_exc()` (`repls/backends.py:523–524`, `v2/repl_coro.py:84–85`), which
+    qualifies a class defined outside `builtins`. The text after the colon is the mock-up's.
+15. **Root closing messages carry `_meta.deep_reasoner.{run,prompt,outcome}`, and idle updates
+    `collateral` (v2),** extending item 7's superset, so a tree can be rebuilt from the updates
+    alone: which run a root message ends and how, and whether a stopped agent was the target, in
+    its branch, or beside it in a `run_all`.
 
 ---
 
@@ -183,14 +229,15 @@ src/deep_reasoning/acp/
     route.py                       ModelRoute protocol, DirectRoute, environment scrub
     costs.py                       PriceTable, CostEstimate
     prices.yaml                    shipped price and context-window table
-    texts.py                       every user-visible sentence (§5.6), one place
+    texts.py                       every user-visible sentence (§5.6), in one place
     worker/__main__.py             python -m deep_reasoning.acp.worker
     worker/runner.py               control loop, build, drive, close
     worker/recorder.py             Recorder (the structlog processor)
     worker/stop.py                 StopAdapter, DeanStop, InterimStop, StoppedByUser
     worker/protocol.py             control messages (front → worker)
     testing/__init__.py            for tests and the live doc, never imported by dr-acp itself
-    testing/client.py              ShimConnection, Caps, Printer, tree() (§8.2)
+    testing/client.py              ShimConnection, Caps, Printer, Subagent (§8.2)
+    testing/tree.py                tree(), Tree and its nodes (§8.2)
     testing/fake_model.py          FakeOpenAI: an OpenAI-compatible endpoint on 127.0.0.1
 tests/acp/…                        §8
 ```
@@ -202,21 +249,36 @@ tests/acp/…                        §8
 
 **`cli.py`.** Parses options, applies the stdout guard (decision D), configures stdlib logging to
 stderr (the bridge logs our stderr at INFO, so the default level is WARNING), builds the catalog,
-the route and the agent, and runs `wire.serve`. On stdin EOF it closes every session (graceful
-close, 2 s, then kill) and exits 0.
+the route and the agent, and runs `wire.serve`.
+
+**Shutdown** starts on stdin EOF or on SIGTERM, whichever comes first, and runs once. Clients send
+both and do not wait long: OpenHands' bridge closes the connection and sends SIGTERM at once,
+killing after 5 s (`_shutdown_runtime`, `acp_agent.py:4563–4590`); ACP Python's
+`spawn_stdio_transport` closes stdin, sends SIGTERM after 2.0 s and SIGKILL 2.0 s later
+(`transports.py:96–117`). So every live run is closed concurrently with
+`RunHandle.close(grace_s=0.3)`, which writes `run.end closed` within 1.4 s (0.3 s for the worker
+to exit by itself, then §6.4's 0.8 s and 0.3 s), and `dr-acp` exits 0. Updates it can no longer
+send (the client has closed the pipe) are dropped; the run log still has them. A run whose
+`dr-acp` was killed before that replays as `lost` (§5.7).
 
 ```python
 @dataclass(frozen=True)
 class Options:
-    config: Path | None          # --config PATH: a plain dr main.yaml (ConfigCatalog). Required until D2.
-    home: Path                   # --home DIR, else $DR_HOME, else ~/.deep-reasoning
-    flat: bool                   # --flat: never send sub-agent sessions, whatever the client advertises
-    heartbeat_s: float           # --heartbeat SECONDS (default 60)
-    log_level: str               # --log-level (default WARNING)
+    config: Path | None  # --config PATH: a plain dr main.yaml; required until D2
+    home: Path  # --home DIR, else $DR_HOME, else ~/.deep-reasoning
+    flat: bool  # --flat: never send sub-agent sessions, whatever the client advertises
+    heartbeat_s: float  # --heartbeat SECONDS, default 60
+    log_level: str  # --log-level, default WARNING
+
 
 def main(argv: Sequence[str] | None = None) -> int: ...
-def guard_stdout() -> int:        # returns the dup of the original fd 1, for the ACP writer
-    """os.dup(1) → acp_fd; os.dup2(2, 1); sys.stdout = sys.stderr. Called before any other import of ours."""
+
+
+def guard_stdout() -> int:
+    """os.dup(1) -> acp_fd; os.dup2(2, 1); sys.stdout = sys.stderr; return acp_fd.
+
+    Called before any other import of ours. acp_fd, the original fd 1, is the ACP writer's.
+    """
 ```
 
 Before D2 lands, `dr-acp` without `--config` exits 2 with
@@ -227,25 +289,40 @@ Before D2 lands, `dr-acp` without `--config` exits 2 with
 ```python
 Mode = Literal["native", "flat"]
 
+
 class Outbox:
     """Every byte dr-acp sends to the client goes through here, in call order."""
+
     def __init__(self, conn: acp.connection.Connection) -> None: ...
+
     async def update(self, session_id: str, update: Mapping[str, Any]) -> None:
-        """session/update notification, raw JSON: {"sessionId": session_id, "update": update}."""
+        """A session/update notification, raw JSON: {"sessionId": ..., "update": update}."""
+
     def observe(self, fn: Callable[[dict[str, Any]], None]) -> None:
-        """Tests and golden recording: fn sees every outgoing JSON-RPC message (Connection observers)."""
+        """fn sees every outgoing JSON-RPC message (tests, golden recording)."""
+
     @property
     def seconds_since_last_send(self) -> float: ...
 
-async def serve(make_agent: Callable[[Outbox, ClientMode], "DrAcpAgent"], *,
-                acp_out_fd: int, stdin_fd: int = 0) -> None:
-    """Build asyncio streams on (stdin_fd, acp_out_fd) with a 64 MiB reader limit, then
-    Connection(handler, writer, reader), where handler = tap ∘ build_agent_router(agent,
-    use_unstable_protocol=True). Returns when the client closes stdin."""
+
+async def serve(
+    make_agent: Callable[[Outbox, ClientMode], DrAcpAgent],
+    *,
+    acp_out_fd: int,
+    stdin_fd: int = 0,
+) -> None:
+    """Serve one ACP connection until the client closes stdin.
+
+    Builds asyncio streams on (stdin_fd, acp_out_fd) with a 64 MiB reader limit, then
+    Connection(handler, writer, reader), where handler is the initialize tap in front of
+    build_agent_router(agent, use_unstable_protocol=True).
+    """
+
 
 class ClientMode:
     """Decided once per connection, by the tap, before the router sees initialize."""
-    mode: Mode                   # "native" iff clientCapabilities.subagents is a JSON object and not --flat
+
+    mode: Mode  # "native" iff clientCapabilities.subagents is an object and not --flat
 ```
 
 `use_unstable_protocol=True` is needed for `session/close` (S2's preview closes its probe
@@ -255,23 +332,61 @@ session). Unimplemented unstable methods (`fork`, `resume`, `list`) answer metho
 
 ```python
 class DrAcpAgent:
-    def __init__(self, outbox: Outbox, client: ClientMode, *, catalog: Catalog, home: Home,
-                 route: ModelRoute, prices: PriceTable, heartbeat_s: float) -> None: ...
-    async def initialize(self, protocol_version: int, client_capabilities: Any = None,
-                         client_info: Any = None, **meta: Any) -> dict: ...                 # §5.1
-    async def new_session(self, cwd: str, mcp_servers: list[Any],
-                          additional_directories: list[str] | None = None, **meta: Any) -> dict: ...
-    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any],
-                           additional_directories: list[str] | None = None, **meta: Any) -> dict: ...
-    async def set_config_option(self, config_id: str, session_id: str, value: str, **meta: Any) -> dict: ...
-    async def prompt(self, prompt: list[Any], session_id: str, **meta: Any) -> dict: ...
-    async def cancel(self, session_id: str, **meta: Any) -> None: ...                        # root or child
-    async def close_session(self, session_id: str, **meta: Any) -> dict: ...
+    def __init__(
+        self,
+        outbox: Outbox,
+        client: ClientMode,
+        *,
+        catalog: Catalog,
+        home: Home,
+        route: ModelRoute,
+        prices: PriceTable,
+        heartbeat_s: float,
+    ) -> None: ...
+
+    async def initialize(
+        self,
+        protocol_version: int,
+        client_capabilities: Any = None,
+        client_info: Any = None,
+        **meta: Any,
+    ) -> dict[str, Any]: ...  # §5.1
+
+    async def new_session(
+        self,
+        cwd: str,
+        mcp_servers: list[Any],
+        additional_directories: list[str] | None = None,
+        **meta: Any,
+    ) -> dict[str, Any]: ...
+
+    async def load_session(
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[Any],
+        additional_directories: list[str] | None = None,
+        **meta: Any,
+    ) -> dict[str, Any]: ...
+
+    async def set_config_option(
+        self, config_id: str, session_id: str, value: str, **meta: Any
+    ) -> dict[str, Any]: ...
+
+    async def prompt(
+        self, prompt: list[Any], session_id: str, **meta: Any
+    ) -> dict[str, Any]: ...
+
+    async def cancel(self, session_id: str, **meta: Any) -> None: ...  # root or child
+
+    async def close_session(self, session_id: str, **meta: Any) -> dict[str, Any]: ...
 ```
 
 `cancel` routes by id: a root session id → `Session.stop_root()`; an id in any live run's child
-map → `Session.stop_child()`; anything else is ignored (it is a notification; a cancel racing an
-ended agent does not rewrite its outcome).
+map → `Session.stop_child()`; anything else is ignored, since it is a notification and has no error
+reply, and logged at WARNING (`session/cancel for unknown session '<id>' ignored`), so a client
+that sent a short id such as `n3` finds out from `dr-acp`'s stderr. A cancel racing an ended agent
+does not rewrite its outcome.
 
 **`session.py`.** One per root session; holds the options, the commands and the runs; serializes
 `prompt`, `set_config_option`, `load` and `close` with an `asyncio.Lock` (`cancel` never takes it).
@@ -279,54 +394,86 @@ ended agent does not rewrite its outcome).
 ```python
 @dataclass
 class Session:
-    id: str                              # "s-" + 16 hex
+    id: str  # "s-" + 16 hex
     cwd: Path
     snapshot: CatalogSnapshot
     namespace: str
-    started: bool                        # set by the first accepted prompt; the namespace is fixed from then on
-    commands: dict[str, CommandEntry]    # by command name, for the current namespace; empty once started
-    advertised: set[str]                 # every command name this session has offered: detects late commands
-    runs: list[str]                      # run ids, oldest first
-    cost: CostLedger                     # the root's cumulative cost over all finished runs
-    last_end: RunEndReason | None        # how the previous run ended: chooses the fresh-run notice
-    mcp_servers: list[dict[str, Any]]    # kept for D4; unused in D1
-    run: RunHandle | None                # the live run, if any
-    ctx: "AgentContext"                  # shared from DrAcpAgent: catalog, home, route, outbox, prices, mode, heartbeat_s
+    started: bool  # set by the first accepted prompt; fixes the namespace
+    commands: dict[str, CommandEntry]  # by name, current namespace; empty once started
+    advertised: set[str]  # every command name ever offered: detects late commands
+    runs: list[str]  # run ids, oldest first
+    cost: CostLedger  # the root's cumulative cost over all finished runs
+    last_end: RunEndReason | None  # picks the next run's fresh-run notice
+    mcp_servers: list[dict[str, Any]]  # kept for D4; unused in D1
+    run: RunHandle | None  # the live run, if any
+    ctx: AgentContext  # from DrAcpAgent: catalog, home, route, outbox, prices, mode
 
     async def prompt(self, text: str) -> PromptResult: ...
-    def set_namespace(self, value: str) -> list[dict]: ...      # raises RequestError (§5.6)
+
+    def set_namespace(self, value: str) -> list[dict[str, Any]]:
+        """The options after the change. Raises RequestError (§5.5)."""
+
     async def stop_root(self) -> None: ...
+
     def stop_child(self, child_session_id: str) -> None: ...
-    async def close(self) -> None: ...
+
+    async def close(self, grace_s: float = 2.0) -> None: ...
+
+
+PromptOutcome = Literal[
+    "answered",
+    "exhausted",
+    "failed",
+    "build_failed",
+    "stopped",
+    "crashed",
+    "closed",
+    "rejected",
+]
+
 
 @dataclass(frozen=True)
 class PromptResult:
     stop_reason: Literal["end_turn", "max_turn_requests", "cancelled"]
     run: str | None
-    outcome: Literal["answered", "exhausted", "failed", "build_failed", "stopped", "crashed",
-                     "closed", "rejected"]
+    outcome: PromptOutcome
 ```
 
 `Session.prompt`, exactly:
-1. Refuse if a prompt is in flight (`RequestError.invalid_request`, §5.6).
+1. Refuse if a prompt is in flight (`PROMPT_BUSY`, invalid request, §5.5).
 2. Text = the prompt's `text` blocks joined with `"\n"`; a `resource_link` block contributes its
    `uri` on its own line; other blocks are ignored (we advertise none).
 3. Command parse: if the text starts with `/` and its first whitespace-separated token minus the
    slash is a name in `self.commands`, it is a command; otherwise, if the session has started and
    that token is in `self.advertised`, it is a *late* command; otherwise it is plain text (a path
    such as `/home/…` stays a task).
-   - Late command → reply `texts.LATE_DECOMPOSITION`, outcome `rejected`, no run.
-   - Command with an empty rest → reply `texts.COMMAND_NEEDS_TASK`, outcome `rejected`, session
-     stays unstarted.
+   - Late command → reply `texts.late_decomposition(name)`, outcome `rejected`, no run.
+   - Command with an empty rest → reply `texts.command_needs_task(name, hint)`, outcome
+     `rejected`, session stays unstarted.
+
+   A *reply* is one root `agent_message_chunk` carrying
+   `_meta.deep_reasoner = {"run": null, "prompt": null, "outcome": <outcome>}` (§5.2's closing
+   message, sent by the session because no run log holds it).
 4. If not started: started = True; send `available_commands_update []` then the narrowed
    `config_option_update`; write the session index.
-5. If `self.run` is None: send the fresh-run notice for `self.last_end`, if it has one (§5.6);
-   `run_id = ids.new_run_id()`; `source = await asyncio.to_thread(catalog.materialize, namespace,
-   run_dir=home.run_dir(run_id))` (an exception → reply `texts.BUILD_FAILED`, outcome
-   `build_failed`, no run); `self.run = await RunHandle.start(run_id=run_id, source=source, …)`.
-6. `await self.run.prompt(index, text, task, decomposition)` → `PromptEnd`.
+5. If `self.run` is None: `run_id = ids.new_run_id()`; `source = await
+   asyncio.to_thread(catalog.materialize, namespace, run_dir=home.run_dir(run_id))` (an exception →
+   reply `texts.build_failed(detail)`, outcome `build_failed`, no run, `last_end` unchanged);
+   `self.run = await RunHandle.start(run_id=run_id, source=source, after=self.last_end, …)`. The
+   run's `run.start` records `after`, and the encoder sends the fresh-run notice from it (§5.2), so
+   the notice is the run's first update both live and in a replay.
+6. `await self.run.prompt(index, text, task, decomposition)` → `PromptEnd`. After a `failed` or
+   `build_failed` outcome, `RunHandle.prompt` returns only once the worker has exited and the pump
+   has logged `run.end` (the worker exits right after that `prompt.end`, §4.3), so the session's
+   next prompt starts a fresh run instead of writing to a dead worker.
 7. Every return path, `rejected` included, sends the root `usage_update` before returning: the
    bridge waits up to 2 s for one after every prompt (`acp_agent.py:3643–3654`).
+
+`detail`, wherever an exception becomes one (a materialize failure here, a build or drive failure
+in the worker, §4.3), is `f"{type(exc).__name__}: {exc}"`, the form deep_reasoner gives
+`agent.end.detail` (`agent.py:904`), capped at 2,000 characters: for a missing key,
+``ValueError: Missing API key. Set `OPENAI_API_KEY` (preferred) or `OPENAI_API_KEY`.``
+(`build_client`, `config.py:256–266`, called by `build_reasoner`, `v2/cli.py:342`).
 
 When the pump feeds a `run.end`, the session takes `cost = encoder.root_cost`, `last_end = reason`,
 `run = None`, and saves the index. `stop_root` with no prompt in flight does nothing: the REPL
@@ -338,44 +485,110 @@ survives between prompts.
 class RunHandle:
     run_id: str
     encoder: Encoder
+
     @classmethod
-    async def start(cls, *, run_id: str, session: Session, source: RunSource, home: Home,
-                    route: ModelRoute, outbox: Outbox, mode: Mode, heartbeat_s: float) -> "RunHandle":
-        """RunLog.create; append run.start; grant = route.grant(session=…, run=run_id,
-        upstream=source.client); spawn the worker (sys.executable -m deep_reasoning.acp.worker
-        --control-fd C --events-fd E, pass_fds=(C, E), start_new_session=True, stdin=DEVNULL,
-        stdout=stderr=runs/<run>/worker.log, cwd=session.cwd, env=worker_env(os.environ, grant));
-        send Start(client_overrides=grant.client_overrides, …); start the pump and the heartbeat."""
-    async def prompt(self, index: int, text: str, task: str, decomposition: str | None) -> PromptEnd: ...
-    def stop_node(self, node: int) -> None:            # logs stop.request, sends Stop; returns at once
-    async def kill(self, reason: Literal["stopped", "closed"]) -> None:   # §6.4; idempotent
-    async def close(self) -> None:                     # Close op, 2 s, then kill("closed")
-    def child(self, session_id: str) -> ChildRef | None:   # for cancel routing
+    async def start(
+        cls,
+        *,
+        run_id: str,
+        session: Session,
+        source: RunSource,
+        after: RunEndReason | None,
+        home: Home,
+        route: ModelRoute,
+        outbox: Outbox,
+        mode: Mode,
+        heartbeat_s: float,
+    ) -> RunHandle:
+        """Create the run's log and worker, and start its pump and heartbeat.
+
+        RunLog.create; append run.start (with after); grant = route.grant(session=...,
+        run=run_id, upstream=source.client); spawn the worker: sys.executable -m
+        deep_reasoning.acp.worker --control-fd C --events-fd E, pass_fds=(C, E),
+        start_new_session=True, stdin=DEVNULL, stdout and stderr to runs/<run>/worker.log,
+        cwd=session.cwd, env=worker_env(os.environ, grant); send
+        Start(client_overrides=grant.client_overrides, ...).
+        """
+
+    async def prompt(
+        self, index: int, text: str, task: str, decomposition: str | None
+    ) -> PromptEnd:
+        """Log prompt.start, send Prompt, return the prompt.end the pump receives.
+
+        After a failed or build_failed outcome, return only once run.end is logged.
+        """
+
+    def stop_node(self, node: int) -> None:
+        """Log stop.request and send Stop; return at once."""
+
+    async def kill(self, reason: Literal["stopped", "closed"]) -> None:
+        """End the worker's process group (§6.4). Idempotent."""
+
+    async def close(self, grace_s: float = 2.0) -> None:
+        """Send Close; kill("closed") if the worker has not exited after grace_s."""
+
+    def child(self, session_id: str) -> ChildRef | None:
+        """The live child with this session id, for cancel routing."""
 ```
+
+`Session.close(grace_s)` closes its live run with the same grace: 2 s for `session/close`, 0.3 s at
+shutdown.
 
 The **pump** is one task per run: read a line from the event pipe → parse a RunEvent (an
 unparseable line is logged to stderr and dropped) → `RunLog.append` → `Encoder.feed` → `await
 Outbox.update` for each result, in order → resolve the prompt future on `prompt.end`. It also
 calls `Encoder.flush_usage()` at most every 0.5 s. On EOF it waits for the process; if no `run.end`
-was logged it appends `run.end {reason: crashed, exit_code}` (or `stopped`/`closed` when the front
-asked for the exit) and feeds it. The **heartbeat** task, while a prompt is in flight, sends the
-root's `usage_update` when `Outbox.seconds_since_last_send ≥ heartbeat_s`, which keeps the bridge's
-1,800 s prompt-idle watchdog quiet through a long cell (`acp_agent.py:1433–1439, 1758`).
+was logged it appends one and feeds it, with `exit_code` and the first reason that applies:
+`stopped` or `closed` when the front asked for the exit; `failed` or `build_failed` when the
+worker's last `prompt.end` had that outcome (the worker exits 1 or 2 right after it, §4.3);
+otherwise `crashed`. So a build failure leaves `last_end = build_failed` (no fresh-run notice: the
+reply already said nothing ran), and a failed drive leaves `failed` (`FRESH_AFTER_ERROR`).
+
+The **heartbeat** task, while a prompt is in flight, sends the root's `usage_update` when
+`Outbox.seconds_since_last_send ≥ heartbeat_s`, which keeps the bridge's 1,800 s prompt-idle
+watchdog quiet through a long cell (`acp_agent.py:1433–1439, 1758`).
 
 ### 4.3 The worker
 
-**`worker/protocol.py`** — front → worker, one JSON object per line on the control pipe:
+#### Front → worker: the control pipe
+
+**`worker/protocol.py`**: one JSON object per line.
 
 ```python
-class Start(BaseModel):    op: Literal["start"]; run: str; session: str; run_dir: str
-                           config_path: str; namespace: str; client_overrides: dict[str, Any]
-class Prompt(BaseModel):   op: Literal["prompt"]; prompt: int; task: str; decomposition: str | None
-class Stop(BaseModel):     op: Literal["stop"]; node: int
-class Close(BaseModel):    op: Literal["close"]
+class Start(BaseModel):
+    op: Literal["start"]
+    run: str
+    session: str
+    run_dir: str
+    config_path: str
+    namespace: str
+    client_overrides: dict[str, Any]  # merged over cfg.client
+
+
+class Prompt(BaseModel):
+    op: Literal["prompt"]
+    prompt: int  # 1-based within the run
+    task: str  # the text without its slash command
+    decomposition: str | None  # the command's decomposition, first prompt only
+
+
+class Stop(BaseModel):
+    op: Literal["stop"]
+    node: int
+
+
+class Close(BaseModel):
+    op: Literal["close"]
+
+
 Control = Annotated[Start | Prompt | Stop | Close, Field(discriminator="op")]
 ```
 
-Worker → front: RunEvents (§4.4) without `seq`/`t`, which the front assigns.
+#### Worker → front: the event pipe
+
+RunEvents (§4.4) without `seq` and `t`, which the front assigns, one JSON object per line.
+
+#### Inside the worker
 
 **`worker/runner.py`**, in order:
 1. A reader thread on the control pipe. `Stop` is handled *on that thread* by
@@ -394,7 +607,8 @@ Worker → front: RunEvents (§4.4) without `seq`/`t`, which the front assigns.
    build_namespace_registry(cfg).resolve(namespace).decompositions,
    template_vars=cfg.prompt_template_variables)` (the registry closed after);
    `reasoner, alias = build_reasoner(cfg, run_dir=run_dir, main_decomposition=decomposition)`.
-   Any exception here → `prompt.end {outcome: build_failed, detail}` and exit 2.
+   Any exception here → `prompt.end {outcome: build_failed, detail}` (§4.2's `detail` form), then
+   teardown and exit 2.
 4. Enter `bound_contextvars(task_id=run, log_dir=run_dir)` and `alias` once, for the whole run.
    Each `Prompt`: `answer = await reasoner.acall(task)`; emit
    `prompt.end {outcome: exhausted if reasoner.exhausted else answered, answer: as_text(answer)}`.
@@ -402,7 +616,9 @@ Worker → front: RunEvents (§4.4) without `seq`/`t`, which the front assigns.
    after a raising drive the agent's `_done` stays false, so a later `send` would never reach the
    model (`agent.py:867–872, 749`).
 5. Teardown (`Close`, failure, `RunKilled`): `close_run(reasoner)` under a 0.7 s watchdog thread that
-   `os._exit(3)`s past it; then `os._exit(0)` (never wait for non-daemon sub-agent threads).
+   `os._exit(3)`s past it; then `os._exit` with 0 (`Close`, `RunKilled`), 1 (a failed drive) or 2
+   (a build failure), never waiting for non-daemon sub-agent threads. The front reads the outcome
+   from the last `prompt.end`, not from the code (§4.2's pump).
 
 `as_text(value) = value if isinstance(value, str) else repr(value)`; the same rule unquotes a
 child's answer (§6.1).
@@ -423,64 +639,174 @@ own `run` slug is recorded in `agent.start` as `dr_run`).
 `seq` is the front's append counter, gap-free per run. Text fields are capped at 8 MiB by the
 recorder (head and tail kept, `… N bytes elided …` between).
 
+The events are grouped by the process that originates them. Every one is a `_Ev`:
+
 ```python
 class _Ev(BaseModel):
     v: Literal[1] = 1
-    seq: int = 0            # set by RunLog.append
-    t: float = 0.0          # set by RunLog.append
+    seq: int = 0  # set by RunLog.append
+    t: float = 0.0  # set by RunLog.append
 
-# front-originated
-class RunStart(_Ev):     kind: Literal["run.start"];  run: str; session: str; index: int  # 1-based in the session
-                         cwd: str; namespace: str; mode: Mode; decomposition: str | None
-                         source: dict[str, Any]       # RunSource as JSON: config_path, client, versions
-class PromptStart(_Ev):  kind: Literal["prompt.start"]; prompt: int; text: str; task: str; decomposition: str | None
-class StopRequest(_Ev):  kind: Literal["stop.request"]; node: int
-class RunEnd(_Ev):       kind: Literal["run.end"]; reason: RunEndReason; exit_code: int | None; detail: str | None
+
 RunEndReason = Literal["closed", "stopped", "crashed", "failed", "build_failed", "lost"]
+```
 
-# worker-originated
-class WorkerReady(_Ev):  kind: Literal["worker.ready"]; pid: int; deep_reasoner: str; stop_mode: Literal["dean", "interim"]
-class AgentStart(_Ev):   kind: Literal["agent.start"]; node: int; parent: int | None
-                         ancestry: list[int]          # agent nodes only, root first, ending in node
-                         depth: int                   # len(ancestry): the root is 1
-                         task: str; namespace: str; backbone: str   # "chat" | "claude_code" | class name
-                         max_iter: int | None; drive: int           # 1 on the first drive of this node
-                         parent_cell: int | None      # the parent's open cell; None for the root
-                         dr_run: str | None
-class Thought(_Ev):      kind: Literal["thought"]; node: int; text: str
-class CellStart(_Ev):    kind: Literal["cell.start"]; node: int; cell: int  # 1-based per node
-                         code: str                    # "" while unknown (origin "inferred")
-                         origin: Literal["think", "puppeteered", "inferred"]
-class CellEnd(_Ev):      kind: Literal["cell.end"]; node: int; cell: int; code: str
-                         output: str                  # the observation without its <observation> wrapper
-                         interrupted: bool = False    # the agent ended before the cell reported
-class Usage(_Ev):        kind: Literal["usage"]; node: int  # the owning agent
-                         call: Literal["think", "tool", "claude"]; model: str | None
-                         tokens_in: int; tokens_out: int; cost_usd: float | None
-                         cost_source: Literal["provider", "table", "claude"] | None
-                         context_window: int | None
-class StopAccepted(_Ev): kind: Literal["stop.accepted"]; node: int; mode: Literal["dean", "interim"]
-                         accepted: bool; reason: str | None; backbone: str | None
-class AgentEnd(_Ev):     kind: Literal["agent.end"]; node: int
-                         status: Literal["done", "exhausted", "failed", "stopped"]
-                         dr_status: str               # deep_reasoner's own: done|exhausted|failed|stopped
-                         iter: int | None; answer: str | None; detail: str | None
-                         stopped_by: int | None       # the node the user stopped, when status is stopped
-                         collateral: bool = False     # interim: cancelled because a sibling was stopped
-class PromptEnd(_Ev):    kind: Literal["prompt.end"]; prompt: int
-                         outcome: Literal["answered", "exhausted", "failed", "build_failed"]
-                         answer: str | None; detail: str | None
+#### Written by the front
 
-RunEvent = Annotated[RunStart | PromptStart | StopRequest | RunEnd | WorkerReady | AgentStart |
-                     Thought | CellStart | CellEnd | Usage | StopAccepted | AgentEnd | PromptEnd,
-                     Field(discriminator="kind")]
+```python
+class RunStart(_Ev):
+    kind: Literal["run.start"]
+    run: str
+    session: str
+    index: int  # 1-based position of this run in the session
+    after: RunEndReason | None  # the previous run's end: picks the notice
+    cwd: str
+    namespace: str
+    mode: Mode
+    decomposition: str | None
+    source: dict[str, Any]  # RunSource as JSON: config_path, client, versions
+
+
+class PromptStart(_Ev):
+    kind: Literal["prompt.start"]
+    prompt: int  # 1-based within the run
+    text: str  # what the user typed
+    task: str  # the text without its slash command
+    decomposition: str | None
+
+
+class StopRequest(_Ev):
+    kind: Literal["stop.request"]
+    node: int
+
+
+class RunEnd(_Ev):
+    kind: Literal["run.end"]
+    reason: RunEndReason
+    exit_code: int | None
+    detail: str | None
+```
+
+#### Sent by the worker
+
+```python
+class WorkerReady(_Ev):
+    kind: Literal["worker.ready"]
+    pid: int
+    deep_reasoner: str  # the installed version
+    stop_mode: Literal["dean", "interim"]
+
+
+class AgentStart(_Ev):
+    kind: Literal["agent.start"]
+    node: int
+    parent: int | None
+    ancestry: list[int]  # agent nodes only, root first, ending in node
+    depth: int  # len(ancestry): the root is 1
+    task: str
+    namespace: str
+    backbone: str  # "chat", "claude_code", or the agent's class name
+    max_iter: int | None
+    drive: int  # 1 on the first drive of this node
+    parent_cell: int | None  # the parent's open cell; None for the root
+    dr_run: str | None  # deep_reasoner's own run slug
+
+
+class Thought(_Ev):
+    kind: Literal["thought"]
+    node: int
+    text: str
+
+
+class CellStart(_Ev):
+    kind: Literal["cell.start"]
+    node: int
+    cell: int  # 1-based per node
+    code: str  # "" while unknown (origin "inferred")
+    origin: Literal["think", "puppeteered", "inferred"]
+
+
+class CellEnd(_Ev):
+    kind: Literal["cell.end"]
+    node: int
+    cell: int
+    code: str
+    output: str  # the observation without its <observation> wrapper
+    interrupted: bool = False  # the agent ended before the cell reported
+
+
+class Usage(_Ev):
+    kind: Literal["usage"]
+    node: int  # the owning agent
+    call: Literal["think", "tool", "claude"]
+    model: str | None
+    tokens_in: int
+    tokens_out: int
+    cost_usd: float | None
+    cost_source: Literal["provider", "table", "claude"] | None
+    context_window: int | None
+
+
+class StopAccepted(_Ev):
+    kind: Literal["stop.accepted"]
+    node: int
+    mode: Literal["dean", "interim"]
+    accepted: bool
+    reason: str | None
+    backbone: str | None
+
+
+class AgentEnd(_Ev):
+    kind: Literal["agent.end"]
+    node: int
+    status: Literal["done", "exhausted", "failed", "stopped"]
+    dr_status: str  # deep_reasoner's own: done, exhausted, failed or stopped
+    iter: int | None
+    answer: str | None
+    detail: str | None
+    stopped_by: int | None  # the target whose stop ended this node (§6.3)
+    collateral: bool = False  # interim: cancelled beside its stopped sibling (§6.3)
+
+
+class PromptEnd(_Ev):
+    kind: Literal["prompt.end"]
+    prompt: int
+    outcome: Literal["answered", "exhausted", "failed", "build_failed"]
+    answer: str | None
+    detail: str | None
+```
+
+#### The log itself
+
+```python
+RunEvent = Annotated[
+    RunStart
+    | PromptStart
+    | StopRequest
+    | RunEnd
+    | WorkerReady
+    | AgentStart
+    | Thought
+    | CellStart
+    | CellEnd
+    | Usage
+    | StopAccepted
+    | AgentEnd
+    | PromptEnd,
+    Field(discriminator="kind"),
+]
+
 
 class RunLog:
     @classmethod
-    def create(cls, home: Home, run_id: str) -> "RunLog": ...
-    def append(self, ev: RunEvent) -> RunEvent: ...           # assigns seq and t, writes one line, flushes
+    def create(cls, home: Home, run_id: str) -> RunLog: ...
+
+    def append(self, ev: RunEvent) -> RunEvent:
+        """Assign seq and t, write one line, flush."""
+
     @staticmethod
-    def read(home: Home, run_id: str) -> Iterator[RunEvent]: ...  # raises on v != 1
+    def read(home: Home, run_id: str) -> Iterator[RunEvent]:
+        """Every event of the run, in order. Raises on v != 1."""
 ```
 
 **Session index** `sessions/<session>.json`, written atomically (temp + rename), first at the first
@@ -502,55 +828,83 @@ run used (E8, E11).
 Pure: no I/O, no clock. One per run, plus one per run in a replay.
 
 ```python
-Update = tuple[str, dict[str, Any]]          # (sessionId, the "update" object of session/update)
+# (sessionId, the "update" object of a session/update notification)
+Update = tuple[str, dict[str, Any]]
 
-class Encoder:
-    def __init__(self, *, root: str, run: str, mode: Mode, replay: bool = False,
-                 carry: CostLedger = CostLedger()) -> None: ...
-    def feed(self, ev: RunEvent) -> list[Update]: ...       # §5.2 (native), §5.3 (flat)
-    def flush_usage(self) -> list[Update]: ...              # usage_update for sessions whose totals changed
-    def root_usage(self) -> Update: ...                     # the root's usage_update, always
-    def child(self, session_id: str) -> "ChildRef | None": ...
-    @property
-    def root_cost(self) -> CostLedger: ...                  # carry + this run's root total
-
-@dataclass(frozen=True)
-class ChildRef: node: int; running: bool
 
 @dataclass(frozen=True)
 class CostLedger:
     usd: float = 0.0
-    complete: bool = True        # False once any contributing call had no cost estimate
+    complete: bool = True  # False once any contributing call had no cost estimate
     tokens_in: int = 0
     tokens_out: int = 0
+
+
+@dataclass(frozen=True)
+class ChildRef:
+    node: int
+    running: bool
+
+
+class Encoder:
+    def __init__(
+        self,
+        *,
+        root: str,
+        run: str,
+        mode: Mode,
+        replay: bool = False,
+        carry: CostLedger = CostLedger(),
+    ) -> None: ...
+
+    def feed(self, ev: RunEvent) -> list[Update]:
+        """The updates one RunEvent produces: §5.2 (native), §5.3 (flat)."""
+
+    def flush_usage(self) -> list[Update]:
+        """A usage_update for each session whose totals changed since the last flush."""
+
+    def root_usage(self) -> Update:
+        """The root's usage_update, always."""
+
+    def child(self, session_id: str) -> ChildRef | None: ...
+
+    @property
+    def root_cost(self) -> CostLedger:
+        """carry plus this run's root total."""
 ```
 
 ### 4.6 The catalog: the seam to D2
 
 ```python
 class Catalog(Protocol):
-    def snapshot(self) -> "CatalogSnapshot": ...                       # blocking; run in a thread
-    def materialize(self, namespace: str, *, run_dir: Path) -> "RunSource": ...   # blocking
+    def snapshot(self) -> CatalogSnapshot:
+        """Blocking: the front runs it in a thread."""
 
-@dataclass(frozen=True)
-class CatalogSnapshot:
-    namespaces: tuple[str, ...]                     # "root" first, then by name
-    default_namespace: str
-    commands: Mapping[str, tuple["CommandEntry", ...]]   # namespace → its commands, menu order
+    def materialize(self, namespace: str, *, run_dir: Path) -> RunSource:
+        """Blocking: the front runs it in a thread."""
+
 
 @dataclass(frozen=True)
 class CommandEntry:
-    name: str            # the slash command, without "/": slug of the decomposition name
-    decomposition: str   # the name deep_reasoner looks up (main_decomposition_turns)
-    description: str     # the use-when line
-    hint: str            # shown until the task is typed
+    name: str  # the slash command without "/": the decomposition name, slugged
+    decomposition: str  # the name main_decomposition_turns looks up
+    description: str  # the use-when line
+    hint: str  # shown until the task is typed
+
+
+@dataclass(frozen=True)
+class CatalogSnapshot:
+    namespaces: tuple[str, ...]  # "root" first, then by name
+    default_namespace: str
+    commands: Mapping[str, tuple[CommandEntry, ...]]  # namespace -> its menu
+
 
 @dataclass(frozen=True)
 class RunSource:
-    config_path: Path                 # a plain dr main.yaml the worker loads
-    namespace: str                    # becomes cfg.entry_namespace
-    client: Mapping[str, Any]         # the config's client block as loaded (base_url, api_key_env): D5's upstream
-    versions: Mapping[str, Any]       # recorded in run.start; ConfigCatalog: {"config_sha256": …}
+    config_path: Path  # a plain dr main.yaml the worker loads
+    namespace: str  # becomes cfg.entry_namespace
+    client: Mapping[str, Any]  # the config's client block as loaded: D5's upstream
+    versions: Mapping[str, Any]  # recorded in run.start
 ```
 
 **`ConfigCatalog(path)`** (before D2): `load_cli_config(path, schema=V2Config)` with the relative
@@ -569,6 +923,16 @@ trimmed; a collision gets `-2`, `-3` in menu order); `description = f"Open with 
 '{decomposition}' decomposition"` (a plain `dr` config has no use-when line); `hint = "the task"`.
 D2's Library supplies the use-when line (its metadata column) and may supply a hint.
 
+**Every decomposition is offered, including few-shot examples written for one input (v2,
+decided).** Most of deep_reasoner_beta's decompositions are worked examples, not programs:
+deep_reasoner itself says one "not parametrised over `task` … usually means it was written for one
+input" (`decomposition_turns`, `decompositions.py:188–189`). But some unparametrised ones are
+programs (the live doc's `compare departments` runs the same survey whatever the question, then the
+model answers it), `dr --main-decomposition` accepts any name, and the spec makes the menu "the
+conversation namespace's decompositions". So `ConfigCatalog` filters nothing; one that cannot be
+puppeteered fails at the first prompt with deep_reasoner's own message (`build_failed`). Marking
+which decompositions are programs is a Library field, so it is D2's to add (§10).
+
 **D2 implements `Catalog`**, with `materialize` writing the plain `dr` config directory into
 `run_dir / "config"` and returning its `main.yaml`, the profile's client block and the versions it
 used. Nothing in D1 changes when D2 lands except the default in `cli.py`.
@@ -576,47 +940,79 @@ used. Nothing in D1 changes when D2 lands except the default in `cli.py`.
 ### 4.7 Model route and costs: the seam to D5
 
 ```python
-class ModelRoute(Protocol):
-    def grant(self, *, session: str, run: str, upstream: Mapping[str, Any]) -> "RouteGrant": ...
-    def release(self, run: str) -> None: ...
-
 @dataclass(frozen=True)
 class RouteGrant:
-    client_overrides: Mapping[str, Any]     # merged over cfg.client in the worker (D5: base_url, api_key_env)
-    env_add: Mapping[str, str]              # added to the worker's environment (D5: the per-session token)
-    env_remove: frozenset[str]              # removed from it (D5: the provider keys)
+    client_overrides: Mapping[str, Any]  # merged over cfg.client (D5: base_url)
+    env_add: Mapping[str, str]  # added to the worker's env (D5: its token)
+    env_remove: frozenset[str]  # removed from it (D5: the provider keys)
 
-ALWAYS_REMOVED: tuple[str, ...] = ("OH_SECRET_KEY", "OH_SESSION_API_KEYS_*", "SESSION_API_KEY")  # globs
 
-class DirectRoute:                          # D1's only route: no overrides; the keys stay in the environment
-    def grant(self, *, session: str, run: str, upstream: Mapping[str, Any]) -> RouteGrant: ...
+class ModelRoute(Protocol):
+    def grant(
+        self, *, session: str, run: str, upstream: Mapping[str, Any]
+    ) -> RouteGrant: ...
+
     def release(self, run: str) -> None: ...
 
+
+# Glob patterns.
+ALWAYS_REMOVED: tuple[str, ...] = (
+    "OH_SECRET_KEY",
+    "OH_SESSION_API_KEYS_*",
+    "SESSION_API_KEY",
+)
+
+
+class DirectRoute:
+    """D1's only route: no overrides; the provider keys stay in the environment."""
+
+    def grant(
+        self, *, session: str, run: str, upstream: Mapping[str, Any]
+    ) -> RouteGrant: ...
+
+    def release(self, run: str) -> None: ...
+
+
 def worker_env(base: Mapping[str, str], grant: RouteGrant) -> dict[str, str]:
-    """base minus ALWAYS_REMOVED minus grant.env_remove, plus grant.env_add, plus PYTHONUNBUFFERED=1."""
+    """base minus ALWAYS_REMOVED and grant.env_remove, plus grant.env_add and
+    PYTHONUNBUFFERED=1."""
 ```
 
 The agent-server's own secrets (`OH_SECRET_KEY`, `OH_SESSION_API_KEYS_0`, which every ACP agent
 inherits) never reach the worker, from D1 on. D5 adds `ProxyRoute` and the spend cap; until then
 the worker reads the provider key from its environment, as `dr` does.
 
+**So the key must be in `dr-acp`'s environment, and putting it there is the client's job** (§5.1).
+OpenHands' bridge passes the agent-server's whole environment plus the conversation's secrets
+(`acp_agent.py:2926–2952`). ACP Python's `spawn_stdio_transport` passes only `HOME`, `LOGNAME`,
+`PATH`, `SHELL`, `TERM` and `USER` unless it is given `env=` (`DEFAULT_INHERITED_ENV_VARS`,
+`transports.py:13–30`). Without the key the first prompt answers `build_failed` with
+deep_reasoner's own message, which names the variable (§4.2's `detail`).
+
 **`costs.py`.** Chat-backbone cost is an estimate until A7.
 
 ```python
 @dataclass(frozen=True)
 class Price:
-    input_per_mtok: float; output_per_mtok: float; context_window: int | None
+    input_per_mtok: float
+    output_per_mtok: float
+    context_window: int | None
+
 
 @dataclass(frozen=True)
 class CostEstimate:
     usd: float | None
     source: Literal["provider", "table", "claude"] | None
-    tokens_in: int; tokens_out: int
+    tokens_in: int
+    tokens_out: int
     context_window: int | None
+
 
 class PriceTable:
     @classmethod
-    def load(cls, home: Home) -> "PriceTable": ...      # package prices.yaml, then $DR_HOME/prices.yaml over it
+    def load(cls, home: Home) -> PriceTable:
+        """The package's prices.yaml, with $DR_HOME/prices.yaml over it."""
+
     def estimate(self, model: str | None, usage: Mapping[str, Any]) -> CostEstimate: ...
 ```
 
@@ -640,9 +1036,18 @@ that hand the granted ones to the worker (a `Start.mcp_servers` field) and flip 
 
 This section is what S1, C1 and S2 build against. Every example below validates against schema
 1.24.1's `schema.unstable.json` (`SessionNotification` for updates, the named response types for
-responses; checked 2026-10-02 with `jsonschema` 4.26).
+responses; checked 2026-10-02 with `jsonschema` 4.26, and v2's additions the same day: the closing
+message, the fresh-run notice, `collateral` and a crashed idle update).
 
-### 5.1 Capabilities and ids
+### 5.1 Launch, capabilities and ids
+
+**Launch.** `dr-acp --config PATH [--home DIR] [--flat]`, ACP on stdio, logs on stderr. Until D5's
+key proxy, the worker reads the model key from `dr-acp`'s environment under the config's
+`client.api_key_env` (or `OPENAI_API_KEY`), so **a client must start `dr-acp` with that variable
+set**: OpenHands' bridge passes its whole environment; ACP Python's `spawn_stdio_transport` passes
+six variables unless given `env=` (§4.7). A missing key is not a launch error; the first prompt
+answers `build_failed` and says which variable to set. Shutdown: close stdin or send SIGTERM;
+`dr-acp` has closed its runs and exited within 1.4 s (§4.2).
 
 `initialize` → 
 
@@ -667,7 +1072,9 @@ responses; checked 2026-10-02 with `jsonschema` 4.26).
 
 `node` is deep_reasoner's `node_id`. Node ids are shared with the LLM and Claude nodes deep_reasoner
 allocates, so sibling agents need not be consecutive (`#1 › #2`, then `#1 › #4`). The printer's
-short forms are what the spec's mock-ups print.
+short forms are what the spec's mock-ups print. **They are for display only:** every run has an
+`n2` and a `c1.1`, so on the wire, and in `session/cancel`, ids are always the full ones
+(`ids.short` maps full to short, never back).
 
 ### 5.2 Emission table, native mode
 
@@ -676,25 +1083,34 @@ short forms are what the spec's mock-ups print.
 the node's `agent.start`. Every row is sent in this order, before anything the next RunEvent
 produces.
 
+A **closing message** `CM(text, outcome)` is the root message that ends a turn or a run:
+`root` → `agent_message_chunk` `{"content": {"type": "text", "text": text}, "_meta":
+{"deep_reasoner": {"run": run, "prompt": p, "outcome": outcome}}}`, where `p` is the prompt it
+answers (the run's latest `prompt.start`) and `outcome` is one of `PromptResult.outcome`'s values or
+`lost`. It is the only root `agent_message_chunk` with `_meta.deep_reasoner`, so a client that reads
+`_meta` can tell an answer from the fresh-run notice, and which run and prompt it closes.
+
 | RunEvent | Sent (session → update) |
 |---|---|
+| (not a RunEvent) a prompt the session rejects, or a `materialize` failure (§4.2) | `CM(text, "rejected" or "build_failed")` with `run` and `prompt` null |
 | first prompt accepted | `root` → `available_commands_update` `{"availableCommands": []}`; `root` → `config_option_update` with `namespace` narrowed to the chosen value |
+| `run.start` whose `after` has a notice (§5.6: `stopped`, `failed`, `crashed`, `lost`, `closed`) | `root` → `agent_message_chunk` `{"content": {"type": "text", "text": notice + "\n\n"}}`, no `_meta`. It is the run's first update; the blank line keeps it a paragraph of its own when a client joins a turn's chunks into one message, as OpenHands' bridge does (`"".join(accumulated_text)`, `acp_agent.py:3762`). |
 | `agent.start` (root) | nothing |
 | `agent.start` (child, drive 1) | `S(parent)` → `subagent_update` `{"sessionId": S(node), "title": T, ["description": task,] "capabilities": {"cancel": {}}, "state": {"state": "running"}, "_meta": {"openhands": {"parentToolCallId": cellId(parent, parent_cell)}, "deep_reasoner": DR}}`; then `S(parent)` → `session_message` `{"messageId": "<S(node)>-t1", "senderSessionId": S(parent), "recipientSessionId": S(node), "content": [{"type": "text", "text": task}]}` |
 | `agent.start` (child, drive d > 1: the same child given new work) | `S(parent)` → `subagent_update` `{"sessionId", "title": T, "state": {"state": "running"}, "_meta": {…the current parent cell…, DR with drive d}}`; then the task `session_message` with id `-t<d>` |
 | `thought` | `S(node)` → `agent_thought_chunk` `{"content": {"type": "text", "text": …}}` |
 | `cell.start` | `S(node)` → `tool_call` `{"toolCallId": cellId, "title": "Run <first line>[ …]" or "Run …" when the code is unknown, "kind": "execute", "status": "in_progress", "rawInput": {"command": code}, "_meta": {"deep_reasoner": {"run", "node", "parent", "depth", "cell", "origin"}}}` |
-| `cell.end` | `S(node)` → `tool_call_update` `{"toolCallId", "status": "completed", "content": [{"type": "content", "content": {"type": "text", "text": out}}], "rawOutput": out}`, adding `"title"` and `"rawInput"` when the start had no code; `interrupted` → `"status": "failed"` and the text `texts.CELL_INTERRUPTED` |
+| `cell.end` | `S(node)` → `tool_call_update` `{"toolCallId", "status": "completed", "content": [{"type": "content", "content": {"type": "text", "text": out}}], "rawOutput": out}`, adding `"title"` and `"rawInput"` when the start had no code; `interrupted` → `"status": "failed"` and the text `texts.cell_interrupted("the agent stopped")` |
 | `usage` | nothing at once; the session and all its agent ancestors become dirty (§6.2) |
 | (pump, ≤ every 0.5 s) | each dirty session → `usage_update` (§6.2) |
 | `stop.accepted` | `S(node)` → `agent_thought_chunk` with `texts.stop_requested(mode, backbone)` (§5.6); nothing when `accepted` is false |
-| `agent.end` (child) | if `answer`: `S(node)` → `session_message` `{"messageId": "<S(node)>-r<d>", "senderSessionId": S(node), "recipientSessionId": S(parent), "content": [text answer]}`; if `failed`: the same with `texts.CHILD_FAILED`; then `S(node)` → its final `usage_update`; then `S(parent)` → `subagent_update` `{"sessionId": S(node), "state": {"state": "idle", "stopReason": R}, "_meta": {"openhands": {…}, "deep_reasoner": DR + {"status", ["detail",] ["stopped_by",]}}}` with R from the table below. An open cell of the node is first closed as `interrupted`. |
+| `agent.end` (child) | if `answer`: `S(node)` → `session_message` `{"messageId": "<S(node)>-r<d>", "senderSessionId": S(node), "recipientSessionId": S(parent), "content": [text answer]}`; if `failed`: the same with `texts.child_failed(detail)`; then `S(node)` → its final `usage_update`; then `S(parent)` → `subagent_update` `{"sessionId": S(node), "state": {"state": "idle", "stopReason": R}, "_meta": {"openhands": {…}, "deep_reasoner": DR + {"status", ["detail",] ["stopped_by",] ["collateral": true]}}}` with R from the table below. An open cell of the node is first closed as `interrupted`. |
 | `agent.end` (root) | nothing (`prompt.end` speaks for the root) |
 | `prompt.start` | nothing live; in a replay, `root` → `user_message_chunk` with `text` |
-| `prompt.end` | `root` → `agent_message_chunk` with `answer` (answered, exhausted), `texts.ROOT_FAILED` (failed) or `texts.BUILD_FAILED` (build_failed); then `root` → `usage_update`. The prompt's response follows. |
-| `run.end` while a prompt is in flight (`stopped`, `crashed`, `closed`) | every open cell → `tool_call_update` failed with `texts.CELL_INTERRUPTED`; every running child, deepest first → `subagent_update` idle: `stopped`/`closed` with `stopReason: "cancelled"` and `status: "stopped"`, `crashed` with no `stopReason` and `status: "crashed"`; `root` → `agent_message_chunk` with `texts.ROOT_STOPPED` or `texts.CRASHED`; `root` → `usage_update` |
-| `run.end` `lost` (replay only) | `root` → `agent_message_chunk` `texts.REPLAY_LOST`; nothing for children (the RFD forbids manufacturing an outcome from a gap) |
-| `run.start`, `worker.ready`, `stop.request`, other `run.end` | nothing |
+| `prompt.end` | `CM(answer, outcome)` for answered and exhausted, `CM(texts.root_failed(detail), "failed")`, or `CM(texts.build_failed(detail), "build_failed")`; then `root` → `usage_update`. The prompt's response follows. |
+| `run.end` `stopped`, `crashed` or `closed` while a prompt is in flight (its `prompt.end` not yet received) | for each running agent, deepest first and by node within a depth: its open cell → `tool_call_update` failed with `texts.cell_interrupted(reason)`, then, for a child, `S(parent)` → `subagent_update` idle (`stopped`, `closed`: `stopReason: "cancelled"`, `status: "stopped"`; `crashed`: no `stopReason`, `status: "crashed"`); then the root's open cell, failed likewise; then `CM(texts.ROOT_STOPPED, reason)` for stopped and closed, or `CM(texts.crashed(code, path), "crashed")`; then `root` → `usage_update` |
+| `run.end` `lost` (replay only) | `CM(texts.REPLAY_LOST, "lost")`; nothing for children (the RFD forbids manufacturing an outcome from a gap) |
+| `worker.ready`, `stop.request`; `run.end` `failed` or `build_failed` (its `prompt.end` has spoken); any `run.end` between prompts | nothing |
 
 `T` (title) = the task's first line, at most 120 characters, with ` …` when cut; `description` is
 the whole task (at most 2,000 characters) and is sent only when the title was cut.
@@ -704,7 +1120,7 @@ the whole task (at most 2,000 characters) and is sent only when the title was cu
 | done | `end_turn` | `done` |
 | exhausted | `max_turn_requests` | `exhausted` |
 | failed | `end_turn` (ACP has no failure reason) | `failed`, with `detail` |
-| stopped | `cancelled` | `stopped`, with `stopped_by` (the node the user stopped) and `detail` |
+| stopped | `cancelled` | `stopped`, with `stopped_by` (the target whose stop ended it, §6.3), `detail`, and `collateral: true` when it was cancelled beside the target in a `run_all` rather than in the target's branch |
 
 `usage_update`: `{"used": U, "size": W, ["cost": {"amount": usd, "currency": "USD"},] "_meta":
 {"deep_reasoner": {"cost_source", "tokens_in", "tokens_out", "unknown_calls"}}}`. `U` = the tokens
@@ -740,8 +1156,8 @@ child session id; `subagent_update`, `session_message` and `session_message_chun
 | `agent.start` (child) | `tool_call` `{"toolCallId": "<S(node)>-a<d>", "title": "<path> · <T>", "kind": "other", "status": "in_progress", "rawInput": {"task": task}, "_meta": {"openhands": {"parentToolCallId": …}, "deep_reasoner": DR}}` |
 | child `cell.start` / `cell.end` | as in §5.2 but on `root`, title `"<path> › Run <first line>"` |
 | child `thought`, `usage`, `stop.accepted` | nothing |
-| `agent.end` (child) | `tool_call_update` on its card: `completed` for done/exhausted with the answer as content; `failed` for failed (`texts.CHILD_FAILED`) and stopped (`detail`); `_meta.deep_reasoner` with `status` |
-| `run.end` in flight | open cells and open cards → `failed`, then the root message, as in §5.2 |
+| `agent.end` (child) | `tool_call_update` on its card: `completed` for done/exhausted with the answer as content; `failed` for failed (`texts.child_failed(detail)`) and stopped (`detail`); `_meta.deep_reasoner` = `{"run", "node", "status", ["detail",] ["stopped_by",] ["collateral": true]}`, the same outcome keys as a native idle update |
+| `run.end` in flight | as in §5.2, with each child's card in place of its idle update: for each running agent, deepest first and by node within a depth, its open cell → `failed`, then its card → `failed` with `texts.cell_interrupted(reason)`; then the root's open cell; then the closing message and usage |
 
 `<path>` is `#` + each agent node of the ancestry, root first, joined by ` › ` (`#1 › #2`). The
 root's cells carry no path. The root's `usage_update` covers the whole tree, as in native mode.
@@ -759,7 +1175,9 @@ A flat client cannot stop one sub-agent (it never sees a child id); root Stop wo
    `available_commands_update`; `session/set_config_option` sends the new namespace's
    `available_commands_update` *before* its response. S2's preview can therefore wait for the first
    `available_commands_update` after `session/new`, and treat the one before a
-   `set_config_option` response as current.
+   `set_config_option` response as current. A client must wait for it: ACP Python 0.12.1 resolves
+   the `new_session` call as soon as the response arrives, before it handles the notification
+   that follows (P6), so reading the commands right after `await conn.new_session(...)` finds none.
 6. `session/load` sends the whole replay before its response, and nothing about children after it.
 7. No child traffic follows the root's prompt response: a run's children have all ended (or been
    reported ended) before it. S1 persists late child traffic anyway; `dr-acp` sends none in v1.
@@ -768,12 +1186,23 @@ A flat client cannot stop one sub-agent (it never sees a child id); root Stop wo
 
 | Request | Behaviour |
 |---|---|
-| `session/new` | §2 step 2. Response `{"sessionId", "configOptions": [namespace option]}`. A catalog that cannot be read → JSON-RPC internal error with `texts.CATALOG_ERROR`. |
-| `session/load` | Unknown id → invalid params (`texts.UNKNOWN_SESSION`); the bridge then starts a new session. A session already open in this process is closed first (graceful); then replay (§5.7), response `{"configOptions": […]}`, then, if not started, the commands. The new `cwd` is used for the next run. |
-| `session/set_config_option` | `configId` must be `namespace` (else invalid params, `texts.UNKNOWN_OPTION`); value must be a catalog namespace (`texts.UNKNOWN_NAMESPACE`); after the first prompt any value but the current one fails with `texts.NAMESPACE_FIXED`, which S2 passes through as its 422. Response `{"configOptions": [namespace option]}`. |
-| `session/prompt` | `Session.prompt` (§4.2). A second prompt in flight → invalid request (`texts.PROMPT_BUSY`). |
-| `session/cancel` | §2 steps 8–9; ignored when nothing matches. |
-| `session/close` | Graceful close of the live run (a prompt in flight ends `cancelled`), session forgotten in memory; the index stays on disk. Response `{}`. |
+| `session/new` | §2 step 2. Response `{"sessionId", "configOptions": [namespace option]}`. A catalog that cannot be read → JSON-RPC internal error with `CATALOG_ERROR`. |
+| `session/load` | Unknown id → invalid params (`UNKNOWN_SESSION`); the bridge then starts a new session. A session already open in this process is closed first (graceful); then replay (§5.7), response `{"configOptions": […]}`, then, if not started, the commands. The new `cwd` is used for the next run. |
+| `session/set_config_option` | `configId` must be `namespace` (else invalid params, `UNKNOWN_OPTION`); value must be a catalog namespace (`UNKNOWN_NAMESPACE`); after the first prompt any value but the current one fails with `NAMESPACE_FIXED`, which S2 passes through as its 422. Response `{"configOptions": [namespace option]}`. |
+| `session/prompt` | `Session.prompt` (§4.2). A second prompt in flight → invalid request (`PROMPT_BUSY`). |
+| `session/cancel` | §2 steps 8–9. `sessionId` is a root session id or a full child session id (`<run>-n<node>`); an id that matches nothing is ignored and logged at WARNING (§4.2). |
+| `session/close` | Graceful close of the live run (`Session.close(grace_s=2.0)`; a prompt in flight ends `cancelled`), session forgotten in memory; the index stays on disk. Response `{}`. |
+
+**Errors.** A refused request is a JSON-RPC error whose `message` is the §5.6 sentence, verbatim,
+and whose `data` is `{"deep_reasoner": {"error": "<the sentence's name>"}}`, for instance
+`{"code": -32602, "message": "namespace is fixed once a conversation has started (it is
+'router').", "data": {"deep_reasoner": {"error": "NAMESPACE_FIXED"}}}`. S2 passes `message` through
+as its 422's `detail`. ACP Python raises it on the client as `acp.RequestError`, whose `str()` is
+the `message` and whose `.data` is the `data` (`connection.py:249`). Codes: `UNKNOWN_SESSION`,
+`UNKNOWN_OPTION`, `UNKNOWN_NAMESPACE` and `NAMESPACE_FIXED` are invalid params (-32602);
+`PROMPT_BUSY` is invalid request (-32600); `CATALOG_ERROR` is internal error (-32603).
+`RequestError`'s class constructors put a generic phrase in `message`, so `dr-acp` builds its
+errors as `RequestError(code, sentence, data)`.
 
 **The namespace option:**
 
@@ -792,7 +1221,11 @@ After the first prompt `options` holds only the current value and `description` 
 
 ### 5.6 User-visible sentences (`texts.py`, verbatim)
 
-The Docwright's artifacts quote these; changing one is a design change.
+The Docwright's artifacts quote these; changing one is a design change. A sentence without fields
+is a constant (`texts.ROOT_STOPPED`); one with `{fields}` is a function of them in lower case that
+returns an f-string (`texts.late_decomposition(name)`, `texts.build_failed(detail)`), since the
+Code Guide forbids `.format()`. The upper-case name is what an error's `data` carries (§5.5).
+`detail` is §4.2's `f"{type(exc).__name__}: {exc}"`.
 
 | Name | Text |
 |---|---|
@@ -809,7 +1242,8 @@ The Docwright's artifacts quote these; changing one is a design change.
 | `FRESH_AFTER_ERROR` | `Starting a fresh run: the previous one ended with an error, so its variables and sub-agents are gone.` (after `failed`, `crashed`) |
 | `FRESH_AFTER_RESTART` | `Starting a fresh run: the previous one ended when dr-acp restarted, so its variables and sub-agents are gone.` (after `lost`) |
 | `FRESH_AFTER_CLOSE` | `Starting a fresh run: the previous one was closed, so its variables and sub-agents are gone.` (after `closed`; after `build_failed` no notice) |
-| `BUILD_FAILED` | `Could not start the run: {detail}` (no fresh-run notice follows: nothing ran) |
+| (all four `FRESH_AFTER_*`) | sent as the new run's first update, an `agent_message_chunk` of the sentence plus `"\n\n"` (§5.2's `run.start` row), chosen by `run.start.after` |
+| `BUILD_FAILED` | `Could not start the run: {detail}` (no fresh-run notice follows: nothing ran). For a missing key: ``Could not start the run: ValueError: Missing API key. Set `OPENAI_API_KEY` (preferred) or `OPENAI_API_KEY`.`` (deep_reasoner names the variable twice when the config's `api_key_env` is `OPENAI_API_KEY`) |
 | `ROOT_FAILED` | `The run failed: {detail}. Its REPL state is gone; your next message starts a fresh run.` |
 | `CRASHED` | `The run crashed (exit code {code}) and its REPL state is gone. Your next message starts a fresh run. The worker's log is {path}.` |
 | `REPLAY_LOST` | `(This run ended when dr-acp stopped; its REPL state is gone.)` |
@@ -818,7 +1252,7 @@ The Docwright's artifacts quote these; changing one is a design change.
 | `stop_requested`, interim or Dean, chat | `Stop requested: this agent and its sub-agents stop at their next turn, before their next model call. A cell that is already running finishes first.` |
 | `stop_requested`, interim, Claude backbone | `Stop requested: this agent runs a Claude Code session, which is one turn, so it stops when that session ends.` |
 | `stop_requested`, Dean, Claude backbone | `Stop requested: its Claude Code session is being ended.` |
-| `StoppedByUser` (interim, in the parent's cell output) | `stopped #{t}[ and its branch (#a, #b)].[ Its running sibling #s in this run_all was stopped with it (A3).]` plural: `Its running siblings #s, #u in this run_all were stopped with it (A3).` (the mock-up's) |
+| `StoppedByUser` (interim, the exception's message) | `stopped #{t}[ and its branch (#a, #b)].[ Its running sibling #s in this run_all was stopped with it (A3).]` plural: `Its running siblings #s, #u in this run_all were stopped with it (A3).` (the mock-up's; `branch` and `siblings` as §6.3 defines them). The parent's cell output shows it as the last line of a traceback, `deep_reasoning.acp.worker.stop.StoppedByUser: stopped #2 and its branch (#4, #5).` (§3 item 14); the stopped agent's `detail` is `StoppedByUser: …` (deep_reasoner's unqualified form) |
 
 ### 5.7 `session/load` replay
 
@@ -828,6 +1262,8 @@ The Docwright's artifacts quote these; changing one is a design change.
 2. Replay differs from live in two ways only: an announcement carries no `capabilities` (historical
    capabilities must not authorize a Stop: the RFD's freshness rule), and no intermediate
    `usage_update` is sent (only each agent's final one and the root's at each `prompt.end`).
+   Fresh-run notices and closing messages replay exactly as they were sent, since both come from
+   the log (`run.start.after`, `prompt.end`, `run.end`). Rejected prompts do not replay (§3 item 11).
 3. The response, then the commands if the session never started. No live child snapshot follows:
    after a restart there is no live child to describe.
 4. The session's next prompt starts a fresh run with `FRESH_AFTER_RESTART` (or the notice for the
@@ -839,7 +1275,8 @@ The Docwright's artifacts quote these; changing one is a design change.
 |---|---|---|---|
 | `_meta.openhands.parentToolCallId` | `subagent_update` (native), flat agent cards | the `toolCallId` of the parent's cell that spawned (or re-drove) the child; always a call already sent on the parent's session | S1 (persists), C1 (placement) |
 | `_meta.deep_reasoner.{run,node,parent,depth,namespace,backbone,drive}` | `subagent_update`, flat cards | the node's identity in deep_reasoner's tree | E1, our tests, golden replays; no fork |
-| `_meta.deep_reasoner.{status,detail,stopped_by}` | idle `subagent_update`, closed flat cards | outcome (`done`, `exhausted`, `failed`, `stopped`, `crashed`) | as above |
+| `_meta.deep_reasoner.{status,detail,stopped_by,collateral}` | idle `subagent_update`, closed flat cards | outcome (`done`, `exhausted`, `failed`, `stopped`, `crashed`); for `stopped`, the target whose stop ended it and, with `collateral: true`, that it was cancelled beside the target rather than in its branch | as above, `testing.tree` |
+| `_meta.deep_reasoner.{run,prompt,outcome}` | the root's closing `agent_message_chunk` (§5.2's `CM`) | which run and prompt the message closes, and how (`PromptResult.outcome` or `lost`); `run` and `prompt` null for a rejected prompt | `testing.tree`, tests |
 | `_meta.deep_reasoner.{run,node,parent,depth,cell,origin}` | cell `tool_call` | the cell's owner and how it was opened | E1 (flat tree), tests |
 | `_meta.deep_reasoner.{cost_source,tokens_in,tokens_out,unknown_calls}` | `usage_update` | how the cost was obtained | tests, the live doc |
 | `_meta.deep_reasoner.{decomposition,namespace}` | each `availableCommands` entry | the decomposition the command opens | tests |
@@ -907,8 +1344,9 @@ fresh run. `complete` turns false for good once any contributing call had `cost_
 **The API we code against (Dean's, from the spec; the name and module are his):**
 
 ```python
-stop(node_id: int) -> None
+def stop(node_id: int) -> None: ...
 ```
+
 1. Thread-safe: callable from any thread. 2. Takes effect at the agent's next turn, before its next
 model call. 3. Its descendants stop too. 4. The agent ends with its own `agent.end` status
 `stopped`, beside `done`, `failed` and `exhausted`. 5. Its parent's cell sees a returned value or an
@@ -918,58 +1356,101 @@ stopped one marked. 7. A Claude-backbone agent's `claude` process is ended.
 **`worker/stop.py`:**
 
 ```python
+# "module:attr" of Dean's stop(node_id), set when he ships it. DR_ACP_STOP_API overrides
+# it (the tests point it at the fake). None means the interim.
 DEAN_STOP_API: str | None = None
-"""'module:attr' of Dean's stop(node_id), set when he ships it. DR_ACP_STOP_API overrides it
-(the tests point it at the fake). None → the interim."""
+
 
 class StoppedByUser(Exception):
-    """Interim only. An Exception, so the parent's cell catches it (cells catch Exception,
-    repls/backends.py:523, repl_coro.py:84)."""
-    def __init__(self, target: int, branch: tuple[int, ...], siblings: tuple[int, ...]) -> None: ...
+    """Interim only. An Exception, so the parent's cell catches it.
+
+    Cells catch Exception (repls/backends.py:523, v2/repl_coro.py:84). The message is
+    §5.6's StoppedByUser sentence.
+    """
+
+    def __init__(
+        self, target: int, branch: tuple[int, ...], siblings: tuple[int, ...]
+    ) -> None: ...
+
 
 @dataclass(frozen=True)
 class StopReceipt:
     node: int
     mode: Literal["dean", "interim"]
-    accepted: bool               # False: unknown node, or it already ended
+    accepted: bool  # False: unknown node, or it already ended
     reason: str | None
+
 
 class StopAdapter(Protocol):
     mode: Literal["dean", "interim"]
-    def stop(self, node_id: int) -> StopReceipt: ...        # thread-safe, returns at once
 
-class DeanStop:                  # the one place dr-acp calls deep_reasoner's stop
-    def __init__(self, fn: Callable[[int], None], recorder: "Recorder") -> None: ...
-    def stop(self, node_id: int) -> StopReceipt:            # recorder.note_stop(node_id); fn(node_id)
-        ...
+    def stop(self, node_id: int) -> StopReceipt:
+        """Thread-safe; returns at once."""
+
+
+class DeanStop:
+    """The one place dr-acp calls deep_reasoner's stop."""
+
+    mode: Literal["dean"] = "dean"
+
+    def __init__(self, fn: Callable[[int], None], recorder: Recorder) -> None: ...
+
+    def stop(self, node_id: int) -> StopReceipt:
+        """recorder.note_stop(node_id, "dean"), then fn(node_id)."""
+
 
 class InterimStop:
-    def __init__(self, recorder: "Recorder") -> None: ...
-    def stop(self, node_id: int) -> StopReceipt:            # recorder.arm(node_id)
-        ...
+    mode: Literal["interim"] = "interim"
 
-def resolve_stop_adapter(recorder: "Recorder", spec: str | None) -> StopAdapter: ...
+    def __init__(self, recorder: Recorder) -> None: ...
+
+    def stop(self, node_id: int) -> StopReceipt:
+        """recorder.arm(node_id)."""
+
+
+def resolve_stop_adapter(recorder: Recorder, spec: str | None) -> StopAdapter: ...
 ```
 
-Both adapters make the recorder emit `stop.accepted` and remember the target, so classification
+Both adapters make the recorder emit `stop.accepted` and record the target, so classification
 works the same in both modes. **When Dean ships, the change is one line**: `DEAN_STOP_API`.
 
+**Targets.** The recorder keeps every accepted target with the drive it had when the stop was
+accepted. A target is **armed** while that drive is still its current one: ending does not disarm
+it (its siblings may be cancelled after it ends, and their classification needs it), but a new
+drive does, so a child the root re-drives after a stop runs normally (the stop was for the earlier
+work). A target's **branch** is every agent other than the target with the target in its ancestry
+that was running when the stop was accepted or started after it, ending or not; a branch member
+is never re-driven before the target ends, so the set is well defined.
+
 **The interim** (verified by the spec's third probe): at `agent.turn` of node n, if an armed target
-t is n or is in n's ancestry, raise `StoppedByUser(t, branch, siblings)`, where `branch` = the
-target's descendants running now and `siblings` = the running agents opened in the same parent
-cell as t (they are in its `run_all`, which deep_reasoner's `gather` will cancel, `agent.py:158–174`).
-A branch unwinds bottom-up: a stopped parent blocked in a cell reaches its next turn when its
-stopped children have ended.
+t is n or is in n's ancestry (the nearest one, if several), raise `StoppedByUser(t, branch,
+siblings)`, where `branch` is t's branch as defined above, ascending, including members that have
+already ended (so the text is the same wherever it surfaces), and `siblings` is, when n is t
+itself, the agents other than t running now that were opened in t's parent cell (they are in its
+`run_all`, which deep_reasoner's `gather` will cancel, `agent.py:158–174`), and is empty when n is a
+branch member (whose siblings are branch members too). A branch unwinds bottom-up: a stopped
+parent blocked in a cell reaches its next turn when its stopped children have ended.
 
-**Classification at `agent.end`:**
+So stopping a department n2 while its course agents n4 and n5 run (the live doc's case): n4
+reaches its turn first and raises `stopped #2 and its branch (#4, #5).`, which n2's cell catches;
+`gather` cancels n5 before its turn; n2 then reaches its own turn and raises
+`stopped #2 and its branch (#4, #5). Its running sibling #3 in this run_all was stopped with it
+(A3).`, which the root's cell catches, and `gather` cancels n3.
 
-| deep_reasoner says | and | RunEvent status |
-|---|---|---|
-| `stopped` (Dean) | — | `stopped`, `stopped_by` = the target whose branch holds the node |
-| `failed`, detail starts `StoppedByUser` | — | `stopped`, `stopped_by` |
-| `failed`, detail starts `CancelledError` | a sibling in the same parent cell is an armed target | `stopped`, `stopped_by` = that sibling, `collateral: true` |
-| `failed`, otherwise | — | `failed` |
-| `done`, `exhausted` | — | as is (a cancel racing ended work does not rewrite it) |
+**Classification at `agent.end`**, rows checked in order:
+
+| deep_reasoner says | and | `status` | `stopped_by` | `collateral` |
+|---|---|---|---|---|
+| `stopped` (Dean) | — | `stopped` | the nearest target that is the node or in its ancestry | false |
+| `failed`, detail starts `StoppedByUser` | — | `stopped` | the exception's target | false |
+| `failed`, detail starts `CancelledError` | an armed target is the node or in its ancestry | `stopped` | the nearest such target | false |
+| `failed`, detail starts `CancelledError` | an armed target was opened in the node's parent cell | `stopped` | that target | true |
+| `failed`, otherwise | — | `failed` | — | — |
+| `done`, `exhausted` | — | as is (a cancel racing ended work does not rewrite it) | — | — |
+
+In the example, n4 is row 2 (`stopped`, by #2), n5 row 3 (`stopped`, by #2; v1 classified it
+`failed` and sent `Failed: CancelledError: ` to n2), n2 row 2 (`stopped`, by itself), n3 row 4
+(`stopped` with #2, collateral).
 
 **Where the interim differs from Dean's API, and where the user sees it:** (1) the stopped child's
 running siblings in its `run_all` are cancelled; the parent's cell output names them (the
@@ -1005,8 +1486,11 @@ for the looping thread, so only `SIGKILL` ends the run and `close_run` does not 
 in the root's cell releases its sandboxes and persists its tools; one stuck in a sub-agent does not
 (a remote Daytona sandbox can then outlive the run, until A3).
 
-`crashed` (the worker exited without being asked) and `closed` (`session/close`, `dr-acp` exiting)
-go through steps 3–5 with their reason.
+`closed` (`session/close`, `dr-acp` shutting down) is `RunHandle.close(grace_s)`: a `Close` op,
+and if the worker has not exited after `grace_s` (2 s for `session/close`, 0.3 s at shutdown, §4.2),
+steps 1–5 with reason `closed`. `crashed` (the worker exited without being asked) goes through
+steps 3–5. A worker that exits after a failed or build-failed prompt is not forced: the pump logs
+`run.end` `failed` or `build_failed` (§4.2).
 
 ---
 
@@ -1018,64 +1502,133 @@ Load-bearing signatures are given in full where their module is described: `Opti
 `ChildRef`, `CostLedger` (§4.5); `Catalog`, `CatalogSnapshot`, `CommandEntry`, `RunSource`,
 `ConfigCatalog` (§4.6); `ModelRoute`, `RouteGrant`, `DirectRoute`, `worker_env`, `PriceTable`,
 `Price`, `CostEstimate` (§4.7); `StopAdapter`, `DeanStop`, `InterimStop`, `StoppedByUser`,
-`StopReceipt`, `resolve_stop_adapter`, `DEAN_STOP_API` (§6.3). The rest:
+`StopReceipt`, `resolve_stop_adapter`, `DEAN_STOP_API` (§6.3); `Caps`, `ShimConnection`,
+`Printer`, `Subagent`, `SubagentMap`, `tree`, `Tree` and its nodes (§8.2). The rest, by process:
+
+#### Front process
 
 ```python
 # ids.py
-def new_session_id() -> str: ...                      # "s-" + secrets.token_hex(8)
+def new_session_id() -> str:
+    """'s-' + secrets.token_hex(8)."""
+
+
 def new_run_id(now: datetime | None = None) -> str: ...
+
+
 def child_session_id(run: str, node: int) -> str: ...
+
+
 def cell_id(run: str, node: int, k: int) -> str: ...
+
+
 def card_id(run: str, node: int, drive: int) -> str: ...
+
+
 def task_message_id(run: str, node: int, drive: int) -> str: ...
+
+
 def answer_message_id(run: str, node: int, drive: int) -> str: ...
-def short(id_: str, root: str) -> str: ...           # the printer's forms, §5.1
+
+
+def short(id_: str) -> str:
+    """§5.1's display form: "n2" for <run>-n2, "c2.1" for <run>-n2-c1, "a2.1" for
+    <run>-n2-a1, "root" for a root session ("s-..."); any other id unchanged."""
+
 
 # runlog.py
 @dataclass(frozen=True)
 class Home:
     root: Path
-    @classmethod
-    def resolve(cls, flag: Path | None) -> "Home": ...  # flag, else $DR_HOME, else ~/.deep-reasoning
-    def run_dir(self, run: str) -> Path: ...
-    def session_file(self, session: str) -> Path: ...
-class SessionIndex(BaseModel): ...                     # the JSON of §4.4
-    @classmethod
-    def load(cls, home: Home, session: str) -> "SessionIndex | None": ...
-    def save(self, home: Home) -> None: ...            # atomic
 
+    @classmethod
+    def resolve(cls, flag: Path | None) -> Home:
+        """flag, else $DR_HOME, else ~/.deep-reasoning."""
+
+    def run_dir(self, run: str) -> Path: ...
+
+    def session_file(self, session: str) -> Path: ...
+
+
+class SessionIndex(BaseModel):
+    """The JSON of §4.4."""
+
+    v: Literal[1] = 1
+    session: str
+    cwd: str
+    namespace: str
+    started: bool
+    source: dict[str, Any]
+    runs: list[str]
+    cost: CostLedger
+    last_end: RunEndReason | None
+    created: datetime
+
+    @classmethod
+    def load(cls, home: Home, session: str) -> SessionIndex | None: ...
+
+    def save(self, home: Home) -> None:
+        """Atomic: a temp file, then rename."""
+```
+
+#### Worker process
+
+```python
 # worker/recorder.py
 class EventSink:
     def __init__(self, fd: int) -> None: ...
-    def emit(self, ev: Mapping[str, Any]) -> None: ...  # one JSON line, under the recorder's lock
+
+    def emit(self, ev: Mapping[str, Any]) -> None:
+        """One JSON line, under the recorder's lock."""
+
+
 class Recorder:
     def __init__(self, sink: EventSink) -> None: ...
-    def __call__(self, logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]: ...
+
+    def __call__(
+        self, logger: Any, method_name: str, event_dict: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
     def set_puppeteer(self, turns: Sequence[str]) -> None: ...
-    def note_stop(self, node: int, mode: Literal["dean", "interim"]) -> StopReceipt: ...
-    def arm(self, node: int) -> StopReceipt: ...       # interim
-    def emit(self, kind: str, **fields: Any) -> None: ...   # the runner's own events (worker.ready, prompt.end)
+
+    def note_stop(self, node: int, mode: Literal["dean", "interim"]) -> StopReceipt:
+        """Record an accepted target (§6.3) and emit stop.accepted."""
+
+    def arm(self, node: int) -> StopReceipt:
+        """Interim: note_stop(node, "interim"); the target now raises at agent.turn."""
+
+    def emit(self, kind: str, **fields: Any) -> None:
+        """The runner's own events: worker.ready, prompt.end."""
+
 
 # worker/runner.py
-def main(argv: Sequence[str] | None = None) -> int: ...  # --control-fd N --events-fd M
+def main(argv: Sequence[str] | None = None) -> int:
+    """python -m deep_reasoning.acp.worker --control-fd N --events-fd M."""
+
+
 class RunKilled(BaseException): ...
+
+
 def as_text(value: Any) -> str: ...
+```
 
-# testing/client.py (§8.2)
-class Caps(acp.schema.ClientCapabilities): subagents: dict | None = None
-class ShimConnection(acp.client.connection.ClientSideConnection): ...
-class Printer:                                         # an acp Client that records and prints
-    lines: list[str]; updates: list[tuple[str, dict]]
-    subagents: dict[str, SimpleNamespace]              # by short id; .field_meta, .state
-    commands: list[SimpleNamespace]
-    async def session_update(self, session_id: str, update: Any, **kw: Any) -> None: ...
-    async def unstable_update(self, session_id: str, update: dict) -> None: ...
-def tree(updates: Sequence[tuple[str, dict]], *, mode: Mode) -> "Tree": ...   # E1's rebuild
+#### Tests only
 
+```python
 # testing/fake_model.py
-class FakeOpenAI:                                      # async context manager; .base_url; .calls
-    def __init__(self, responder: Callable[[list[dict]], str], *, latency_s: float = 0.0,
-                 usage: Callable[[list[dict], str], dict] | None = None) -> None: ...
+class FakeOpenAI:
+    """POST /v1/chat/completions on 127.0.0.1, as an async context manager.
+
+    .base_url is the endpoint; .calls records each call's start time and messages.
+    """
+
+    def __init__(
+        self,
+        responder: Callable[[list[dict[str, Any]]], str],
+        *,
+        latency_s: float = 0.0,
+        usage: Callable[[list[dict[str, Any]], str], dict[str, Any]] | None = None,
+    ) -> None: ...
 ```
 
 ---
@@ -1088,21 +1641,260 @@ class FakeOpenAI:                                      # async context manager; 
 |---|---|---|
 | **E1** tree fidelity | `tests/acp/test_tree_fidelity.py` | The spec's eight scripted runs (`tests/acp/scenarios.py`: linear; `run_all` of 2 and of 20; depth 3; a spawn into another namespace; `fork()`; exhausted; a failing cell; the Claude backbone with deep_reasoner's `write_fake_claude_cli`), each a small `dr` config with `client.base_url` at `FakeOpenAI`. `dr-acp` is spawned over stdio; a `ShimConnection` client records every update, in native and in flat mode; `testing.tree()` rebuilds parent links and cells per node; deep_reasoner's own tree comes from its node YAMLs (their `ancestry`) and its `repl.execute` count per node, in the same run directory. Null: any difference. |
 | **E2** stdio integrity | `test_stdio_integrity.py` | A tool printing 10 MB to `sys.stdout`; `os.write(1, …)` in a cell; `os._exit(1)` in a cell; a print at the front's import time (monkeypatched module). Every outgoing line must parse as JSON-RPC; after the crash the next prompt answers (fresh run). |
-| **E3** stop | `test_stop.py` | Root Stop during `while True: pass` and during a 20-way fan-out: `cancelled` within 2 s (the spec allows 5; the bridge needs 2). One child of a 20-way fan-out with children of its own, through the interim and through the fake Dean API. `FakeOpenAI` timestamps each call and attributes it by the task in its messages. Null: any call started after the stop by an agent of the stopped branch; with the fake API, a sibling's result missing from the parent's `run_all`; in the interim, a sibling cancelled without the parent's cell output naming it. |
+| **E3** stop | `test_stop.py` | Root Stop during `while True: pass` and during a 20-way fan-out: `cancelled` within 2 s (the spec allows 5; the bridge needs 2). One child of a 20-way fan-out with children of its own, through the interim and through the fake Dean API. `FakeOpenAI` timestamps each call and attributes it by the task in its messages. Null: any call started after the stop by an agent of the stopped branch; any agent of the stopped branch reported `failed` rather than `stopped` (v2: one cancelled by `gather` before its own turn included); with the fake API, a sibling's result missing from the parent's `run_all`; in the interim, a sibling cancelled without the parent's cell output naming it. |
 | **E4** contracts | `test_tripwire.py`, `test_schema.py` | Tripwire: every deep_reasoner event and field §6.1 reads, checked on scripted runs (names, the `<observation>` wrapper, the `FinalAnswer:` line, `kind` of think and tool calls, `agent.start` per drive), at `d7334ae` on every push and against Dean's `main` weekly. Schema: an `Outbox` observer validates every outgoing message (updates and responses) against the vendored `tests/acp/schema/acp-1.24.1.unstable.json` (sha256 checked) in every test that runs `dr-acp`. Red is reported, never absorbed. |
 | **E11** (D1's part) | `test_surfaces.py` | Commands per namespace, changed by `set_config_option`; cleared and narrowed at the first prompt; the late-command and fixed-namespace errors verbatim; the run log's `run.start.namespace` equals the chosen one. |
-| replay | `test_load.py` | Kill `dr-acp` mid-run, start a new one, `session/load`: the replayed tree equals the live one, the response comes last, no child snapshot follows, the next prompt is fresh. |
-| units | `test_encoder.py`, `test_recorder.py`, `test_costs.py`, `test_catalog.py` | The encoder from hand-written RunEvents, both modes; the recorder fed synthetic event dicts in each order of §6.1, including inferred and puppeteered cells; prices; slugs and collisions; `ConfigCatalog` over small configs of our own, and over deep_reasoner_beta's `docs/configs` read in place when `DR_BETA_CHECKOUT` points at a checkout (skipped otherwise; never copied here). |
+| replay, shutdown | `test_load.py` | Kill `dr-acp` mid-run, start a new one, `session/load`: the replayed tree (`testing.tree`) equals the live one, notices and closing messages included, the response comes last, no child snapshot follows, the next prompt is fresh. Closing stdin mid-run, and separately SIGTERM, leave `run.end closed` in the run log within 1.4 s, so a replay never says `lost` after a clean shutdown. A failed and a build-failed prompt each leave `run.end` with that reason and pick the right notice (or none). |
+| units | `test_encoder.py`, `test_recorder.py`, `test_costs.py`, `test_catalog.py`, `test_client.py`, `test_tree.py` | The encoder from hand-written RunEvents, both modes; the recorder fed synthetic event dicts in each order of §6.1, including inferred and puppeteered cells, and each row of §6.3's classification table (a re-driven target included); `Printer` lines, `subagents` lookups and `wait_until`, and `tree()` drawings, from hand-written update streams covering every row of §8.2's tables, two conversations on one connection and two runs in one conversation; prices; slugs and collisions; `ConfigCatalog` over small configs of our own, and over deep_reasoner_beta's `docs/configs` read in place when `DR_BETA_CHECKOUT` points at a checkout (skipped otherwise; never copied here). |
 
 ### 8.2 Fakes and helpers
 
 - **`testing.fake_model.FakeOpenAI`**: `POST /v1/chat/completions` on 127.0.0.1 from a responder,
   with optional latency and usage, recording each call's start time and messages. Tests and the
   live doc use real HTTP, so the worker runs unmodified and D5's proxy can later sit in front of it.
-- **`testing.client`**: the spec's `ShimConnection` and `Caps` (copied, not imported from the SDK
-  fork; `dr-acp` never imports OpenHands) and `Printer`, whose short forms print the mock-ups as
-  approved. The live doc imports the same module.
 - **`tests/acp/fakes/dean_stop.py`**: §6.3.
+- **`testing.client`** and **`testing.tree`**, below: the client side the tests and the live doc
+  share. The live doc imports the same modules, so everything below is the live doc's contract as
+  much as §5 is S1's.
+
+#### `testing.client`: `Caps`, `ShimConnection`, `Printer`
+
+`Caps` and `ShimConnection` are the spec's shim (copied, not imported from the SDK fork: `dr-acp`
+never imports OpenHands).
+
+```python
+UNSTABLE_UPDATES = frozenset(
+    {"subagent_update", "session_message", "session_message_chunk"}
+)
+
+
+class Caps(acp.schema.ClientCapabilities):
+    subagents: dict[str, Any] | None = None
+
+
+class ShimConnection(acp.client.connection.ClientSideConnection):
+    """A ClientSideConnection that hands UNSTABLE_UPDATES to client.unstable_update ahead
+    of the library's router, and sends initialize typed with Caps so that subagents
+    reaches the wire (0.12.1 drops both, P5, P7)."""
+
+    def __init__(
+        self,
+        client: Printer,
+        writer: asyncio.StreamWriter,
+        reader: asyncio.StreamReader,
+    ) -> None: ...
+
+    async def initialize(
+        self,
+        protocol_version: int,
+        client_capabilities: Caps | None = None,
+        client_info: acp.schema.Implementation | None = None,
+        **kwargs: Any,
+    ) -> acp.schema.InitializeResponse: ...
+```
+
+**`Printer` records; it never prints by itself.** ACP Python runs each incoming notification in a
+task of its own (P1), and those tasks carry the context of whatever created the connection's
+receive loop: under ipykernel 7.3 a print from them lands in no cell, or in the cell that built
+the connection (verified by the Docwright with nbclient 0.11). So `show()` prints, from the
+calling cell, the lines recorded since its previous call. Each callback records before its first
+`await`, so `updates` and `lines` are in arrival order.
+
+```python
+@dataclass
+class Subagent:
+    session_id: str  # "<run>-n<node>": what session/cancel takes
+    short: str  # "n<node>"
+    parent_session_id: str  # the session it was announced on
+    title: str  # the latest non-empty title
+    state: Literal["running", "idle"]
+    stop_reason: str | None  # the latest idle update's stopReason
+    field_meta: dict[str, Any]  # the latest subagent_update's _meta, as sent
+
+
+class SubagentMap(Mapping[str, Subagent]):
+    """Keyed by full session id. A short id ("n2") is also accepted when exactly one
+    recorded sub-agent has it; when several do (one per run), KeyError names them."""
+
+
+class Printer:
+    """An acp Client that records every update on one connection."""
+
+    updates: list[tuple[str, dict[str, Any]]]  # (sessionId, the update as JSON)
+    lines: list[str]  # one per update, in the format below
+    subagents: SubagentMap
+    commands: dict[str, list[acp.schema.AvailableCommand]]  # root session id -> latest
+
+    async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
+        """Stable updates, as the library's models."""
+
+    async def unstable_update(self, session_id: str, update: dict[str, Any]) -> None:
+        """subagent_update, session_message, session_message_chunk, raw (ShimConnection)."""
+
+    def show(self) -> None:
+        """Print the lines recorded since the previous show(); all of them the first time."""
+
+    async def wait_until(
+        self, predicate: Callable[[Printer], T | None], *, timeout: float = 120.0
+    ) -> T:
+        """Return predicate(self)'s first result that is neither None nor False, checked
+        now and after every recorded update. TimeoutError after timeout seconds."""
+```
+
+- **`updates`** holds wire-shaped dicts: a stable update is the library's model dumped with
+  `model_dump(mode="json", by_alias=True, exclude_none=True)`, so it has `sessionUpdate`, `_meta`
+  and the other wire names (verified on 0.12.1: `cost` and `_meta` survive); an unstable one is the
+  raw dict `ShimConnection` received.
+- **`subagents`** gains an entry at a child's first `subagent_update` and updates it at each later
+  one; `field_meta` is replaced, not merged, so after an idle update it holds that update's `_meta`
+  (with `status`). `printer.subagents["n2"].session_id` is the id to cancel with.
+- **`commands`** holds, per root session, the `availableCommands` of its latest
+  `available_commands_update`; a session that has sent none is absent.
+- **`wait_until`** is how a cell waits for something that arrives as an update rather than with a
+  response: the menu after `session/new` (§5.4 rule 5),
+  `await printer.wait_until(lambda p: p.commands.get(s.session_id))`; a sub-agent at depth 3, `await
+  printer.wait_until(lambda p: next((a for a in p.subagents.values() if
+  a.field_meta["deep_reasoner"]["depth"] == 3), None))`. Results that are `None` or `False` mean
+  "not yet", so an empty command list counts as arrived.
+- **Scope.** A `Printer` records one connection: every root session on it and every run of each.
+  `subagents`, `commands` and `tree()` stay exact across both, because they are keyed by full id or
+  split by session and run. Only `lines` cannot tell two root sessions apart (both are `root`), so
+  read lines with one conversation per connection, which is also how OpenHands runs `dr-acp`
+  (§1). Within one conversation a fresh run's lines reuse `n2` and `c1.1`, after its fresh-run
+  notice.
+
+**A line** is `f"{who:<9}{kind:<17}  {body}"`: `who` is `ids.short(sessionId)`, `kind` is
+`sessionUpdate` without a trailing `_chunk`, so the body starts at column 28 unless the kind is
+longer than 17 characters. A *field* in the bodies below is shown on one line (a tool call's output
+as its last non-empty line, any other text with each run of whitespace turned into one space) and
+cut to 60 characters, the 60th being `…`. Only agent and user messages are shown whole.
+
+| `sessionUpdate` | body | example line |
+|---|---|---|
+| `agent_message_chunk`, `user_message_chunk` | the whole text; each of its lines wrapped at 72 characters, continuation lines indented to column 28; trailing blank lines dropped | `root     agent_message      Starting a fresh run: the previous one was stopped, so its variables and`, then `                            sub-agents are gone.` |
+| `agent_thought_chunk` | the text, as a field | `n2       agent_thought      First I identify the CS courses, then I'll ask a separate s…` |
+| `tool_call` | `{short(toolCallId)} {kind:<7}  {title}` | `root     tool_call          c1.1 execute  Run depts = sorted({c['dept'] for c in catalog.values()}) …`, a flat card: `root     tool_call          a2.1 other    #1 › #2 · Summarize the workload of the CS department for a…` |
+| `tool_call_update` | `{short(toolCallId)} {status}  {output}`, output being the first text content as a field, omitted when there is none | `n2       tool_call_update   c2.1 completed  ['CS101', 'CS102']`, a failed cell or card: `root     tool_call_update   a4.1 failed  Not finished: the run was stopped` |
+| `subagent_update`, running | `{short(sessionId)}  '{title}'  running` | `root     subagent_update    n2  'Summarize the workload of the CS department for a first-yea…'  running` |
+| `subagent_update`, idle | `{short(sessionId)}  idle[ {stopReason}][  ({outcome})]`, the outcome phrase (below) unless it is `done` or `exhausted` | `n2       subagent_update    n4  idle cancelled  (stopped by #2)`; `root     subagent_update    n2  idle end_turn  (failed: ValueError: boom)`; `root     subagent_update    n3  idle  (crashed)` |
+| `session_message` | `→ {short(recipientSessionId)}  '{text}'` | `root     session_message    → n2  'Summarize the workload of CS101 for a first-year student.'`; a child's answer: `n4       session_message    → n2  'CS101: 4 credits, about 10 hours a week, no prerequisites.'`; a failure: `n4       session_message    → n2  'Failed: ValueError: boom'` |
+| `usage_update` | `{amount:.4f} {currency}`, or `cost unknown` when `cost` is absent | `n2       usage_update       0.0037 USD`; `root     usage_update       cost unknown` |
+| `available_commands_update` | the command names as a Python list | `root     available_commands_update  ['compare-departments']` |
+| `config_option_update` | `{id} = {currentValue}` per option, joined by `, `, with ` (fixed)` after an option that offers only its current value | `root     config_option_update  namespace = advising (fixed)` |
+| any other | empty | |
+
+**Outcome phrases**, shared by idle lines and the tree, from `_meta.deep_reasoner` of a child's
+idle update or closed flat card:
+
+| `status` | and | phrase |
+|---|---|---|
+| `done`, `exhausted` | — | `done`, `exhausted` |
+| `failed` | — | `failed: {detail}`, detail cut to 40 characters |
+| `stopped` | `stopped_by` absent or the node itself | `stopped` |
+| `stopped` | `collateral` true | `stopped with #{stopped_by}` |
+| `stopped` | otherwise | `stopped by #{stopped_by}` |
+| `crashed` | — | `crashed` |
+| (no idle update or closed card yet) | — | `running` |
+
+#### `testing.tree`: the tree rebuilt from the updates alone
+
+```python
+@dataclass
+class CellNode:
+    tool_call_id: str
+    short: str  # "c2.1"
+    title: str
+    status: str  # the latest: "in_progress", "completed" or "failed"
+    output: str  # the latest content text; "" before any
+    agents: list[AgentNode]  # the drives this cell started, in announcement order
+
+
+@dataclass
+class MessageNode:
+    outcome: str  # the closing message's _meta.deep_reasoner.outcome
+    prompt: int | None
+    text: str
+
+
+@dataclass
+class AgentNode:
+    session_id: str  # the child's session; the root session for the root
+    short: str  # "n2"; "root" for the root
+    node: int | None  # _meta.deep_reasoner.node
+    drive: int
+    title: str  # the announcement's title; "" for the root
+    outcome: str | None  # the outcome phrase; None for the root
+    cost_usd: float | None  # the session's cost when this drive ended; None if unknown
+    items: list[CellNode | MessageNode]  # in arrival order; messages on the root only
+
+
+@dataclass
+class RunNode:
+    root_session_id: str
+    run: str
+    mode: Mode  # "flat" when this run's sub-agents came as cards
+    root: AgentNode
+    cost_usd: float | None  # the root's at the run's end: all runs so far
+
+
+@dataclass
+class Tree:
+    runs: list[RunNode]  # in order of each run's first update
+
+    def __str__(self) -> str: ...
+
+
+def tree(updates: Iterable[tuple[str, Mapping[str, Any]]]) -> Tree: ...
+```
+
+**Rebuild.** `tree()` takes any mix of root sessions and runs (`printer.updates` as it is) and
+needs no mode argument (v2: v1's `mode` is gone; each run's mode is read from its updates).
+- A **root session** is a session id no `subagent_update` announced. Its updates are split by run:
+  a cell or a closing message carries `_meta.deep_reasoner.run`; a fresh-run notice and a
+  `usage_update` belong to the run whose updates surround them, by arrival order. Rejected-prompt
+  messages (`run` null) and user messages belong to no run and are not drawn.
+- **Native**: a child is drawn under the cell named by its announcement's
+  `_meta.openhands.parentToolCallId`, once per drive (each `running` announcement); its cells are
+  the `tool_call`s on its own session between that announcement and the next. Its outcome comes
+  from the idle update that ends the drive; its cost from the last `usage_update` on its session
+  before that idle update. This uses only ACP's own structure, which is what E1 tests.
+- **Flat**: a child is a card (`tool_call` of kind `other`, id `<run>-n<node>-a<drive>`), drawn
+  under its `parentToolCallId`; its cells are the root's `tool_call`s whose
+  `_meta.deep_reasoner.node` is its node, between that card and the node's next card. Its outcome
+  comes from the card's closing `tool_call_update`. Flat sends no child costs, so a flat child
+  has none.
+- The root's items are its own cells and its closing messages, in arrival order; a run with several
+  prompts shows each prompt's closing message after that prompt's cells.
+
+**Drawing** (`str(tree)`): one block per run, blocks separated by a blank line. Branches are drawn
+with `├─ `, `└─ `, `│  ` and three spaces. Fields as for lines, but titles and message texts cut
+to 60 characters and outputs to 40.
+
+| node | line |
+|---|---|
+| run | `root {root_session_id} · run {run} · {cost}` |
+| agent | `{short}[ (drive {d}, when d > 1)]  {title}  {outcome}[ · {cost}]` |
+| cell | `{short}  {title}  {status}[ → {output}]` |
+| closing message | `{outcome}  {text}` |
+
+`{cost}` is `{usd:.4f} USD`. The run line shows `cost unknown` when `cost_usd` is None; an agent
+whose `cost_usd` is None (flat, no `usage_update`, or one without `cost`) shows no cost. For the
+live doc's first run:
+
+```text
+root s-7c1f9e0a2b4d6e8f · run 20261002-162835-3fa9c1 · 0.0089 USD
+├─ c1.1  Run depts = sorted({c['dept'] for c in catalog.values()}) …  completed → {'CS': 'CS runs 10 to 12 hours a week: …
+│  ├─ n2  Summarize the workload of the CS department for a first-yea…  done · 0.0037 USD
+│  │  ├─ c2.1  Run print([cid for cid, c in catalog.items() if c['dept'] =…  completed → ['CS101', 'CS102']
+│  │  ├─ c2.2  Run summaries = run_all({ …  completed → {'CS101': 'CS101: 4 credits, about 10 h…
+│  │  │  ├─ n4  Summarize the workload of CS101 for a first-year student.  done · 0.0007 USD
+│  │  │  │  ├─ c4.1  Run print(catalog['CS101'])  completed → {'title': 'Programming I', 'dept': 'CS'…
+│  │  │  │  └─ c4.2  Run FinalAnswer('CS101: 4 credits, about 10 hours a week, n…  completed → FinalAnswer: 'CS101: 4 credits, about 1…
+│  │  │  └─ n5  …
+│  │  └─ c2.3  …
+│  └─ n3  …
+└─ answered  STAT is lighter: its courses take 6 to 8 hours a week, CS's 10 to 12.
+```
 
 ### 8.3 Golden recordings
 
@@ -1118,7 +1910,8 @@ re-records, and the diff is reviewed.
 
 None in layers 1–2. The Gate B live doc (Docwright) runs `dr-acp` against gpt-6-luna through a
 config of our own (`client: {base_url: https://api.openai.com/v1, api_key_env: OPENAI_API_KEY}`),
-prints the stream through `testing.Printer`, and stops one branch; cents per run.
+records the stream with `testing.Printer` and prints it with `show()` and `tree()`, and stops one
+branch; cents per run.
 
 ### 8.5 Repository wiring D1 adds
 
@@ -1128,8 +1921,23 @@ prints the stream through `testing.Printer`, and stops one branch; cents per run
   `pyyaml`, and **`ipython`** (deep_reasoner imports `IPython.display` at module level in 12
   modules but declares it only through its dev group; verified: blocking `IPython` makes
   `import deep_reasoner.v2.cli` fail); script `dr-acp = "deep_reasoning.acp.cli:main"`; dev group
-  `pytest`, `jsonschema`, `referencing`; `[tool.pytest.ini_options] testpaths = ["tests"]`; sdist
-  excludes `docs/`. A test asserts the installed `agent-client-protocol` is the pinned 0.12.1.
+  `pytest`, `jsonschema`, `referencing`, `ruff` (the Code Guide's linter, `[tool.ruff]` at its
+  defaults; CI runs `ruff check src tests` and `ruff format --check src tests`, leaving `docs/`
+  alone, since ruff lints notebooks by default); `[tool.pytest.ini_options] testpaths =
+  ["tests"]`; sdist excludes `docs/`. A test asserts the installed `agent-client-protocol` is the
+  pinned 0.12.1.
+- **A `docs` dependency group (v2): `ipykernel` and `nbclient`** (which brings `nbformat` and
+  `jupyter_client`), so the live doc can be executed. It is an artifact notebook: run once with a
+  real key at Live Doc Green and committed with its outputs, never re-run on push. The command, from
+  the repo root:
+  `OPENAI_API_KEY=… uv run --group docs jupyter execute --inplace docs/dr-acp.ipynb`.
+  `jupyter execute` starts the kernel in the notebook's directory (nbclient's
+  `resources={"metadata": {"path": …}}`, `cli.py:183, 211`), so the notebook's
+  `configs/advising/main.yaml` resolves, and `uv run` puts the project's `dr-acp` and the
+  ipykernel kernel of its environment on `PATH`. Top-level `await` works through ipykernel's
+  autoawait. In CI, a `workflow_dispatch` workflow `live-doc.yml` runs the same command with an
+  `OPENAI_API_KEY` repository secret (the spec's layer 5; Michael's to add, with the read token
+  below) and uploads the executed notebook for the Docwright to commit.
 - `.github/workflows/ci.yml` (layers 1–2 on push) and `acp-tripwire.yml` (weekly, deep_reasoner at
   `main`). Both fetch the private dependency with a read token stored as a repository secret
   (Michael's to add; the same token Q8's cross-repo CI needs).
@@ -1158,7 +1966,8 @@ turns into rows, with the merged `file:line`.
 | R11 | The agent's own LLM logs with `kind: agent` on the agent's node; the `llm` tool and a Claude session take their own nodes under it | `agent.py:936–938`, `context.py:240–243` (verified) | recorder (owner rule) |
 | R12 | An observation is `<observation>\n…\n</observation>` and ends with `FinalAnswer: <repr>` when the cell answered | `messages.py:130–137`, `repl_coro.py:315–325` | recorder (answers) |
 | R13 | `code(text, start, end)` extracts the last `<repl>` block, raising `NoCodeBlock` | `messages.py:288–307` | recorder (think cells) |
-| R14 | Interim: an exception raised by a processor at `agent.turn` ends that drive as `failed`; cells catch `Exception`, so the parent sees it; `run_all` is `gather` on a private loop, cancelling the siblings | `agent.py:158–174, 899–905`, `repls/backends.py:523`, `repl_coro.py:84`, `coro_base.py:73–92` | `worker/stop.py`, recorder |
+| R14 | Interim: an exception raised by a processor at `agent.turn` ends that drive as `failed` with `detail` `f"{type(exc).__name__}: {exc}"`; cells catch `Exception` and show `traceback.format_exc()`, so the parent sees it; `run_all` is `gather` on a private loop, cancelling the siblings | `agent.py:158–174, 899–905`, `repls/backends.py:523–524`, `repl_coro.py:84–85`, `coro_base.py:73–92` | `worker/stop.py`, recorder |
+| R17 | A missing model key raises `ValueError` from `build_client` inside `build_reasoner`, before any model call | `config.py:256–266`, `v2/cli.py:342` | runner (`build_failed`), §5.1 |
 | R15 | A cell runs synchronously in its coroutine; a sub-agent runs on a `_run_sync` worker thread, so a signal can unwind the root's cell but not a sub-agent's (verified) | `repl_coro.py:311–315`, `coro_base.py:73–92` | `worker/runner.py`, §6.4 |
 | R16 | Importing deep_reasoner writes nothing to stdout (verified) | — | `catalog.py` in the front |
 
@@ -1173,13 +1982,18 @@ turns into rows, with the merged `file:line`.
 | P5 | `InitializeRequest`/`ClientCapabilities` drop `subagents`, so it is read from the raw params (verified) | `schema.py` | the tap |
 | P6 | A notification sent from a task created inside a request handler goes out after that handler's response (the response is queued before the handler's task yields; verified) | `connection.py:187–189`, `task/sender.py:28–32` | §5.4 rule 5 |
 | P7 | Test only: `ClientSideConnection` routes through `_conn._handler`, which the shim wraps; `request_model` and an `InitializeRequest` subclass put `subagents` on the wire | `client/connection.py`, `utils.py` | `testing/client.py` |
+| P8 | Client side: a notification is handled in a task of its own created by the receive loop, so it carries the receive loop's context, and a call can return before the notifications sent after its response are handled; a JSON-RPC error is raised as `RequestError(code, message, data)` | `connection.py:140–163, 240–251` | `testing/client.py` (`show`, `wait_until`), §5.5 |
+| P9 | `spawn_stdio_transport` passes only `DEFAULT_INHERITED_ENV_VARS` unless given `env=`; on exit it closes stdin, sends SIGTERM after `shutdown_timeout` (2.0 s) and SIGKILL 2.0 s later | `transports.py:13–45, 96–117` | §4.2 shutdown, §5.1, the live doc |
 
 **The bridge (SDK fork, upstream behaviour S1 starts from):** it waits ≤ 2 s per turn for a root
 `usage_update` (`acp_agent.py:3643–3654`); it restarts the agent when a cancelled prompt does not
 answer within 2 s (`:169, 3472–3540`); any parsed update resets its 1,800 s prompt-idle watchdog
 (`:1433–1439, 1758`); it drops stdout lines that are not JSON-RPC (`:1047–1076`); it calls
 `session/load` with the prior id and falls back to `session/new` on a JSON-RPC error
-(`:3200–3240`); it books cost as deltas of each session's cumulative amount (`:2065–2072`).
+(`:3200–3240`); it books cost as deltas of each session's cumulative amount (`:2065–2072`); it
+starts one agent process per conversation with its own environment plus the conversation's secrets
+(`:2912, 2926–2952`); it joins a turn's `agent_message_chunk` texts with no separator (`:3762`);
+at shutdown it closes the connection, sends SIGTERM at once and kills after 5 s (`:4563–4590`).
 
 ---
 
@@ -1195,3 +2009,9 @@ answer within 2 s (`:169, 3472–3540`); any parsed update resets its 1,800 s pr
 4. **Bug for Dean, found here:** deep_reasoner imports IPython but does not declare it (§8.5). D1
    works around it; the row belongs in the changelog's findings, not in Expectations.
 5. **Disk:** run directories are never pruned in v1.
+6. **Which decompositions are programs (v2, for D2).** `dr-acp` offers every decomposition as a
+   command (§4.6), including few-shot examples written for one input, which make poor openings.
+   The Library can mark a decomposition as a program (or not) and D2's `Catalog.snapshot` then
+   offers only programs; nothing in D1 changes. Raised by the Docwright; the Conductor decides
+   whether it goes into D2's design or back to the spec.
+7. **An `OPENAI_API_KEY` secret for `live-doc.yml`** (§8.5): Michael's to add.
