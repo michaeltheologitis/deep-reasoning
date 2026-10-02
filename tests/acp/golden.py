@@ -12,6 +12,7 @@ import asyncio
 import json
 import re
 import sys
+import sysconfig
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,7 @@ from tests.acp.scenarios import SCENARIOS, Scenario
 
 GOLDEN = Path(__file__).parent / "golden"
 SITE = str(Path(deep_reasoner.__file__).resolve().parents[1])
+STDLIB = sysconfig.get_paths()["stdlib"]
 _RUN = re.compile(ids.RUN_ID)
 _ROOT = re.compile(r"s-[0-9a-f]{16}")
 RUN = "00000000-000000-000000"  # every run id becomes this one, still a valid run id
@@ -58,9 +60,15 @@ async def play(scenario: Scenario, native: bool, directory: Path) -> Played:
 
 def normalized(lines: list[bytes], directory: Path) -> list[dict[str, Any]]:
     """The messages, with ids, paths and float noise taken out, and only each session's
-    last usage_update (the others are sent on a timer)."""
+    last usage_update (the others are sent on a timer). Paths differ between machines
+    (tracebacks carry them), so site-packages, the standard library and the test's
+    directory are named, not spelled."""
     text = "".join(line.decode() for line in lines)
-    text = text.replace(SITE, "SITE").replace(str(directory), "TMP")
+    text = (
+        text.replace(SITE, "SITE")
+        .replace(STDLIB, "STDLIB")
+        .replace(str(directory), "TMP")
+    )
     text = _ROOT.sub("s-0000000000000000", _RUN.sub(RUN, text))
     messages = [json.loads(line) for line in text.splitlines()]
     last_usage: dict[str, int] = {}

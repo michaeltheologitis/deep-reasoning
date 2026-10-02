@@ -26,9 +26,10 @@ class FakeCall:
 
 
 def token_usage(messages: Messages, reply: str) -> dict[str, Any]:
-    """A deterministic count: one token per four characters, at least one."""
-    prompt = sum(len(str(m.get("content", ""))) for m in messages) // 4 + 1
-    completion = len(reply) // 4 + 1
+    """A deterministic count, one token per whitespace-separated word plus one: the
+    same on every machine, though a traceback in the prompt carries absolute paths."""
+    prompt = sum(len(str(m.get("content", "")).split()) for m in messages) + 1
+    completion = len(reply.split()) + 1
     return {
         "prompt_tokens": prompt,
         "completion_tokens": completion,

@@ -4,7 +4,7 @@ import time
 import openai
 import pytest
 
-from deep_reasoning.acp.testing.fake_model import FakeOpenAI
+from deep_reasoning.acp.testing.fake_model import FakeOpenAI, token_usage
 
 
 async def ask(model, content):
@@ -47,3 +47,22 @@ def test_a_responder_that_raises_answers_500():
 
     with pytest.raises(openai.InternalServerError, match="model down"):
         asyncio.run(body())
+
+
+def test_token_counts_do_not_depend_on_where_the_code_is_installed():
+    """Tracebacks in a prompt carry absolute paths, which differ between machines; the
+    golden recordings hold the counts."""
+
+    def frame(site: str) -> list[dict[str, str]]:
+        line = f'File "{site}/deep_reasoner/repls/backends.py", line 522, in run_code'
+        return [{"role": "user", "content": line}]
+
+    here = frame("/home/user/site-packages")
+    there = frame(
+        "/home/runner/work/deep-reasoning/deep-reasoning/.venv/lib/site-packages"
+    )
+    assert token_usage(here, "ok") == token_usage(there, "ok")
+    assert (
+        token_usage(here + here, "ok")["prompt_tokens"]
+        > token_usage(here, "ok")["prompt_tokens"]
+    )
