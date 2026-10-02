@@ -1,0 +1,23 @@
+# E4's tripwire against Dean's main: the recorder's reading of deep_reasoner's events
+# and the end-to-end tree fidelity, with deep_reasoner at main instead of the pin.
+name: acp-tripwire
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  tripwire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+      - run: uv pip install "deep-reasoner @ git+https://github.com/DeanLight/deep_reasoner_beta@main"
+      - run: uv run --no-sync pytest tests/acp/test_recorder.py tests/acp/test_agent.py

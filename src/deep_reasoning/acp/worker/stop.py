@@ -1,9 +1,12 @@
 """Stopping one agent's branch: Dean's stop(node_id), or the interim until he ships it
 (§6.3)."""
 
+import importlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
+
+from deep_reasoning.acp import texts
 
 if TYPE_CHECKING:
     from deep_reasoning.acp.worker.recorder import Recorder
@@ -23,7 +26,10 @@ class StoppedByUser(Exception):
     def __init__(
         self, target: int, branch: tuple[int, ...], siblings: tuple[int, ...]
     ) -> None:
-        raise NotImplementedError
+        super().__init__(texts.stopped_by_user(target, branch, siblings))
+        self.target = target
+        self.branch = branch
+        self.siblings = siblings
 
 
 @dataclass(frozen=True)
@@ -47,23 +53,34 @@ class DeanStop:
 
     mode: Literal["dean"] = "dean"
 
-    def __init__(self, fn: Callable[[int], None], recorder: "Recorder") -> None: ...
+    def __init__(self, fn: Callable[[int], None], recorder: "Recorder") -> None:
+        self._fn = fn
+        self._recorder = recorder
 
     def stop(self, node_id: int) -> StopReceipt:
-        """recorder.note_stop(node_id, "dean"), then fn(node_id)."""
-        raise NotImplementedError
+        """fn(node_id), then recorder.note_stop(node_id, "dean"), as one step for the
+        recorder: stop.accepted marks the moment the stop is in force, and no agent.end
+        is classified between the two."""
+        with self._recorder.holding():
+            if self._recorder.running(node_id):
+                self._fn(node_id)
+            return self._recorder.note_stop(node_id, "dean")
 
 
 class InterimStop:
     mode: Literal["interim"] = "interim"
 
-    def __init__(self, recorder: "Recorder") -> None: ...
+    def __init__(self, recorder: "Recorder") -> None:
+        self._recorder = recorder
 
     def stop(self, node_id: int) -> StopReceipt:
         """recorder.arm(node_id)."""
-        raise NotImplementedError
+        return self._recorder.arm(node_id)
 
 
 def resolve_stop_adapter(recorder: "Recorder", spec: str | None) -> StopAdapter:
     """DeanStop over the function spec names ("module:attr"), else InterimStop."""
-    raise NotImplementedError
+    if not spec:
+        return InterimStop(recorder)
+    module, attr = spec.split(":")
+    return DeanStop(getattr(importlib.import_module(module), attr), recorder)

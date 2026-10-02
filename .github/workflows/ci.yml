@@ -1,0 +1,29 @@
+# The deterministic suite (layers 1-2) on every push: no model calls.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DR_BETA_CHECKOUT: ${{ github.workspace }}/deep_reasoner_beta
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+      - name: deep_reasoner_beta's configs at the pinned commit, read in place by the catalog tests
+        run: |
+          git init -q "$DR_BETA_CHECKOUT"
+          git -C "$DR_BETA_CHECKOUT" fetch -q --depth 1 https://github.com/DeanLight/deep_reasoner_beta d7334ae6ea884617a377d9f1ce872530d898484c
+          git -C "$DR_BETA_CHECKOUT" checkout -q FETCH_HEAD
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - run: uv run pytest
