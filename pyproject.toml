@@ -40,7 +40,7 @@ allow-direct-references = true
 packages = ["src/deep_reasoning"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["docs/"]
+exclude = ["docs/", "as_built/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
