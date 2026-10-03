@@ -270,6 +270,26 @@ def test_put_mcp_refuses_a_stdio_grant_without_a_command(client, lib, fields, se
     assert "github" not in lib.state().tools
 
 
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        (GITHUB | {"granted_in": ["router"]}, "Field required"),
+        (
+            GITHUB | {"granted_in": ["router"], "base_version": 0, "yaml": "x: 1"},
+            "Extra inputs are not permitted",
+        ),
+    ],
+    ids=["no base_version", "a yaml it does not have"],
+)
+def test_a_put_mcp_body_it_cannot_read_is_told_the_mcp_bodys_fields(
+    client, lib, body, said
+):
+    response = client.put("/mcp/github", json=body)
+    assert (response.status_code, response.json()["error"]) == (400, "bad_request")
+    assert response.json()["message"] == f"{texts.MCP_BAD_REQUEST} {said}"
+    assert "github" not in lib.state().tools
+
+
 @pytest.mark.parametrize("name", ["run_all", "not a name", "class"])
 def test_put_mcp_refuses_a_name_the_repl_cannot_bind(client, lib, name):
     response = grant(client, name)

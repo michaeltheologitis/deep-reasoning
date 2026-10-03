@@ -94,3 +94,7 @@ def mcp_name_taken(name: str) -> str:
 
 MCP_NEEDS_COMMAND = "A stdio MCP server needs a command."
 MCP_NEEDS_URL = "An HTTP or SSE MCP server needs a URL."
+MCP_BAD_REQUEST = (
+    "The body must be a JSON object with 'server', 'transport', 'granted_in' and "
+    "'base_version', and may have 'command', 'args', 'url', 'env' and 'headers'."
+)

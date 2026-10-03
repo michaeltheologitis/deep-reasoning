@@ -151,13 +151,14 @@ class _ValidateBody(BaseModel):
     source: str | None = None
 
 
-def _parse[T: BaseModel](model: type[T], body: bytes) -> T:
+def _parse[T: BaseModel](
+    model: type[T], body: bytes, sentence: str = texts.BAD_REQUEST
+) -> T:
+    """The body as model; a body it cannot read is 400, sentence and pydantic's reason."""
     try:
         return model.model_validate_json(body)
     except ValidationError as exc:
-        raise LibraryBadRequest(
-            f"{texts.BAD_REQUEST} {exc.errors()[0]['msg']}"
-        ) from exc
+        raise LibraryBadRequest(f"{sentence} {exc.errors()[0]['msg']}") from exc
 
 
 def _base_version(request: Request) -> int | None:

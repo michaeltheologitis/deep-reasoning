@@ -48,7 +48,8 @@ def tool_routes(library: Library) -> list[Route]:
         ]
 
     def put_grant(request: Request, body: bytes) -> Any:
-        name, sent = request.path_params["name"], _parse(McpGrantBody, body)
+        name = request.path_params["name"]
+        sent = _parse(McpGrantBody, body, texts.MCP_BAD_REQUEST)
         shapes.validate_tool(name, "{}", None)  # D2's name rule
         if errors := tool_name_errors(name):
             raise LibraryValidationError(errors[0].msg, errors)
