@@ -1,9 +1,16 @@
 # D3 · Decompositions panel, as built
 
-**TASK-8** · Cartographer · the code at `5effe26` (D3's last code commit on `v1-decompositions-panel`; the
-branch head `923e802` only adds the design doc; this file is on `as-built/d3`) · checked against the design at
-`ab6f2ec` (`docs/design/d3-decompositions-panel.md`, its only revision; `923e802` carries it unchanged) · D2 as
-built at `90044f0`, D3's base · deep_reasoner_beta `d7334ae` · 2026-10-03.
+**TASK-8** · Cartographer · the code at `2af80ef` (head of `v1-decompositions-panel`: D3's code through `5effe26`,
+then four fixes, `450bed1`, `aaa97ef`, `4123ec7` and `2af80ef`, each answering a divergence this document named; this
+file is on `as-built/d3`) · checked against the design's v1, `ab6f2ec` (`docs/design/d3-decompositions-panel.md`) ·
+D2 as built at `90044f0`, D3's base · deep_reasoner_beta `d7334ae` · 2026-10-03.
+
+**Revisions** (newest first):
+- Second, the code at `2af80ef`: §2.1's #3, #4 and #9 are closed and #6 is closed in part; #6's rest and #10 carry
+  the Conductor's ruling; counts, sizes and line numbers are re-measured. The branch now also carries the design's v2
+  (`dcde588`, "brought in line with the build at `5effe26`"), which a System Designer is still revising. The
+  divergences below are against v1; I did not re-check them against v2.
+- First, the code at `5effe26`.
 
 D3's code is `canvas-app/` (TypeScript: the page bundle and the frame UI), the App package
 `src/deep_reasoning/canvas_app/` (the manifest, the icon and the committed built files),
@@ -21,17 +28,21 @@ design's header item 1 probed the bridge once, outside the repository, against a
 evidence for that path, and it is the design's, not the build's.
 
 **Evidence marks.** Every claim carries one.
-- **[run]**: executed in this sandbox at `5effe26`, with other agents' suites running on the same 4 CPUs:
+- **[run]**: executed in this sandbox, with other agents' suites running on the same 4 CPUs. At `2af80ef`:
   - `CI=true uv run pytest -m browser tests/canvas_app` (Playwright 1.56.0, preinstalled Chromium build 1194):
-    47 passed, 1 skipped, 214 s;
-  - in `canvas-app/`: `npm ci`; `npx vitest run` with `DR_BETA_CHECKOUT` on deep_reasoner_beta `d7334ae`
-    (148 passed, 1 skipped); `npx tsc --noEmit` and `prettier --check .` (clean); `npm run build` (byte-identical
-    to the committed files);
-  - the default suite, `CI=true DR_BETA_CHECKOUT=<clone of d7334ae> uv run pytest` (531 passed, 52 deselected);
-  - `uv build`, and uncommitted probe scripts that drive a real `dr-library serve` with Playwright or
-    `http.client`, or run the card model over deep_reasoner_beta's configs.
-- **[CI]**: read from GitHub's logs of run 37090168700 at `5effe26`, jobs `test` and `canvas-app`. D3 has no live
-  tier (design §7.1: no model is called). I ran no paid model and no real `claude` CLI.
+    50 passed, 1 skipped, 198.77 s;
+  - in `canvas-app/`: `npx vitest run`, 149 passed and 2 skipped without the corpus, and 150 passed and 1 skipped
+    with `DR_BETA_CHECKOUT` on deep_reasoner_beta `d7334ae`; `npx tsc --noEmit` and `prettier --check .` (clean);
+    a fresh build of both bundles into a scratch directory, byte-identical to the committed files; `tests/library/test_ui.py` (16 passed);
+  - an uncommitted vitest probe of `ensureBackend` with a slow `start` (#9).
+
+  At `5effe26`, not repeated, because the commits since change only `canvas-app/`, the built files,
+  `tests/canvas_app/`, `docs/`, `as_built/` and the sdist's `exclude` (`test_ui.py`, which reads the built files,
+  was rerun): the default suite, `CI=true DR_BETA_CHECKOUT=<clone of d7334ae> uv run pytest` (531 passed,
+  52 deselected); `uv build`; and the uncommitted probes that drive a real `dr-library serve` with Playwright or
+  `http.client`, or run the card model over deep_reasoner_beta's configs.
+- **[CI]**: read from GitHub's logs: run 37090168700 at `5effe26` and run 37139529187 at `2af80ef`, jobs `test` and `canvas-app`, all green. D3 has
+  no live tier (design §7.1: no model is called). I ran no paid model and no real `claude` CLI.
 - **[read]**: read in the code and **not executed**. Weaker evidence than [run]; §7 lists the read claims that
   matter most.
 
@@ -61,14 +72,14 @@ the frame · another origin (in the tests http://127.0.0.1:<port>/ui/, without a
 
 | Part | Lines | Where |
 |---|---|---|
-| the page bundle and the shared protocol | 613 | `canvas-app/src/page/`, `canvas-app/src/shared/protocol.ts` |
-| the frame UI | 3,390 TypeScript, 368 CSS | `canvas-app/src/ui/` |
+| the page bundle and the shared protocol | 623 | `canvas-app/src/page/`, `canvas-app/src/shared/protocol.ts` |
+| the frame UI | 3,402 TypeScript, 368 CSS | `canvas-app/src/ui/` |
 | Python | 59 + 5, plus an import, a route line and a docstring in `api.py`, and 2 sentences in `texts.py` | `library/ui.py`, `canvas_app/__init__.py` |
-| built files, committed | 6.96 kB page bundle; 151.78 kB script, 4.05 kB CSS, 0.37 kB HTML | `canvas_app/dist/`, `canvas_app/ui/` |
-| tests | 1,628 vitest (125 of them the fakes); 1,408 pytest, plus a 99-line fixture | `canvas-app/tests/`, `tests/canvas_app/`, `tests/library/test_ui.py` |
+| built files, committed | 7.09 kB page bundle; 151.96 kB script, 4.05 kB CSS, 0.37 kB HTML | `canvas_app/dist/`, `canvas_app/ui/` |
+| tests | 1,653 vitest (125 of them the fakes); 1,454 pytest, plus a 99-line fixture | `canvas-app/tests/`, `tests/canvas_app/`, `tests/library/test_ui.py` |
 
-The TypeScript is 4,003 lines (3,744 non-blank). Design §10 estimated about 2.6k lines of code and 1.4k of tests.
-The length sits in two files: `ui/components/editor.tsx` (857 lines: the decomposition editor for Create and for
+The TypeScript is 4,025 lines (3,765 non-blank). Design §10 estimated about 2.6k lines of code and 1.4k of tests.
+The length sits in two files: `ui/components/editor.tsx` (869 lines: the decomposition editor for Create and for
 an opened entry, §4.3; design §10 gave the editor and cards 250) and `ui/tabs/namespaces.tsx` (891: the tree,
 seven kinds of field and the run settings; design §10 gave 380). [read]
 
@@ -76,10 +87,12 @@ seven kinds of field and the run settings; design §10 gave 380). [read]
 
 ## 2 · Divergences from the design (`ab6f2ec`)
 
-No changelog `drift:` line exists for TASK-8, so every item below was found from the code. The design has one
-revision (`ab6f2ec`, 01:30:57 UTC), and all twelve build commits (`3ce186a` to `5effe26`, 01:40 to 02:19 UTC)
-come after it. Each row gives what the design says, what is built, where, and the reason the code or its commit
-gives ("none recorded" when neither does). Paths are under `canvas-app/src/` unless they say otherwise.
+No changelog `drift:` line exists for TASK-8, so every item below was found from the code. Design v1 (`ab6f2ec`,
+01:30:57 UTC) precedes all twelve first build commits (`3ce186a` to `5effe26`, 01:40 to 02:19 UTC); the four fixes
+(16:47 to 17:06 UTC) came after this document's first version. Each row gives what the design says, what is built,
+where, and the reason the code or its commit gives ("none recorded" when neither does). A row a fix answered keeps
+its number and says **Closed** or **Ruled**, with the commit. Paths are under `canvas-app/src/` unless they say
+otherwise.
 
 ### 2.1 Behaviour a user or a collaborator sees
 
@@ -87,14 +100,14 @@ gives ("none recorded" when neither does). Paths are under `canvas-app/src/` unl
 |---|---|---|---|---|
 | 1 | §2.2: when `GET /effective` fails, the tab falls back under `EFFECTIVE_FAILED` with D2's message. §2.6, §4.4: an answer that is not D2's JSON is the backend being unreachable. | D2 answers a head that no longer validates with a bare `text/plain` 500 `Internal Server Error` on `/effective` and on `/namespaces/<n>/effective`, not with its JSON [run: a real `dr-library serve` with a stale head]. `load.resolved` treats a non-JSON 500 from those reads as "inheritance cannot be resolved", fetches `/problems` and puts its sentences into `EFFECTIVE_FAILED`; no backend-loss footer appears [run: `test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`]. Any 500 from those two routes is reported this way, whatever its cause; a 500 from another route still shows the footer. | `ui/load.ts:71-89`; `ui/tabs/browse.tsx:46-60` | comment at `load.ts:71-73`; commit `5effe26` |
 | 2 | Namespaces when inheritance cannot be resolved: not specified. | The namespace shows the same `/problems` sentence and **no fields at all**: only Start new conversations here and Delete namespace remain [run: with a stale head, 0 `dr-field-*` elements]. One stale namespace head makes every namespace's effective read fail [run: `router`, `router.archive` and `course_advisor` all answered 500 with `router.archive` stale], so until it is fixed no namespace field can be overridden from the panel. | `ui/tabs/namespaces.tsx:271-275, 352-391` | commit `5effe26`: "both tabs now show D2's own sentence for that head, from /problems, instead of the backend-loss footer" |
-| 3 | §2.3: the draft holds "every field, the cards or the YAML, and the mode". | The draft (`localStorage` key `dr-library.draft.create`) holds the name, use-when, hint, cards, YAML and mode, but **not the picked namespace**: each mount preselects again [run: picked `course_advisor`, reloaded, `router` was checked and the name was restored]. | `ui/components/editor.tsx:83-86, 193-195` | none recorded |
-| 4 | §2.3: D2's errors that name no card and not the name are shown "above the cards". | They are shown in a banner **below** the cards, above the buttons. | `editor.tsx:467-475` | none recorded |
-| 5 | §2.3: View YAML shows `POST /validate`'s canonical `yaml`. | When the draft does not validate (no canonical YAML), it shows the browser's own YAML 1.1 rendering of `{name, messages}`. | `editor.tsx:320-334` | none recorded |
-| 6 | §2.3: Rename "focuses the name". | In YAML mode there is no name field (the name is in the YAML), so Rename only clears the conflict. `NAME_REQUIRED` is checked only in card mode; in YAML mode D2's validation answers. [run: no `dr-name` element in YAML mode] | `editor.tsx:276-277, 366-391, 539-542` | none recorded |
-| 7 | §2.2: in the opened editor, "namespaces that inherit it are listed as 'also used in … (inherited)'". | Each namespace below an attached one is a **checked, disabled** box labelled with its own name followed by "also used in <that same name> (inherited)" [run: `catalog lookup`, attached to root, shows `router` / `also used in router (inherited)`, and likewise for `router.archive` and `course_advisor`]. Unchecking the ancestor frees them. | `editor.tsx:156-171`; `ui/components/pickers.tsx:54-66`; `ui/texts.ts:90` | commit `b42b3b5`: "so moving a decomposition from a parent to a child is one save" |
-| 8 | §2.1: `starting` is polled "up to 45 s". §4.7 lists every page sentence. | After 45 s the page shows `BACKEND_FAILED` with a new detail, `STILL_STARTING` = "it was still starting after 45 seconds." [run: vitest `gives up on a backend still starting after the timeout`] | `page/backend.ts:64-71`; `page/texts.ts:14` | none recorded |
-| 9 | §11 item 6: if `start`'s request times out, `ensureBackend` "falls back to polling the status". | Any exception from a request, `start` included, ends the check with `BACKEND_FAILED` and the error's detail; there is no fallback. C2 as built documents `agentServer.request` as taking "up to 60 s" [read: `openhands-c2` `src/types/canvas-extension.ts`], longer than the backend's 30 s start. | `page/backend.ts:91-94` | none recorded |
-| 10 | §2.4: Add namespace is prefilled "with the selected namespace's name and a dot". | Empty when root or Run settings is selected (a top-level name already hangs under root); `<selected>.` otherwise. | `ui/tabs/namespaces.tsx:144-147` | none recorded |
+| 3 | §2.3: the draft holds "every field, the cards or the YAML, and the mode". | **Closed by `aaa97ef`.** At `5effe26` the draft left out the picked namespace, so each mount preselected again [run]. Now the draft (`localStorage` key `dr-library.draft.create`) stores the pick, which wins over the preselection while the Library still has that namespace [run: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one`]. Picking alone starts a draft, and a draft cleared by a save or Discard draft takes the preselection again [read]. | `ui/components/editor.tsx:85-89, 196-202, 433` | commit `aaa97ef` |
+| 4 | §2.3: D2's errors that name no card and not the name are shown "above the cards". | **Closed by `4123ec7`.** At `5effe26` their banner sat below the cards. Now it sits between the namespace picker (or Attached to) and the cards, or the YAML; D2's message for a refused save is in the same banner [run: `test_an_error_that_names_no_card_shows_above_the_cards`]. | `editor.tsx:436-444` | commit `4123ec7` |
+| 5 | §2.3: View YAML shows `POST /validate`'s canonical `yaml`. | When the draft does not validate (no canonical YAML), it shows the browser's own YAML 1.1 rendering of `{name, messages}`. | `editor.tsx:328-342` | none recorded |
+| 6 | §2.3: Rename "focuses the name". | **Closed in part by `2af80ef`.** At `5effe26` Rename in YAML mode focused nothing. Now it focuses the YAML field and stays in YAML mode [run: `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name`]. **Ruled** (the Conductor; the designer records it): YAML mode has no name field, since the name is the YAML's own, and `NAME_REQUIRED` is checked only in card mode, D2's validation answering in YAML mode [run: no `dr-name` element in YAML mode]. | `editor.tsx:284-285, 374-399, 548-553` | commit `2af80ef`; the ruling |
+| 7 | §2.2: in the opened editor, "namespaces that inherit it are listed as 'also used in … (inherited)'". | Each namespace below an attached one is a **checked, disabled** box labelled with its own name followed by "also used in <that same name> (inherited)" [run: `catalog lookup`, attached to root, shows `router` / `also used in router (inherited)`, and likewise for `router.archive` and `course_advisor`]. Unchecking the ancestor frees them. | `editor.tsx:160-175`; `ui/components/pickers.tsx:54-66`; `ui/texts.ts:90` | commit `b42b3b5`: "so moving a decomposition from a parent to a child is one save" |
+| 8 | §2.1: `starting` is polled "up to 45 s". §4.7 lists every page sentence. | After 45 s the page shows `BACKEND_FAILED` with a new detail, `STILL_STARTING` = "it was still starting after 45 seconds." [run: vitest `gives up on a backend still starting after the timeout`] | `page/backend.ts:65-72`; `page/texts.ts:14` | none recorded |
+| 9 | §11 item 6: if `start`'s request times out, `ensureBackend` "falls back to polling the status". | **Closed by `450bed1`.** At `5effe26` any failed request ended the check. Now a `start` that gets no answer (an error without a numeric `status`) reads the status and goes on by §2.1's table: `starting` is polled, `ready` mounts, anything else is `BACKEND_FAILED` with its detail. A `start` the agent-server answered with an error still ends with `BACKEND_FAILED` in its words [run: vitest `polls the status when start gets no answer, …`, 2 cases]. The test for an answer matches the client C2 uses (`@openhands/typescript-client` in `openhands-c2`): an HTTP error is an `HttpError` with a numeric `status`, and a timeout or a failed connection is a plain `Error` [read]. The 45 s limit counts from the first status read, not from the fallback: with `start` failing after 10 s the check polled until `ready`; failing after 60 s (C2's documented request limit [read: `openhands-c2` `src/types/canvas-extension.ts`]) with the backend still `starting`, it ended at once with `STILL_STARTING` [run: probe]. | `page/backend.ts:50, 85-95, 103-105` | commit `450bed1` |
+| 10 | §2.4: Add namespace is prefilled "with the selected namespace's name and a dot". | Empty when root or Run settings is selected; `<selected>.` otherwise. Unchanged at `2af80ef`. **Ruled** the design's reading (the Conductor): root's children are top-level names, and Run settings is not a namespace. | `ui/tabs/namespaces.tsx:144-147` | the ruling |
 | 11 | §2.1, §4.4: the backend-loss footer appears when a request throws `BackendUnavailable`. | It also **disappears** when the next `/health` poll answers. | `ui/app.tsx:44-53` | none recorded |
 | 12 | §2.2: opening a decomposition "shows the decomposition editor". | The editor replaces the list, with a "← Decompositions" button back to it. | `ui/tabs/browse.tsx:119-147`; `ui/texts.ts:102` | none recorded |
 | 13 | §5.1: `turnNumbers` numbers task and step cards; `cardIndexForLoc("messages.3.content")` is 3, and `null` for other locations. | Raw cards are numbered too. `cardIndexForLoc` maps any `messages.<n>` or `messages.<n>.<…>` (`messages.0.role` → 0, `messages.12` → 12) [run: vitest]. | `ui/cards.ts:39, 166-177` | none recorded |
@@ -108,7 +121,7 @@ decomposition makes no revision (D2 writes nothing) and still shows "✓ Saved '
 
 | # | Design | Built | Where | Reason |
 |---|---|---|---|---|
-| 14 | §4.6: "Both [builds] minify." | The frame UI is minified (151.78 kB, 48.94 kB gzip). The page bundle's names are shortened but its whitespace is kept, as Vite's library build does for `es` (220 lines, 6.96 kB, 2.85 kB gzip). Both are within the design's sizes (under 10 KB; about 170 KB) [run]. | `canvas-app/vite.page.config.ts` | none recorded |
+| 14 | §4.6: "Both [builds] minify." | The frame UI is minified (151.96 kB, 49.00 kB gzip). The page bundle's names are shortened but its whitespace is kept, as Vite's library build does for `es` (226 lines, 7.09 kB, 2.89 kB gzip). Both are within the design's sizes (under 10 KB; about 170 KB) [run]. | `canvas-app/vite.page.config.ts` | none recorded |
 | 15 | §7.6: the job runs "on every push touching" five path globs. | The workflow has no path filter: `canvas-app` runs on every push and every pull request, beside `test`. | `.github/workflows/ci.yml:4-6, 33` | none recorded |
 | 16 | §4.6, §7.6: the check is `git diff --exit-code -- src/deep_reasoning/canvas_app`. | It is `git status --porcelain -- src/deep_reasoning/canvas_app`, failing on any output. | `ci.yml:63-70` | commit `375a3d1`: "so a file the build adds or drops fails the check too" |
 | 17 | §4.6's sample manifest has `"version": "1.0.0"`, under the rule "deep-reasoning's package version (a test pins it)". | `"version": "0.1.0"`, the package's version, pinned by `test_the_manifest_is_valid_and_its_version_is_the_packages`. The rule holds; only the sample differs. | `src/deep_reasoning/canvas_app/canvas-extension.json:5` | the rule |
@@ -122,7 +135,7 @@ decomposition makes no revision (D2 writes nothing) and still shows "✓ Saved '
 | 20 | §7.3: the fixture is `tests/canvas_app/fixtures/library.yaml`. | It is a folder: `fixtures/library/main.yaml` (a `dr` config), `library.yaml` (D2's manifest, for the use-when lines and hints) and `tools/word_count.py`, imported with `Library.import_config`. The contents are as designed: namespaces `root`, `router`, `router.archive`, `course_advisor`; three decompositions (one top level, one in root and so inherited, one in router); one tool with a source. | `tests/canvas_app/fixtures/library/` | none recorded |
 | 21 | §7.4: conversation A is opened with "namespace router". | A opens in the profile's entry namespace, which the fixture sets to `router`; nothing sets the option. The browser opens the frame standalone, without the page bundle. | `tests/canvas_app/test_e8_next_conversation.py:60-67` | none recorded |
 | 22 | §7.3: `test_the_notice_is_d5s_sentence_with_the_cap` is "skipped until D5's package is in the environment". | It is skipped in every run, here and in CI: `dr_app` is not installed. No run compares D3's `SAFETY` with D5's (D3 §8.4 item 7). | `tests/canvas_app/test_notice.py:31` | as designed |
-| 23 | §7.3's list of tests. | One more: `test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` (#2). | `tests/canvas_app/test_namespaces.py:263-272` | commit `5effe26` |
+| 23 | §7.3's list of tests. | Four more: `test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` (#2), and, with the fixes, `test_an_error_that_names_no_card_shows_above_the_cards` (#4), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (#6) and `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (#3). | `tests/canvas_app/test_namespaces.py:263-272`; `tests/canvas_app/test_create.py:131, 179, 272` | commits `5effe26`, `4123ec7`, `2af80ef`, `aaa97ef` |
 
 ### 2.4 Signatures and structure
 
@@ -249,7 +262,7 @@ Every body is JSON, sent with `Content-Type: application/json`.
 
 [run: vitest `mount.test.ts`, 10 tests over the fake host; Chromium for `select-tab` and the focus]
 
-`ensureBackend` is design §2.1's table, plus #8 and #9 [run: vitest, 12 tests]. `readConversationNamespace`
+`ensureBackend` is design §2.1's table, plus #8 and the fallback of #9 [run: vitest, 14 tests]. `readConversationNamespace`
 reads `items[0].config_options`, the entry with `id` `namespace`: `current_value` is the namespace, and the
 conversation counts as started when that entry's `options` has exactly one value [run: vitest]. That shape matches
 the SDK fork's `EventPage.items` and `ACPSessionControlsEvent.config_options` (`sdk-s2` at `6f97bf3`) [read]; no
@@ -295,7 +308,8 @@ a decomposition, opened and saved unchanged, made no revision].
 
 **The editor** (`ui/components/editor.tsx`) serves Create (`record` null, draft key `create`) and an opened
 decomposition (draft key `decomposition.<slug>`). [read unless marked]
-- **State** is `{draft, attached}`, written to `localStorage` on every change. A stored draft wins over the
+- **State** is `{draft, attached, picked?}`, written to `localStorage` on every change, a pick in the
+  namespace picker included. A stored draft wins over the
   record when the editor mounts, so a draft started at an older version saves with that `base_version` and meets
   D2's 409.
 - **Saving** follows design §5.2 [run: the browser tests]: the card-mode name check, then `POST /validate`; errors
@@ -383,13 +397,17 @@ None of this has run with D3.
 |---|---|---|---|
 | CI [37090168700](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37090168700), job `test` | ubuntu-latest, Python 3.12, corpus at `d7334ae`, ruff check and format first | `5effe26` | **531 passed**, 52 deselected (48 browser, 4 live), 364.17 s; `test_ui.py` 16 passed [CI] |
 | same run, job `canvas-app` | Node 22.23.3; Playwright's Chromium Headless Shell 141.0.7390.37 (build 1194) | `5effe26` | typecheck and format clean; vitest **148 passed, 1 skipped**; the fresh build equal to the committed files; browser tests **47 passed, 1 skipped**, 109.09 s; the job took 2 min 54 s [CI] |
-| this sandbox, browser tests | `CI=true`, Playwright 1.56.0, `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` (build 1194), 4 CPUs shared with other agents' suites | `5effe26` | **47 passed, 1 skipped**, 214.15 s, at the first attempt; nothing needed a rerun [run] |
+| this sandbox, browser tests | `CI=true`, Playwright 1.56.0, `PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers` (build 1194), 4 CPUs shared with other agents' suites | `5effe26` | **47 passed, 1 skipped**, 214.15 s, at the first attempt [run] |
 | this sandbox, `canvas-app/` | Node 22.22.0, `npm ci`, `DR_BETA_CHECKOUT` on `d7334ae` | `5effe26` | vitest **148 passed, 1 skipped**; `tsc` and prettier clean; `npm run build` byte-identical to the committed four files [run] |
 | this sandbox, default suite | `CI=true DR_BETA_CHECKOUT=<clone of d7334ae> uv run pytest` | `5effe26` | **531 passed**, 52 deselected, 553.67 s (D1's, D2's and `test_ui.py`) [run] |
+| CI [37139529187](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37139529187), job `canvas-app` | as above | `2af80ef` | typecheck and format clean; vitest **150 passed, 1 skipped**; the fresh build (7.09 kB and 151.96 kB) equal to the committed files; browser tests **50 passed, 1 skipped**, 130.25 s; the job took 3 min 5 s [CI] |
+| same run, job `test` | as above | `2af80ef` | **531 passed**, 55 deselected (51 browser, 4 live), 357.56 s; `test_ui.py` 16 passed [CI] |
+| this sandbox, browser tests | as above | `2af80ef` | **50 passed, 1 skipped**, 198.77 s, at the first attempt; nothing needed a rerun [run] |
+| this sandbox, `canvas-app/` | Node 22.22.0, the same `node_modules` | `2af80ef` | vitest **149 passed, 2 skipped** without the corpus, **150 passed, 1 skipped** with it; `tsc` and prettier clean; a fresh build of both bundles byte-identical to the committed four files; `test_ui.py` 16 passed [run] |
 
-In every run the one skip in the browser tests is `test_the_notice_is_d5s_sentence_with_the_cap` (#22), and the
-one skip in vitest is the guard that fails in CI when the corpus is missing (it is skipped because the corpus is
-present, so the corpus round trip ran).
+In every run the one skip in the browser tests is `test_the_notice_is_d5s_sentence_with_the_cap` (#22). With the
+corpus, vitest's one skip is the guard that fails in CI when the corpus is missing (skipped because the corpus is
+present, so the corpus round trip ran); without it and outside CI, both the round trip and the guard are skipped.
 
 To reproduce:
 - `CI=true uv run pytest -m browser tests/canvas_app` (needs Playwright's Chromium);
@@ -420,8 +438,8 @@ Canvas.
 
 The baseline is conversation A, opened before the save, beside B, opened after it.
 
-**Result: passed** in CI (about 5.4 s between the previous test's PASSED line and its own) and here (9.06 s
-call) [CI; run].
+**Result: passed** in CI at `5effe26` and at `2af80ef` (about 5.4 s and 6.9 s between the previous test's PASSED
+line and its own), and here at both (9.06 s and 10.22 s for the call) [CI; run].
 
 ### 6.3 E11, D3's part: each mount carries its own conversation
 
@@ -436,14 +454,14 @@ The real `ACPSessionControlsEvent` from a real `dr-acp` behind a real agent-serv
 
 ### 6.4 The browser tests
 
-48 cases in eight files, each against its own real `dr-library serve` and a Library built from the fixture. 25 of
-the 45 test functions also read the Library back through D2's Python API on the same file, so they assert what was
+51 cases in eight files, each against its own real `dr-library serve` and a Library built from the fixture. 26 of
+the 48 test functions also read the Library back through D2's Python API on the same file, so they assert what was
 stored, not only what was shown; E8 asserts through `dr-acp` instead. [read; all pass, run and CI]
 
 | File | Cases | What they pin |
 |---|---|---|
 | `test_browse.py` | 10 | the groups, `v<n>`, `/slug`, use-when and "inherited from"; top-level and unattached groups; save makes the next version; Attached to is the exact set; stale save offers Reload or Save over it; delete detaches everywhere; a write through the Python API appears within one poll; the fallback with a stale head (#1); `focus` |
-| `test_create.py` | 14 | v1 in the picked namespace with the cards' messages, use-when and hint; the picker and its preselection (conversation, then the default); both success lines; errors on the card D2 names; Save anyway and Cancel; Save mine as v2 keeping the head's namespaces; View and Edit YAML; `use_when` inside the YAML refused in deep_reasoner's words; the draft across a reload; use-when and hint kept by a save that did not touch them; an imported decomposition saved unchanged makes no version |
+| `test_create.py` | 17 | v1 in the picked namespace with the cards' messages, use-when and hint; the picker and its preselection (conversation, then the default); both success lines; errors on the card D2 names; an error that names no card above the cards (#4); Save anyway and Cancel; Save mine as v2 keeping the head's namespaces; Rename in YAML mode focusing the YAML (#6); View and Edit YAML; `use_when` inside the YAML refused in deep_reasoner's words; the draft across a reload, and the picked namespace kept over the preselected one (#3); use-when and hint kept by a save that did not touch them; an imported decomposition saved unchanged makes no version |
 | `test_namespaces.py` | 12 | the tree and the default; each field's value and source; Override and Reset; variables key by key; a grant here beside inherited ones; attach and detach; Start new conversations here; add and delete, with D2's refusals for root, the default and a parent; run settings; `on` stored as `true`; keys the panel does not show survive; a stale head (#2) |
 | `test_tools_tab.py` | 3 | the safety banner with cap 5 and 12; tools with their grants |
 | `test_notice.py` | 3 | the notice until understood, remembered across a reload; `SAFETY_NO_CAP` for `cap=off`; D5's equality, skipped (#22) |
@@ -451,14 +469,14 @@ stored, not only what was shown; E8 asserts through `dr-acp` instead. [read; all
 | `test_page_bundle.py` | 4 | the built bundle from a `blob:` URL registers the four tabs; §6.3; Show in Decompositions calls `selectTab("browse")` and the next mount opens the new entry; Canvas's theme reaches the frame |
 | `test_e8_next_conversation.py` | 1 | §6.2 |
 
-The slowest step here was the backend-loss test's setup, the first in the run (24.76 s, which includes starting
-Chromium); in CI that test's PASSED line came 5.2 s after collection [run; CI].
+The slowest step here at `2af80ef` was E8's call (10.22 s); at `5effe26` it was the backend-loss test's setup, the
+first in that run (24.76 s, which includes starting Chromium) [run].
 
 ### 6.5 vitest
 
-148 tests in ten files: cards (27 + the CI guard), yaml (15: the YAML 1.1 agreement table, round trips, literal
-blocks), protocol (22), context (18), backend (12), mount (10, jsdom), api (28), save (6), drafts (4), tree (6)
-[run; CI]. The cards test ran over the corpus in both places: `DR_BETA_CHECKOUT` was set, and the guard that
+150 tests in ten files at `2af80ef`: cards (27 + the CI guard), yaml (15: the YAML 1.1 agreement table, round
+trips, literal blocks), protocol (22), context (18), backend (14, two of them `450bed1`'s fallback), mount (10,
+jsdom), api (28), save (6), drafts (4), tree (6) [run; CI]. The cards test ran over the corpus in both places: `DR_BETA_CHECKOUT` was set, and the guard that
 fails when it is missing in CI was skipped [run; CI].
 
 ---
@@ -473,7 +491,8 @@ fails when it is missing in CI was skipped [run; CI].
    repository.
 2. **The agent-server's answers as the page reads them.** The backend status and `start`, the events search and
    the agent profile are faked in vitest and in `test_page_bundle.py`. The shapes match the SDK fork's models by
-   reading (§4.1); `starting`, `unhealthy`, `NOT_APPROVED` and the 45 s timeout ran only against a fake.
+   reading (§4.1); `starting`, `unhealthy`, `NOT_APPROVED`, the 45 s timeout and the fallback after a `start` with no answer ran
+   only against a fake.
 3. **D5's `SAFETY` equality** (#22): no run compares the two sentences.
 4. **401 and the session ending**: `SESSION_ENDED` and its Reload are read only; the backend-loss test covers
    status 0 (a stopped server). Through the bridge, a dead backend would answer 502 or 503 [read].
