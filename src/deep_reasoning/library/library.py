@@ -160,34 +160,45 @@ def _live(w: Writer, kind: Kind, name: str) -> Row | None:
     return head if head is not None and not head.deleted else None
 
 
+def _live_namespaces(w: Writer, named: Sequence[str], loc: str) -> list[Row]:
+    """Every live namespace; a name in named that is not one is refused, at loc."""
+    namespaces = [r for r in w.heads() if r.kind == "namespace"]
+    live = {ns.name for ns in namespaces}
+    if unknown := [name for name in named if name not in live]:
+        raise _refuse(texts.not_found("namespace", unknown[0]), loc)
+    return namespaces
+
+
+def _toggled(names: list[str], name: str, wanted: bool) -> list[str]:
+    """names with name appended when wanted, else without it."""
+    return [*names, name] if wanted else [n for n in names if n != name]
+
+
 def _attached_set(w: Writer, decomposition: str, wanted: Sequence[str]) -> None:
     """Make wanted the exact set of namespaces whose lists name decomposition."""
-    namespaces = [r for r in w.heads() if r.kind == "namespace"]
-    for name in dict.fromkeys(wanted):
-        if name not in {r.name for r in namespaces}:
-            raise _refuse(texts.not_found("namespace", name), "namespaces")
-    for ns in namespaces:
-        has, want = decomposition in ns.decompositions, ns.name in wanted
-        if want and not has:
-            _add(
-                w,
-                "namespace",
-                ns.name,
-                yaml=ns.yaml,
-                decompositions=[*ns.decompositions, decomposition],
-            )
-        elif has and not want:
-            kept = [d for d in ns.decompositions if d != decomposition]
-            _add(w, "namespace", ns.name, yaml=ns.yaml, decompositions=kept)
+    for ns in _live_namespaces(w, wanted, "namespaces"):
+        want = ns.name in wanted
+        if (decomposition in ns.decompositions) != want:
+            listed = _toggled(ns.decompositions, decomposition, want)
+            _add(w, "namespace", ns.name, yaml=ns.yaml, decompositions=listed)
 
 
 def _top_level(w: Writer, decomposition: str, wanted: bool) -> None:
     profile = w.head("profile", PROFILE)
-    if wanted == (decomposition in profile.decompositions):
-        return
-    kept = [d for d in profile.decompositions if d != decomposition]
-    listed = [*kept, decomposition] if wanted else kept
-    _add(w, "profile", PROFILE, yaml=profile.yaml, decompositions=listed)
+    if (decomposition in profile.decompositions) != wanted:
+        listed = _toggled(profile.decompositions, decomposition, wanted)
+        _add(w, "profile", PROFILE, yaml=profile.yaml, decompositions=listed)
+
+
+def _granted_set(w: Writer, tool: str, wanted: Sequence[str]) -> None:
+    """Make wanted the exact set of namespaces whose tools list names tool."""
+    for ns in _live_namespaces(w, wanted, "granted_in"):
+        tools, want = yaml.safe_load(ns.yaml).get("tools", []), ns.name in wanted
+        if (tool in tools) != want:
+            granted = _with_tools(ns, _toggled(tools, tool, want))
+            _add(
+                w, "namespace", ns.name, yaml=granted, decompositions=ns.decompositions
+            )
 
 
 def _with_tools(ns: Row, tools: list[str]) -> str:
@@ -196,30 +207,6 @@ def _with_tools(ns: Row, tools: list[str]) -> str:
     if tools:
         data["tools"] = tools
     return shapes.validate_namespace(shapes.canonical_yaml(data)).yaml
-
-
-def _granted_set(w: Writer, tool: str, wanted: Sequence[str]) -> None:
-    """Make wanted the exact set of namespaces whose tools list names tool."""
-    namespaces = [r for r in w.heads() if r.kind == "namespace"]
-    for name in dict.fromkeys(wanted):
-        if name not in {r.name for r in namespaces}:
-            raise _refuse(texts.not_found("namespace", name), "granted_in")
-    for ns in namespaces:
-        tools = yaml.safe_load(ns.yaml).get("tools", [])
-        has, want = tool in tools, ns.name in wanted
-        if want and not has:
-            tools = [*tools, tool]
-        elif has and not want:
-            tools = [t for t in tools if t != tool]
-        else:
-            continue
-        _add(
-            w,
-            "namespace",
-            ns.name,
-            yaml=_with_tools(ns, tools),
-            decompositions=ns.decompositions,
-        )
 
 
 def _first_error(exc: LibraryValidationError) -> str:

@@ -205,6 +205,26 @@ def test_granted_in_is_the_exact_set_after_a_save(lib):
     assert "tools" not in lib.namespace("a").data
 
 
+@pytest.mark.parametrize("loc", ["namespaces", "granted_in"])
+def test_a_namespace_that_is_not_there_cannot_be_attached_to_or_granted_in(lib, loc):
+    save = {
+        "namespaces": lambda: lib.put_decomposition(
+            text(example("lookup")), namespaces=["root", "gone"]
+        ),
+        "granted_in": lambda: lib.put_tool(
+            "search", "factory: llm\n", granted_in=["root", "gone"]
+        ),
+    }[loc]
+    with pytest.raises(LibraryValidationError) as raised:
+        save()
+    sentence = "There is no namespace 'gone' in the library."
+    assert str(raised.value) == sentence
+    assert [e.model_dump() for e in raised.value.errors] == [
+        {"loc": loc, "msg": sentence}
+    ]
+    assert lib.rev() == 1
+
+
 def test_root_the_default_and_a_parent_cannot_be_deleted(lib):
     lib.put_namespace("name: a")
     lib.put_namespace("name: a.b")
