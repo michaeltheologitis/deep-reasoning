@@ -226,10 +226,13 @@ class Session:
         if self.run is not None and self.run.encoder.prompt_in_flight:
             await self.run.kill("stopped")
 
-    def stop_child(self, child_session_id: str) -> None:
-        ref = self.run.child(child_session_id) if self.run else None
-        if ref is not None and ref.running:
-            self.run.stop_node(ref.node)
+    def stop_child(self, child_session_id: str) -> bool:
+        """Stops the child's branch if it is running; False if the live run has no
+        child of that id."""
+        child = self.run.encoder.child(child_session_id) if self.run else None
+        if child is not None and child.running:
+            self.run.stop_node(child.node)
+        return child is not None
 
     async def close(self, grace_s: float = 2.0) -> None:
         if self.run is not None:
