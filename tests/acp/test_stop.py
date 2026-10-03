@@ -2,6 +2,7 @@
 through (a fake of) Dean's stop(node_id) (E3, §6.3)."""
 
 import asyncio
+import threading
 import traceback
 from collections import Counter
 
@@ -18,7 +19,7 @@ from deep_reasoning.acp.worker.stop import (
     resolve_stop_adapter,
 )
 from tests.acp.harness import dr_acp, run, run_ids, scripted_env
-from tests.acp.scenarios import BY_NAME, attributed_task, repl, scripted
+from tests.acp.scenarios import BY_NAME, attributed_task, repl, scripted, task_and_turn
 
 DEPARTMENTS = [f"D{i}" for i in range(20)]
 COURSES = ["D0a", "D0b"]
@@ -47,13 +48,33 @@ PLAN = {
     },
 }
 BRANCH_TASKS = {"Survey D0.", *(f"Read {c}." for c in COURSES)}
+SIBLING_TASKS = {f"Survey {d}." for d in DEPARTMENTS[1:]}
 
 
-def stop_the_department(env):
+def holding_the_siblings(respond):
+    """D0's siblings get their first answer only at the root's next turn, once run_all
+    has ended: each is still awaiting its model when D0's StoppedByUser ends run_all.
+    An openai call cancelled mid-response can swallow the cancellation and run on to an
+    answer (httpx 0.28, httpcore 1.0, anyio 4), and a sibling the message names would
+    then end done, not stopped with it."""
+    root_moved_on = threading.Event()
+
+    def held(messages):
+        task, turn = task_and_turn(messages)
+        if task == "Compare departments." and turn > 0:
+            root_moved_on.set()
+        elif task in SIBLING_TASKS:
+            root_moved_on.wait(timeout=60)
+        return respond(messages)
+
+    return held
+
+
+def stop_the_department(env, respond):
     """Ask, stop D0 once one of its course agents is announced, and collect the evidence."""
 
     async def body(tmp_path, home, work):
-        async with FakeOpenAI(scripted(PLAN), latency_s=0.2) as model:
+        async with FakeOpenAI(respond, latency_s=0.2) as model:
             config = BY_NAME["linear"].write_config(tmp_path / "config", model.base_url)
             async with dr_acp(config, home, env=env) as client:
                 root = await client.open_session(work)
@@ -125,8 +146,9 @@ def root_cell_output(client, root):
 def test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took(
     tmp_path, home, work
 ):
+    respond = holding_the_siblings(scripted(PLAN))
     client, root, department, response, log, calls = run(
-        stop_the_department(scripted_env())(tmp_path, home, work)
+        stop_the_department(scripted_env(), respond)(tmp_path, home, work)
     )
     agents, d0 = evidence_common(client, root, department, response, log, calls)
     output = root_cell_output(client, root)
@@ -156,7 +178,7 @@ def test_dean_stop_ends_the_branch_and_the_parent_keeps_every_siblings_result(
 ):
     env = scripted_env(DR_ACP_STOP_API="tests.acp.fakes.dean_stop:stop")
     client, root, department, response, log, calls = run(
-        stop_the_department(env)(tmp_path, home, work)
+        stop_the_department(env, scripted(PLAN))(tmp_path, home, work)
     )
     agents, d0 = evidence_common(client, root, department, response, log, calls)
     siblings = [
