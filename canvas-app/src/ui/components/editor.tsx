@@ -1,5 +1,6 @@
 // The decomposition editor of §2.2 and §2.3: Create decomposition (record null) and an opened one.
 
+import type { Ref } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { FrameParams, TabId } from "../../shared/protocol";
@@ -205,6 +206,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
   const [yamlError, setYamlError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const nameField = useRef<HTMLInputElement>(null);
+  const yamlField = useRef<HTMLDivElement>(null);
   const { draft } = stored;
   const text = draftYaml(draft);
 
@@ -448,6 +450,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
         />
       ) : (
         <YamlField
+          containerRef={yamlField}
           value={draft.yaml}
           error={yamlError}
           onChange={(yaml) => {
@@ -544,7 +547,9 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
         }
         onRename={() => {
           setOutcome(null);
-          nameField.current?.focus();
+          // In YAML mode the name is the YAML's own (§2.3).
+          if (draft.mode === "cards") nameField.current?.focus();
+          else yamlField.current?.querySelector("textarea")?.focus();
         }}
         onReload={(head) => {
           restart(fresh(head));
@@ -684,9 +689,10 @@ function YamlField(props: {
   error: string | null;
   onChange: (value: string) => void;
   onEditCards: () => void;
+  containerRef: Ref<HTMLDivElement>;
 }) {
   return (
-    <div class="yaml-edit">
+    <div class="yaml-edit" ref={props.containerRef}>
       <CodeField
         label="YAML"
         language="yaml"

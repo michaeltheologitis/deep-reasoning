@@ -176,6 +176,27 @@ def test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces
     assert saved.data["messages"][0]["content"] == TASK
 
 
+def test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name(open_ui):
+    page = open_ui(tab="create")
+    page.get_by_test_id("dr-view-yaml").click()
+    page.get_by_test_id("dr-edit-yaml").click()
+    existing = {
+        "name": "catalog lookup",
+        "messages": [
+            {"role": "user", "content": TASK},
+            {"role": "assistant", "content": "<repl>\nFinalAnswer(1)\n</repl>\n"},
+        ],
+    }
+    page.get_by_test_id("dr-yaml").fill(json.dumps(existing))
+    page.get_by_test_id("dr-save").click()
+    expect(page.get_by_test_id("dr-conflict")).to_contain_text(
+        "'catalog lookup' already exists (v1, in root)."
+    )
+    page.get_by_test_id("dr-rename").click()
+    expect(page.get_by_test_id("dr-conflict")).to_have_count(0)
+    expect(page.get_by_test_id("dr-yaml")).to_be_focused()
+
+
 def test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards(
     open_ui, library_server
 ):
