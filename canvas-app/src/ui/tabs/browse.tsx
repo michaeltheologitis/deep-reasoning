@@ -3,23 +3,15 @@
 import { useState } from "preact/hooks";
 
 import {
-  BackendUnavailable,
-  LibraryError,
   getDecompositions,
   getEffective,
   getNamespaces,
-  getProblems,
   getProfile,
 } from "../api";
 import { DecompositionEditor } from "../components/editor";
 import { Banner } from "../components/fields";
-import { useLoaded } from "../load";
-import {
-  BACKEND_LOST,
-  EFFECTIVE_FAILED,
-  INHERITED_ROW,
-  LABELS,
-} from "../texts";
+import { resolved, useLoaded } from "../load";
+import { EFFECTIVE_FAILED, INHERITED_ROW, LABELS } from "../texts";
 import type {
   DecompositionRecord,
   Effective,
@@ -51,32 +43,20 @@ interface Group {
   rows: Row[];
 }
 
-// D2 answers a bare 500 when a head no longer validates (its resolution raises); the reason
-// is then D2's own sentence for that head, from /problems.
-async function effectiveOrWhy(): Promise<[Effective[] | null, string | null]> {
-  try {
-    return [await getEffective(), null];
-  } catch (error) {
-    if (error instanceof LibraryError) return [null, error.message];
-    if (!(error instanceof BackendUnavailable) || error.status !== 500)
-      throw error;
-    const problems = await getProblems();
-    return [
-      null,
-      problems.map((p) => p.message).join(" ") || BACKEND_LOST(error.status),
-    ];
-  }
-}
-
 async function loadBrowse(): Promise<BrowseData> {
-  const [namespaces, decompositions, profile, [effective, failure]] =
-    await Promise.all([
-      getNamespaces(),
-      getDecompositions(),
-      getProfile(),
-      effectiveOrWhy(),
-    ]);
-  return { namespaces, decompositions, profile, effective, failure };
+  const [namespaces, decompositions, profile, effective] = await Promise.all([
+    getNamespaces(),
+    getDecompositions(),
+    getProfile(),
+    resolved(getEffective),
+  ]);
+  return {
+    namespaces,
+    decompositions,
+    profile,
+    effective: effective.value,
+    failure: effective.failure,
+  };
 }
 
 const rowOf = (record: DecompositionRecord): Row => ({

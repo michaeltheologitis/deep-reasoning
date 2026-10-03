@@ -1,7 +1,7 @@
 import pytest
 from playwright.sync_api import expect
 
-from deep_reasoning.library import store
+from tests.canvas_app.conftest import stale_head
 from tests.library.conftest import example, text
 
 pytestmark = pytest.mark.browser
@@ -162,15 +162,7 @@ def test_a_change_made_elsewhere_appears_without_a_reload(open_ui, library_serve
 def test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved(
     open_ui, library_server
 ):
-    # A head that no longer validates under the installed deep_reasoner, as after an
-    # upgrade: written to the store directly, since the Library refuses to write one.
-    with store.write(library_server.library().path, "test", "stale head") as w:
-        w.add(
-            "namespace",
-            "router.archive",
-            yaml="name: router.archive\nretired_key: 1\n",
-            attached=[],
-        )
+    stale_head(library_server)
     page = open_ui(tab="browse")
     expect(page.get_by_test_id("dr-effective-failed")).to_contain_text(
         "Inherited decompositions cannot be shown: Namespace 'router.archive' version 2 "

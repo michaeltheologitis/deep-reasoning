@@ -20,7 +20,7 @@ from urllib.parse import urlencode
 import pytest
 from playwright.sync_api import Browser, Error, Page, expect, sync_playwright
 
-from deep_reasoning.library import Library, library_path
+from deep_reasoning.library import Library, library_path, store
 
 FIXTURE = Path(__file__).parent / "fixtures" / "library" / "main.yaml"
 DR_LIBRARY = Path(sys.executable).parent / "dr-library"
@@ -186,3 +186,15 @@ def parent_site(tmp_path: Path) -> Iterator[Callable[[dict[str, str]], str]]:
     yield publish
     server.shutdown()
     server.server_close()
+
+
+def stale_head(server: LibraryServer) -> None:
+    """A head that no longer validates under the installed deep_reasoner, as after an
+    upgrade: written to the store directly, since the Library refuses to write one."""
+    with store.write(server.library().path, "test", "stale head") as w:
+        w.add(
+            "namespace",
+            "router.archive",
+            yaml="name: router.archive\nretired_key: 1\n",
+            attached=[],
+        )

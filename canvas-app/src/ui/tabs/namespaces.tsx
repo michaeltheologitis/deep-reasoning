@@ -40,7 +40,7 @@ import type {
   ProfileRecord,
   ToolRecord,
 } from "../types";
-import { type Attempt, attempt, useLoaded } from "../load";
+import { type Attempt, attempt, resolved, useLoaded } from "../load";
 import { parseYaml, stringifyYaml } from "../yaml";
 import type { TabProps } from "./props";
 
@@ -269,7 +269,7 @@ function NamespaceDetail(props: {
 }) {
   const { name, library } = props;
   const effective = useLoaded(
-    () => getNamespaceEffective(name),
+    () => resolved(() => getNamespaceEffective(name)),
     [name, props.rev],
     props.onBackendLost,
   );
@@ -331,7 +331,8 @@ function NamespaceDetail(props: {
   }
 
   const fieldProps = { here: name, document, editing, setEditing, set, reset };
-  const view = effective.data;
+  const view = effective.data?.value;
+  const failure = effective.data?.failure;
   return (
     <div class="namespace">
       <h2 data-testid="dr-namespace-title">{name}</h2>
@@ -347,6 +348,11 @@ function NamespaceDetail(props: {
         >
           {MAKE_DEFAULT}
         </button>
+      )}
+      {failure && (
+        <Banner kind="error" testId="dr-effective-failed">
+          {failure}
+        </Banner>
       )}
       {effective.error && (
         <Banner kind="error">{effective.error.message}</Banner>

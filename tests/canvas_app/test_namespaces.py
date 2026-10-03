@@ -1,7 +1,7 @@
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.canvas_app.conftest import get_json
+from tests.canvas_app.conftest import get_json, stale_head
 
 pytestmark = pytest.mark.browser
 
@@ -258,3 +258,15 @@ def test_keys_the_panel_does_not_show_survive_an_override(open_ui, library_serve
         "spawn": ["course_advisor"],
         "reasoner": {"kind": "chat"},
     }
+
+
+def test_a_namespace_whose_inheritance_cannot_be_resolved_says_why(
+    open_ui, library_server
+):
+    stale_head(library_server)
+    page = open_ui(tab="namespaces", focus="course_advisor")
+    expect(page.get_by_test_id("dr-effective-failed")).to_contain_text(
+        "Namespace 'router.archive' version 2 no longer validates"
+    )
+    expect(page.get_by_test_id("dr-delete-namespace")).to_be_visible()
+    expect(page.get_by_test_id("dr-backend-lost")).to_have_count(0)
