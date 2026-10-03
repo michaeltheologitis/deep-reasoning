@@ -1,4 +1,11 @@
-"""The SQLite file: schema and migrations, connections, the writer, heads and history (§4.2)."""
+"""The SQLite file: schema and migrations, connections, the writer, heads and history (§4.2).
+
+Nothing stored is updated or deleted, and triggers refuse both: a save appends versions
+under one new revision, a delete appends a tombstone, and an entity's head as of a
+revision is its highest version at or before it. Several processes share the file, each
+opening a connection per operation: a write is BEGIN IMMEDIATE, so writers queue, and
+WAL lets reads go on beside it.
+"""
 
 import contextlib
 import json

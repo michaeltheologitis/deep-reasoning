@@ -70,6 +70,9 @@ class ToolRecord(Saved):
 
 
 class HistoryEntry(Saved):
+    """One stored version, with its revision's time and action; a tombstone is deleted
+    and has no yaml."""
+
     kind: Kind
     name: str
     action: str  # the revision's action

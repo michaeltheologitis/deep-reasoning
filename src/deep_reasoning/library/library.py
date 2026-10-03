@@ -1,4 +1,14 @@
-"""Library: the Python API over one library file (§4.5)."""
+"""Library: the Python API over one library file (§4.5).
+
+Each read is one read transaction, so all it returns is of one revision; a record is
+read by building every live head into a LibraryState. A write is one save, making one
+revision or none: its input is validated before the transaction; inside it,
+base_version is checked against the live head, only what differs from a head is
+written, and each namespace or profile whose list the save changes gets a version in
+the same revision. The invariants are checked over every live head once, just before
+commit, because a save may pass through a state that breaks one: an import can write a
+namespace before its parent.
+"""
 
 import contextlib
 import shutil
