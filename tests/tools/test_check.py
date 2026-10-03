@@ -331,6 +331,21 @@ def test_a_tool_that_ends_the_process_is_raised_saying_how_it_ended():
     )
 
 
+def test_an_example_that_ends_the_process_says_how_and_the_build_stays_ok():
+    exits = "__import__('os')._exit(5)"
+    report = check_tool(
+        "word_count", "factory: make", source("word_count"), example=exits
+    )
+    assert (report.ok, report.outcome) == (True, "built")
+    assert report.example == ExampleResult(
+        expression=exits,
+        ok=False,
+        value=None,
+        error=texts.child_ended("word_count", "exit code 5", "trying it"),
+        seconds=DEFAULT_LIMITS.example_s,
+    )
+
+
 def test_a_check_that_cannot_start_deep_reasoner_in_time_is_unavailable():
     limits = CheckLimits(ready_s=0.01)
     report = check_tool(
@@ -339,6 +354,18 @@ def test_a_check_that_cannot_start_deep_reasoner_in_time_is_unavailable():
     assert (report.outcome, report.message, report.can_save_anyway) == (
         "unavailable",
         texts.ready_timeout(0.01),
+        True,
+    )
+
+
+def test_a_check_whose_process_cannot_be_started_is_unavailable(monkeypatch):
+    missing = "/nonexistent/python3"
+    monkeypatch.setattr(sys, "executable", missing)
+    report = check_tool("word_count", "factory: make", source("word_count"))
+    how = f"FileNotFoundError: [Errno 2] No such file or directory: '{missing}'"
+    assert (report.outcome, report.message, report.can_save_anyway) == (
+        "unavailable",
+        texts.child_ended("word_count", how, "starting"),
         True,
     )
 
