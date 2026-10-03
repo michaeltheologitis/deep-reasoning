@@ -63,10 +63,12 @@ reason, is §3.4.
   defined (H4); §4.2's `Outbox.observe` (H5); §6.3's and §7's `StopReceipt`, the stop adapters'
   and `Recorder.note_stop`'s return types, and `Recorder.arm` (H6); §4.2's `RunHandle.child`,
   `Session.stop_child`'s return and `cancel`'s routing (H7); §8.5's sdist excludes and §8.2's
-  tree defaults and notice rule, v3 errors (H11). Added without changing earlier sentences:
-  `Session.menu()` (H8); §6.3's note on a collateral sibling that runs on (H10) and §10 item 8;
-  §8.1's Claude Code row; §9's EXP-27 and EXP-28, row R18 and the genai-prices rows. Every change
-  is listed, with its reason, in §3.4.
+  tree defaults and notice rule, v3 errors (H11); §3.2 B18's "Michael rules on it at Gate B"
+  (he approved D1 as built on 2026-10-03, so B18 stands) and its line numbers; §3.3 C2's pointer
+  to the Gate B table. Added without changing earlier sentences: `Session.menu()` (H8); §6.3's
+  note on a collateral sibling that runs on (H10) and §10 item 8, a known limitation until Dean's
+  `stop(node_id)` ships; §8.1's Claude Code row; §9's EXP-27 and EXP-28, row R18 and the
+  genai-prices rows. Every code change is listed, with its reason, in §3.4.
 - 2026-10-03 · v3 · brought in line with the build at `21f4a8b`, after Proof Green. **The live doc
   is gone:** the spec's amendment of 2026-10-02 made Gate B's evidence the tests ("Item (6) …
   'Gate B live doc', now means these tests"), so `docs/dr-acp.ipynb` is deleted (v2's `docs`
@@ -433,10 +435,13 @@ how the tests prove it; B15 is the signatures; B16 is what is still unverified; 
   `main`, since GitHub offers a `workflow_dispatch` workflow only from the default branch.
 - **B18. `close` does not wait for a prompt** (§4.2 `session.py`). Found by the Cartographer
   (as-built D-5). `session/close`, shutdown and the close inside `session/load` do not take the
-  session lock (`session.py:143`, `agent.py:168, 183`), so a close during a prompt ends that
-  prompt with outcome `closed` instead of waiting for it. The build recorded no reason; the
-  Conductor's reading is that waiting would hold a close, and OpenHands' shutdown, behind a prompt
-  that may run for minutes. Michael rules on it at Gate B. `prompt`, `set_config_option` and `load` still serialize on the lock.
+  session lock (the lock is taken at `session.py:144`, `agent.py:161, 176` at `2a15388`; v3 cited
+  `session.py:143`, `agent.py:168, 183`), so a close during a prompt ends that prompt with outcome
+  `closed` instead of waiting for it. The build recorded no reason; the Conductor's reading is
+  that waiting would hold a close, and OpenHands' shutdown, behind a prompt that may run for
+  minutes. *Approved (v4):* Michael approved D1 at Gate B on 2026-10-03 as built ("D1, D2 both
+  approved"), so B18 stands: closing a conversation mid-prompt ends the prompt rather than waiting.
+  `prompt`, `set_config_option` and `load` still serialize on the lock.
 
 ### 3.3 Where the build followed the Code Guide over v2 (v3)
 
@@ -449,8 +454,8 @@ how the tests prove it; B15 is the signatures; B16 is what is still unverified; 
 - **C2. One test file per module, not one per experiment.** v2's §8.1 named a file per
   experiment (`test_tree_fidelity.py`, `test_stdio_integrity.py`, …). The Code Guide says one
   `test_<module>.py` per module, and an experiment crosses modules, so each experiment is a set
-  of named tests in several files. §8.1 maps them; the Gate B table names the ones that carry
-  each property. Shared machinery: `tests/acp/harness.py` (spawn `dr-acp`, check every message),
+  of named tests in several files. §8.1 maps them (v3's Gate B table also named the ones that
+  carry each property; v4 removed that table, and §8.1 is the map). Shared machinery: `tests/acp/harness.py` (spawn `dr-acp`, check every message),
   `scenarios.py` (E1's scripted runs and deep_reasoner's own tree), `streams.py` (hand-written
   update streams), `golden.py`; fixtures in `tests/conftest.py`.
 - **C3. Run ids are in UTC** (`datetime.now(UTC)`), not deep_reasoner's local time
@@ -2763,5 +2768,6 @@ their numbers.
    `StoppedByUser` sentence in the parent's cell output has already named it as stopped with the
    target. D1 records this and does not work around it. The test pins the interim's behaviour
    where a cancellation does land, and Dean's `stop(node_id)` (R1) cancels no sibling, so the
-   case goes when he ships. Until then the Conductor decides whether the sentence needs a caveat
-   (§5.6), or whether this stays a known limitation.
+   case goes when he ships. **A known limitation until then** (the Conductor's decision,
+   2026-10-03): the §5.6 sentence is unchanged, and the Conductor raises it with Michael at
+   Gate C.
