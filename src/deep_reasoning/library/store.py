@@ -8,12 +8,11 @@ import secrets
 import sqlite3
 import sys
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from deep_reasoning.library import texts
-from deep_reasoning.library.records import Kind, LibraryError
+from deep_reasoning.library.records import HistoryEntry, Kind, LibraryError
 from deep_reasoning.library.shapes import deep_reasoner_build
 
 __all__ = ["Kind"]
@@ -69,64 +68,31 @@ NETWORK_FILESYSTEMS: frozenset[str] = frozenset(
 MOUNTS = Path("/proc/self/mounts")
 BUSY_TIMEOUT_MS = 5000
 
-# Every version with its revision's time and action, and the revision of its version 1
-# (creation order is the rowid of that first version).
+# One version as it is read back: the version joined to its revision's time and action.
+Row = HistoryEntry
+
 _ROWS = """
-SELECT v.*, r.at, r.action,
-       (SELECT w.rev FROM versions AS w
-         WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1) AS created_rev,
-       (SELECT w.rowid FROM versions AS w
-         WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1) AS created
+SELECT v.kind, v.name, v.version, v.rev, r.at AS saved_at, r.action, v.deleted, v.yaml,
+       v.attached AS decompositions, v.slug, v.use_when, v.hint, v.source, v.deep_reasoner
   FROM versions AS v JOIN revisions AS r USING (rev)
 """
+# Creation order is the rowid of an entity's version 1.
 _HEADS = (
     _ROWS
     + """
  WHERE v.version = (SELECT MAX(w.version) FROM versions AS w
                      WHERE w.kind = v.kind AND w.name = v.name AND w.rev <= :rev)
    AND v.deleted = 0
- ORDER BY created
+ ORDER BY (SELECT w.rowid FROM versions AS w
+            WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1)
 """
 )
 
 
-@dataclass(frozen=True)
-class Row:
-    kind: Kind
-    name: str
-    version: int
-    rev: int
-    at: datetime  # the revision's time, UTC
-    action: str  # the revision's action
-    created_rev: int  # the revision of version 1: creation order
-    deleted: bool
-    yaml: str | None
-    attached: list[str] | None
-    slug: str | None
-    use_when: str | None
-    hint: str | None
-    source: str | None
-    deep_reasoner: str
-
-
 def _row(record: sqlite3.Row) -> Row:
-    attached = record["attached"]
-    return Row(
-        kind=record["kind"],
-        name=record["name"],
-        version=record["version"],
-        rev=record["rev"],
-        at=datetime.fromisoformat(record["at"]),
-        action=record["action"],
-        created_rev=record["created_rev"],
-        deleted=bool(record["deleted"]),
-        yaml=record["yaml"],
-        attached=json.loads(attached) if attached is not None else None,
-        slug=record["slug"],
-        use_when=record["use_when"],
-        hint=record["hint"],
-        source=record["source"],
-        deep_reasoner=record["deep_reasoner"],
+    attached = record["decompositions"]
+    return Row.model_validate(
+        {**record, "decompositions": attached and json.loads(attached)}
     )
 
 

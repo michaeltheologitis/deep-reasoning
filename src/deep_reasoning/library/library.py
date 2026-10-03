@@ -5,7 +5,7 @@ import shutil
 import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 import yaml
 from pydantic import ValidationError
@@ -56,58 +56,34 @@ def _default_namespace(profile_yaml: str) -> str:
 def _state(path: Path, rows: list[Row], rev: int) -> LibraryState:
     """Records from live heads: derived lists (namespaces, top_level, granted_in) included."""
     of = {
-        kind: [r for r in rows if r.kind == kind]
-        for kind in ("namespace", "decomposition", "tool")
+        kind: [r.model_dump() for r in rows if r.kind == kind]
+        for kind in get_args(Kind)
     }
-    [p] = [r for r in rows if r.kind == "profile"]
-    profile = ProfileRecord(
-        version=p.version,
-        rev=p.rev,
-        saved_at=p.at,
-        yaml=p.yaml,
-        decompositions=p.attached or [],
-        default_namespace=_default_namespace(p.yaml),
+    for listing in of["profile"] + of["namespace"]:
+        listing["decompositions"] = listing["decompositions"] or []
+    [p] = of["profile"]
+    profile = ProfileRecord.model_validate(
+        {**p, "default_namespace": _default_namespace(p["yaml"])}
     )
-    ordered = sorted(of["namespace"], key=lambda r: r.name != ROOT)
-    namespaces = {
-        r.name: NamespaceRecord(
-            version=r.version,
-            rev=r.rev,
-            saved_at=r.at,
-            name=r.name,
-            yaml=r.yaml,
-            decompositions=r.attached or [],
-        )
-        for r in ordered
-    }
+    ordered = sorted(of["namespace"], key=lambda r: r["name"] != ROOT)
+    namespaces = {r["name"]: NamespaceRecord.model_validate(r) for r in ordered}
+
+    def derived(name: str, listed: Callable[[NamespaceRecord], list[str]]) -> list[str]:
+        return [n for n, ns in namespaces.items() if name in listed(ns)]
+
     decompositions = {
-        r.name: DecompositionRecord(
-            version=r.version,
-            rev=r.rev,
-            saved_at=r.at,
-            name=r.name,
-            slug=r.slug,
-            yaml=r.yaml,
-            use_when=r.use_when,
-            hint=r.hint,
-            namespaces=[
-                n for n, ns in namespaces.items() if r.name in ns.decompositions
-            ],
-            top_level=r.name in profile.decompositions,
+        r["name"]: DecompositionRecord.model_validate(
+            {
+                **r,
+                "namespaces": derived(r["name"], lambda ns: ns.decompositions),
+                "top_level": r["name"] in profile.decompositions,
+            }
         )
-        for r in sorted(of["decomposition"], key=lambda r: r.slug)
+        for r in sorted(of["decomposition"], key=lambda r: r["slug"])
     }
     tools = {
-        r.name: ToolRecord(
-            version=r.version,
-            rev=r.rev,
-            saved_at=r.at,
-            name=r.name,
-            yaml=r.yaml,
-            source=r.source,
-            granted_in=[
-                n for n, ns in namespaces.items() if r.name in ns.data.get("tools", [])
-            ],
+        r["name"]: ToolRecord.model_validate(
+            {**r, "granted_in": derived(r["name"], lambda ns: ns.data.get("tools", []))}
         )
         for r in of["tool"]
     }
@@ -130,25 +106,6 @@ def _record(state: LibraryState, kind: Kind, name: str) -> Saved | None:
         "tool": state.tools,
     }
     return found[kind].get(name)
-
-
-def _history_entry(row: Row) -> HistoryEntry:
-    return HistoryEntry(
-        version=row.version,
-        rev=row.rev,
-        saved_at=row.at,
-        kind=row.kind,
-        name=row.name,
-        action=row.action,
-        deleted=row.deleted,
-        yaml=row.yaml,
-        decompositions=row.attached,
-        slug=row.slug,
-        use_when=row.use_when,
-        hint=row.hint,
-        source=row.source,
-        deep_reasoner=row.deep_reasoner,
-    )
 
 
 def _check_invariants(rows: list[Row]) -> None:
@@ -176,7 +133,7 @@ def _check_invariants(rows: list[Row]) -> None:
             else f"namespace '{holder.name}'"
         )
         seen: set[str] = set()
-        for name in holder.attached or []:
+        for name in holder.decompositions or []:
             if ("decomposition", name) not in live:
                 raise _refuse(texts.unknown_decomposition(name), "decompositions")
             if name in seen:
@@ -184,20 +141,18 @@ def _check_invariants(rows: list[Row]) -> None:
             seen.add(name)
 
 
-def _changed(head: Row | None, fields: dict[str, Any]) -> bool:
-    if head is None or head.deleted:
-        return True
-    return any(getattr(head, key) != value for key, value in fields.items())
-
-
 def _add(w: Writer, kind: Kind, name: str, **fields: Any) -> int | None:
-    """Write the next version unless the head is live and equal; the version written."""
-    if "attached" in fields:
-        fields["attached"] = list(fields["attached"])
-    fields = {"slug": None, "use_when": None, "hint": None, "source": None, **fields}
-    if not _changed(w.head(kind, name), fields):
+    """Write the next version unless the head is live and equal; the version written.
+    fields: yaml, and decompositions, slug, use_when, hint and source (default None)."""
+    fields = (
+        dict.fromkeys(("decompositions", "slug", "use_when", "hint", "source")) | fields
+    )
+    if fields["decompositions"] is not None:
+        fields["decompositions"] = list(fields["decompositions"])
+    head = _live(w, kind, name)
+    if head and head.model_dump(include=set(fields)) == fields:
         return None
-    return w.add(kind, name, **fields)
+    return w.add(kind, name, attached=fields.pop("decompositions"), **fields)
 
 
 def _live(w: Writer, kind: Kind, name: str) -> Row | None:
@@ -212,27 +167,27 @@ def _attached_set(w: Writer, decomposition: str, wanted: Sequence[str]) -> None:
         if name not in {r.name for r in namespaces}:
             raise _refuse(texts.not_found("namespace", name), "namespaces")
     for ns in namespaces:
-        has, want = decomposition in ns.attached, ns.name in wanted
+        has, want = decomposition in ns.decompositions, ns.name in wanted
         if want and not has:
             _add(
                 w,
                 "namespace",
                 ns.name,
                 yaml=ns.yaml,
-                attached=[*ns.attached, decomposition],
+                decompositions=[*ns.decompositions, decomposition],
             )
         elif has and not want:
-            kept = [d for d in ns.attached if d != decomposition]
-            _add(w, "namespace", ns.name, yaml=ns.yaml, attached=kept)
+            kept = [d for d in ns.decompositions if d != decomposition]
+            _add(w, "namespace", ns.name, yaml=ns.yaml, decompositions=kept)
 
 
 def _top_level(w: Writer, decomposition: str, wanted: bool) -> None:
     profile = w.head("profile", PROFILE)
-    if wanted == (decomposition in profile.attached):
+    if wanted == (decomposition in profile.decompositions):
         return
-    kept = [d for d in profile.attached if d != decomposition]
-    attached = [*kept, decomposition] if wanted else kept
-    _add(w, "profile", PROFILE, yaml=profile.yaml, attached=attached)
+    kept = [d for d in profile.decompositions if d != decomposition]
+    listed = [*kept, decomposition] if wanted else kept
+    _add(w, "profile", PROFILE, yaml=profile.yaml, decompositions=listed)
 
 
 def _with_tools(ns: Row, tools: list[str]) -> str:
@@ -258,7 +213,13 @@ def _granted_set(w: Writer, tool: str, wanted: Sequence[str]) -> None:
             tools = [t for t in tools if t != tool]
         else:
             continue
-        _add(w, "namespace", ns.name, yaml=_with_tools(ns, tools), attached=ns.attached)
+        _add(
+            w,
+            "namespace",
+            ns.name,
+            yaml=_with_tools(ns, tools),
+            decompositions=ns.decompositions,
+        )
 
 
 def _first_error(exc: LibraryValidationError) -> str:
@@ -329,7 +290,7 @@ class Library:
                 rows = store.history(conn, kind, named) if named else []
         if not rows:
             raise LibraryNotFound(texts.not_found(kind, key))
-        return [_history_entry(r) for r in rows]
+        return rows
 
     def effective(self, namespace: str) -> Effective:
         """What namespace inherits; a stale head is LibraryValidationError, as at
@@ -415,8 +376,8 @@ class Library:
         with self._save("put profile", None) as w:
             head = self._base(w, "profile", PROFILE, base_version)
             if decompositions is None:
-                decompositions = head.attached
-            _add(w, "profile", PROFILE, yaml=shaped.yaml, attached=decompositions)
+                decompositions = head.decompositions
+            _add(w, "profile", PROFILE, yaml=shaped.yaml, decompositions=decompositions)
             return self._read_back(w, "profile", PROFILE)
 
     def put_namespace(
@@ -431,8 +392,8 @@ class Library:
         with self._save("put namespace", name) as w:
             head = self._base(w, "namespace", name, base_version)
             if decompositions is None:
-                decompositions = head.attached if head else []
-            _add(w, "namespace", name, yaml=shaped.yaml, attached=decompositions)
+                decompositions = head.decompositions if head else []
+            _add(w, "namespace", name, yaml=shaped.yaml, decompositions=decompositions)
             return self._read_back(w, "namespace", name)
 
     def put_decomposition(
@@ -502,7 +463,7 @@ class Library:
                 _top_level(w, name, False)
             if kind == "tool":
                 _granted_set(w, name, [])
-            return _history_entry(w.head(kind, name))
+            return w.head(kind, name)
 
     def import_config(self, path: str | Path) -> ImportReport:
         """A dr config (its main YAML, or a directory holding main.yaml), merged by name."""
@@ -616,7 +577,7 @@ class Library:
             for name, shaped in decompositions.items():
                 head = _live(w, "decomposition", name)
                 kept = (
-                    DecompositionMeta(use_when=head.use_when, hint=head.hint)
+                    DecompositionMeta.model_validate(head, from_attributes=True)
                     if head
                     else DecompositionMeta()
                 )
@@ -633,8 +594,16 @@ class Library:
             for name, (shaped, source) in tools.items():
                 put(w, "tool", name, yaml=shaped.yaml, source=source)
             for shaped, attached in namespaces:
-                put(w, "namespace", shaped.name, yaml=shaped.yaml, attached=attached)
-            put(w, "profile", PROFILE, yaml=profile.yaml, attached=parts.top_level)
+                put(
+                    w,
+                    "namespace",
+                    shaped.name,
+                    yaml=shaped.yaml,
+                    decompositions=attached,
+                )
+            put(
+                w, "profile", PROFILE, yaml=profile.yaml, decompositions=parts.top_level
+            )
         return ImportReport(
             source=parts.main, rev=w.rev, changed=changed, unchanged=unchanged
         )
