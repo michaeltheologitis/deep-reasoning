@@ -12,15 +12,17 @@ commit, which touches only `AGENTS.md` and `CLAUDE.md`, so every line number bel
 (`docs/design/d1-dr-acp.md` §5, the ACP contract S2 forwards) · Canvas fork `deep-reasoning` at
 `02b7ac7` (`1ff45c2` plus its ASE commit).
 
-**Matches the build at `6f97bf3`** (v2): the 15 commits on `feat/agent-surfaces` after `91430aa`, in
-the draft pull request
+**Matches the build at `5e3317f`** (v2.2): `feat/agent-surfaces` in the draft pull request
 [michaeltheologitis/software-agent-sdk#1](https://github.com/michaeltheologitis/software-agent-sdk/pull/1)
-against the fork's `deep-reasoning` (head `ea51b3f`). Fourteen are S2's, grouped as the three PRs:
-PR 1 `28ca2e1`, `c3d1db8`, `d0d3fe1`, `5252840`, `e2ec3a9`, `4027912`, `00a5310`; PR 2 `132db0f`,
-`8523177`; PR 3 `759ffb2`, `1d2627b`, `28e5654`, `0e24793`, `6f97bf3`. The fifteenth, `aff05f6`, merges
-`ea51b3f`, a fork-only runner change, and brings nothing else (§3.2 B17), so `git diff
-ea51b3f..6f97bf3` is S2 alone. S1 (`feat/acp-subagent-sessions`, `0cfb6a2`) is stacked on `6f97bf3`.
-Line numbers cited from the built code are at `6f97bf3`; v1's are upstream's, as before.
+against the fork's `deep-reasoning` (head `1f2b52d`). The branch holds 18 commits that
+`deep-reasoning` lacks. Sixteen are S2's, grouped as the three PRs: PR 1 `28ca2e1`, `c3d1db8`,
+`d0d3fe1`, `5252840`, `e2ec3a9`, `4027912`, `00a5310`, `5e3317f`; PR 2 `132db0f`, `8523177`,
+`13e5904`; PR 3 `759ffb2`, `1d2627b`, `28e5654`, `0e24793`, `6f97bf3`. The other two merge
+`deep-reasoning`'s fork-only CI commits and bring nothing else: `aff05f6` (`ea51b3f`, the runners,
+§3.2 B17) and `c12f7b4` (`1f2b52d`, upstream's main-only guards on pull requests into the fork's
+branches, B25). So `git diff 1f2b52d..5e3317f` is S2 alone. S1 (`feat/acp-subagent-sessions`,
+`0cfb6a2`) was cut from `6f97bf3`, before the last four. Line numbers cited from the built code are
+at `6f97bf3` unless a commit is named; v1's are upstream's, as before.
 
 ## Gate B: what to read
 
@@ -31,73 +33,81 @@ the PR split build against (Michael: don't force compression); Gate B does not n
 
 | # | Read | What it gives you | Minutes |
 |---|---|---|---|
-| 1 | This section and the v2 revision line below it | where the proof is, and which sentences of v1 changed | 8 |
+| 1 | This section and the v2.2, v2.1 and v2 revision lines below it | where the proof is, and which sentences of v1 changed | 10 |
 | 2 | §1 | what S2 changes; v2 corrects its order-and-independence paragraph | 5 |
 | 3 | §3.1 | the departures from the spec: the ten accepted on 2026-10-02, all still true; items 11 and 12 new | 4 |
 | 4 | §3.2 | what the build changed, each with its reason and the test that pins it | 12 |
 | 5 | §7 | the contract C2 builds against; items 2, 4, 5 and 6 changed (item 4 again in v2.1) | 4 |
 | 6 | Open the runs below | that they are green | 2 |
-| 7 | `as_built/s2-agent-surfaces.md` | what exists and its divergences, as the Cartographer read them | 10 |
+| 7 | `as_built/s2-agent-surfaces.md` | what exists and its divergences, as the Cartographer read them (at `6f97bf3`; §3.2 B22 corrects one of its findings) | 8 |
 
 **One thing to rule on: size.** The spec estimated S2 at ≈0.9k lines with tests and ≈3 h at Gate C
 (S2's cost line: commands and options ≈200, preview ≈150, panels ≈60, macOS ≈30, TypeScript client
-≈100, tests ≈350); v1 gave no estimate of its own. The build is **4,731 lines added and 155 removed**
-at `6f97bf3` (3,937 non-blank added): 1,705 of code and CI, 3,026 of tests (2,572 Python, the 299-line
-scripted ACP agent, 155 TypeScript). PR 1 is 3,754 of them, PR 2 572, PR 3 405. At ≈300 lines an hour
-Gate C reads it in about 16 h, against the spec's ≈3 h: tests 8.6 times the estimate, code 3.2 times.
+≈100, tests ≈350); v1 gave no estimate of its own. The build is **4,837 lines added and 155 removed**
+at `5e3317f` (4,023 non-blank added): 1,714 of code and CI, 3,123 of tests (2,658 Python, the 310-line
+scripted ACP agent, 155 TypeScript). PR 1 is 3,839 of them, PR 2 593, PR 3 405. At ≈300 lines an hour
+Gate C reads it in about 16 h, against the spec's ≈3 h: tests 8.9 times the estimate, code 3.2 times.
 The build recorded no reason for the growth; this design's reading is §3.2 B19. The Scout and the
 Refactorer, after Gate B, are where it shrinks.
 
 **The evidence.**
 
-- **CI**, PR #1's checks at `6f97bf3`, the branch's head: every check green, one skipped ("Validate
-  PR description", upstream's contributor gate, skipped on the draft). Upstream's `tests.yml`,
-  [run 37099674559](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37099674559):
-  **sdk-tests** 6,699 passed, 7 skipped, 12 xfailed; **agent-server-tests** 2,426 passed (the OpenAPI
-  contract and the weak-schema ratchet among them); **cross-tests** 496 passed, 1 skipped;
-  **macos-app-backend-tests**, PR 3's new job on `macos-latest`, 178 passed (all of
-  `tests/agent_server/canvas_extensions`); **acp-live-tests** 25 passed, 2 skipped: S2's six built-in
-  provider previews ran here too, at `6f97bf3` itself, and its two dr-acp tests skipped (no agent
-  command set); and windows-tests, tools-tests, workspace-tests, agent-server-stress-tests, Test
-  directory allowlist and coverage-report. Also green: Pre-commit checks
-  ([37099674560](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37099674560)),
-  Check Docstrings
-  ([37099674562](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37099674562)),
-  Deprecation deadlines
-  ([37099674595](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37099674595)),
-  TypeScript client endpoint audit
-  ([37099674573](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37099674573)).
-- **Not run in CI:** what upstream runs only for pull requests to `main`: the REST API breakage check
-  (oasdiff, `agent-server-rest-api-breakage.yml`), persisted-settings compatibility
-  (`persisted-settings-compat.yml`), the TypeScript client CI and its integration tests
-  (`typescript-client-ci.yml`, `typescript-client-integration-tests.yml`), and the SDK API breakage
-  check (`version-bump-guard.yml`). So **S2's 8 TypeScript tests have not run in CI.** The Implementer
-  ran the REST, persisted-settings and TypeScript checks locally at `28e5654` (PR #1's description:
-  REST breakage against v1.50.1, persisted settings, and the TypeScript client's lint, build, 355
-  tests, format, API tooling and endpoint audit, all passing); the three commits after it touch no
-  REST schema and no TypeScript. *(v2.1)* The Cartographer re-ran two at `6f97bf3` itself: the
-  persisted-settings guard passes (17 fixtures, 8 payloads from 1.50.1) and the TypeScript suite
-  passes (23 files, 355 tests, `tsc --noEmit` clean; lint not run) (as-built D-5, §6.1). **The SDK API
-  breakage check has no recorded run anywhere, and the REST check none at `6f97bf3`.** v1's per-PR
-  drafts onto `main` (§9) come with the PR split (§3.2 B18, §10 item 11).
-- **Live tier**, deep-reasoning's `fork-live.yml`,
-  [run 37141960911](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37141960911),
-  dispatched on branch `ci/fork-live` (`a8154e2`: D1's head plus the workflow, so D1's `dr-acp` is the
-  agent behind the bridge) with `sdk_ref` `feat/acp-subagent-sessions`, which checked out `0cfb6a2`.
-  **That is S1's head, carrying S2's `6f97bf3` unchanged under S1's five commits: the live run tested
-  S2 inside S1's head, not S2's own head** (§10 item 12). Its step "S2, commands, options and the
-  preview" ran `tests/sdk/agent/test_acp_session_controls_live.py`: **8 passed in 100 s.**
+- **CI**, PR #1's checks at `5e3317f`, the branch's head: 28 check runs, every one green but upstream's
+  "Validate PR description" (skipped on a draft). With the fork-only `1f2b52d` (B25), upstream's
+  main-only guards ran on this pull request too.
+  - Upstream's `tests.yml`, [run 37146974364](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974364): **sdk-tests** 6,699 passed, 7
+    skipped, 12 xfailed; **agent-server-tests** 2,431 passed (B23's and B24's five new tests among
+    them); **cross-tests** 496 passed, 1 skipped; **macos-app-backend-tests**, PR 3's job on
+    `macos-latest`, 178 passed (all of `tests/agent_server/canvas_extensions`); **acp-live-tests** 25
+    passed, 2 skipped (S2's six built-in provider previews passed at `5e3317f`; its two dr-acp tests
+    skip without an agent command); and windows-tests, tools-tests, workspace-tests,
+    agent-server-stress-tests, Test directory allowlist and coverage-report.
+  - The guards upstream runs only for pull requests to `main`: **TypeScript client CI**
+    ([37146974358](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974358): build, security, `test (22.12)` and `test (24.x)` with lint (7
+    warnings, no errors), 23 files and **355 tests, S2's 8 among them**, format and coverage,
+    public-type-budget, agent-server-api, validate-acp-providers); **TypeScript client integration
+    tests** ([37146974428](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974428): smoke-test, integration-test); **Persisted settings
+    compatibility checks** ([37146974370](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974370)); **REST API breakage checks**
+    ([37146974332](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974332)) and the **Version bump guard**
+    ([37146974326](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974326)), green with the caveats below.
+  - Also green: Pre-commit checks ([37146974316](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974316)), Check Docstrings
+    ([37146974314](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974314)), Deprecation deadlines ([37146974368](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974368)),
+    TypeScript client endpoint audit ([37146974355](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974355)).
+- **What CI's green does not cover** (B25):
+  - **The REST breakage check ran without its oasdiff comparison.** The fork carries no `v1.50.1` tag, so the script
+    could not build its baseline (`git archive v1.50.1`: "not a valid object name") and, by its own
+    rule, ran only its static and deprecation-policy checks and exited 0; oasdiff did not run. The
+    oasdiff comparison of S2 against v1.50.1 is still the Implementer's local run at `28e5654` (PR
+    #1's description: passes). The two commits after it that touch the API add tests and document
+    the icon route's response; that route is new since v1.50.1, so oasdiff has nothing to compare
+    there.
+  - **The SDK API breakage check was skipped**: the version-bump guard runs "Check Python API
+    compatibility" only when a package version changes, and none did. The Conductor ran it locally
+    at S2's head: one error, upstream's (`ACPAgentSettings.llm` against PyPI 1.50.1), the same on
+    `deep-reasoning`; S2 adds none.
+  - **The OpenAPI weak-schema ratchet over S2's real schema did not run in CI.** It is `make
+    test-server-schema`, a step of `server.yml`, which `1f2b52d` left on `main` only because the same
+    workflow builds and pushes images; the agent-server suite tests only the ratchet's logic, on
+    synthetic documents (`test_openapi_contract.py`), so v2's "the weak-schema ratchet among them"
+    overstated it (B23). The Conductor ran it locally at `5e3317f`: passes, 62 allowlisted locations,
+    after `13e5904` fixed the one it found.
+- **Live tier**, deep-reasoning's `fork-live.yml` on branch `ci/fork-live` (`a8154e2`: D1's head plus
+  the workflow, so D1's `dr-acp` is the agent behind the bridge),
+  [run 37147707860](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37147707860), dispatched with `sdk_ref` `5e3317f` and `suites: s2`: the SDK
+  checkout is **`5e3317f`, S2's own head**. Its step "S2, commands, options and the preview" ran
+  `tests/sdk/agent/test_acp_session_controls_live.py`: **8 passed in 124 s.**
   - `test_a_built_in_provider_can_be_previewed[claude-code|codex|gemini-cli|kimi-code|pi|opencode]`:
     each starts that provider's ACP adapter (through `npx`, with a bogus key) and previews its
-    commands and options. No prompt was sent to any of them. The same six passed in PR #1's
-    `acp-live-tests` at `6f97bf3`.
+    commands and options. No prompt was sent to any of them.
   - `test_the_preview_lists_what_the_started_session_lists` and
     `test_the_first_prompt_runs_with_the_chosen_values`: `dr-acp --config
     docs/configs/advising/main.yaml` on gpt-6-luna, with the start value `{"namespace": "root"}` (the
     config's default namespace is `advising`) and the commands expected cleared by the first prompt.
 
-  Two warnings, both `PytestUnraisableExceptionWarning` from a subprocess transport collected after
-  its event loop closed (kimi-code, opencode); no assertion depends on them.
+  Four warnings, all `PytestUnraisableExceptionWarning` from a subprocess transport collected after
+  its event loop closed; no assertion depends on them. Earlier runs of the same file, for the
+  record: [37143895412](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37143895412) at `6f97bf3` (8 passed, 127 s) and
+  [37141960911](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37141960911) inside S1's head `0cfb6a2` (8 passed, 100 s).
 
 **Which tests carry which property.** Each test's name states the property it pins. Paths are under
 `tests/` in the fork; `[…]` is a parametrization; `::` repeats the file named before it.
@@ -108,16 +118,16 @@ Refactorer, after Gate B, are where it shrinks.
 |---|---|
 | **Falsifier 1.** An option set before the first message is the one the run uses | **Live:** `sdk/agent/test_acp_session_controls_live.py::test_the_first_prompt_runs_with_the_chosen_values` (dr-acp: after the first prompt the reported namespace is `root`). Against the scripted agent: `sdk/agent/test_acp_session_controls.py::test_start_values_reach_the_agent_after_session_new_and_before_the_prompt` (the agent's request log: `session/new`, then `session/set_config_option`, then `session/prompt`); `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_a_set_before_the_start_is_persisted_and_applied_at_the_start`; `agent_server/test_acp_router.py::test_a_started_session_reports_the_chosen_value_and_cleared_commands`, `::test_the_start_folds_option_values_into_the_agent_only` (in `base_state.json`, never `meta.json`), `::test_a_set_before_the_start_is_kept_for_it` |
 | **Falsifier 2.** The commands a preview lists are those the started session lists | **Live:** `sdk/agent/test_acp_session_controls_live.py::test_the_preview_lists_what_the_started_session_lists` (dr-acp). Against the scripted agent: `sdk/conversation/test_acp_preview.py::test_the_preview_equals_the_started_session_before_its_first_prompt[3 value sets]`; `agent_server/test_conversation_service.py::test_resolve_launch_gives_the_start_and_the_preview_the_same_agent[agent, agent_settings, agent_profile_id]`; `agent_server/test_acp_router.py::test_the_preview_answers_for_each_way_of_naming_the_agent[the same 3]` |
-| **Any ACP agent can be previewed, and the preview leaves nothing behind** | **Live:** `sdk/agent/test_acp_session_controls_live.py::test_a_built_in_provider_can_be_previewed[6 providers]`, in both runs. `sdk/conversation/test_acp_preview.py::test_session_close_is_sent_when_the_agent_advertises_it`, `::test_session_close_is_not_sent_when_the_agent_does_not_advertise_it`, `::test_an_agent_that_never_reports_commands_is_previewed_after_the_wait`, `::test_the_agent_process_is_gone_afterwards[previewed, refused]`, `::test_a_missing_working_directory_is_previewed_from_an_empty_scratch_directory`, `::test_an_agent_that_cannot_be_spawned_raises_a_spawn_error`; `agent_server/test_acp_router.py::test_the_preview_maps_each_failure_to_its_status[refused-value, startup-timeout, spawn-error, not-acp, values-not-acp]` (each also asserts no `preview-*` directory is left), `::test_the_preview_holds_a_run_slot`, `::test_the_preview_is_unavailable_in_the_docker_runtime`, `::test_the_preview_of_an_unknown_profile_is_not_found` |
+| **Any ACP agent can be previewed, and the preview leaves nothing behind** | **Live:** `sdk/agent/test_acp_session_controls_live.py::test_a_built_in_provider_can_be_previewed[6 providers]`, in both runs. `sdk/conversation/test_acp_preview.py::test_session_close_is_sent_when_the_agent_advertises_it`, `::test_session_close_is_not_sent_when_the_agent_does_not_advertise_it`, `::test_an_agent_that_never_reports_commands_is_previewed_after_the_wait`, `::test_the_agent_process_is_gone_afterwards[previewed, refused]`, `::test_a_missing_working_directory_is_previewed_from_an_empty_scratch_directory`, `::test_an_agent_that_cannot_be_spawned_raises_a_spawn_error`; `agent_server/test_acp_router.py::test_the_preview_maps_each_failure_to_its_status[refused-value, startup-timeout, spawn-error, not-acp, values-not-acp]` (each also asserts no `preview-*` directory is left), `::test_the_preview_holds_a_run_slot`, `::test_the_preview_is_unavailable_in_the_docker_runtime`, `::test_the_preview_of_an_unknown_profile_is_not_found`; *(v2.2)* `::test_the_preview_answers_an_authentication_failure_with_502_not_401` (and the 5xx body, B26), `::test_the_preview_of_a_profile_with_a_dangling_mcp_reference_is_refused` (422, the missing references named) |
 | **A value the agent refuses stops the start with the agent's own sentence, and nothing is prompted** | `sdk/agent/test_acp_session_controls.py::test_a_refused_start_value_ends_the_start_and_no_prompt_is_sent` (`ConversationErrorEvent` code `ACPConfigOptionRejected`, the conversation in `ERROR`), `::test_a_refusal_raises_with_the_agents_own_sentence`; `sdk/conversation/test_acp_preview.py::test_a_refused_value_raises_with_its_code_and_the_agents_sentence`; `agent_server/test_acp_router.py::test_a_refusal_passes_the_agents_sentence_through` (422, verbatim); `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_a_refused_live_set_writes_nothing` |
 | **The commands are gone after the first message, when the agent clears them** | **Live:** `…_live.py::test_the_first_prompt_runs_with_the_chosen_values` with `OPENHANDS_ACP_LIVE_EXPECT_COMMANDS_CLEARED=1` (dr-acp). `sdk/agent/test_acp_session_controls.py::test_changes_during_a_prompt_are_published_in_order`; `agent_server/test_acp_router.py::test_a_started_session_reports_the_chosen_value_and_cleared_commands` |
 | **The last persisted event is the newest state** (decision B, §4.3) | `sdk/agent/test_acp_session_controls.py::test_concurrent_publishes_keep_snapshot_order_and_end_on_the_newest` (one recorder and two publishers on three threads, 300 snapshots), `::test_nothing_is_published_while_a_session_is_starting`, `::test_controls_reported_while_the_session_starts_are_published_once_it_started`, `::test_commands_reported_after_session_new_answered_are_published`, `::test_an_unchanged_snapshot_is_not_published_again`; `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_events_from_other_threads_are_persisted_in_submission_order`, `::test_a_portal_thread_event_during_a_synchronous_run_lands_after_the_step` (no deadlock), `::test_events_emitted_after_close_are_dropped`, `::test_the_agent_swap_hands_publishing_to_the_copy`; `agent_server/test_acp_router.py::test_the_events_search_returns_the_newest_controls_event` |
 | **Only the root session's controls are published, masked and normalized; ACP's two updates go no further than the record** | `sdk/agent/test_acp_session_controls.py::test_each_session_keeps_its_own_controls_and_only_the_root_is_published`, `::test_agent_supplied_text_is_masked_before_it_is_stored`, `::test_session_updates_of_both_kinds_are_recorded_and_not_routed_on`, `::test_entries_the_protocol_cannot_parse_are_dropped_not_raised`; `sdk/agent/test_acp_models.py` (7: the hint through 0.12.1's `RootModel`, no input, nameless commands dropped, grouped and ungrouped selects, a boolean, a category ACP does not name); `sdk/event/test_acp_session_controls_event.py` (4: a JSON round trip as its own kind, one-line rendering, empty rendering, skipped by the resume transcript) |
 | **Resume:** nothing reapplied after `session/load`, everything after a fallback to `session/new`; a live set survives a reload | `sdk/agent/test_acp_session_controls.py::test_after_a_successful_load_no_value_is_reapplied`, `::test_after_a_fallback_to_a_fresh_session_every_value_is_reapplied`; `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_a_live_set_is_persisted_and_survives_a_reload` |
-| **Setting an option, live or before the start** (§4.5, §4.7) | `sdk/agent/test_acp_session_controls.py::test_a_live_set_returns_the_agents_new_controls`, `::test_a_set_before_any_session_is_refused`, `::test_a_silent_agent_times_out_within_the_config_option_timeout`, `::test_values_are_set_in_order_and_every_response_is_recorded`, `::test_an_internal_agent_error_propagates_unchanged`; `agent_server/test_acp_router.py::test_a_live_set_answers_with_the_agents_controls`, `::test_a_set_the_agent_does_not_answer_times_out` (504), `::test_a_set_on_an_unknown_conversation_is_not_found`, `::test_a_set_that_is_not_for_this_route_is_a_bad_request[not-acp, model-option]`; `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_a_conversation_that_is_not_acp_refuses_config_options` |
+| **Setting an option, live or before the start** (§4.5, §4.7) | `sdk/agent/test_acp_session_controls.py::test_a_live_set_returns_the_agents_new_controls`, `::test_a_set_before_any_session_is_refused`, `::test_a_silent_agent_times_out_within_the_config_option_timeout`, `::test_values_are_set_in_order_and_every_response_is_recorded`, `::test_an_internal_agent_error_propagates_unchanged`; `agent_server/test_acp_router.py::test_a_live_set_answers_with_the_agents_controls`, `::test_a_set_the_agent_does_not_answer_times_out` (504), `::test_a_set_on_an_unknown_conversation_is_not_found`, `::test_a_set_that_is_not_for_this_route_is_a_bad_request[not-acp, model-option]`; *(v2.2)* `::test_a_set_on_a_service_that_closed_after_its_lookup_is_a_bad_request` (400 `inactive_service`), `::test_an_internal_error_from_the_agent_is_a_500_carrying_its_message_unmasked` (B20); `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_a_conversation_that_is_not_acp_refuses_config_options` |
 | **The model stays with `switch_acp_model`** (decision E) | `sdk/agent/test_acp_session_controls.py::test_the_model_option_and_an_empty_id_are_refused_in_the_field[model, '']`, `::test_the_model_option_and_an_empty_id_are_refused_by_the_set_call[model, '']`, `::test_a_model_switch_through_set_config_option_updates_the_published_model`; `sdk/conversation/local/test_local_conversation_acp_config_option.py::test_the_model_option_and_an_empty_id_are_refused[model, '']`; `agent_server/test_acp_router.py::test_the_preview_refuses_the_model_option`, `::test_the_start_refuses_option_values_it_cannot_apply[not-acp, model-option]` |
 | **Feature detection** | `agent_server/test_acp_router.py::test_server_info_announces_acp_session_controls` |
-| **The TypeScript client** (not run in CI) | `clients/typescript/src/__tests__/api-clients.test.ts › ACP session controls ›` 5 tests (the preview; a set; the newest event by the kind the search matches; empty lists before anything is reported; `RemoteConversation`); `event-types.test.ts › ACPSessionControlsEvent › is recognised by its kind`, `› yields the lists of the first controls event, replacing rather than merging`; `index.test.ts › should export the ACP session controls helpers from the package root` |
+| **The TypeScript client** (in CI at `5e3317f`, TypeScript client CI) | `clients/typescript/src/__tests__/api-clients.test.ts › ACP session controls ›` 5 tests (the preview; a set; the newest event by the kind the search matches; empty lists before anything is reported; `RemoteConversation`); `event-types.test.ts › ACPSessionControlsEvent › is recognised by its kind`, `› yields the lists of the first controls event, replacing rather than merging`; `index.test.ts › should export the ACP session controls helpers from the package root` |
 
 *PR 2 · Conversation header panels*
 
@@ -127,7 +137,7 @@ Refactorer, after Gate B, are where it shrinks.
 | **A malformed panel makes the manifest invalid; page, panel and tab ids are one namespace** | `…/test_canvas_extensions_manifest.py::test_a_malformed_panel_makes_the_manifest_invalid[panel-id, panel-title, no-tabs, tab-id, tab-title, relative-tab-path, uppercase-tab-path, trailing-slash, duplicate-tab-path, absolute-icon, traversing-icon, icon-type]`, `::test_pages_panels_and_tabs_share_one_id_namespace[page-and-panel, page-and-tab, two-panels, panel-and-tab, tabs-in-two-panels]` |
 | **A manifest without panels dumps byte for byte as before**, so no local App's backend needs re-approval | `…/test_canvas_extensions_manifest.py::test_a_manifest_without_panels_dumps_exactly_as_before`, `::test_a_manifest_with_panels_dumps_them` |
 | **An icon is a contained image, at install and on every serve** | `agent_server/canvas_extensions/test_canvas_extensions_entrypoint_containment.py::test_a_contained_panel_icon_resolves`, `::test_an_icon_that_is_not_a_contained_image_makes_the_install_invalid[symlink-outside, missing, directory, symlink-to-other-type]`; `agent_server/test_canvas_extensions_router.py::test_the_icon_route_rechecks_containment_on_every_request` |
-| **Panels and icons are served, and the feature is announced** | `agent_server/test_canvas_extensions_router.py::test_list_and_get_return_the_conversation_panels`, `::test_the_icon_route_serves_the_icon_with_its_type_and_safe_headers[an .svg, a .png]`, `::test_the_icon_route_is_not_found_for_unknown_names[unknown-extension, unknown-panel]`, `::test_the_icon_route_is_not_found_for_a_panel_without_an_icon`, `::test_server_info_announces_conversation_panels` |
+| **Panels and icons are served, and the feature is announced** | `agent_server/test_canvas_extensions_router.py::test_list_and_get_return_the_conversation_panels`, `::test_the_icon_route_serves_the_icon_with_its_type_and_safe_headers[an .svg, a .png]`, `::test_the_icon_route_is_not_found_for_unknown_names[unknown-extension, unknown-panel]`, `::test_the_icon_route_is_not_found_for_a_panel_without_an_icon`, `::test_server_info_announces_conversation_panels`; *(v2.2)* `agent_server/test_openapi_contract.py::test_panel_icon_route_is_documented_as_a_png_or_svg_image` (B23) |
 
 *PR 3 · App backends on macOS*
 
@@ -141,20 +151,28 @@ Refactorer, after Gate B, are where it shrinks.
 | **The REST check accepts new platform keys, and nothing else** (§3.2 B14) | `cross/test_check_agent_server_rest_api_breakage.py::test_backend_artifact_platform_additions_are_downgraded_and_nothing_else` |
 
 **Not pinned by any test:** §7 item 5's order (the commands-cleared event against the run's output,
-under the agent-server's `arun()`); the set route's 400 for an inactive service and its 500 for the
-agent's internal error (-32603), whose body carries the agent's message unmasked (§3.2 B20); the
-preview's 422 for a dangling MCP reference (the one line of `acp_router.py` CI's coverage reports
-unhit) and its 502 for an authentication failure; with dr-acp, that changing the namespace changes
-the menu (the live tier sets one value and does not assert which commands `root` offers; the
-scripted agent shows it); the empty first event after a start (§3.2 B4: measured by probe, no test);
-a start value for a built-in provider's session mode (B21); the Library's own backend on a Mac (D3,
-D5). §4.10, §5.3 and §6.3 map every test file: 141 deterministic cases.
+under the agent-server's `arun()`); with dr-acp, that changing the namespace changes the menu (the
+live tier sets one value and does not assert which commands `root` offers; the scripted agent shows
+it); the empty first event after a start (§3.2 B4: measured by probe, ruled as the contract, no
+test); a start value for a built-in provider's session mode (B21); the Library's own backend on a Mac
+(D3, D5). *(v2.2: the four status rows v2.1 listed here are pinned, B24.)* §4.10, §5.3 and §6.3 map
+every test file: 146 deterministic cases.
 
-**For the Conductor, not a ruling for Michael:** §10 items 14 to 16, the first of which is whether
-C2 can tell a menu not reported yet from no menu.
+**Ruled, for Michael to confirm:** the empty first controls event (§10 item 14): the Conductor ruled
+to change nothing in S2; the contract is §7 item 4 as written, and C2 shows an empty slash menu
+until the commands arrive. **Open for the Conductor:** §10 item 15 (a start value for a built-in
+provider's session mode). §10 item 16 (the unmasked 500) is now pinned as it is.
 
 **Revisions** (newest first; the Gate B reader approved the previous one, so each line says which
 sentences to stop trusting):
+- 2026-10-03 · v2.2 · brought in line with `5e3317f` (`13e5904`, `5e3317f`, and the fork-only
+  `1f2b52d` merged as `c12f7b4`), on the Conductor's request; the Gate B evidence is now PR #1's CI
+  and the live run at `5e3317f`. Stop trusting: the header's commit list and `git diff` range; the
+  Gate B evidence, size and "not pinned" paragraphs (rewritten); v2's claim that the weak-schema
+  ratchet runs in agent-server-tests (B23); §4.7's "`detail` names why" for a 502, and every 5xx body
+  there (B26); §4.9's "Ran" column; §4.10's router row and counts; §10 items 11, 12, 14 and 16 (now
+  resolved, ruled or pinned); Appendix A.8's icon route decorator; Appendix C's flags. Added: B23 to
+  B26; notes in B4, B16, B18, B19, B20, §3.1 item 12, §5.2, §5.3, §7 item 2 and §9.
 - 2026-10-03 · v2.1 · reconciled with S2's as-built document (`as_built/s2-agent-surfaces.md`,
   `3ad786c`), on the Conductor's request. Stop trusting v2's B4 and its note in §7 item 4 ("an event
   with empty lists means the agent offers nothing"): after a start or a resume the first event can
@@ -323,13 +341,14 @@ and not yet ruled on.
     serves the home screen and says nothing of runtimes; in the Docker runtime a preview would start
     the agent on the agent-server's host, outside the conversation containers.
 12. *(v2)* **Size.** The spec estimated ≈0.9k lines with tests and ≈3 h at Gate C; v1 gave no
-    estimate. Built: 4,731 lines added, 155 removed, about 16 h at Gate C (§3.2 B19).
+    estimate. Built: 4,731 lines added, 155 removed, about 16 h at Gate C (§3.2 B19). *(v2.2: 4,837
+    at `5e3317f`.)*
 
 ### 3.2 Changed by the build (v2)
 
 Each was checked against the code at `6f97bf3` and folded into the sections named. B1 to B10 are PR
 1, B11 PR 2, B12 to B15 PR 3, B16 to B18 the branch and the PR split, B19 the size, B20 to B22 (v2.1)
-what the as-built found. Where the build
+what the as-built found, B23 to B26 (v2.2) what landed after it. Where the build
 recorded no reason (in a commit message, a code comment or PR #1's description), the reason given is
 marked as this design's reading.
 
@@ -406,7 +425,9 @@ marked as this design's reading.
   build recorded a reason, and v1's §7 did not say it. *Pinned by:* no test pins the empty first
   event; `test_commands_reported_after_session_new_answered_are_published` waits for the menu that
   follows it, and `test_controls_reported_while_the_session_starts_are_published_once_it_started`
-  pins a single event when the menu came first. What C2 can do about it is §10 item 14.
+  pins a single event when the menu came first. What C2 can do about it is §10 item 14. *(v2.2:
+  ruled by the Conductor, for Michael to confirm at Gate B: no change in S2; C2 shows an empty slash
+  menu until the commands arrive.)*
 - **B5. The out-of-turn emitter, as built** (`d0d3fe1`; §4.3, A.4). Created in
   `LocalConversation.__init__` rather than on first use: `ThreadPoolExecutor` starts its one thread on
   the first submit anyway, so the attribute is never `None`. The job is upstream's existing
@@ -538,7 +559,9 @@ marked as this design's reading.
   none for the order or the shared test files. For the PR split: cut PR 3 after PR 2, or resolve the
   one hunk (§10 item 10). *(v2.1: the as-built's cherry-picks agree, and resolving that hunk by
   keeping PR 3's block lets its other four commits apply, D-6. PR #1's description still lists PR 3
-  as three commits, `759ffb2..28e5654`; the branch has five.)*
+  as three commits, `759ffb2..28e5654`; the branch has five.)* *(v2.2: with `5e3317f` in PR 1 and
+  `13e5904` in PR 2, re-checked at `5e3317f` the same way: PR 1 and PR 2 apply alone, PR 3 still only
+  after PR 2. The PR split also leaves `c12f7b4` and `1f2b52d` behind, B25.)*
 - **B17. The merge `aff05f6`** (the header). The fork's `deep-reasoning` gained `ea51b3f` after the
   branch was cut: upstream's `tests.yml` asks for `blacksmith-2vcpu-ubuntu-2404`, a runner this fork
   does not have, so those jobs would wait forever; `ea51b3f` moves eight jobs to `ubuntu-24.04`.
@@ -559,7 +582,8 @@ marked as this design's reading.
   (PR #1's Notes): "Some
   upstream checks run only on pull requests to main; the REST breakage and TypeScript client checks
   were run locally (above)." That the drafts come with the PR split is this design's reading (§10 item
-  11).
+  11). *(v2.2: superseded for CI by B25: the main-only guards now run on PR #1, with the caveats the
+  Gate B section names.)*
 
 **Found by the as-built (v2.1)**
 
@@ -573,7 +597,10 @@ run; B22 corrects the as-built from CI's records.
   str(exc), "error_id": …}` (`api.py:611–640`): the agent's own message, never passed through the
   conversation's secret masker, which the 422 refusal path applies. `switch_acp_model`'s route does
   the same upstream. *Why:* v1 specified the pass-through ("as for `switch_acp_model`") without
-  considering masking; this design's reading. *Pinned by:* nothing.
+  considering masking; this design's reading. *Pinned by:* nothing. *(v2.2: pinned as it is by
+  `test_an_internal_error_from_the_agent_is_a_500_carrying_its_message_unmasked`, B24: `detail` is
+  "Internal Server Error" and `exception` the agent's sentence verbatim, a registered secret
+  included.)*
 - **B21. A start value for a built-in provider's session mode is overwritten** (as-built §4.2; §4.4,
   §7 item 6, §10 item 15). v1's order at the start, kept by the build, is model, then option values,
   then the existing `set_session_mode`. For a known provider that call sends `acp_session_mode` or the
@@ -597,9 +624,52 @@ run; B22 corrects the as-built from CI's records.
   passed with the 3 s budget unchanged, the flake the commit describes. Run 4 (`6f97bf3`) passed. Read
   through the GitHub MCP tools for this revision. `darwin-amd64` (Intel, Rosetta) never ran.
 
+**Landed after the as-built (v2.2)**
+
+- **B23. The panel icon route is documented as a PNG or SVG image** (`13e5904`; §5.2, A.8). The route
+  returned a `FileResponse` without declaring it, so FastAPI documented its `200` as
+  `application/json` with an empty schema, which the weak-schema ratchet (`make test-server-schema`)
+  refuses as a new weak location. Built: `response_class=FileResponse`, and the `200` documented as
+  `image/png` and `image/svg+xml`, each `{"type": "string", "format": "binary"}`. *Why* (the commit):
+  "Declare the response class and the two image media types the route serves, each a binary string,
+  instead of allowlisting the pointer." It also shows that v2 overstated where the ratchet runs: the
+  agent-server suite tests the ratchet's logic only, on synthetic documents; the ratchet over the real
+  schema is `server.yml`'s, main-only (Gate B evidence). *Pinned by:*
+  `test_openapi_contract.py::test_panel_icon_route_is_documented_as_a_png_or_svg_image`, in CI.
+- **B24. The four untested status rows are pinned** (`5e3317f`; §4.7, §4.10). In `test_acp_router.py`:
+  the set route's 500 for -32603 (B20, as it is), its 400 `inactive_service` (reachable only in a
+  race: the lookup restarts a closed service, so the test hands the route a service closed after its
+  lookup), the preview's 422 for a dangling MCP reference (`detail.dangling_mcp_server_refs`), and its
+  502 for an authentication failure, never 401. The scripted agent gains `--set-error SENTENCE`
+  (every `session/set_config_option` answers -32603 with it) and `--auth-required` (`session/new`
+  answers ACP's -32000), and the route harness answers an unhandled error with the 500 handler's body
+  (`ASGITransport(raise_app_exceptions=False)`), as a deployed server does. *Why* (the commit): to pin
+  the rows; no production code changed. *Pinned by:* the four tests, named in the Gate B section.
+- **B25. Upstream's main-only guards run on the fork's pull requests** (`1f2b52d` on `deep-reasoning`,
+  merged into the branch as `c12f7b4`; §4.9, §10 item 11). Fork-only: the `pull_request` branch
+  filters of `agent-server-rest-api-breakage.yml`, `persisted-settings-compat.yml`,
+  `typescript-client-ci.yml`, `typescript-client-integration-tests.yml` and `version-bump-guard.yml`
+  now admit the fork's branches; nothing else changes. *Why* (its message): "This fork's feature pull
+  requests target deep-reasoning, or a feat/* branch when stacked, so those guards never ran on them
+  … Not for upstream." Left out: `server.yml`, whose schema check is the ratchet (B23), because the
+  same workflow builds and pushes images (the Conductor's account). The merge `c12f7b4` changes those
+  five lines against its first parent and nothing else; the PR split leaves both behind.
+- **B26. Every 5xx answer's body is "Internal Server Error"** (§4.7, §7 item 2). v1 and v2 wrote that
+  the preview's 502 `detail` names why. Upstream's handler for an `HTTPException` with status 500 or
+  above (`api.py`, `_http_exception_handler`) answers `{"detail": "Internal Server Error",
+  "exception": "<status>: <the route's detail>"}`; so the preview's 501, 502 and 504 and the set
+  route's 504 carry their message under `exception`, for example `{"detail": "Internal Server Error",
+  "exception": "502: [-32000] Authentication required"}`. An unhandled exception (the set route's 500)
+  answers `{"detail": "Internal Server Error", "exception": str(exc), "error_id": …}`. C2 reads no
+  `detail` on 501, 502 or 504 (§7 item 2), so nothing changes but the sentence. *Why:* upstream's
+  handler, which v1 did not read; the Conductor's correction. *Pinned by:*
+  `test_the_preview_answers_an_authentication_failure_with_502_not_401`.
+
 **Size**
 
-- **B19. Size** (§3.1 item 12). `git diff --numstat ea51b3f..6f97bf3`:
+- **B19. Size** (§3.1 item 12). `git diff --numstat ea51b3f..6f97bf3` *(v2.2: at `5e3317f`, `git diff
+  1f2b52d..5e3317f`, 4,837 added and 155 removed: B23 adds 22 lines to PR 2 and replaces 1, 10 of
+  them code; B24 adds 87 to PR 1 and replaces 2, all tests and the scripted agent's two flags)*:
 
   | Part | Spec | Built, added (removed) |
   |---|---|---|
@@ -899,8 +969,8 @@ Canvas should debounce previews (§7).
 
 | Method and path | Body | Answer | Errors |
 |---|---|---|---|
-| `POST /api/acp/preview` (new `acp_router`) | `StartConversationRequest` (the start payload; fields that do not reach `session/new`, such as `initial_message`, are ignored) | `ACPSessionControls` | 400 not an ACP agent · 404 unknown profile · 422 invalid request, a dangling MCP reference (not tested), or a value the agent refused (`detail` is the agent's sentence) · 429 run limit · *(v2)* 501 the Docker runtime (§3.2 B3) · 502 the agent failed to start (`detail` names why) · 504 start-up timed out |
-| `POST /api/conversations/{conversation_id}/acp/config-options` (new `conversation_acp_router`) | `ACPConfigOptionSetRequest{config_id, value}` | `ACPConfigOptionSetResponse{applied, controls}`: `applied: true` and the agent's resulting controls on a live session; `applied: false` and empty controls when the value waits for the session's start | 400 not an ACP conversation, the `model` option, or an inactive service (not tested) · 404 unknown conversation · 422 the agent refused (`detail` is its sentence verbatim, for example D1's `namespace is fixed once a conversation has started (it is 'router').`) · 504 no answer within 30 s · 500 the agent's internal error (-32603), as for `switch_acp_model` (not tested: the error is not caught, so upstream's handler answers 500) |
+| `POST /api/acp/preview` (new `acp_router`) | `StartConversationRequest` (the start payload; fields that do not reach `session/new`, such as `initial_message`, are ignored) | `ACPSessionControls` | 400 not an ACP agent · 404 unknown profile · 422 invalid request, a dangling MCP reference (*v2.2:* tested; `detail.dangling_mcp_server_refs`), or a value the agent refused (`detail` is the agent's sentence) · 429 run limit · *(v2)* 501 the Docker runtime (§3.2 B3) · 502 the agent failed to start (`detail` names why; *v2.2, B26:* the body's `detail` is "Internal Server Error" and the reason is under `exception`, e.g. `502: [-32000] Authentication required`) · 504 start-up timed out (the same body shape) |
+| `POST /api/conversations/{conversation_id}/acp/config-options` (new `conversation_acp_router`) | `ACPConfigOptionSetRequest{config_id, value}` | `ACPConfigOptionSetResponse{applied, controls}`: `applied: true` and the agent's resulting controls on a live session; `applied: false` and empty controls when the value waits for the session's start | 400 not an ACP conversation, the `model` option, or an inactive service (*v2.2:* tested, `detail` `inactive_service`) · 404 unknown conversation · 422 the agent refused (`detail` is its sentence verbatim, for example D1's `namespace is fixed once a conversation has started (it is 'router').`) · 504 no answer within 30 s (body as B26) · 500 the agent's internal error (-32603), as for `switch_acp_model` (*v2.2:* tested; the error is not caught, so upstream's handler answers 500 with `detail` "Internal Server Error" and the agent's sentence, unmasked, under `exception`, B20) |
 | `POST /api/conversations` (existing) | gains `acp_config_options` | unchanged | 422 `acp_config_options` with an agent that is not ACP, or a `model` key |
 | `GET /api/conversations/{id}/events/search?kind=openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent&sort_order=TIMESTAMP_DESC&limit=1` (existing) *(v2: v1 wrote `kind=ACPSessionControlsEvent`; the filter takes the module-qualified class name, §3.2 B2)* | — | the newest controls event, if any, with its `null` fields left out | — |
 | `GET /server_info` (existing) | — | `capabilities` gains `acp_session_controls_v1` | — |
@@ -913,7 +983,8 @@ lines S1's cancel route may add there (§8). *(v2: S1 put its cancel route in
 The preview's status codes come from the `ACPPreviewError.code`: `ACPConfigOptionRejected` → 422,
 `ACPStartupTimeout` → 504, everything else (`ACPAuthRequired`, `ACPSpawnError`, `ACPInitError`) → 502.
 The route never answers 401 for an agent's authentication failure, because Canvas reads 401 as its
-own session to the agent-server having expired.
+own session to the agent-server having expired. *(v2.2, §3.2 B26: on a deployed server every one of
+these 5xx answers has `detail` "Internal Server Error", with the route's message under `exception`.)*
 
 ### 4.8 The TypeScript client
 
@@ -949,12 +1020,12 @@ appear under their generated names.
 
 | Guard | What PR 1 does to it | Expected | Ran, at Gate B (v2) |
 |---|---|---|---|
-| REST breakage (oasdiff) | new routes; new optional request fields (`acp_config_options` on the start request and on `ACPAgent`); one new member of the event `oneOf` | additive routes and fields pass; the `oneOf` addition is downgraded to a notice by the script's own rule | locally at `28e5654`, passing; main-only in CI |
-| Weak-schema ratchet | eight new schemas, all fully typed | the allowlist stays exact | CI, agent-server-tests |
-| Persisted settings | nothing in `ACPAgentSettings`, profiles or settings | untouched | locally at `28e5654`, passing; main-only in CI |
-| SDK API breakage | additions only; `_apply_acp_model` and the other changed helpers are private | passes | no recorded run; main-only in CI (version-bump guard) |
+| REST breakage (oasdiff) | new routes; new optional request fields (`acp_config_options` on the start request and on `ACPAgent`); one new member of the event `oneOf` | additive routes and fields pass; the `oneOf` addition is downgraded to a notice by the script's own rule | oasdiff: locally at `28e5654`, passing. *v2.2:* the workflow runs on PR #1 (B25) and is green at `5e3317f`, but without oasdiff: the fork has no `v1.50.1` tag |
+| Weak-schema ratchet | eight new schemas, all fully typed | the allowlist stays exact | *v2.2:* not in CI (`server.yml`, main-only; B23); locally at `5e3317f` (the Conductor), passing, 62 allowlisted, after `13e5904` |
+| Persisted settings | nothing in `ACPAgentSettings`, profiles or settings | untouched | *v2.2:* CI at `5e3317f` (B25) |
+| SDK API breakage | additions only; `_apply_acp_model` and the other changed helpers are private | passes | *v2.2:* CI step skipped (no version change); locally at S2's head (the Conductor): one upstream error, none from S2 |
 | Docstrings (MDX) | fenced code only in docstrings, no `>>>` | passes | CI, Check Docstrings |
-| TypeScript client CI | hand-written types; generated file untouched | passes | locally at `28e5654`, passing; main-only in CI |
+| TypeScript client CI | hand-written types; generated file untouched | passes | *v2.2:* CI at `5e3317f`, 355 tests, and its integration tests (B25) |
 | Endpoint audit | report-only; the two new routes are listed as client-ahead | report clean | CI |
 
 ### 4.10 Tests for PR 1
@@ -967,17 +1038,18 @@ process, so tests that cross it run a real one: the scripted test agent of Appen
 *(v2: as built at `6f97bf3`; the Gate B section maps them to properties. Every property v1 named
 here is pinned, except two set-route rows of §4.7: the inactive service and -32603. v2.1: counts are
 tests and, where they differ, cases after parametrization; PR 1 has 85 cases, PR 2 35, PR 3 21, 141
-in all, every one passing in the Cartographer's run at `6f97bf3`.)*
+in all, every one passing in the Cartographer's run at `6f97bf3`. v2.2: with B23 and B24, PR 1 has 89
+cases and PR 2 36, 146 in all, every one passing in CI at `5e3317f`; every row of §4.7 is pinned.)*
 
 | File | Tests |
 |---|---|
-| `tests/fixtures/acp/scripted_agent.py` (new, 299 lines) and `tests/conftest.py` (`SCRIPTED_ACP_AGENT`, `scripted_acp_command`, `acp_request_log`) | the scripted agent of Appendix C and its helpers (§3.2 B9) |
+| `tests/fixtures/acp/scripted_agent.py` (new, 299 lines; *v2.2:* 310, with `--set-error` and `--auth-required`) and `tests/conftest.py` (`SCRIPTED_ACP_AGENT`, `scripted_acp_command`, `acp_request_log`) | the scripted agent of Appendix C and its helpers (§3.2 B9) |
 | `tests/sdk/agent/test_acp_models.py` (7) | `test_command_hint_is_read_through_the_root_model`, `test_a_command_without_input_has_none`, `test_nameless_commands_are_dropped_and_the_rest_kept_in_order`, `test_grouped_select_is_flattened_with_each_value_keeping_its_group`, `test_ungrouped_select_keeps_values_in_order_without_a_group`, `test_boolean_option_keeps_its_boolean_value_and_has_no_values`, `test_a_category_that_is_not_an_acp_string_category_becomes_none` |
 | `tests/sdk/event/test_acp_session_controls_event.py` (4) | `test_event_round_trips_through_json_as_its_own_kind`, `test_event_renders_as_one_line_of_command_names_and_option_values`, `test_an_empty_event_still_renders_one_line`, `test_resume_transcript_skips_session_controls` |
 | `tests/sdk/agent/test_acp_session_controls.py` (23 tests, 25 cases) | recording and publishing: `test_controls_reported_while_the_session_starts_are_published_once_it_started`, `test_commands_reported_after_session_new_answered_are_published`, `test_an_unchanged_snapshot_is_not_published_again`, `test_changes_during_a_prompt_are_published_in_order`, `test_each_session_keeps_its_own_controls_and_only_the_root_is_published`, `test_entries_the_protocol_cannot_parse_are_dropped_not_raised`, `test_session_updates_of_both_kinds_are_recorded_and_not_routed_on`, `test_agent_supplied_text_is_masked_before_it_is_stored`, `test_concurrent_publishes_keep_snapshot_order_and_end_on_the_newest`, `test_nothing_is_published_while_a_session_is_starting`; values at the start: `test_start_values_reach_the_agent_after_session_new_and_before_the_prompt`, `test_values_are_set_in_order_and_every_response_is_recorded`, `test_an_internal_agent_error_propagates_unchanged`, `test_a_refused_start_value_ends_the_start_and_no_prompt_is_sent`, `test_after_a_successful_load_no_value_is_reapplied`, `test_after_a_fallback_to_a_fresh_session_every_value_is_reapplied`; the model: `test_the_model_option_and_an_empty_id_are_refused_in_the_field[model, '']`, `test_the_model_option_and_an_empty_id_are_refused_by_the_set_call[model, '']`, `test_a_model_switch_through_set_config_option_updates_the_published_model`; live sets: `test_a_live_set_returns_the_agents_new_controls`, `test_a_refusal_raises_with_the_agents_own_sentence`, `test_a_set_before_any_session_is_refused`, `test_a_silent_agent_times_out_within_the_config_option_timeout` |
 | `tests/sdk/conversation/local/test_local_conversation_acp_config_option.py` (9 tests, 10 cases) | `test_a_set_before_the_start_is_persisted_and_applied_at_the_start`, `test_a_live_set_is_persisted_and_survives_a_reload`, `test_a_refused_live_set_writes_nothing`, `test_the_agent_swap_hands_publishing_to_the_copy`, `test_the_model_option_and_an_empty_id_are_refused[model, '']`, `test_a_conversation_that_is_not_acp_refuses_config_options`, `test_a_portal_thread_event_during_a_synchronous_run_lands_after_the_step`, `test_events_emitted_after_close_are_dropped`, `test_events_from_other_threads_are_persisted_in_submission_order` |
 | `tests/sdk/conversation/test_acp_preview.py` (8 tests, 11 cases) | `test_the_preview_equals_the_started_session_before_its_first_prompt[{}, fast, thorough]`, `test_session_close_is_sent_when_the_agent_advertises_it`, `test_session_close_is_not_sent_when_the_agent_does_not_advertise_it`, `test_an_agent_that_never_reports_commands_is_previewed_after_the_wait`, `test_a_refused_value_raises_with_its_code_and_the_agents_sentence`, `test_an_agent_that_cannot_be_spawned_raises_a_spawn_error`, `test_the_agent_process_is_gone_afterwards[previewed, refused]`, `test_a_missing_working_directory_is_previewed_from_an_empty_scratch_directory` |
-| `tests/agent_server/test_acp_router.py` (18 tests, 25 cases) | the preview: `test_the_preview_answers_for_each_way_of_naming_the_agent[agent, agent_settings, agent_profile_id]`, `test_the_preview_maps_each_failure_to_its_status[refused-value, startup-timeout, spawn-error, not-acp, values-not-acp]`, `test_the_preview_of_an_unknown_profile_is_not_found`, `test_the_preview_refuses_the_model_option`, `test_the_preview_holds_a_run_slot`, `test_the_preview_is_unavailable_in_the_docker_runtime`; the start: `test_the_start_folds_option_values_into_the_agent_only`, `test_a_started_session_reports_the_chosen_value_and_cleared_commands`, `test_the_events_search_returns_the_newest_controls_event`, `test_the_start_refuses_option_values_it_cannot_apply[not-acp, model-option]`; the set route: `test_a_set_before_the_start_is_kept_for_it`, `test_a_live_set_answers_with_the_agents_controls`, `test_a_refusal_passes_the_agents_sentence_through`, `test_a_set_that_is_not_for_this_route_is_a_bad_request[not-acp, model-option]`, `test_a_set_on_an_unknown_conversation_is_not_found`, `test_a_set_the_agent_does_not_answer_times_out`; `test_server_info_announces_acp_session_controls` |
+| `tests/agent_server/test_acp_router.py` (18 tests, 25 cases; *v2.2:* 22 tests, 29 cases, with B24's `test_the_preview_answers_an_authentication_failure_with_502_not_401`, `test_the_preview_of_a_profile_with_a_dangling_mcp_reference_is_refused`, `test_a_set_on_a_service_that_closed_after_its_lookup_is_a_bad_request`, `test_an_internal_error_from_the_agent_is_a_500_carrying_its_message_unmasked`) | the preview: `test_the_preview_answers_for_each_way_of_naming_the_agent[agent, agent_settings, agent_profile_id]`, `test_the_preview_maps_each_failure_to_its_status[refused-value, startup-timeout, spawn-error, not-acp, values-not-acp]`, `test_the_preview_of_an_unknown_profile_is_not_found`, `test_the_preview_refuses_the_model_option`, `test_the_preview_holds_a_run_slot`, `test_the_preview_is_unavailable_in_the_docker_runtime`; the start: `test_the_start_folds_option_values_into_the_agent_only`, `test_a_started_session_reports_the_chosen_value_and_cleared_commands`, `test_the_events_search_returns_the_newest_controls_event`, `test_the_start_refuses_option_values_it_cannot_apply[not-acp, model-option]`; the set route: `test_a_set_before_the_start_is_kept_for_it`, `test_a_live_set_answers_with_the_agents_controls`, `test_a_refusal_passes_the_agents_sentence_through`, `test_a_set_that_is_not_for_this_route_is_a_bad_request[not-acp, model-option]`, `test_a_set_on_an_unknown_conversation_is_not_found`, `test_a_set_the_agent_does_not_answer_times_out`; `test_server_info_announces_acp_session_controls` |
 | `tests/agent_server/test_conversation_service.py` (additions, 1 test, 3 cases) | `test_resolve_launch_gives_the_start_and_the_preview_the_same_agent[agent, agent_settings, agent_profile_id]` |
 | `tests/sdk/agent/test_acp_session_controls_live.py` (`pytestmark = pytest.mark.acp_live`, 3) | §9's live tier: `test_a_built_in_provider_can_be_previewed[6 providers]`, `test_the_preview_lists_what_the_started_session_lists`, `test_the_first_prompt_runs_with_the_chosen_values` |
 | `clients/typescript/src/__tests__/` (8) | `api-clients.test.ts › ACP session controls ›` 5; `event-types.test.ts › ACPSessionControlsEvent ›` 2; `index.test.ts`, 1 |
@@ -1038,6 +1110,9 @@ tab's id, with the tab's path as the mount context's `path`.
   `canvas-extension-module-loader.ts:26–36`), not with a bare `<img src>`.
 - **The capability:** `canvas_conversation_panels_v1`, appended in `build_server_info`, a different
   hunk from PR 1's, so each PR cherry-picks onto `main` alone.
+- *(v2.2, §3.2 B23)* The icon route declares `response_class=FileResponse` and documents its `200` as
+  `image/png` or `image/svg+xml`, a binary string, so the published OpenAPI holds no weak schema
+  for it.
 
 ### 5.3 Tests for PR 2
 
@@ -1048,6 +1123,7 @@ tab's id, with the tab's path as the mount context's `path`.
 | `tests/agent_server/canvas_extensions/conftest.py` (change) | `write_extension` takes `conversation_panels` |
 | `tests/agent_server/canvas_extensions/test_canvas_extensions_manifest.py` (additions, 7 tests, 22 cases) | `test_a_header_panel_with_tabs_validates` (C2's manifest above), `test_a_tab_path_defaults_to_the_panel_root`, `test_a_tab_may_sit_at_the_root_where_a_page_may_not`, `test_a_malformed_panel_makes_the_manifest_invalid[panel-id, panel-title, no-tabs, tab-id, tab-title, relative-tab-path, uppercase-tab-path, trailing-slash, duplicate-tab-path, absolute-icon, traversing-icon, icon-type]`, `test_pages_panels_and_tabs_share_one_id_namespace[page-and-panel, page-and-tab, two-panels, panel-and-tab, tabs-in-two-panels]`, `test_a_manifest_without_panels_dumps_exactly_as_before`, `test_a_manifest_with_panels_dumps_them` |
 | `tests/agent_server/canvas_extensions/test_canvas_extensions_entrypoint_containment.py` (additions, 2 tests, 5 cases) | `test_a_contained_panel_icon_resolves`, `test_an_icon_that_is_not_a_contained_image_makes_the_install_invalid[symlink-outside, missing, directory, symlink-to-other-type]` |
+| `tests/agent_server/test_openapi_contract.py` (*v2.2:* additions, 1) | B23: `test_panel_icon_route_is_documented_as_a_png_or_svg_image` |
 | `tests/agent_server/test_canvas_extensions_router.py` (additions, 6 tests, 8 cases) | `test_list_and_get_return_the_conversation_panels`, `test_the_icon_route_serves_the_icon_with_its_type_and_safe_headers[an .svg, a .png]`, `test_the_icon_route_is_not_found_for_unknown_names[unknown-extension, unknown-panel]`, `test_the_icon_route_is_not_found_for_a_panel_without_an_icon`, `test_the_icon_route_rechecks_containment_on_every_request`, `test_server_info_announces_conversation_panels` |
 
 ---
@@ -1155,7 +1231,8 @@ as C2's failure cell says.
    measured); budget the agent's start-up plus 2 s.
 2. On 422 show `detail` (the agent's sentence); on 429, 502 or 504 show no agent commands and no
    picker, and let the user start anyway. *(v2, §3.2 B3: 501 too, which an agent-server in the
-   Docker conversation runtime answers to every preview.)*
+   Docker conversation runtime answers to every preview. v2.2, §3.2 B26: a 5xx body's `detail` is
+   always "Internal Server Error", with the reason under `exception`, so show no reason from it.)*
 3. Start with the same payload plus the same `acp_config_options`. They are applied before the first
    message reaches the agent. If the agent refuses one, the conversation ends in `ERROR` with a
    `ConversationErrorEvent` whose `code` is `"ACPConfigOptionRejected"` and whose `detail` is the
@@ -1270,7 +1347,8 @@ running S1's tests; S1's own Gate B covers that.
 | The Library App's backend starts on macOS and on Linux | the macOS job and the Linux suite start a real backend artifact (§6.3) | D3's artifacts; D5's macOS release build starts the Library itself |
 
 *(v2)* Each claim's tests, by name, are in the Gate B section. The two dr-acp claims of the live tier
-ran inside S1's head (`0cfb6a2`), not at `6f97bf3` (§10 item 12). *(v2.1, as-built §6.2)* With dr-acp
+ran inside S1's head (`0cfb6a2`), not at `6f97bf3` (§10 item 12). *(v2.2: they have since run at
+`6f97bf3` and at `5e3317f`, S2's head, run 37147707860, 8 of 8.)* *(v2.1, as-built §6.2)* With dr-acp
 the live tier sets one value, so "changing the namespace changes them" is shown with the scripted
 agent only, and which commands `root` offers is neither asserted nor printed.
 
@@ -1356,17 +1434,23 @@ branch `ci/fork-live`, a `workflow_dispatch` taking `sdk_ref`, `suites`, `sdk_re
 11. *(v2)* **The main-only guards** (§3.2 B18): the REST breakage check, persisted settings and the
     TypeScript client CI (with S2's 8 TypeScript tests) ran only locally, at `28e5654`; the SDK API
     breakage check has no recorded run. They run in CI once the PR split opens the per-PR drafts onto
-    `main`, which is before Gate C, not before Gate B.
+    `main`, which is before Gate C, not before Gate B. *(v2.2: resolved for CI by `1f2b52d`, B25; what
+    stays outside CI is the REST check's oasdiff (no `v1.50.1` tag in the fork), the SDK API check
+    (skipped without a version change) and the schema ratchet (`server.yml`), each run locally.)*
 12. *(v2)* **The live tier ran inside S1's head.** Run 37141960911 checked out `0cfb6a2`, which
     carries `6f97bf3` unchanged under S1's five commits; S1's changes to `acp_agent.py` route updates
     below S2's line (§8 item 3), so the result stands for S2 as stacked. The six provider previews
     also ran at `6f97bf3` itself, in PR #1's `acp-live-tests`. A run of the two dr-acp tests at S2's
     own head is one dispatch of `fork-live.yml` with `sdk_ref: feat/agent-surfaces` and `suites: s2`,
-    if the Conductor wants the live tier at the branch's head exactly.
+    if the Conductor wants the live tier at the branch's head exactly. *(v2.2: resolved; run
+    37143895412 at `6f97bf3` and run 37147707860 at `5e3317f`, S2's head, each 8 of 8.)*
 13. *(v2)* **§7 item 5's order is not pinned**: that the commands-cleared event reaches Canvas before
     the run's output, under the agent-server's `arun()`. C2 should follow the newest event whenever
     it arrives; a test belongs to C2's end-to-end or to a later S2 change, not to this gate.
-14. *(v2.1)* **"Not reported yet" or "none offered"** (§3.2 B4, as-built D-2). After every start and
+14. *(v2.1; v2.2: ruled)* **"Not reported yet" or "none offered"** (§3.2 B4, as-built D-2). **The
+    Conductor's ruling, for Michael to confirm at Gate B: (c), change nothing in S2.** The contract
+    says the newest event is the state and a first empty event may be followed by the menu, and C2
+    shows an empty slash menu until the commands arrive. As written in v2.1: After every start and
     resume the first event can carry an empty `available_commands` that the agent's menu replaces
     moments later, and an agent with no commands looks the same; the event gives C2 no way to tell.
     The ways out, with what each costs (not decided here):
@@ -1396,7 +1480,8 @@ branch `ci/fork-live`, a `workflow_dispatch` taking `sdk_ref`, `suites`, `sdk_re
     given. For the Conductor; it does not affect dr-acp.
 16. *(v2.1)* **The set route's 500 carries the agent's -32603 message unmasked** (§3.2 B20), as
     `switch_acp_model`'s does upstream. Masking it is one `except` in the route or one `mask()` in
-    `_apply_config_options`; untested either way.
+    `_apply_config_options`; untested either way. *(v2.2: pinned as it is, B24; masking is not
+    decided.)*
 
 ---
 
@@ -2263,9 +2348,19 @@ _PANEL_ICON_HEADERS: Final[dict[str, str]] = {
 }
 
 
+# (v2.2) Documented as an image, §3.2 B23.
 @canvas_extensions_router.get(
     "/installed/{extension_name}/panels/{panel_id}/icon",
-    responses={404: {"description": "Canvas extension, panel or icon not found"}},
+    response_class=FileResponse,
+    responses={
+        200: {
+            "content": {
+                media_type: {"schema": {"type": "string", "format": "binary"}}
+                for media_type in PANEL_ICON_MEDIA_TYPES.values()
+            }
+        },
+        404: {"description": "Canvas extension, panel or icon not found"},
+    },
 )
 def get_canvas_extension_panel_icon_endpoint(
     extension_name: CanvasExtensionNamePath,
@@ -2542,7 +2637,9 @@ the `acp_request_log` fixture, both in `tests/conftest.py`.
   otherwise it sends the new value's `available_commands_update`, then answers with the full options.
   With `--slow-set SECONDS` it waits before answering (for the timeout test). *(v2: an unknown
   session id → invalid params "unknown session '{id}'", here, in `session/prompt` and in
-  `session/load`.)*
+  `session/load`. v2.2, `5e3317f`: with `--set-error SENTENCE` it answers every set with an internal
+  error (-32603) whose message is `SENTENCE`, and with `--auth-required` it answers `session/new`
+  with ACP's authentication-required error (-32000).)*
 - **`session/prompt`:** on the first prompt it sends `available_commands_update` with no commands and
   a `config_option_update` whose `profile` lists only the current value, then one
   `agent_message_chunk` echoing the prompt's first text block, a `usage_update`, and `end_turn`.
