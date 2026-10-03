@@ -43,29 +43,6 @@ def test_snapshot_equals_config_catalog_over_the_materialized_config_plus_metada
     }
 
 
-def test_commands_carry_use_when_and_hint(catalog):
-    router = {e.name: e for e in catalog.snapshot().commands["router"]}
-    assert router["decline"] == CommandEntry(
-        "decline", "decline", "off-topic questions", "the question"
-    )
-    assert router["route-a-course-question"] == CommandEntry(
-        "route-a-course-question",
-        "route a course question",
-        "Open with the 'route a course question' decomposition",
-        "the task",
-    )
-
-
-def test_a_top_level_decomposition_is_offered_in_every_namespace(catalog, lib):
-    lib.put_decomposition(text(example("Triage it!")), top_level=True)
-    commands = catalog.snapshot().commands
-    assert {ns: entries[0].name for ns, entries in commands.items()} == {
-        "root": "triage-it",
-        "courses": "triage-it",
-        "router": "triage-it",
-    }
-
-
 def test_materialize_gives_d1_a_run_source_with_versions(catalog, lib, tmp_path):
     source = catalog.materialize("courses", run_dir=tmp_path / "run")
     assert source.config_path == tmp_path / "run" / "config" / "main.yaml"

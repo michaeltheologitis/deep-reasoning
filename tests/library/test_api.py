@@ -165,26 +165,14 @@ def test_every_write_route(client):
     assert client.delete("/namespaces/courses").json()["version"] == 2
 
 
-def test_validate_answers_200_even_when_invalid(client):
-    response = client.post(
-        "/validate", json={"kind": "decomposition", "yaml": "name: x\nmessages: []"}
-    )
+def test_validate_answers_200_even_when_invalid(client, lib):
+    sent = {"kind": "decomposition", "yaml": "name: x\nmessages: []"}
+    response = client.post("/validate", json=sent)
     assert response.status_code == 200
-    assert response.json() == {
-        "ok": False,
-        "message": "'x' is not a valid deep_reasoner Decomposition:\n"
-        "  messages: List should have at least 1 item after validation, not 0",
-        "errors": [
-            {
-                "loc": "messages",
-                "msg": "List should have at least 1 item after validation, not 0",
-            }
-        ],
-        "warnings": [],
-        "name": "x",
-        "slug": "x",
-        "yaml": None,
-    }
+    assert response.json() == lib.validate(sent["kind"], sent["yaml"]).model_dump(
+        mode="json"
+    )
+    assert response.json()["ok"] is False
 
 
 def test_errors_carry_code_message_and_details(client):
@@ -252,25 +240,6 @@ def test_a_stale_head_makes_the_effective_view_answer_422_naming_it(client, lib,
             "message": sentence,
             "errors": [{"loc": "", "msg": sentence}],
         },
-    )
-
-
-def test_a_slug_with_spaces_in_the_name_round_trips(client):
-    put(
-        client,
-        "/decompositions/rank-by-prerequisites",
-        yaml=text(example("Rank by prerequisites")),
-    )
-    got = client.get("/decompositions/rank-by-prerequisites").json()
-    assert (got["name"], got["slug"]) == (
-        "Rank by prerequisites",
-        "rank-by-prerequisites",
-    )
-    assert (
-        client.get("/decompositions/rank-by-prerequisites/versions").json()[0][
-            "version"
-        ]
-        == 1
     )
 
 

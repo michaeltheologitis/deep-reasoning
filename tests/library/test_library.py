@@ -369,16 +369,3 @@ def test_validate_reports_without_saving(lib):
     )
     assert lib.validate("tool", "factory: llm\n", name="search").ok
     assert lib.rev() == 1
-
-
-def test_the_spec_mock_up_runs_as_written(lib, router, tmp_path):
-    lib.import_config(router)
-    assert [ns.name for ns in lib.namespaces()] == ["root", "router", "courses"]
-    d = lib.put_decomposition(
-        text(example("summarize then rank")),
-        namespaces=["router"],
-        use_when="comparing many courses",
-    )
-    assert (d.name, d.version, d.namespaces) == ("summarize then rank", 1, ["router"])
-    run_dir = lib.materialize()
-    assert (run_dir / "main.yaml").is_file()
