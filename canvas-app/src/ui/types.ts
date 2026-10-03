@@ -1,4 +1,6 @@
-// D2's records (D2 §4.4, as built), as the HTTP API sends them.
+// D2's records (D2 §4.4, as built), as the HTTP API sends them, and D4's Check and MCP grants.
+
+import type { McpTransport } from "../shared/protocol";
 
 export type Kind = "profile" | "namespace" | "decomposition" | "tool";
 
@@ -126,4 +128,60 @@ export interface Effective {
   tools: EffectiveTool[];
   vars: Record<string, Sourced>;
   decompositions: EffectiveDecomposition[];
+}
+
+export type CheckOutcome =
+  | "built"
+  | "builtin"
+  | "invalid"
+  | "syntax"
+  | "import_failed"
+  | "bad_factory"
+  | "not_func"
+  | "raised"
+  | "timeout"
+  | "unavailable";
+
+export interface ExampleResult {
+  expression: string;
+  ok: boolean;
+  value: string | null;
+  error: string | null;
+  seconds: number;
+}
+
+export interface CheckReport {
+  ok: boolean;
+  outcome: CheckOutcome;
+  message: string;
+  told: string | null;
+  traceback: string | null;
+  example: ExampleResult | null;
+  printed: string;
+  seconds: number | null;
+  deep_reasoner: string;
+  can_save: boolean;
+  can_save_anyway: boolean;
+}
+
+export interface McpSeen {
+  at: string;
+  run: string;
+  count: number;
+  told: string;
+}
+
+export interface McpGrant {
+  name: string;
+  version: number;
+  server: string;
+  transport: McpTransport;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: string[];
+  headers: string[];
+  granted_in: string[];
+  shim_current: boolean;
+  seen: McpSeen | null;
 }

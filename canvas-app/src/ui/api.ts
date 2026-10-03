@@ -1,14 +1,17 @@
-// D2's HTTP API (D2 §6, as built), one function per endpoint, over relative URLs: from …/ui/,
+// D2's HTTP API (D2 §6, as built) and D4's routes, one function per endpoint, over relative URLs: from …/ui/,
 // ../namespaces is the backend's /namespaces through the bridge, and on the standalone page.
 // Bodies carry exactly D2's fields (D2 refuses others with 400) and are always JSON.
 
+import type { McpTransport } from "../shared/protocol";
 import type {
+  CheckReport,
   DecompositionRecord,
   Effective,
   FieldError,
   Health,
   HistoryEntry,
   Kind,
+  McpGrant,
   NamespaceRecord,
   Problem,
   ProfileRecord,
@@ -48,6 +51,25 @@ export interface ToolBody {
   source?: string | null;
   granted_in?: string[];
   base_version: number;
+  accept_check_failure?: boolean; // D4: save a tool whose Check failed in a way it allows
+}
+
+export interface CheckBody {
+  yaml: string;
+  source: string | null;
+  example: string | null;
+}
+
+export interface McpGrantBody {
+  server: string;
+  transport: McpTransport;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: string[];
+  headers: string[];
+  granted_in: string[];
+  base_version: number;
 }
 
 export interface Written<T> {
@@ -55,12 +77,13 @@ export interface Written<T> {
   created: boolean; // 201
 }
 
-/** D2's own refusal: {"error", "message", "errors"?, "head"?}. */
+/** D2's own refusal: {"error", "message", "errors"?, "head"?, "check"?}. */
 export class LibraryError extends Error {
   readonly status: number;
-  readonly code: string; // D2's: invalid, conflict, refused, not_found, bad_request, forbidden, unsupported_media_type
+  readonly code: string; // D2's: invalid, conflict, refused, not_found, bad_request, forbidden, unsupported_media_type; D4's check_failed
   readonly errors: readonly FieldError[];
   readonly head: unknown; // conflict: the current record, or null
+  readonly check: CheckReport | null; // check_failed: Check's report
 
   constructor(
     status: number,
@@ -69,6 +92,7 @@ export class LibraryError extends Error {
       message: string;
       errors?: FieldError[];
       head?: unknown;
+      check?: CheckReport;
     },
   ) {
     super(body.message);
@@ -76,6 +100,7 @@ export class LibraryError extends Error {
     this.code = body.error;
     this.errors = body.errors ?? [];
     this.head = body.head ?? null;
+    this.check = body.check ?? null;
   }
 }
 
@@ -96,6 +121,7 @@ function isLibraryErrorBody(body: unknown): body is {
   message: string;
   errors?: FieldError[];
   head?: unknown;
+  check?: CheckReport;
 } {
   const value = body as { error?: unknown; message?: unknown } | null;
   return typeof value?.error === "string" && typeof value.message === "string";
@@ -184,3 +210,8 @@ export const deleteTool = (name: string, baseVersion: number) =>
   remove(at("tools", name), baseVersion);
 export const toolVersions = (name: string) =>
   read<HistoryEntry[]>(`${at("tools", name)}/versions`);
+export const checkTool = async (name: string, body: CheckBody) =>
+  (await call<CheckReport>("POST", `${at("tools", name)}/check`, body)).data;
+export const getMcp = () => read<McpGrant[]>("../mcp");
+export const putMcp = (name: string, body: McpGrantBody) =>
+  write<McpGrant>(at("mcp", name), body);

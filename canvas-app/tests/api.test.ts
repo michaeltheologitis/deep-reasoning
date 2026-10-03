@@ -62,6 +62,7 @@ describe("the requests", () => {
     ],
     ["getTools", () => api.getTools(), "GET", "../tools"],
     ["getTool", () => api.getTool("word_count"), "GET", "../tools/word_count"],
+    ["getMcp", () => api.getMcp(), "GET", "../mcp"],
     [
       "toolVersions",
       () => api.toolVersions("word_count"),
@@ -146,6 +147,60 @@ describe("the requests", () => {
       "../tools/word_count",
       ["yaml", "source", "granted_in", "base_version"],
     ],
+    [
+      "putTool, saving anyway",
+      () =>
+        api.putTool("word_count", {
+          yaml: "{}",
+          source: "def make(c, p): ...",
+          granted_in: [],
+          base_version: 0,
+          accept_check_failure: true,
+        }),
+      "PUT",
+      "../tools/word_count",
+      ["yaml", "source", "granted_in", "base_version", "accept_check_failure"],
+    ],
+    [
+      "checkTool",
+      () =>
+        api.checkTool("word count", {
+          yaml: "factory: make",
+          source: "",
+          example: null,
+        }),
+      "POST",
+      "../tools/word%20count/check",
+      ["yaml", "source", "example"],
+    ],
+    [
+      "putMcp",
+      () =>
+        api.putMcp("github", {
+          server: "github",
+          transport: "stdio",
+          command: "npx",
+          args: [],
+          url: null,
+          env: ["GITHUB_TOKEN"],
+          headers: [],
+          granted_in: ["router"],
+          base_version: 0,
+        }),
+      "PUT",
+      "../mcp/github",
+      [
+        "server",
+        "transport",
+        "command",
+        "args",
+        "url",
+        "env",
+        "headers",
+        "granted_in",
+        "base_version",
+      ],
+    ],
   ])(
     "%s sends JSON with exactly D2's fields",
     async (_, request, method, url, keys) => {
@@ -204,6 +259,20 @@ describe("the answers", () => {
       errors: [],
       head,
     });
+  });
+
+  it("a tool Check refused is a LibraryError carrying the report", async () => {
+    const check = { ok: false, outcome: "not_func", can_save_anyway: false };
+    stubFetch(422, {
+      error: "check_failed",
+      message: "'word_count' did not pass Check, so it was not saved.",
+      check,
+    });
+    const error = await api
+      .putTool("word_count", { yaml: "factory: make", base_version: 0 })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(LibraryError);
+    expect(error).toMatchObject({ status: 422, code: "check_failed", check });
   });
 
   it("a D2 validation error carries its field errors", async () => {
