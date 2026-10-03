@@ -27,6 +27,7 @@ dev = [
     "jsonschema",
     "referencing",
     "ruff",
+    "playwright==1.56.0",
 ]
 
 [build-system]
@@ -44,8 +45,11 @@ exclude = ["docs/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["live: calls a real model; run with -m live"]
-addopts = "-m 'not live'"
+markers = [
+    "live: calls a real model; run with -m live",
+    "browser: drives the panel in Chromium (Playwright); run with -m browser",
+]
+addopts = "-m 'not live and not browser'"
 
 [tool.ruff]
 extend-exclude = ["docs"]
