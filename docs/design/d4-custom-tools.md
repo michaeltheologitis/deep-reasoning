@@ -16,36 +16,38 @@ v1's probes; 1.30.0 as this branch's lock resolves it (v2, §6.2 B10).
 **Matches the build at `f69bc73`** (v4): D4's code, `cd3e153` … `f69bc73`, on D3's finished head `d4e9cd3`, merged
 at `aa67f0a` (D4 was first stacked on D3's `5effe26`). Since v3, five commits: `1847ef0`, `9255778`, `7eb7812`,
 `933ac08`, `f69bc73` (§6.2 B24–B27); only `7eb7812` touches `src/` (the shim's `_type`, two lines), and the others
-are tests and the live job. Commits after `f69bc73` on this branch change only `docs/` and `as_built/`. (v3 matched
+are tests and the live job. Commits after `f69bc73` on this branch change only `docs/` and `as_built/`; v5 changes
+no code. (v3 matched
 `aa67f0a`, v2 `965f318`; `756f5f9` added the as-built document, `as_built/d4-custom-tools.md`, and excluded
 `as_built/` from the sdist.)
 
 ## Gate B: what to read
 
-**About 70 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D4's as-built document and
-the three runs below. The as-built document is `as_built/d4-custom-tools.md`, the Cartographer's; its second
-revision, r2, read from the code at `f69bc73`, is being written on `as-built/d4-r2` and joins this branch before Gate
-B is called (until then the copy here is r1, at `965f318`). It also reports E9's and the live tier's measured
-results. Everything after §6 is kept whole as the reference that D1's, D3's and D5's next revisions and the Gate C
-reviewers work against (Michael: don't force compression); Gate B does not need it.
+**About 75 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D4's as-built document and
+the three runs below. The as-built document is `as_built/d4-custom-tools.md`, revision 2, on this branch since
+`2353fe6`: the Cartographer's reading of the code at `f69bc73` against design v3, which also reports E9's and the live
+tier's measured results. Its §1 numbers the divergences: #1–#8 are this design's B24–B27 (v4), and #9–#13 are answered
+in v5 (B28, B29, the third ruling below, §4.8 with §14 item 15, and §14 item 17). Everything after §6 is kept whole as
+the reference that D1's, D3's and D5's next revisions and the Gate C reviewers work against (Michael: don't force
+compression); Gate B does not need it.
 
 | # | Read | What it gives you | Minutes |
 |---|---|---|---|
-| 1 | This section and the v4, v3 and v2 revision lines below it | where the proof is, the live tier's record, and which sentences of v1–v3 changed | 10 |
+| 1 | This section and the v5, v4, v3 and v2 revision lines below it | where the proof is, the live tier's record, what to rule on, and which sentences of v1–v4 changed | 12 |
 | 2 | §1 | what D4 is, and the decisions under it (F and L changed in v2) | 10 |
 | 3 | §2 | the Tools tab, and what the conversation and the agent are told | 8 |
 | 4 | §5 | what a tool or an MCP server can reach, said plainly | 4 |
 | 5 | §6.1 | where the design departs from the spec: written at design, not yet ruled on | 6 |
-| 6 | §6.2 | what the build changed (B1–B27), each with its reason and the test that pins it; B24–B27 are new in v4 | 16 |
+| 6 | §6.2 | what the build changed (B1–B29), each with its reason and the test that pins it; B24–B29 are new since v3 | 17 |
 | 7 | §11.1, its last part | the RunEvent D4 adds to `dr-acp`, and its three sentences | 3 |
 | 8 | Open the three runs below | that CI is green and the live tier passed twice, 6 of 6, at `f69bc73` | 3 |
-| 9 | `as_built/d4-custom-tools.md`, r2 | what exists, its divergences, and E9 as measured | 12 |
+| 9 | `as_built/d4-custom-tools.md`, r2: §1, then §7 | its divergences from v3 (#1–#13), and E9 and the live tier as measured | 14 |
 
-**Two things to rule on.** Michael has not ruled on either for D4; v2 and v3 asked both, and both are refreshed here
-to `f69bc73`.
+**Three things to rule on.** Michael has not ruled on the first two for D4; v2 and v3 asked both, and both are
+refreshed here to `f69bc73`. The third is new in v5, from the as-built r2.
 
 1. **D4's departures from the spec** (§6.1, fourteen items, unchanged since v1) **and the build's changes** (§6.2,
-   B1–B27). The spec's dated notes accept D2's departures and S1's and S2's ("Rulings at design, 2026-10-02" (2),
+   B1–B29). The spec's dated notes accept D2's departures and S1's and S2's ("Rulings at design, 2026-10-02" (2),
    (3)); none names D4's, so they reach Michael here. The ones a user meets: saving runs Check and refuses a tool that
    cannot build (§6.1 item 1); Check runs without secrets or a model (item 2); six names are reserved (item 3); a
    granted server that a conversation was not given, or that does not answer, leaves a stand-in and a notice (item 7,
@@ -55,12 +57,15 @@ to `f69bc73`.
    cannot start or bind fails alone and the run goes on (B19), while a namespace error still fails the build, in one
    case where `build_reasoner` alone would not (§14 item 16); a write of the other kind over a tool's row is refused,
    `409` (B20). Since v3: a tool property whose schema is `true` or `false` is described as `Any` or `Never` instead
-   of failing its server (B26); that changes the shim's text, so a grant made before it reads `MCP_SHIM_OLD` until
-   its **Update** (none exists outside the tests: nothing has shipped). And one about the proof, not the product: the
-   two live tests now name the tool and the server in the task (B27), so they pin that each is bound and works when
-   the agent calls it, not that gpt-6-luna reaches for it unprompted, which twice it did not. Already ruled, on
-   2026-10-03 (relayed by the Conductor): a server's command-line arguments are not secrets, so a server's log redacts
-   its env and header values only (B18, §14 item 3).
+   of failing its server (B26); that changes the shim's text, so a grant made before it reads `MCP_SHIM_OLD` until its
+   **Update** (none exists outside the tests: nothing has shipped). And one about the proof, not the product: the two
+   live tests now name the tool and the server in the task (B27), so they pin that each is bound and works when the
+   agent calls it, not that gpt-6-luna reaches for it unprompted, which twice it did not. Since v4, two places where
+   v3 described the build wrongly and the build is right (as-built r2 #9, #10): a server's JSON-RPC error reaches the
+   cell in the server's words, without the type `McpError` (B28); a `422 invalid` on Save shows D2's message, one line
+   per field error, without marking the fields (B29). Already ruled, on 2026-10-03 (relayed by the Conductor): a
+   server's command-line arguments are not secrets, so a server's log redacts its env and header values only (B18, §14
+   item 3).
 2. **Size.** The spec costed D4 at **≈1.0k lines with tests** and ≈3 h at Gate C; v1 estimated ≈2.0k of code and
    ≈2.2k of tests (§13). The build is **3,399 lines of code and 3,778 of tests** at `f69bc73`, 7,177 in all, about
    seven times the spec's figure and about 24 h at Gate C at the workspace's rate. These are lines added over D3's
@@ -70,6 +75,23 @@ to `f69bc73`.
    shim's `_type` (B26), and 92 of tests, the two fake servers and three tests of B24 and B26 and the live tests'
    changes (B25, B27). The breakdown is §6.2 B16. The build recorded no reason for the growth; the estimate was this
    design's. The Scout and the Refactorer, after Gate B, are where it shrinks; §13 names two parts that cut cleanly.
+3. **An export does not carry a remote server's `auth`** (as-built r2 #12; v5). Canvas's MCP settings can hold a
+   remote server's credential in `auth` (bearer, basic, API key or named headers) instead of `headers`. The bridge
+   forwards header-compatible `auth` as headers (SDK fork `acp_agent.py:717–736`), so in a conversation the server
+   gets it and `dr-acp` redacts it. But the frame snapshots only the keys of `headers` (`page/context.ts:147`), so a
+   grant's block names no variable for `auth` (`mcp/grants.py:79`), and under plain `dr` an export connects without
+   the credential: the server refuses it, and the agent meets a stand-in or a failed call. That breaks what §4.8 and
+   §6.1 item 8 promise, an export that runs under `dr` with each secret read from the environment. The code does what
+   §7.5 says; §7.5 is what is wrong, so the fix is the code's. The choices: (a) as built, with `MCP_EXPORT_NOTE`
+   saying that a credential set in `auth` is not exported; one sentence. (b) `mcpServersFromSettings` adds to
+   `headers` the names `auth` would send, all of them non-secret settings: `Authorization` for bearer, basic, and an
+   API key without a header name; the API key's header name; a header strategy's keys; none for `none` or OAuth (read
+   from the SDK fork's `mcp/config.py` at `91430aa`, not run, as §7.5's shapes were, §14 item 12). The grant then
+   names a variable for each (`POSTGRES_AUTHORIZATION`), which under `dr` holds the whole header value (`Bearer …`),
+   and **Update** offers itself on grants made before. About 10 lines and a `context.test.ts` case, written
+   test-first, landing before the Scout; OAuth stays unexported (§14 item 6). **Recommended: (b)**: it keeps the
+   export promise for the commonest remote credentials, through the snapshot path that already exists. Nothing changes
+   in code until Michael rules.
 
 **The evidence.** All three runs are at `f69bc73`, the branch's head and its last commit that touches code or tests.
 (v3's, at `aa67f0a`, were CI [run 37145903416](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37145903416),
@@ -152,6 +174,10 @@ head.
 §10 maps every test file; §6.2 B15 lists the names v2 added, and B18–B27 v3's and v4's.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-03 · v5 · answers the as-built r2 (`2353fe6`, its #9–#13); no code changed. Stop trusting: §2.1's and
+  §3.2's account of a `422 invalid` (B29); §4.3's `CALL_FAILED` "with the innermost exception" for an `McpError`
+  (B28); "not run" in §4.8 and §14 item 15 (r2 ran it); §14 item 17's numbers (now r2's). Added: §6.2 B28–B29; the
+  third ruling, on `auth` in an export (r2 #12), with notes in §7.5 and §14 item 6; the reading list, now r2.
 - 2026-10-03 · v4 · brought in line with the build at `f69bc73`: five commits after v3 (`1847ef0`, `9255778`,
   `7eb7812`, `933ac08`, `f69bc73`); B-numbers are §6.2's. Stop trusting: the Gate B section's reading table, evidence,
   rulings and size (now `f69bc73`'s: CI green, the live tier twice 6 of 6), and v3's account of the live tier (the MCP
@@ -391,7 +417,9 @@ How tools work ▸
 - **Save** sends `PUT /tools/{name} {yaml, source, granted_in, base_version}`. The backend runs Check when the block
   or the source differs from the head (§3.5): "Checking and saving…". On `422 check_failed` the report is shown;
   when it allows it, **Save anyway** resends with `accept_check_failure: true` under `SAVE_ANYWAY_NOTE`. A `409`
-  and a `422 invalid` are D3's (§5.2 there). Success: `SAVED_TOOL`.
+  and a `422 invalid` are D3's (§5.2 there). Success: `SAVED_TOOL`. *(v5, §6.2 B29: a `422 invalid` shows D2's
+  message in `dr-errors`, one line per field error with its field; no field is marked, as D3 marks its cards. A `409
+  conflict` on a saved tool offers D3's **Reload** and **Save over**.)*
 - **Granted in** is D3's `NamespaceChecklist`: checked = the record's `granted_in`; a namespace that inherits the grant
   from an ancestor (from `GET /effective`'s `tools[].source`) is checked and fixed with "inherited from X". For a saved
   tool, a tick saves at once (D3 decision I): `PUT /tools/{name}` with the **head's** block and source, the new
@@ -500,6 +528,8 @@ In the backend, in this order, each failure ending Check:
 
 1. **Shape**: D2's `shapes.validate_tool(name, yaml, source)` (the block is a mapping, `factory_from` absent or
    `tools/<name>.py`, a name that is an identifier). Failure → outcome `invalid`, D2's message and field errors.
+   *(v5, §6.2 B29: the report carries D2's message, whose lines are the field errors; `CheckReport` has no list of
+   them.)*
 2. **Name**: not in `RESERVED_NAMES` = `subagent`, `run_all`, `FinalAnswer`, `Var`, `Func`, `task`. A namespace's
    tools are bound over the agent's framework tools by name (`v2/agent.py:647, 675`), so a tool called `run_all`
    would replace deep_reasoner's own. `llm` is not reserved: deep_reasoner lets a user's own factory be called `llm`
@@ -716,6 +746,7 @@ call(tool, arguments): run_coroutine_threadsafe(session.call_tool(tool, argument
     McpError -32000 (connection closed), anyio's ClosedResourceError, BrokenResourceError, EndOfStream
                                                     → marked dead; SERVER_STOPPED, now and for every later call (v2)
     McpError 408 (mcp's own read timeout), or no result by call_timeout_s + 5 → CALL_TIMEOUT
+    McpError of any other code                      → CALL_FAILED with its message, no type (v5, B28)
     anything else                                   → CALL_FAILED with the innermost exception
 abandon(): loop.call_soon_threadsafe(task.cancel)   (mcp then closes stdin and ends the guard's group)
 ```
@@ -844,11 +875,12 @@ reading each `env` name and each header's variable from `dr`'s environment, one 
 the run goes on. No grant set is known there, so a hand-off is not refused (deep_reasoner's ordinary rule). Without
 `mcp` installed the run still starts and the stand-in says `pip install mcp`.
 
-*(v4: one case where the run does not go on. A server the shim reaches but whose tools it cannot describe raises in
-the factory, because `mcp_server` calls `bound()`, and so `describe()`, outside any handler; `make_tools` raises and
-the run does not start. Until `7eb7812` a property schema of `true` or `false`, which JSON Schema allows, did this;
-now only a property schema that is not a schema at all (a string, a number) does, which no valid server sends. Under
-`dr-acp` the same server fails alone (§6.2 B19, B26). Read in the code at `f69bc73`, not run; §14 item 15.)*
+*(v4, v5: one case where the run does not go on. A server the shim reaches, one of whose tools has a property schema
+that is neither a mapping nor a boolean (a string, a number: no JSON Schema, so no valid server sends it), cannot be
+described. `mcp_server` calls `bound()`, and so `describe()`, outside any handler, so the shim raises
+`AttributeError`; `make_tools` passes it on (deep_reasoner `v2/cli.py:157`), and the run does not start. Until
+`7eb7812` a boolean schema did the same (§6.2 B26). Under `dr-acp` the same server fails alone (B19). Read in the code
+at `f69bc73`, and run by the as-built r2's probe (its #11). §14 item 15 is the same case.)*
 
 ---
 
@@ -936,12 +968,13 @@ run agree, and is stated in `TOOL_HELP`; not worked around, as the spec says.
 ### 6.2 Changed by the build (v2–v4)
 
 Each was checked against the code and folded into the section named: B1–B17 at `965f318` (v2), B18–B23 at `aa67f0a`
-(v3), with B7, B12 and B16 updated there, and B24–B27 at `f69bc73` (v4), with B16, B19 and B23 updated there. B1–B7
-change behaviour or a contract v1 specified; B8–B9 are what v1 left open, and the signatures; B10–B12 are dependencies
-and wiring; B13–B15 are how the tests prove it; B16 is the size; B17 is what was not built; B18–B23 are what landed
-after the as-built document; B24–B27 what landed after v3. Where the build recorded no reason, the reason given is
-marked as this design's reading. The B-numbers are this section's; the spec's known gap B8 (`config_path`, above) is
-another list.
+(v3), with B7, B12 and B16 updated there, B24–B27 at `f69bc73` (v4), with B16, B19 and B23 updated there, and B28–B29
+at `f69bc73` too (v5, from the as-built r2). B1–B7 change behaviour or a contract v1 specified; B8–B9 are what v1 left
+open, and the signatures; B10–B12 are dependencies and wiring; B13–B15 are how the tests prove it; B16 is the size;
+B17 is what was not built; B18–B23 are what landed after the as-built document; B24–B27 what landed after v3; B28–B29
+are where v1–v4 described the build wrongly and the build is right. Where the build recorded no reason, the reason
+given is marked as this design's reading. The B-numbers are this section's; the spec's known gap B8 (`config_path`,
+above) is another list.
 
 **Behaviour**
 
@@ -1273,6 +1306,34 @@ B25 the live job's machinery, B27 the live tier's two questions.
   adds: the facts are still the tool's and the server's alone; the task now also says where they are. *Pinned by:*
   the two live runs at `f69bc73`, 6 of 6 each (Gate B section).
 
+**Where v1–v4 described the build wrongly (v5)**
+
+Found by the as-built r2 (`2353fe6`, its §1.2), and so already at `aa67f0a`. Each was read in the code at `f69bc73`.
+In both the design is what was wrong, and the build stands; neither commit recorded a reason, so each reason is this
+design's reading.
+
+- **B28. A server's JSON-RPC error reaches the cell in the server's words, without its type** (§4.3, §4.5; r2 #9;
+  `shim.py:265–271`). v1's §4.3 had every call failure that is not a timeout or a dead server raise `CALL_FAILED`
+  "with the innermost exception", which is "Type: message". Built: an `McpError` whose code is neither 408 nor −32000
+  raises `CALL_FAILED` with `str(exc)`, the server's message alone (`github.search failed: <its message>`); any other
+  exception keeps "Type: message". *Why the build is right (this design's reading):* such an error is the server's
+  own sentence about the call, as an `isError` result is, and §8.3 already passes that one on bare; in that branch
+  the type is always `McpError`, so it would add a word and no information, while for an exception raised on our
+  side (a `TypeError`, a validation error) the type is the information. *Not pinned:* FastMCP reports a tool's own
+  failure as `isError` (`test_a_failed_call_raises_mcp_tool_error_with_the_servers_text`), so this branch is reached
+  only by a protocol-level error, which no fake server sends.
+- **B29. A `422 invalid` on Save shows D2's message, without marking the fields** (§2.1, §3.2; r2 #10;
+  `ToolEditor.tsx:122–128, 323–349`). v1's §2.1 said "a `409` and a `422 invalid` are D3's (§5.2 there)", and D3's
+  §5.2 places D2's field errors on the cards they name (`editor.tsx:437–441`). Built: the tool editor shows the error's
+  message in `dr-errors` and does not use D3's `FieldErrors`; a `409 conflict` on a saved tool gets D3's **Reload**
+  and **Save over**. Check's `invalid` is the same: `CheckReport` carries D2's message and no list (`check.py:330`).
+  *Why the build is right (this design's reading):* D2's message is one line per field error, each with its field
+  (`  name: …`, `  factory_from: …`, `library/texts.py:28–33`), and the banner keeps its lines (`white-space:
+  pre-wrap`), so nothing D2 says is lost; D3's own banner shows the same message on a failed save, and what D3 adds,
+  placing each error on its card, has no counterpart in a form of three fields. *Not pinned:* no browser test sends
+  a block D2 refuses; D3's `api.test.ts` case "a D2 validation error carries its field errors" pins only that the
+  frame keeps them.
+
 ---
 
 ## 7 · Modules
@@ -1386,6 +1447,9 @@ D3's `test_the_committed_build_is_complete` adds it to its list.
   the **keys** of those maps (a value is never copied); `forwarded` = `enabled !== false` and (`refs === null` or the
   name is in `refs`); `why_not` = `"disabled"` or `"not_in_profile"`.
 - Either request failing → `null` (D3's tolerance).
+- v5: an entry's `auth` is not read, so the header names a remote server's `auth` sends (the bridge forwards them,
+  `acp_agent.py:717–736`) are in no grant, and an export does not send them. The Gate B section's third ruling asks
+  whether to add them to `headers` here (recommended) or say so in `MCP_EXPORT_NOTE` (as-built r2 #12).
 - As built (v2): the profile's refs are read from the answer's `profile.mcp_server_refs`, and a refs value that is not
   a list counts as `null`. Both shapes were read from the SDK fork at `91430aa`, not run against it (§14 item 12).
 
@@ -1900,7 +1964,8 @@ v4: 3,399 and 3,778, about 7.2k and 24 h. §6.2 B16 gives this table with the bu
 5. **Check's false failures** (a tool that needs a secret, the conversation's folder or the network at build time)
    are handled by "Save anyway", not reproduced. A per-tool "build in this folder" option was considered and left out.
 6. **OAuth-protected remote servers**: OpenHands forwards only header-compatible credentials (`acp_agent.py:717–736`);
-   a server needing OAuth fails at connect and is reported. Not designed around.
+   a server needing OAuth fails at connect and is reported. Not designed around. *(v5: header-compatible `auth` is
+   forwarded in a conversation but not exported; the Gate B section's third ruling.)*
 7. **Remote REPLs** (`repl: daytona`): how deep_reasoner carries a `Func`'s value into a remote REPL decides whether
    an MCP server can be used there; untested.
 8. **The live tier depends on the model choosing the tool**; the facts are unguessable and the tool is described,
@@ -1941,19 +2006,25 @@ v4: 3,399 and 3,778, about 7.2k and 24 h. §6.2 B16 gives this table with the bu
     `odd_server.py`). JSON Schema allows a boolean schema; §8.4's `_type` reads every property schema as a mapping and
     raises `AttributeError`. Since §6.2 B19 that server fails alone (`MCP_FAILED`) rather than the run, but a valid
     server cannot be bound. Reading a boolean schema as `Any` would fix it; not changed by the build. *(v4: fixed by
-    `7eb7812`, §6.2 B26: `true` is `Any`, `false` `Never`. What is left is a property schema that is not a schema at
-    all (a string, a number), which no valid server sends: under `dr-acp` that server fails alone, and under plain
-    `dr` the shim's factory raises and the run does not start (§4.8; read in the code, not run).)*
+    `7eb7812`, §6.2 B26: `true` is `Any`, `false` `Never`.)* *(v5: what is left is §4.8's case: a property schema that
+    is neither a mapping nor a boolean (a string, a number: no JSON Schema, so no valid server sends it). Under
+    `dr-acp` that server fails alone; under plain `dr` the shim raises `AttributeError`, `make_tools` passes it on,
+    and the run does not start. Read in the code, and run by the as-built r2's probe (its #11). Catching it in
+    `mcp_server`, as `open_session` does, would give a stand-in instead; not proposed, since a valid server never
+    sends it.)*
 16. **A namespace error fails the build in one case `build_reasoner` alone would not** (v3, §6.2 B19).
     `open_session` resolves every namespace of the config to find each grant (§4.4, `registry.resolve(ns)` for each),
     while `build_reasoner` resolves what the run needs. So a hand-written config run through `dr-acp --config`, with a
     broken namespace outside the entry namespace's chain, fails at build when it has an MCP block. This is the
     Conductor's caveat on `c2cfdc0`; I read it in the code and did not reproduce it. A run built from the Library
     cannot reach it (D2's invariants). Left as is; for Michael to accept, or for D1's next revision.
-17. **D4's head will move under it** (v4): it carries D1 as at `21f4a8b`, before the literate refactor `main` merged
-    today (`32c7f61`), so once D2 and then D3 are brought onto `main`, D4 follows and its 101 lines in D1's files
-    (§11.1) land on D1's refactored modules: a new head, no D4 behaviour changed, and the Gate B runs are `f69bc73`'s,
-    not that head's.
+17. **D4's head will move under it** (v4; v5 with the as-built r2's numbers, its #13 and §5.1): D4 carries D2 at
+    `90044f0` and D1 at `21f4a8b`, before D1's refactor merged into `main` (`32c7f61`). D2's head `cd0b60c` has
+    merged `main`; in `src/deep_reasoning/acp/` it differs from `d4e9cd3` in 18 files (+125 −330), six of which D4
+    edits (`agent.py`, `encoder.py`, `runlog.py`, `session.py`, `supervisor.py`, `worker/runner.py`), and a trial
+    merge of `f69bc73` with it (`git merge-tree`) is clean; the merged tree was not built or tested. So once D3 is
+    brought onto D2's head, D4 follows: a new head, no D4 behaviour changed, and the Gate B runs are `f69bc73`'s, not
+    that head's.
 
 ---
 
