@@ -281,8 +281,7 @@ def fan_out_under_two(rec):
 
 def test_interim_stops_the_branch_at_each_ones_next_turn(rec):
     fan_out_under_two(rec)
-    receipt = rec.recorder.arm(2)
-    assert (receipt.node, receipt.mode, receipt.accepted) == (2, "interim", True)
+    rec.recorder.note_stop(2, "interim")
     with pytest.raises(StoppedByUser) as course:
         rec.log("agent.turn", 4, 1, 2, 4, iter=2)
     assert str(course.value) == "stopped #2 and its branch (#4, #5)."
@@ -349,7 +348,7 @@ def test_without_a_stop_deep_reasoners_status_stands(rec, status, detail, expect
 
 def test_a_target_driven_again_after_its_stop_runs_normally(rec):
     rec.start(1).think(1, reply=FAN_OUT).start(2, 1, 2)
-    rec.recorder.arm(2)
+    rec.recorder.note_stop(2, "interim")
     with pytest.raises(StoppedByUser):
         rec.log("agent.turn", 2, 1, 2, iter=1)
     rec.end(2, 1, 2, status="failed", detail="StoppedByUser: stopped #2.")
@@ -359,9 +358,14 @@ def test_a_target_driven_again_after_its_stop_runs_normally(rec):
 
 def test_a_stop_for_an_unknown_or_ended_agent_is_not_accepted(rec):
     rec.start(1).think(1, reply=FAN_OUT).start(2, 1, 2).end(2, 1, 2)
-    unknown, ended = rec.recorder.arm(9), rec.recorder.arm(2)
-    assert (unknown.accepted, ended.accepted) == (False, False)
-    assert [e["accepted"] for e in rec.events("stop.accepted")] == [False, False]
+    rec.recorder.note_stop(9, "interim")
+    rec.recorder.note_stop(2, "interim")
+    assert [
+        (e["node"], e["accepted"], e["reason"]) for e in rec.events("stop.accepted")
+    ] == [
+        (9, False, "no such agent in this run"),
+        (2, False, "the agent has already ended"),
+    ]
     rec.log("agent.turn", 1, iter=2)
 
 

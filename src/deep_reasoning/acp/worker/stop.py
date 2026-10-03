@@ -3,7 +3,6 @@
 
 import importlib
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from deep_reasoning.acp import texts
@@ -32,19 +31,12 @@ class StoppedByUser(Exception):
         self.siblings = siblings
 
 
-@dataclass(frozen=True)
-class StopReceipt:
-    node: int
-    mode: Literal["dean", "interim"]
-    accepted: bool  # False: unknown node, or it already ended
-    reason: str | None
-
-
 class StopAdapter(Protocol):
     mode: Literal["dean", "interim"]
 
-    def stop(self, node_id: int) -> StopReceipt:
-        """Thread-safe; returns at once."""
+    def stop(self, node_id: int) -> None:
+        """Thread-safe; returns at once. Whether the stop was accepted is the
+        stop.accepted event the recorder emits."""
         ...
 
 
@@ -57,14 +49,14 @@ class DeanStop:
         self._fn = fn
         self._recorder = recorder
 
-    def stop(self, node_id: int) -> StopReceipt:
+    def stop(self, node_id: int) -> None:
         """fn(node_id), then recorder.note_stop(node_id, "dean"), as one step for the
         recorder: stop.accepted marks the moment the stop is in force, and no agent.end
         is classified between the two."""
         with self._recorder.holding():
             if self._recorder.running(node_id):
                 self._fn(node_id)
-            return self._recorder.note_stop(node_id, "dean")
+            self._recorder.note_stop(node_id, "dean")
 
 
 class InterimStop:
@@ -73,9 +65,8 @@ class InterimStop:
     def __init__(self, recorder: "Recorder") -> None:
         self._recorder = recorder
 
-    def stop(self, node_id: int) -> StopReceipt:
-        """recorder.arm(node_id)."""
-        return self._recorder.arm(node_id)
+    def stop(self, node_id: int) -> None:
+        self._recorder.note_stop(node_id, "interim")
 
 
 def resolve_stop_adapter(recorder: "Recorder", spec: str | None) -> StopAdapter:
