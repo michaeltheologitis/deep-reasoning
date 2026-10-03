@@ -1,6 +1,6 @@
 # S2 · Agent commands, options and App panels in the agent-server, as built
 
-**TASK-6** · Cartographer · revision 2 · the code at `5e3317f`, head of `feat/agent-surfaces` in the SDK fork
+**TASK-6** · Cartographer · revision 3 · the code at `5e3317f`, head of `feat/agent-surfaces` in the SDK fork
 [michaeltheologitis/software-agent-sdk](https://github.com/michaeltheologitis/software-agent-sdk) (draft PR #1 into
 the fork's `deep-reasoning`, now `1f2b52d`; S2 is `git diff 1f2b52d..5e3317f`: 16 commits and two merges of
 `deep-reasoning`) · divergences checked against the design at `9e32261` (v1, the design the build was made against;
@@ -8,21 +8,25 @@ see "The design moved" below) · agent-client-protocol 0.12.1 and websockets 15.
 Python 3.13.14 and Node 22.22 in this sandbox · 2026-10-03.
 
 **Revisions** (newest first).
+- r3, code `5e3317f` (unchanged): the REST breakage check, re-run on PR #1 once upstream's `v1.50.1` tag was in the
+  fork (run 37146974332, attempt 2), compared S2's schema with oasdiff and passed. D-5, D-8, §6.1, §6.5 and §7 item 1
+  updated; nothing else in the code or the runs changed.
 - r2, code `5e3317f`: the three commits after `6f97bf3` verified (`c12f7b4` merges the fork-only `1f2b52d`; `13e5904`
-  documents the icon route; `5e3317f` pins four status rows). D-5 rewritten: upstream's main-only guards now run on
-  PR #1, but the REST check compares nothing. D-9 and D-10 now resolved. D-11 new: every 5xx answer's `detail` is
-  "Internal Server Error". Two r1 claims were wrong and are corrected: that no failing macOS run existed (§2.4, §7),
-  and that the weak-schema ratchet ran inside the agent-server suite (D-5). Counts, sizes, line numbers and the live
-  run (37147707860, at `5e3317f` itself) updated.
+  documents the icon route; `5e3317f` pins four status rows). D-5 rewritten: upstream's main-only guards now run on PR
+  #1, but the REST check compared nothing (until r3). D-9 and D-10 now resolved. D-11 new: every 5xx answer's `detail`
+  is "Internal Server Error". Two r1 claims were wrong and are corrected: that no failing macOS run existed (§2.4,
+  §7), and that the weak-schema ratchet ran inside the agent-server suite (D-5). Counts, sizes, line numbers and the
+  live run (37147707860, at `5e3317f` itself) updated.
 - r1, code `6f97bf3`: `4f4bfc1`, carried on `design/s2` as `3ad786c`.
 
-**The design moved.** This branch was reset to `design/s2` (`894ff3c`), which carries the System Designer's v2
-(`4ad7f9c`) and v2.1 (`894ff3c`): they bring the design in line with the build at `6f97bf3` and with r1 of this
-document. §2 still reports the divergences from v1 (`9e32261`), plus what the three new commits change. I did not
+**The design moved.** This branch was reset to `design/s2` before each revision (`894ff3c` for r2, `43ca0e9` for r3),
+which carries the System Designer's v2 (`4ad7f9c`), v2.1 (`894ff3c`) and v2.2 (`c0e9ccc`): they bring the design in
+line with the build at `6f97bf3` and with r1 of this document, and v2.2, by its commit message, "in line with
+5e3317f". §2 still reports the divergences from v1 (`9e32261`), plus what the three new commits change. I did not
 re-check the build against v2.1 in full: I read its Gate B section (its first 140 lines); a further read of the design
-file was refused in this session, and I did not work around the refusal (§7). Two
-statements in that section no longer hold at `5e3317f`: that upstream's main-only checks did not run in CI, and the
-"Not run in CI" list under it (D-5).
+file was refused in this session, and I did not work around the refusal (§7). Two statements in that section no
+longer hold at `5e3317f`: that upstream's main-only checks did not run in CI, and the "Not run in CI" list under it
+(D-5). I have not read v2.2. [run: `git log design/s2`]
 
 **Where this file lives.** On deep-reasoning's branch `as-built/s2`, cut from `design/s2`: S2's code is in the SDK
 fork, which carries only upstream-shaped code plus marked fork-only commits, so no document of ours goes there. This
@@ -102,8 +106,8 @@ D-5). [run: `git log`, `git diff --numstat`, `git show --numstat`]
 ## 2 · Divergences from the design (`9e32261`)
 
 The changelog held no `drift:` line for TASK-6 when r1 was written, so every item below was found from the code. All
-of S2's commits came after `9e32261`. "Design §x" cites `9e32261` (v1). v2 and v2.1, written after r1, say they bring
-the design in line with the build and with r1; which of D-1 to D-10 they absorb, and how, I did not check (§7). [run:
+of S2's commits came after `9e32261`. "Design §x" cites `9e32261` (v1). v2, v2.1 and v2.2, written after r1, say they
+bring the design in line with the build and with r1; which of D-1 to D-11 they absorb, and how, I did not check (§7). [run:
 Notion query of the Changelog at r1; `git log`]
 
 ### 2.1 Behaviour a client or an agent sees
@@ -169,14 +173,14 @@ comment): "Don't leak internal details to clients for 5xx errors in production."
 
 ### 2.2 The fork's pull requests and upstream's guards
 
-**D-5 · One draft PR into `deep-reasoning`, none into `main`; upstream's main-only guards now run on it, but the REST
-check compares nothing.** Design §1 and §9 (layer 3): each unit's commits, cherry-picked onto the fork's `main`, get
-a draft PR there, so the guards that run only for pull requests to `main` run as upstream would run them. Built: PR
-#1 (`feat/agent-surfaces` → `deep-reasoning`) carries all three units, and the fork has no other PR but S1's #2,
-stacked on it. [CI: PR list] Up to `6f97bf3` the main-only guards did not run on it (r1). The fork-only `1f2b52d`,
-merged as `c12f7b4`, adds `deep-reasoning` and `feat/**` to the `pull_request` branch filters of five workflows (REST
-API breakage, persisted settings, TypeScript client CI, TypeScript client integration tests, version bump guard), and
-at `5e3317f` they ran on PR #1, all green [CI]:
+**D-5 · One draft PR into `deep-reasoning`, none into `main`; upstream's main-only guards now run on it.** Design §1
+and §9 (layer 3): each unit's commits, cherry-picked onto the fork's `main`, get a draft PR there, so the guards that
+run only for pull requests to `main` run as upstream would run them. Built: PR #1 (`feat/agent-surfaces` →
+`deep-reasoning`) carries all three units, and the fork has no other PR but S1's #2, stacked on it. [CI: PR list] Up
+to `6f97bf3` the main-only guards did not run on it (r1). The fork-only `1f2b52d`, merged as `c12f7b4`, adds
+`deep-reasoning` and `feat/**` to the `pull_request` branch filters of five workflows (REST API breakage, persisted
+settings, TypeScript client CI, TypeScript client integration tests, version bump guard), and at `5e3317f` they ran on
+PR #1, all green [CI]:
 
 - **Persisted settings** (run 37146974370): 17 fixtures and 8 payloads from PyPI 1.50.1 validated, as in my r1 run.
 - **TypeScript client CI** (37146974358): lint (0 errors; 7 warnings, none in S2's files), build, 23 files and 355
@@ -185,12 +189,26 @@ at `5e3317f` they ran on PR #1, all green [CI]:
   0 s.
 - **Version bump guard** (37146974326): its SDK API compatibility step was skipped, because no package version
   changed. So the SDK API breakage check has still never run on S2.
-- **REST API breakage** (37146974332): **green without comparing anything.** The script builds the baseline schema
-  with `git archive v1.50.1`; the fork has no `v1.50.1` tag (its only tag is `dr-1`), so the step logs "Failed to
-  extract source for v1.50.1 … not a valid object name" as a warning, and `main()` returns 0 after only its static
-  policy checks (`.github/scripts/check_agent_server_rest_api_breakage.py:1024–1026`). oasdiff never compared S2's
-  schema in CI; the only comparison on record is the Implementer's local run at `28e5654` (PR body). [CI: job log;
-  read: the script; the fork's tag list]
+- **REST API breakage** (37146974332, two attempts). The script builds the baseline schema with `git archive v1.50.1`.
+  **Attempt 1** was green without comparing anything: the fork had no `v1.50.1` tag (only `dr-1`), so the step logged
+  "Failed to extract source for v1.50.1 … not a valid object name" as a warning, and `main()` returned 0 after only
+  its static policy checks (`.github/scripts/check_agent_server_rest_api_breakage.py:1024–1026`); the check passes
+  this way on any clone without the tag. Michael then pushed upstream's tag to the fork: the fork's `v1.50.1` is
+  `1e1390a`, the commit upstream's tag names [CI: the fork's tags; run: `git ls-remote` of upstream]. **Attempt 2**
+  (job 111276569669) fetched `v1.50.1` at checkout, ran oasdiff 1.19.1 against it on `pull/1/merge` (whose tree is
+  `5e3317f`'s: the base, `1f2b52d`, is already in it [run: `git merge-base --is-ancestor`]) and **passed** (exit code
+  0). oasdiff's breaking-change list had eight entries, and the script accepted all eight as additive ("Additive
+  oneOf/anyOf expansion or enum-value additions detected in response schemas"):
+  - `ACPSessionControlsEvent` added to the `Event` `oneOf` in two 200 responses: a body whose `items` are events, and
+    a body that is one event. Upstream's rule for `oneOf` expansions accepts these; no allowlist entry is involved.
+  - `darwin-amd64` and `darwin-arm64` added to the `propertyNames` enum of `CanvasExtensionBackend.artifacts` in three
+    200 responses, two whose body is one installed App (`manifest/…`; `POST …/install` and `GET
+    …/installed/{extension_name}` have that body [read]) and the list (`canvas_extensions/items/manifest/…`). These
+    are accepted through D-8's allowlist entry.
+
+  oasdiff lists only breaking changes, so the new routes and fields do not appear. The log lists no type widening.
+  Upstream's REST check has now compared S2's schema in CI. [CI: both attempts' job logs; read: the script, the
+  routes]
 
 The OpenAPI weak-schema ratchet (`make test-server-schema`, in `server.yml`) still runs only for pull requests into
 `main`. r1 said it ran inside the agent-server suite, and that was wrong: `tests/agent_server/test_openapi_contract.py`
@@ -213,8 +231,9 @@ entry; §6.4 names this one as the fallback if oasdiff flags `BackendPlatform`'s
 `_EXTENSIBLE_DISCRIMINATOR_PROPERTY_RE` gains `CanvasExtensionBackend\b.*\bartifacts/propertyNames\b`
 (`.github/scripts/check_agent_server_rest_api_breakage.py:646`) with a test that only that property is downgraded.
 Reason (commit `28e5654`): "oasdiff reports a new key of CanvasExtensionBackend.artifacts (its propertyNames enum) as
-a breaking response enum addition." [run: the test; the oasdiff result itself is the commit message's, and CI's REST
-check has never compared schemas (D-5), §7]
+a breaking response enum addition." CI bears this out: attempt 2 of the REST check (D-5) reports the two darwin keys
+at `…/artifacts/propertyNames/` and accepts them through this entry. [run: the test; CI: the job log; read:
+`check_agent_server_rest_api_breakage.py:644–647, 750–760`]
 
 ### 2.3 Signatures and small behaviours
 
@@ -518,7 +537,8 @@ docs/configs/advising/main.yaml --home <tmp>"`, `OPENHANDS_ACP_LIVE_CONFIG_OPTIO
 | Run | Commit | Conditions | Result |
 |---|---|---|---|
 | fork `Run tests` [37146974364](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974364) | `5e3317f` | `pull_request` into `deep-reasoning`; ubuntu-24.04, Python 3.13 | all jobs green: sdk 6,699 passed, 7 skipped, 12 xfailed · agent-server 2,431 passed · cross 496 passed, 1 skipped · tools, workspace, stress, windows green · `macos-app-backend-tests` (arm64, macos-latest) 178 passed in 24.7 s · `acp-live-tests` 25 passed, 2 skipped (§6.3) [CI] |
-| fork, the formerly main-only guards on PR #1 | `5e3317f` | REST API breakage 37146974332, persisted settings 37146974370, TypeScript client CI 37146974358, its integration tests 37146974428, version bump guard 37146974326 | all green; what each did is D-5 (the REST check compared nothing) [CI] |
+| fork, the formerly main-only guards on PR #1 | `5e3317f` | REST API breakage 37146974332, persisted settings 37146974370, TypeScript client CI 37146974358, its integration tests 37146974428, version bump guard 37146974326 | all green; what each did is D-5 [CI] |
+| fork `REST API breakage checks` [37146974332](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974332), attempts 1 and 2 | `5e3317f` | attempt 1 without the `v1.50.1` tag in the fork; attempt 2 with it | attempt 1 green without a comparison; attempt 2 compared with oasdiff 1.19.1 and passed, eight additive changes accepted (D-5) [CI] |
 | fork, other workflows on PR #1 | `5e3317f` | pre-commit, docstrings, endpoint audit, deprecation deadlines, test-directory allowlist | green; "Validate PR description" skipped; 28 check runs in all [CI] |
 | fork `Run tests` 37099674559 (r1) | `6f97bf3` | the same | all jobs green; agent-server 2,426 passed; macOS 178 passed in 19.7 s [CI] |
 | fork `Run tests` 37090190722 | `aff05f6` | the same | green, macOS job included [CI] |
@@ -611,7 +631,7 @@ its property; the four rows D-9 named have had theirs since `5e3317f`. [run: col
 |---|---|
 | Weak-schema ratchet (`make test-server-schema`) | still main-only, not in CI; its type-quality check passes at `5e3317f` [run]; at `6f97bf3` the icon route was a new weak location (`13e5904`) [read] |
 | Persisted settings | green in CI at `5e3317f` [CI]; passed locally at `6f97bf3` [run] |
-| REST breakage (oasdiff 1.19.1 against v1.50.1) | green in CI at `5e3317f` without a comparison: no `v1.50.1` tag in the fork (D-5) [CI]; the Implementer's local run at `28e5654` passes after D-8's allowlist [read: PR body]; not run by me |
+| REST breakage (oasdiff 1.19.1 against v1.50.1) | passed in CI at `5e3317f` (37146974332, attempt 2): eight additive changes, all accepted, the six darwin ones through D-8's entry (D-5) [CI]; attempt 1, before the tag reached the fork, compared nothing; not run by me |
 | SDK API breakage (`version-bump-guard.yml`) | the job runs at `5e3317f` but skips the check, no version having changed (D-5) [CI]; not run by me |
 | Docstrings, pre-commit, endpoint audit | green [CI] |
 | TypeScript client CI and integration tests | green in CI at `5e3317f`: lint, build, 355 tests, format and the rest (D-5) [CI]; suite and typecheck passed locally at `6f97bf3` [run] |
@@ -629,11 +649,9 @@ its property; the four rows D-9 named have had theirs since `5e3317f`. [run: col
 
 ## 7 · What I could not verify
 
-1. **The REST breakage comparison** (oasdiff on the new routes, the new event `oneOf` member and `BackendPlatform`'s
-   keys) has run only in the Implementer's sandbox, at `28e5654`: CI's REST check now runs but finds no `v1.50.1`
-   baseline in the fork and compares nothing (D-5). D-8's premise, that oasdiff flags `propertyNames`, is the commit
-   message's. The SDK API breakage check has run nowhere (CI skips it without a version change). I ran neither
-   (oasdiff and the v1.50.1 baseline build are not set up here).
+1. **The breakage checks, locally.** I ran neither oasdiff nor the SDK API check (neither oasdiff nor the v1.50.1
+   baseline build is set up here); the REST comparison is CI's (D-5). The SDK API breakage check has run nowhere: CI
+   skips it while no package version changes.
 2. **macOS.** The two failures behind `0e24793` and `6f97bf3` are in CI's history (§2.4); that the EPERM came from a
    group whose members were all zombies, and the 3 s from a cold `/usr/bin/python3`, are the commit messages'
    readings. macOS on Intel (`darwin-amd64`, Rosetta) is never run.
@@ -646,9 +664,9 @@ its property; the four rows D-9 named have had theirs since `5e3317f`. [run: col
 7. **C2's use** is read from its code at `db3b4b9`; nothing of C2 was run, and how C2 renders D-2's transient empty
    menu was not checked.
 8. **The live runs' cost**: not printed.
-9. **The design at v2.1** (`894ff3c`): I read its Gate B section only; a further read of the design file was refused
-   in this session, so I did not check the build at `5e3317f` against v2.1's §3–§10, nor which of D-1 to D-11 v2 and
-   v2.1 absorb. Divergences here are from v1.
+9. **The design at v2.1 and v2.2** (`894ff3c`, `c0e9ccc`): of v2.1 I read the Gate B section only, and a further read
+   of the design file was refused in this session; v2.2 I have not read. So I did not check the build at `5e3317f`
+   against either, nor which of D-1 to D-11 v2, v2.1 and v2.2 absorb. Divergences here are from v1.
 
 If this document resists shortening, the part that resists is §2: the code follows the design closely, and what
 differs is spread across the contract C2 reads (D-1, D-2, D-11), the fork's PR shape and its guards (D-5 to D-8), and
