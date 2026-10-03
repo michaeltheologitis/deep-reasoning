@@ -87,7 +87,7 @@ def test_pydantic_locations_are_joined_with_dots():
         ("matemática", False),
     ],
 )
-def test_namespace_names(name, ok):
+def test_a_namespace_name_is_ascii_words_joined_by_single_dots(name, ok):
     text = yaml.safe_dump({"name": name})
     if ok:
         assert shapes.validate_namespace(text).name == name

@@ -7,14 +7,10 @@ from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, library_path
 from tests.acp.harness import dr_acp, run, run_ids
 from tests.acp.scenarios import BASE_CONFIG, repl
-from tests.library.conftest import ROUTER, example, text, write_config
+from tests.library.conftest import ROUTER, example, text, user_texts, write_config
 
 V1 = "Summarize each course, then rank them."
 V2 = "Rank the courses by workload, then summarize."
-
-
-def user_texts(messages: list[dict]) -> list[str]:
-    return [m["content"] for m in messages if m["role"] == "user"]
 
 
 @pytest.mark.parametrize("edit", [False, True], ids=["saved", "edited"])

@@ -8,7 +8,7 @@ import yaml
 from deep_reasoning.acp.catalog import CommandEntry, ConfigCatalog
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, LibraryCatalog, LibraryNotFound
-from tests.library.conftest import example, run_dr, text
+from tests.library.conftest import example, run_dr, text, user_texts
 
 ANSWER = '<think>ok</think>\n<repl>\nFinalAnswer("done")\n</repl>'
 
@@ -95,10 +95,6 @@ def test_building_a_catalog_imports_nothing_of_deep_reasoner(tmp_path):
         "assert 'deep_reasoner' not in sys.modules, sorted(sys.modules)\n"
     )
     subprocess.run([sys.executable, "-c", probe], check=True)
-
-
-def user_texts(messages: list[dict]) -> list[str]:
-    return [m["content"] for m in messages if m["role"] == "user"]
 
 
 def test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace(

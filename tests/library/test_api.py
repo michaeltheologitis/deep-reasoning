@@ -77,6 +77,8 @@ def test_health_reports_the_revision_and_default_namespace(client, lib):
     ],
 )
 def test_every_read_answers_its_records(client, path, shape):
+    """shape is the versions a history lists, the names a listing holds, or some of a
+    record's fields."""
     response = client.get(path)
     assert response.status_code == 200
     found = response.json()
