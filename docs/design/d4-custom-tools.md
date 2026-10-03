@@ -1,29 +1,117 @@
 # D4 · Custom tools — design
 
 **TASK-9** · System Designer · task branch `v1-custom-tools` in
-[deep-reasoning](https://github.com/michaeltheologitis/deep-reasoning) (this file is written on `design/d4`) ·
-against the approved spec [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012) (D4 in full; §1's
-"done when"; §2's decisions 1 and 7; §4's E9, E10 and the live tier; the dated notes at its end, read live on
-2026-10-03, through "Scope additions approved, 2026-10-03").
+[deep-reasoning](https://github.com/michaeltheologitis/deep-reasoning) (v1 was written on `design/d4`, `e14fda7`; v2
+on the task branch) · against the approved spec [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012)
+(D4 in full; §1's "done when"; §2's decisions 1 and 7; §4's E9, E10 and the live tier; the dated notes at its end,
+read live on 2026-10-03, through "Scope additions approved, 2026-10-03").
 **Pinned against:** D3's design at `ab6f2ec` on `design/d3` (§8.3 is D4's UI contract; §2.5, §4, Appendix A) · D2 as
 built on `v1-library-store` at `90044f0` (`src/deep_reasoning/library/`; its design `555472b`, §6.5 and §9 items 7
 and 10) · D1's design at `c8d7fbb` (§4.3, §4.4, §4.7, §4.8) and its code as merged into `90044f0` · D5's design at
 `8086afb` (§2, §4.7, §7.1) · SDK fork `deep-reasoning` at `91430aa` (`acp_agent.py`, `settings_router.py`, the App
-bridge; `mcp` 1.28.1 in its lock) · deep_reasoner_beta `d7334ae` · `agent-client-protocol` 0.12.1 · `mcp` 1.28.1.
+bridge; `mcp` 1.28.1 in its lock) · deep_reasoner_beta `d7334ae` · `agent-client-protocol` 0.12.1 · `mcp` 1.28.1 for
+v1's probes; 1.30.0 as this branch's lock resolves it (v2, §6.2 B10).
+
+**Matches the build at `965f318`** (v2): D4's code, `cd3e153` … `965f318`, stacked on D3 at `5effe26`. The commits
+after it on this branch change only `docs/`: `0be057d` (v1 of this file, cherry-picked from `design/d4` `e14fda7`)
+and this revision.
+
+## Gate B: what to read
+
+**About 65 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D4's as-built document
+(`as_built/d4-custom-tools.md`, the Cartographer's; it also reports E9's and the live tier's measured results) and the
+two runs below. Everything after §6 is kept whole as the reference that D1's, D3's and D5's next revisions and the
+Gate C reviewers work against (Michael: don't force compression); Gate B does not need it.
+
+| # | Read | What it gives you | Minutes |
+|---|---|---|---|
+| 1 | This section and the v2 revision line below it | where the proof is, and which sentences of v1 changed | 8 |
+| 2 | §1 | what D4 is, and the decisions under it (F and L changed in v2) | 10 |
+| 3 | §2 | the Tools tab, and what the conversation and the agent are told | 8 |
+| 4 | §5 | what a tool or an MCP server can reach, said plainly | 4 |
+| 5 | §6.1 | where the design departs from the spec: written at design, not yet ruled on | 6 |
+| 6 | §6.2 | what the build changed, each with its reason and the test that pins it | 12 |
+| 7 | §11.1, its last part | the RunEvent D4 adds to `dr-acp`, and its three sentences | 3 |
+| 8 | Open the two runs below | that they are green at `965f318` | 2 |
+| 9 | `as_built/d4-custom-tools.md` | what exists, its divergences, and E9 as measured | 12 |
+
+**Two things to rule on.**
+
+1. **D4's departures from the spec** (§6.1, fourteen items, unchanged since v1) **and the build's changes** (§6.2).
+   The spec's dated notes accept D2's departures and S1's and S2's ("Rulings at design, 2026-10-02" (2), (3)); none
+   names D4's, so they reach Michael here for the first time. The ones a user meets: saving runs Check and refuses a
+   tool that cannot build (§6.1 item 1); Check runs without secrets or a model (item 2); six names are reserved
+   (item 3); a granted server that a conversation was not given, or that does not answer, leaves a stand-in and a
+   notice (item 7, §2.2); a grant reaches child namespaces and sub-agents spawned into a granted one (item 5), and a
+   hand-off outside it is refused (item 6); under plain `dr` an export needs each server's secrets in the environment
+   (item 8); the tool editor's CodeMirror chunk is 348 KB against a 300 KB budget (§6.2 B3).
+2. **Size.** The spec costed D4 at ≈1.0k lines with tests and ≈3 h at Gate C; v1 estimated ≈2.0k of code and ≈2.2k of
+   tests (§13). The build is **about 3.3k lines of code and 3.5k of tests** at `965f318` (3,311 and 3,511 lines
+   added over D3's `5effe26`; the tests' figure leaves out `tests/mcp/fixtures/shim_v1.py`, the v1 shim frozen as a
+   Library stores it, 539 lines), about 23 h at Gate C at the workspace's rate. The breakdown is §6.2 B16. The build
+   recorded no reason for the growth; the estimate was this design's. The Scout and the Refactorer, after Gate B, are
+   where it shrinks; §13 names two parts that cut cleanly.
+
+**The evidence.** Both runs are at `965f318`, the branch's last commit that touches code.
+
+- **CI**, [run 37106223937](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223937): two
+  jobs, both green. `test`: `ruff check`, `ruff format --check` and the deterministic suite, **667 passed** (the 6
+  live and 65 browser tests deselected, nothing skipped), in 5 min 55 s; 133 of the 667 are D4's (`tests/tools/` 61,
+  `tests/mcp/` 72), and D1's `tests/acp/test_encoder.py` carries D4's notice test. `canvas-app`: typecheck, format
+  check, vitest **187 passed, 1 skipped** (D3's), the build and "the committed build is what a fresh build gives",
+  then the browser tests in Chromium against a real `dr-library serve`, **64 passed, 1 skipped** (D5's `dr_app` is
+  not installed), in 3 min; 17 of the 64 are D4's. No test calls a model: the model is `FakeOpenAI` on 127.0.0.1,
+  and every MCP server is a real FastMCP server of ours, over stdio, streamable HTTP or SSE.
+- **Live tier**, [run 37106223637](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223637):
+  **6 of 6 passed** on gpt-6-luna in 81 s: D1's three, D2's one, and D4's two,
+  `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent` and
+  `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent`. It runs only on
+  demand, as `.github/workflows/live.yml` (`pytest -m live`).
+
+**Which tests carry which property.** Each test's name states the property it pins. Python files are under
+`tests/tools/`, `tests/mcp/` and `tests/canvas_app/`; `[…]` is a parametrization.
+
+| Property | Tests |
+|---|---|
+| **E9, your own tool.** A tool that cannot build is found by Check, in deep_reasoner's own words, and cannot be saved; a failure Check cannot attribute (the factory raised, ran past its limit, or Check did not start) is saved only when asked; a grant-only change runs no Check. Check and `make_tools` agree on every fixture. | `test_check.py::test_check_and_make_tools_agree[works, not_func, misspelled, import_error, hang, env_at_build, prints, exits]` (Check's `ok` is whether deep_reasoner's own `make_tools` builds the same materialized config in a subprocess, and where deep_reasoner words the failure, the same words); `::test_a_factory_that_returns_no_func_fails_check_in_deep_reasoners_words`; `::test_a_misspelled_factory_fails_check_naming_what_the_file_defines`; `::test_an_import_of_a_missing_module_fails_check_and_cannot_be_saved_anyway`; `::test_a_hanging_factory_is_stopped_at_the_build_limit`; `::test_nothing_a_stopped_tool_started_is_left_running`; `test_routes.py::test_a_tool_that_cannot_build_is_not_saved[not_func, misspelled, import_error]` (422 `check_failed` even with `accept_check_failure`; no revision made); `::test_a_structural_failure_cannot_be_saved_anyway`; `::test_save_anyway_stores_a_raising_tool_only_when_asked`; `::test_a_grant_only_change_runs_no_check` |
+| **Check builds a tool as a conversation would**, minus what only a conversation has (secrets, a model, its folder) | `test_check.py::test_a_working_tool_builds_and_says_what_the_agent_is_told` (deep_reasoner's own `describe()`); `::test_the_tried_expression_is_evaluated_with_the_tool_bound`; `::test_check_never_reaches_a_model` (a factory calling the model gets a connection error; a fake model on another port records nothing); `::test_check_gets_no_secret`; `::test_printing_cannot_corrupt_the_report`; `::test_a_tool_that_ends_the_process_is_raised_saying_how_it_ended`; `::test_the_temporary_folder_is_removed[word_count, hang]`; `::test_not_func_and_unknown_factory_sentences_equal_make_tools` (a tripwire on deep_reasoner's inline text); and through `dr-acp`, a tool saved through the API is built and called: `tests/mcp/test_acp.py::test_a_tool_saved_through_the_api_is_built_and_called_in_the_next_conversation` |
+| **E9, MCP servers, end to end through `dr-acp`.** A server that crashes or never answers blocks neither the session nor the run and takes nothing down with it; one not granted to an agent's namespace is not in that agent's REPL or prompt; a grant reaches child namespaces and sub-agents spawned into a granted namespace; a hand-off outside the grant is refused; no stdio server outlives its run | `test_acp.py::test_a_granted_server_is_bound_and_a_cell_calls_it`; `::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers`; `::test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on` (the next cell and the next prompt are answered); `::test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadline`; `::test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt` (a cell's `dir()` and the fake model's first request lack it); `::test_a_sub_agent_spawned_into_a_granted_namespace_gets_it`; `::test_a_grant_reaches_a_child_namespace`; `::test_handing_a_server_to_an_ungranted_namespace_is_refused`; `::test_no_stdio_server_outlives_a_root_stop`; `::test_no_stdio_server_outlives_a_closed_session`; `test_session.py::test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline`, `::test_a_server_granted_nowhere_is_not_started`, `::test_a_server_granted_only_where_spawning_is_not_allowed_is_not_started`, `::test_a_server_given_up_is_ended_within_three_seconds`; `test_shim.py::test_a_call_that_never_answers_raises_after_its_timeout`, `::test_the_guard_ends_its_server_when_its_parent_is_killed` |
+| **MCP grants are D2 tool rows** (decision D): the block snapshots the server, the source is the shim, `granted_in` grants it, a resend unchanged makes no version; export and re-import keep a grant a grant; an export runs under `dr` | `test_routes.py::test_put_mcp_writes_the_block_and_the_shim_and_grants`; `::test_put_mcp_resent_unchanged_makes_no_tool_version`; `::test_a_server_cannot_be_granted_under_two_names`; `::test_put_mcp_refuses_a_name_the_repl_cannot_bind[run_all, not a name, class]`; `::test_an_mcp_block_through_put_tools_is_refused`; `::test_get_mcp_lists_grants_with_their_last_seen_tools`; `::test_get_mcp_says_when_a_grant_has_an_old_shim`; `test_grants.py::test_is_mcp_tool_needs_the_factory_and_the_marker[…]`, `::test_an_exported_and_reimported_grant_is_still_a_grant`; `test_export.py::test_an_exported_grant_runs_under_dr` (`dr-library export`, then `dr` with `ECHO_TOKEN` in the environment: exit 0, the server's answer); `test_shim.py::test_a_stored_v1_shim_works_with_todays_session` |
+| **The shim's token** (a server's secret): it reaches the server from what the client forwarded, or under `dr` from the environment, and nothing else: not the Library or an export, the run log, the transcript, the worker's log or a failure's detail; a forwarded server that no grant names is never started | `test_wire.py::test_a_run_gets_only_the_specs_its_blocks_name`, `::test_redact_replaces_every_secret_value`; `test_session.py::test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted`; `test_acp.py::test_server_secrets_never_reach_the_run_log_or_the_transcript` (a crashing server prints its token: it is in none of `events.jsonl`, the ACP stream or `worker.log`), `::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers` (its notice reads `invalid token [redacted]`), `::test_a_forwarded_server_no_grant_names_is_never_started`; `test_shim.py::test_the_shim_connects_from_its_block_with_env_from_the_environment`; `test_routes.py::test_put_mcp_writes_the_block_and_the_shim_and_grants` (the block holds variable names only); the live tier's MCP test (the token is nowhere in the run log or the updates) |
+| **What the conversation is told** (§2.2, §11.1): one root notice per server not bound, in native and flat mode and on replay; what the agent is told of a bound server; the seen cache | `tests/acp/test_encoder.py::test_each_mcp_server_not_bound_is_a_notice_on_the_root[native, flat, replay]`; `test_acp.py::test_the_notice_replays_on_load`, `::test_the_seen_cache_is_written_for_bound_servers`, `::test_dr_acp_advertises_http_and_sse`; `test_session.py::test_statuses_carry_what_the_agent_is_told`; `test_shim.py::test_the_description_is_what_8_4_says` |
+| **The Tools tab** (§2), in Chromium against a real `dr-library serve` | `test_tools_tab.py::test_the_risk_line_is_under_the_safety_banner`; `::test_a_new_tool_is_written_checked_and_saved_with_its_grants` (the stored source byte for byte); `::test_check_shows_what_the_agent_is_told_and_the_tried_value`; `::test_a_tool_that_cannot_build_shows_why_and_cannot_be_saved[not_func, misspelled, import_error]`; `::test_a_hanging_factory_shows_the_limit`; `::test_a_raising_factory_offers_save_anyway`; `::test_a_grant_tick_on_a_saved_tool_saves_without_unsaved_code`; `::test_an_inherited_grant_is_fixed`; `::test_the_editor_keeps_python_indentation`; `::test_canvas_mcp_servers_are_listed_and_granted_per_namespace`; `::test_a_disabled_server_says_so_and_can_still_be_granted`; `::test_a_grant_gone_from_canvas_offers_remove`; `::test_a_changed_server_offers_update`; `::test_the_last_seen_tools_are_shown`; `::test_without_canvas_settings_only_grants_are_shown`; D3's two Tools-tab tests stay green. vitest: `context.test.ts` (`mcpServersFromSettings`: no value of `env` or `headers` in the output; `readMcpServers`), `tools.test.ts`, `api.test.ts` (a `422 check_failed` carries the report), `protocol.test.ts`, `mount.test.ts` (Canvas's MCP servers are read for the Tools tab only) |
+| **Live tier**, on gpt-6-luna (spec §4 layer 5: "a tool written in the Library, and an MCP server, each used by an agent") | `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent`: `PUT /tools/course_credits` through the API (the gate and the real Check run; Check says `built`), granted to `root`; "How many credits is course ZQ-417?" → the answer contains `7`, and a cell called `course_credits(` and printed `7`. `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent`: `PUT /mcp/catalog` granted to `root`; `session/new` forwards our catalog server with a random `CATALOG_TOKEN`, without which it refuses to answer; "What must a student finish before ZQ-417?" → the answer contains `ZQ-101`, `mcp.status` says `bound`, a cell called `catalog.prerequisites(`, and the token is nowhere in the run log or the updates |
+
+§10 maps every test file; §6.2 B15 lists the names added since v1.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-03 · v2 · brought in line with the build at `965f318`, after Proof Green; B-numbers are §6.2's. Stop
+  trusting: §1.1 decision F's one deadline (B5) and decision L's route through D3's `CodeField` (B1); §2.1's tool-row
+  text and its `def make(:` cell (B8, B14); §3.3's two `CHILD_ENDED` phases (B7); §4.3's annotated `Server.__call__`,
+  the stand-in's every-attribute rule, and the call in flight on a dead server (B4, B6); §4.4's and §8.2's one
+  deadline, and what `seconds` holds (B5); §4.5's rows for a call's timeout and for a server that dies (B6); §4.6's
+  exit code after a signal (B9); §7.4's `CodeField` line and its 300 KB budget (B1, B3); §9.1's names as constants
+  (B9); §10.2's fixture list, §10.3's re-recorded goldens and §10.4's `library_home` sentence (B11, B13, B14); §12's
+  M1 and M2 line numbers (B10); §13's totals (B16); A.1's `ToolCheckFailed`, A.3's `Connection`, `Server.__call__`
+  and `Unavailable`, A.6's `PythonEditor`, `ToolEditorProps`, `CheckResultProps` and `McpServerRowProps` (B2, B4, B8,
+  B9). Added without changing earlier sentences: the Gate B section and the "Matches the build" line; §6.2; §11.1's
+  account of `mcp.status` and its sentences, as D1's next revision should carry them; §12's M3; §14 items 10–14; the
+  marked v2 notes in §2, §3.2, §7, §8.3, §8.6, §9, §10, §11.2–§11.4 and Appendices A and B. Appendix A's Python
+  blocks are now exactly ruff-formatted (v1 had seven lines past 88 characters; no content changed there). §6.1 (v1's
+  §6) keeps every item as written, with marked v2 notes on items 4, 11, 13 and 14. Every change is listed, with its
+  reason, in §6.2.
 - 2026-10-03 · v1 · first full-depth version.
 
-**Where this file lives, and why nothing trips over it.** `docs/design/d4-custom-tools.md`. The `design/d4` branch
-holds only documents. On the task branch, which carries D1's `pyproject.toml`, pytest collects `tests/` only, the
-wheel is built from `src/deep_reasoning`, the sdist excludes `docs/`, and ruff excludes `docs` (D1 §8.5). D3's
-TypeScript tools run inside `canvas-app/` only (D3 §4.1), so they never see `docs/`. The PR split leaves this file
-behind.
+**Where this file lives, and why nothing trips over it.** `docs/design/d4-custom-tools.md` on the task branch
+`v1-custom-tools` (v1 also on `design/d4`, which holds only documents). Pytest collects `tests/` only, the wheel is
+built from `src/deep_reasoning`, the sdist excludes `docs/`, and ruff excludes `docs` (D1 §8.5; v2: and
+`tests/mcp/fixtures`, §6.2 B12). D3's TypeScript tools run inside `canvas-app/` only (D3 §4.1), so they never see
+`docs/`. The PR split leaves this file behind.
 
-**Reading guide.** Gate B: §1 (what D4 is and its decisions), §2 (the Tools tab as the user meets it), §3 (Check),
-§4 (MCP servers), §5 (what a tool or a server can reach) and §6 (departures from the spec): about 35 minutes. D1's,
-D2's, D3's and D5's designers: §11, then the sections it points to. The Implementer reads everything; Appendix A is
-the signature reference, §9 every user-visible sentence, §10 the tests.
+**Reading guide.** Gate B: the section above. D1's next revision: §11.1, whose last part is the event and sentences
+D4 added to `dr-acp`. D2's, D3's and D5's designers: §11, then the sections it points to. The Refactorer and the
+Gate C reviewers: §6.2 B12 and §14 item 14 first. Everyone else who works on the code reads everything;
+Appendix A is the signature reference, §9 every user-visible sentence, §10 the tests.
 
 **What was verified for this design (2026-10-03, in a scratch environment outside every repository: Python 3.12,
 deep_reasoner at `d7334ae` from D2's scratch install, `mcp` 1.28.1 from PyPI, the version the SDK fork locks):**
@@ -59,7 +147,9 @@ deep_reasoner at `d7334ae` from D2's scratch install, `mcp` 1.28.1 from PyPI, th
 
 Not verified here: the agent-server forwarding Canvas's MCP settings to `dr-acp` end to end (`_mcp_config_to_acp_servers`
 was read, not run; §10.6 proposes the cross-repo test), HTTP and SSE servers (read from the `mcp` source), macOS, and
-CodeMirror's build size (§7.4 sets a budget).
+CodeMirror's build size (§7.4 sets a budget). *(v2: the build runs HTTP and SSE against our own FastMCP server,
+`test_shim.py::test_an_http_server_is_reached_with_its_headers[http, sse]`, and the chunk's size is measured, §6.2 B3;
+the forwarding is still read, not run, and macOS is untested, §6.2 B17.)*
 
 ---
 
@@ -93,8 +183,9 @@ Canvas window · Show Decompositions › Tools  (D3's frame; D4's tab)
 a conversation, first message (D1 §2 step 4)
    dr-acp front: LibraryCatalog.materialize → runs/<run>/config/{main.yaml, namespaces/, tools/<name>.py}
                  the forwarded mcpServers (session/new) that main.yaml's MCP blocks name → Start.mcp_servers
-   worker:       load_dr_config → open_session: connect the granted, reachable servers at once (≤ 10 s, each through
-                 the guard) → mcp.status (run log; a notice for each server not bound) → build_reasoner → make_tools
+   worker:       load_dr_config → open_session: connect the granted, reachable servers at once (each within its own
+                 connect timeout, 10 s by default; stdio through the guard) → mcp.status (run log; a notice for each
+                 server not bound) → build_reasoner → make_tools
                  builds every block: your tool's factory; the shim's mcp_server() takes the connected server
    each agent:   binds the tools its namespace resolves (deep_reasoner): `word_count`, `github` (github.search_issues(…))
 ```
@@ -113,13 +204,13 @@ The spec's seven decisions in §2 stand, and so do D1's, D2's and D3's. These ar
 | C | **Saving through the panel runs Check whenever the code changes; a structural failure is refused, and a failure Check cannot attribute (an exception the tool raised, its time limit, Check itself not starting) can be saved anyway, explicitly.** | `make_tools` builds every tool block of a run's config (`v2/cli.py:149`), so one tool that does not build stops every conversation in every namespace from starting. That is E9's null in its worst form. A tool that reads a secret or a file when it is built fails in Check's environment and works in a conversation; refusing it outright would make a valid tool unsaveable. | Check as advice only (the spec's mock-up; a broken tool then surfaces at run time, for every conversation). Refusing every failure (traps tools that need the conversation's folder or a secret at build time). |
 | D | **An MCP grant is a D2 tool row** (D2's option (a)): block `factory: mcp_server`, `factory_from: tools/<name>.py`, the server's name and non-secret settings; source the shim; granted through `granted_in`. | Grants become deep_reasoner's own namespace `tools` lists, so inheritance, the effective view, D3's Namespaces tab, versions, history, export and import all work with no change to D2's schema or to D1's Catalog; and an export runs under `dr` by construction, because the shim is the factory file. | A table of D4's own through `store.MIGRATIONS` (D2's option (b)): a new versioned kind (the `versions.kind` CHECK constraint is rebuilt with the table), its own materializer path so `dr` sees the grants at all, and its own inheritance rules beside deep_reasoner's. |
 | E | **Canvas's MCP settings decide how a server is reached; the Library decides who gets it.** In `dr-acp`, a server is connected only from what OpenHands forwarded at session start, with its secrets; a granted server that was not forwarded (disabled in Canvas, or left out of the profile's `mcp_server_refs`) is not started, and the conversation says so. The row's snapshot is used only by plain `dr`. | OpenHands withholds a disabled server from an ACP agent on purpose ("withholding the entry is the only way to keep a disabled server out of its reach", `acp_agent.py:750–752`); falling back to the Library's snapshot would start it anyway. Secrets never enter the Library or an export. | Storing the server's whole definition, secrets included, in the Library (secrets in SQLite and in every export). Storing only the grant (an export could not reach the server under `dr`, which the spec requires). |
-| F | **The worker connects the servers, all at once, before `build_reasoner`, with one shared deadline (10 s); the shim's factory, called by `make_tools`, takes what the worker connected.** | Each block's factory runs in turn inside `make_tools`, so connecting there would cost 10 s per silent server; connecting first costs 10 s at most in all. The worker learns each server's outcome before the run starts, so the notice is in the run log ahead of the first answer. | Connecting in the shim's factory (sequential). Connecting in `dr-acp`'s front and proxying calls to the worker (a second transport between the two processes, and a shim that would differ under `dr`). |
+| F | **The worker connects the servers, all at once, before `build_reasoner`, each within its own connect timeout (10 s by default) from one shared start (v2: v1 had one deadline for all, §6.2 B5); the shim's factory, called by `make_tools`, takes what the worker connected.** | Each block's factory runs in turn inside `make_tools`, so connecting there would cost 10 s per silent server; connecting first costs the longest connect timeout at most, in all. The worker learns each server's outcome before the run starts, so the notice is in the run log ahead of the first answer. | Connecting in the shim's factory (sequential). Connecting in `dr-acp`'s front and proxying calls to the worker (a second transport between the two processes, and a shim that would differ under `dr`). |
 | G | **A run connects every server granted to a namespace its agents can reach** (deep_reasoner's `check_spawn` from the conversation's namespace, transitively), and each agent binds a server's tools only when its own namespace resolves the grant; a server handed to a sub-agent in a namespace not granted it is refused. | deep_reasoner builds one tool registry per run and binds per agent (`namespaces.py:345–392`); a sub-agent spawned into a granted namespace must get the server even when the conversation began elsewhere, and only `__cross_namespace__` (`namespaces.py:645–654`, the seam `safe_url` uses) can stop an explicit hand-off. | Binding only the conversation's own namespace's grants (a sub-agent spawned into a granted namespace would lose a tool deep_reasoner gives it). Starting every granted server regardless of reach (a restricted `spawn` list would still start, and warn about, servers no agent can use). |
 | H | **A server that is not bound leaves a stand-in under its REPL name**, which tells the agent why and raises that sentence if called. | deep_reasoner refuses an agent whose namespace names a tool the registry lacks (`namespaces.py:379–382`), so an unbound server cannot simply be missing; and a decomposition that calls it gets a sentence instead of a `NameError`. | Editing the run's config to drop the server (the run's namespaces are files deep_reasoner reads inside `build_reasoner`). |
 | I | **Each stdio server runs under a guard**: the shim file run as a script (`--guard`), which starts the server in its own process group and ends that group when the process that started it is gone. | Verified need (header item 2): `mcp` puts the server in a session of its own, and a server that ignores its closed stdin outlives a worker that was killed. The guard imports only the standard library (about 30 ms) and works on Linux and macOS. | Relying on stdin EOF (fails exactly for the servers that hang). Recording pids for the front to kill later (a crashed server's pid can be reused). A stdio transport of our own (duplicates `mcp`'s). |
 | J | **The shim is one self-contained module, `deep_reasoning/mcp/shim.py`, whose text is the row's source.** It imports only the standard library at module level; `mcp` and deep_reasoner's `Func` when used. In a `dr-acp` worker its factory returns what the worker installed (`SESSION`); anywhere else it connects by itself. | One code path for the app and for `dr`. A stored shim keeps working when deep-reasoning moves on, because in `dr-acp` it only reads `SESSION`, a dict of `Func`s, the one contract between versions. Without `mcp` installed a run still starts, with a stand-in that says to install it. | A thin shim importing deep-reasoning (an export would need deep-reasoning, not just `mcp`). |
 | K | **What the panel shows of a server's tools is what the last conversation that connected it saw**, from a small cache `dr-acp` writes (`$DR_HOME/mcp/`). | The panel cannot connect a server: the backend has no access to its secrets. The spec's mock-up ("12 tools", "the agent is told: …") needs the list. | Connecting from the panel through the agent-server's `POST /api/mcp/test` (it returns tool names only, and needs the secrets sent back in). |
-| L | **The tool source is edited in CodeMirror 6 (Python), loaded as a separate chunk only by the tool editor; every other field keeps D3's textareas.** | The spec costed a CodeMirror editor for Q6's answer; indentation and highlighting matter for Python in a way they do not for D3's YAML values. A separate chunk keeps D3's other tabs at their size (D3 §8.3 anticipated it). | A textarea for Python (no indentation help). CodeMirror for every field (D3 decision C). |
+| L | **The tool source is edited in CodeMirror 6 (Python), in a field of D4's own (`PythonField`), loaded as a separate chunk only by the tool editor; every other field keeps D3's textareas, the decomposition cards' Python code included** (v2: v1's §7.4 routed it through D3's `CodeField`, §6.2 B1). | The spec costed a CodeMirror editor for Q6's answer; indentation and highlighting matter for Python in a way they do not for D3's YAML values. A separate chunk keeps D3's other tabs at their size (D3 §8.3 anticipated it). v2: the chunk is 348 KB, over §7.4's budget (§6.2 B3). | A textarea for Python (no indentation help). CodeMirror for every field (D3 decision C). |
 
 ### 1.2 What D4 owns, and its seams
 
@@ -127,13 +218,13 @@ The spec's seven decisions in §2 stand, and so do D1's, D2's and D3's. These ar
   models, the worker's session, the Library-side grant records), the Tools tab's frame code in `canvas-app/`
   (extending D3's `tabs/tools.tsx`), `tests/tools/`, `tests/mcp/`, D4's additions to `tests/canvas_app/test_tools_tab.py`.
 - **Seam to D1** (§11.1): `Start.mcp_servers`; one RunEvent, `mcp.status`, its encoding and sentences; the
-  capabilities flip; the seen cache written by the pump; about 90 lines in D1's files.
+  capabilities flip; the seen cache written by the pump; about 90 lines in D1's files (v2: 101 lines added).
 - **Seam to D2** (§11.2): tool rows, `granted_in`, `materialize`'s `tools/<name>.py`; the Check gate in `PUT /tools/{name}`;
   D4's routes appended to `create_app`; no schema change.
 - **Seam to D3** (§11.3): exactly §8.3 of D3: `tabs/tools.tsx`, `api.ts`'s `checkTool` and two MCP calls, the shared
-  components, one frame parameter, the editor chunk.
+  components, one frame parameter, the editor chunk; v2: one optional prop on D3's `ConfirmRow` (§6.2 B8).
 - **Seam to D5** (§11.4): E10 re-run with MCP servers bound; one exception in §2.1's table; the profile's
-  `mcp_server_refs: null`; a proposed E12 step.
+  `mcp_server_refs: null`; a proposed E12 step. None of it is built in D4 (§6.2 B17).
 
 ---
 
@@ -149,8 +240,8 @@ two lists.
 │   stdio MCP server as a program started for each conversation that can use it. Check runs your code too.     │
 │   Add only code and servers you trust.                                                                       │
 │ Your tools                                                                               [+ New tool]        │
-│   word_count   v1   make · tools/word_count.py                  granted in course_advisor                    │
-│   rag          v2   built-in rag                                granted in root                              │
+│   word_count   v1   factory make · tools/word_count.py          granted in course_advisor                    │
+│   rag          v2   factory rag                                 granted in root                              │
 │ MCP servers (from Canvas's settings)                                                                         │
 │   github    stdio  npx -y @modelcontextprotocol/server-github   as github     ☑ router  ☐ course_advisor  …  │
 │             12 tools, as the conversation of 3 Oct, 14:02 saw them ▸                                         │
@@ -163,8 +254,9 @@ two lists.
 
 ### 2.1 Your tools
 
-**The list** is `GET /tools` minus the MCP grants (`GET /mcp` names them): name, version, the factory and the file
-for a tool with a source (`built-in <factory>` for one without), and the namespaces that grant it directly. With none:
+**The list** is `GET /tools` minus the MCP grants (`GET /mcp` names them): name, version, `factory <factory> · <file>`
+for a tool with a source and `factory <factory>` for one without (v2: D3's row text, kept; v1 said `<factory> · <file>`
+and `built-in <factory>`, §6.2 B8), and the namespaces that grant it directly. With none:
 D3's `NO_TOOLS`. A row opens the editor; **+ New tool** opens it empty.
 
 **The editor** (the spec's mock-up, as built):
@@ -194,12 +286,15 @@ How tools work ▸
 
 - **New tool** starts with the name empty, `factory: make` and the template above (`NEW_TOOL_SOURCE`, §9.3). The
   name is required, must be a Python identifier, not a keyword and not one of deep_reasoner's own REPL names
-  (`RESERVED_NAMES`, §3.2), and cannot change after the first save (D2 §4.5: a new name is a new tool).
+  (`RESERVED_NAMES`, §3.2), and cannot change after the first save (D2 §4.5: a new name is a new tool). v2: the
+  backend enforces the rules (Check's `invalid`, D2's `409` for a name taken); the editor sends the name as typed and
+  shows the sentence that comes back (§6.2 B8).
 - **A built-in tool** (a block without `factory_from`: `rag`, `kg`, `llm` aliases, `safe_url`, `claude_code`) shows
   the block only; Check says whether the factory is one of deep_reasoner's (§3.3).
 - **Check** sends `POST /tools/{name}/check {yaml, source, example}` with what is on screen (saved or not) and shows
   the report (§3.4): a ✓ with the time and what the agent is told, the tried value or its error, and, on a failure,
   deep_reasoner's sentence, the frames from the tool's own file, and the last 2,000 characters the tool printed.
+  While it runs, `CHECKING` shows under the button (`dr-check-status`, v2).
 - **Save** sends `PUT /tools/{name} {yaml, source, granted_in, base_version}`. The backend runs Check when the block
   or the source differs from the head (§3.5): "Checking and saving…". On `422 check_failed` the report is shown;
   when it allows it, **Save anyway** resends with `accept_check_failure: true` under `SAVE_ANYWAY_NOTE`. A `409`
@@ -214,6 +309,9 @@ How tools work ▸
 - **How tools work** folds open `TOOL_HELP` (§9.3): the factory contract, one file only (D2 §9 item 7), models through
   `client`, secrets read when called rather than built, `config_path` not passed (the spec's known gap B8), and the
   `kg` layer note (D2 §9 item 10).
+- **The source field** is CodeMirror, in D4's `PythonField` (§7.4). It takes the draft's text when it mounts and
+  owns it from then on; whatever replaces the draft (a save, **Discard draft**, **Reload**) mounts a new one (v2,
+  §6.2 B2). If the editor chunk cannot load, it is D3's textarea.
 - **The draft** (every field) is kept under `dr-library.draft.tool.<name>` (`.new` for a new one) with D3's
   `drafts.ts`, cleared by a save or **Discard draft**; a refetch never overwrites it (D3 §2.6).
 
@@ -236,7 +334,7 @@ os.environ['TOKEN'] → ✗ tool 'word_count': make raised KeyError: 'TOKEN'
                       Check could not build this tool here, where it has no secrets, no model and only its own
                       folder. If it builds in a conversation, save it anyway; if it does not, no conversation will
                       start until you fix it.                                                        [Save anyway]
-def make(:          → ✗ tool 'word_count': tools/word_count.py line 1: '(' was never closed    (no process started)
+def make(           → ✗ tool 'word_count': tools/word_count.py line 1: '(' was never closed    (no process started)
 ```
 
 ### 2.2 MCP servers
@@ -253,7 +351,7 @@ per server name:
 | disabled in Canvas's settings | `MCP_DISABLED`; its checklist still works (a grant waits for the server to be enabled) |
 | left out by the `deep_reasoner` profile's `mcp_server_refs` | `MCP_NOT_IN_PROFILE`; the same |
 | granted, not in Canvas's settings any more | `MCP_GONE` with **Remove** |
-| Canvas's settings could not be read (`mcp` is null) | the grants only, under `MCP_SETTINGS_UNKNOWN`; no new grant can be made |
+| Canvas's settings could not be read (`mcp` is null) | the grants only, under `MCP_SETTINGS_UNKNOWN`, each drawn from its stored snapshot (state `given`, v2, §6.2 B8); no new grant can be made |
 
 - **A first tick** sends `PUT /mcp/{name}` with the server's name, transport, command, arguments, URL, environment
   variable names and header names (never a value; the page never reads one, §7.5), `granted_in: [that namespace]`,
@@ -277,8 +375,8 @@ answer, as a root `agent_message_chunk` (the same form as D1's fresh-run notice)
   its tools are not bound in this conversation.
 ```
 
-**What the agent is told** (deep_reasoner renders the binding, `v2/messages.py:216–224`; the rest is the shim's
-description, §8.4):
+**What the agent is told** (deep_reasoner renders the binding, `v2/messages.py:216–224`, from the signature of the
+unannotated `Server.__call__`, §6.2 B4; the rest is the shim's description, §8.4):
 
 ```text
 - `github(tool, /, **arguments)`
@@ -311,8 +409,8 @@ In the backend, in this order, each failure ending Check:
    tools are bound over the agent's framework tools by name (`v2/agent.py:647, 675`), so a tool called `run_all`
    would replace deep_reasoner's own. `llm` is not reserved: deep_reasoner lets a user's own factory be called `llm`
    (`v2/cli.py:154–155`). Failure → `invalid`, `RESERVED_NAME`.
-3. **An MCP grant's block** (`factory: mcp_server`): refused here (`MCP_VIA_GRANT`); grants are written by
-   `PUT /mcp/{name}` (§4.2).
+3. **An MCP grant's block** (`factory: mcp_server`): refused here, outcome `invalid` with `MCP_VIA_GRANT`; grants
+   are written by `PUT /mcp/{name}` (§4.2).
 4. **A block without a source**: its factory (default: the tool's name) is `llm` or a key of deep_reasoner's
    `TOOL_BUILDERS` → `builtin` (✓; not built, because a built-in needs the model and the data a conversation has);
    otherwise `bad_factory` with `make_tools`' own sentence (`v2/cli.py:171–176`), copied into `texts.py` and pinned by
@@ -375,7 +473,9 @@ example: eval(compile(expression, "<try>", "eval"), {name: built.value})
 | `example` after `built` | `example_s` = 10 s | the example's error: `EXAMPLE_TIMEOUT`; the build stays ✓ |
 
 The child exiting without a final line is `unavailable` (before `ready`) or `raised` (after it), with how it ended
-(`CHILD_ENDED`: its exit code or signal). After the last line, or a missed limit, the supervisor sends `SIGKILL` to
+(`CHILD_ENDED`: its exit code or signal). v2 (§6.2 B7): a child that ends while evaluating the tried expression
+leaves the build ✓ and gives the example `CHILD_ENDED` with phase `trying it`; a child that cannot be started at all
+(`Popen` raises `OSError`) is `unavailable`, `CHILD_ENDED` naming the error, phase `starting`. After the last line, or a missed limit, the supervisor sends `SIGKILL` to
 the group **before** reaping the child (an unreaped child keeps its pid, so the group id cannot have been reused),
 then waits, then removes `tmp`. So Check answers within the limit it reports, plus well under a second, and leaves no
 process behind (§10.2).
@@ -489,7 +589,8 @@ SESSION is not None (a dr-acp worker installed it)
 SESSION is None (plain dr, an export, or deep-reasoning not installed)
     spec, missing = spec_from_block(params, os.environ)     env and header values from the environment
     import mcp fails                                         → a stand-in (NO_MCP_PACKAGE)
-    connection = Connection(spec, errlog=sys.stderr); start; wait_ready(connect_timeout_s)
+    connection = Connection(spec, name=params["name"], errlog=sys.stderr, call_timeout_s=…); start;
+    wait_ready(connect_timeout_s)
     ready                                                    → Func(Server(name, connection, granted=None), describe(…))
     otherwise                                                → a stand-in (NO_ANSWER / COULD_NOT_START, naming missing
                                                                variables); a structlog warning mcp.unavailable
@@ -513,6 +614,10 @@ _serve():  async with transport(spec) as streams:              stdio: stdio_clie
            any exception → failure = the innermost exception, "Type: message"; ready
 call(tool, arguments): run_coroutine_threadsafe(session.call_tool(tool, arguments,
                            read_timeout_seconds=call_timeout_s), loop).result(call_timeout_s + 5)
+    McpError -32000 (connection closed), anyio's ClosedResourceError, BrokenResourceError, EndOfStream
+                                                    → marked dead; SERVER_STOPPED, now and for every later call (v2)
+    McpError 408 (mcp's own read timeout), or no result by call_timeout_s + 5 → CALL_TIMEOUT
+    anything else                                   → CALL_FAILED with the innermost exception
 abandon(): loop.call_soon_threadsafe(task.cancel)   (mcp then closes stdin and ends the guard's group)
 ```
 
@@ -521,20 +626,24 @@ A stdio server's environment is what Canvas's settings give it plus the six vari
 working directory is the worker's: the conversation's folder (ACP carries no `cwd` for a stdio server).
 
 **What the REPL binds** (`Server`): a callable object named after the grant (`__name__ = name`), so deep_reasoner
-renders it as `` `github(tool, /, **arguments)` ``. Each MCP tool whose name, with every character that cannot be in a
+renders it as `` `github(tool, /, **arguments)` ``. Its `__call__` carries no annotations, since deep_reasoner renders
+annotations too (v2, §6.2 B4). Each MCP tool whose name, with every character that cannot be in a
 Python name replaced by `_`, is an identifier, not a keyword and not already taken is also an attribute (an `McpTool`),
 so `github.search_issues(…)` works; every tool is callable by its exact name, `github("get-file", path="x")`.
 `McpTool(*args, **kwargs)` maps positional arguments onto the parameters in the order `describe` prints them; a
 surplus positional argument is a `TypeError`. The return value (§8.3) is the unwrapped result, a dict, text, or the
-content blocks; a failed call raises `McpToolError`. `Server` and `McpTool` return themselves from `__copy__` and
-`__deepcopy__`, because deep_reasoner's `fork` deep-copies the REPL (`repls/backends.py:105–140`) and a connection is
+content blocks; a failed call raises `McpToolError`. `Server`, `McpTool` and the stand-in return themselves from
+`__copy__` and `__deepcopy__`, because deep_reasoner's `fork` deep-copies the REPL (`repls/backends.py:105–140`) and a connection is
 shared, not copied. They implement `__cross_namespace__(src, dst)`: with a grant set (in `dr-acp`), a hand-off into a
 namespace outside it raises `PermissionError` (`HANDOFF_REFUSED`, the same kind of refusal `safe_url` makes,
 `tools/safe_url.py:86–96`); the first bind (`src is None`) always passes, because deep_reasoner binds a tool only in a
 namespace that resolves it.
 
-**The stand-in** (`Unavailable`): calling it, or any attribute of it, raises `McpToolError` with its reason; its
-description is `UNAVAILABLE` (the same reason), so the agent is told before it tries.
+**The stand-in** (`Unavailable`): calling it, or any attribute of it whose name does not start with `_`, raises
+`McpToolError` with its reason; its description is `UNAVAILABLE` (the same reason), so the agent is told before it
+tries. An attribute starting with `_` is an `AttributeError`, as on any plain object, because Python's and
+deep_reasoner's own lookups probe such names (`inspect.signature` reads `_partialmethod`, deep_reasoner
+`__cross_namespace__`); its `__call__(*args, **kwargs)` is unannotated like `Server`'s (v2, §6.2 B4).
 
 ### 4.4 Session start, in the worker
 
@@ -553,21 +662,24 @@ for each alias (all started at once):
     no namespace grants it                → skipped   "granted to no namespace"           (no notice)
     granted ∩ reach is empty              → skipped   "granted only where this conversation cannot spawn"
     no forwarded spec for block["server"] → not_enabled                                  (a notice)
-    else Connection(spec, errlog=runs/<run>/mcp-<alias>.log, call_timeout_s=…).start()
-wait every started one against one deadline: now + the largest connect_timeout_s (10 s)
-    ready, no failure → bound        told = deep_reasoner's func(alias, server, description).describe(); count
+    else Connection(spec, name=alias, errlog=runs/<run>/mcp-<alias>.log, call_timeout_s=…).start()
+begun = the moment before the first start
+wait each started one in turn, until begun + its own connect_timeout_s (default 10 s)           (v2, §6.2 B5)
+    ready, no failure → bound        told = deep_reasoner's func(alias, server, description).describe(); count;
+                                     seconds = from begun until its wait returned
     ready, failure    → failed       detail = failure + the log's last 300 characters, every secret value of that
                                      server's spec (env and header values of 4+ characters) replaced by [redacted]
-    not ready         → no_answer    connection.abandon()
+    not ready         → no_answer    seconds = its connect_timeout_s; connection.abandon()
 shim.SESSION = {alias: Func(Server(…, granted=frozenset(granted[alias]))) | a stand-in, for every block}
 return a McpServerStatus per block
 ```
 
-The worker emits `mcp.status {servers: [...]}` (a new RunEvent, §7.3) when there is any MCP block, then builds.
+The worker emits `mcp.status {servers: [...]}` (a new RunEvent, §7.3) through its recorder, up the event pipe like
+every worker event, when there is any MCP block, then builds (D1's view of it: §11.1).
 `make_tools` then calls each MCP block's factory, which returns `SESSION[alias]` without connecting (§4.3).
 
 **Timing.** `session/new` never waits on a server (D1 builds nothing there). The first answer waits at most the
-deadline (10 s) on a silent server, and about one server start (1.2 s for a Python FastMCP server, header item 3) when
+longest connect timeout (10 s by default) on a silent server, and about one server start (1.2 s for a Python FastMCP server, header item 3) when
 all answer, overlapped with nothing else the worker does: deep_reasoner's import has already happened (`load_dr_config`).
 The front's heartbeat (D1 §4.2) keeps the bridge's idle watchdog quiet meanwhile.
 
@@ -577,15 +689,15 @@ The front's heartbeat (D1 §4.2) keeps the bridge's idle watchdog quiet meanwhil
 |---|---|---|
 | it is not forwarded | not started; stand-in bound | `MCP_NOT_ENABLED` once, before the first answer |
 | it exits or errors before answering | `failed`, with its stderr's tail, redacted; stand-in bound | `MCP_FAILED` |
-| it does not answer by the deadline | `no_answer`; abandoned (stdin closed, its guard's group ended by `mcp`); stand-in bound | `MCP_NO_ANSWER`, the spec's sentence |
+| it does not answer within its connect timeout | `no_answer`; abandoned (stdin closed, its guard's group ended by `mcp`); stand-in bound | `MCP_NO_ANSWER`, the spec's sentence |
 | a call returns `isError` | `McpToolError("{name}.{tool} failed: {text}")` in the cell | the cell's output |
-| a call does not answer within `call_timeout_s` (120 s) | `McpToolError(CALL_TIMEOUT)`; the request is abandoned; the server stays | the cell's output |
-| it dies during the run | the call in flight fails (`McpError: Connection closed`, verified); the connection is marked dead with that reason and every later call raises `SERVER_STOPPED` at once; nothing restarts it before the next run | the cell's output |
+| a call does not answer within `call_timeout_s` (120 s), or `mcp` gives up reading first (`McpError` 408) | `McpToolError(CALL_TIMEOUT)`; the request is abandoned; the server stays | the cell's output |
+| it dies during the run | the call in flight meets `McpError: Connection closed` (verified); the connection is marked dead with that reason, and that call and every later one raise `SERVER_STOPPED` (`MCP server 'echo' stopped (McpError: Connection closed); …`), later ones at once (v2: v1 let the call in flight raise the bare `McpError`, §6.2 B6); nothing restarts it before the next run | the cell's output |
 
 None of these reaches the worker's main thread except as an exception in the calling cell, and a server is another
 process, so a server cannot take the worker down (E9). Because a dead connection's own task does not notice (header
-item 3), `Connection.call` marks it dead on `McpError` "Connection closed" and on `anyio.ClosedResourceError`,
-`BrokenResourceError` and `EndOfStream`.
+item 3), `Connection.call` marks it dead on `McpError` code -32000 ("Connection closed") and on
+`anyio.ClosedResourceError`, `BrokenResourceError` and `EndOfStream`.
 
 ### 4.6 How a server ends
 
@@ -599,7 +711,8 @@ item 3), `Connection.call` marks it dead on `McpError` "Connection closed" and o
 
 **The guard** (`python -I shim.py --guard -- <command> <args…>`): remember `os.getppid()`; start the command with
 `subprocess.Popen` (same stdin, stdout, stderr, process group and environment); a daemon thread polls `os.getppid()`
-every 0.5 s and `os.killpg(0, SIGKILL)` when it changed; exit with the command's exit code. It compares with the
+every 0.5 s and `os.killpg(0, SIGKILL)` when it changed; exit with the command's exit code (128 plus the signal's
+number when a signal ended it, v2). It compares with the
 original parent, not with 1, so a subreaper (systemd's user manager, the desktop app) changes nothing. One extra
 Python process per stdio server, about 30 ms to start, standard library only. `-I` (isolated mode) keeps the shim's
 own folder off `sys.path`, so a sibling module there (`wire.py`, `session.py`) can never shadow a standard-library
@@ -652,10 +765,16 @@ Said plainly, as the spec asks; the Tools tab says the short form (`TOOLS_RISK`)
 
 ---
 
-## 6 · Where this design departs from, or adds to, the approved spec
+## 6 · Departures from the spec, and what the build changed
+
+§6.1 is where this design departs from the approved spec (v1, unchanged in v2 but for marked notes). §6.2 is what the
+build changed in this design (v2). None is a re-scope.
+
+### 6.1 Where this design departs from, or adds to, the approved spec
 
 Each is a refinement inside D4's scope unless it says otherwise; if the Conductor reads any as a change of what was
-approved, it goes back to Michael.
+approved, it goes back to Michael. **Not yet ruled on:** the spec's dated notes accept D2's, S1's and S2's departures,
+not these; Michael rules on them at Gate B, with §6.2.
 
 1. **Saving through the panel runs Check, and refuses a tool that cannot build** (§3.5); failures Check cannot
    attribute can be saved anyway, explicitly. The spec has Check as a button that shows the result. Reason: every
@@ -666,7 +785,8 @@ approved, it goes back to Michael.
    its own `run_all` or `subagent`. A config imported with such a name still imports.
 4. **"At session start" is when the conversation's run is built**, at its first message: D1 starts the worker there
    (D1 §2 step 4), so the servers are connected there, all at once, within one 10 s deadline, and the notice appears
-   ahead of the first answer. The spec's sentence is kept.
+   ahead of the first answer. The spec's sentence is kept. *(v2: each within its own connect timeout, 10 s by
+   default, from one shared start; §6.2 B5.)*
 5. **Grants follow deep_reasoner's namespace rules** (decision G): a grant to `a` reaches `a.b`; a sub-agent spawned
    into a granted namespace gets the server even when the conversation began elsewhere; a run starts every server
    granted to a namespace its agents can reach. The spec says "binds only the servers granted to the conversation's
@@ -683,16 +803,221 @@ approved, it goes back to Michael.
 10. **The panel shows a server's tools as the last conversation saw them** (decision K); it cannot connect a server
     itself.
 11. **D4's change to `dr-acp` is about 90 lines in D1's files, not 30** (§11.1): a RunEvent, its encoding and three
-    sentences, the specs' filter, and the seen cache.
+    sentences, the specs' filter, and the seen cache. *(v2: 101 lines added, `cf131e5`; §11.1 states the event and
+    its sentences as D1's next revision should carry them.)*
 12. **`mcp>=1.28,<2` becomes a runtime dependency of deep-reasoning** (the spec named it as a candidate); 1.28 is the
     first with `streamable_http_client(url, http_client=…)` and the SDK fork's lock.
 13. **CodeMirror for the source field only** (decision L); D3 departed from the spec's React and CodeMirror; D4 brings
-    CodeMirror back where the spec's Q6 costed it.
+    CodeMirror back where the spec's Q6 costed it. *(v2: in D4's own `PythonField`, not D3's `CodeField`; the chunk
+    is 348 KB against §7.4's 300 KB budget; §6.2 B1, B3.)*
 14. **Size: about 2.0k lines of code and 2.2k of tests**, about 14 h at Gate C, against the spec's ≈1.0k with tests and
-    ≈3 h (§13).
+    ≈3 h (§13). *(v2: built at about 3.3k and 3.5k, about 23 h; §6.2 B16.)*
 
 The spec's known gap B8 (`factory_from` builders do not receive `config_path`) is mirrored by Check, so Check and a
 run agree, and is stated in `TOOL_HELP`; not worked around, as the spec says.
+
+### 6.2 Changed by the build (v2)
+
+Each was checked against the code at `965f318` and folded into the section named. B1–B7 change behaviour or a
+contract v1 specified; B8–B9 are what v1 left open, and the signatures; B10–B12 are dependencies and wiring;
+B13–B15 are how the tests prove it; B16 is the size; B17 is what was not built. Where the build recorded no reason,
+the reason given is marked as this design's reading. The B-numbers are this section's; the spec's known gap B8
+(`config_path`, above) is another list.
+
+**Behaviour**
+
+- **B1. CodeMirror lives in a new `PythonField`, used only by the tool editor; D3's `CodeField` is unchanged** (§1.1
+  L, §7.4, §11.3, A.6). v1's §7.4 and §11.3 had D3's `CodeField` load the editor chunk for `language: "python"`.
+  `ui/components/python.tsx`'s `PythonField` mounts `createPythonEditor` from the chunk, and falls back to D3's
+  `CodeField` (a textarea) when the chunk cannot load. *Why:* D3's decomposition cards give their code field
+  `language: "python"` (`ui/components/editor.tsx`), so v1's route would have put CodeMirror into every card,
+  against decision L's own "every other field keeps D3's textareas", and D3's browser tests fill those fields as
+  textareas (`test_create.py`'s `dr-card-1-code`). *Pinned by:* `test_tools_tab.py::test_the_editor_keeps_python_indentation`;
+  D3's `test_create.py`, unchanged and green.
+- **B2. The editor owns its text once mounted; a reset remounts it; `PythonEditor` has no `setValue`** (§2.1, §7.4,
+  A.6). `ToolEditor` keys its `PythonField` on a counter that it bumps whenever it replaces the draft (a save,
+  **Discard draft**, **Reload**). *Why:* feeding the parent's copy of the text back into the editor replaced the
+  document mid-keystroke and hung fast typing, which a browser test caught (the Implementer's report; `200e820`
+  records it). *Pinned by:*
+  `::test_the_editor_keeps_python_indentation` (types key by key), `::test_a_new_tool_is_written_checked_and_saved_with_its_grants`
+  (the stored source byte for byte).
+- **B3. `assets/editor.js` is 348 KB minified (348,475 bytes; 118 KB gzip), over §7.4's 300 KB budget** (§7.4). It
+  loads only when the tool editor opens; `assets/app.js` is 169 KB, under D3's 250 KB. The editor uses the bare
+  `pythonLanguage` instead of `python()`, which drops autocompletion (13 KB); the keymap (default, history, Tab
+  indents), history, bracket matching, auto-indent and line numbers stay. *Why it does not fit:* measured for this
+  revision (esbuild, minified, the versions the branch locks): the CodeMirror packages the editor uses come to 281 KB
+  without Python's grammar and 349 KB with it (`@lezer/python`), which the built chunk matches; `python()` adds 13 KB.
+  So no CodeMirror Python editor fits 300 KB; it is the grammar, not CodeMirror's core, that crosses the line (§14
+  item 13). The budget was this design's guess (header, "Not verified"). Michael's choice: accept 348 KB loaded on
+  demand, or §13's cut (D3's textarea with Tab handling instead, so `editor/python.ts`, `python.tsx` (141 lines) and
+  the five CodeMirror packages go). *Pinned by:*
+  `tests/library/test_ui.py::test_the_committed_build_is_complete` (the chunk exists and `app.js` loads it); no test
+  pins its size.
+- **B4. The REPL's server object and its stand-in show plain signatures** (§2.2, §4.3, A.3).
+  `Server.__call__(self, tool, /, **arguments)` and `Unavailable.__call__(self, *args, **kwargs)` carry no annotations, so deep_reasoner
+  tells the agent `` `github(tool, /, **arguments)` `` as §2.2 shows, not A.3's annotated
+  `github(tool: str, /, **arguments: Any) -> Any`. `Unavailable.__getattr__` answers every name starting with `_` with
+  `AttributeError`, as a plain object does, and raises `McpToolError` with its reason only for other names;
+  `Unavailable` returns itself from `__copy__` and `__deepcopy__`. *Why:* `inspect.signature`, under deep_reasoner's
+  `describe()`, probes `obj._partialmethod` (CPython 3.12's `inspect._signature_from_callable`; checked for this
+  revision), so v1's stand-in raised `McpToolError` there and deep_reasoner could not describe it;
+  `__cross_namespace__` and `__wrapped__` are probed the same way. *Pinned by:*
+  `test_shim.py::test_the_description_is_what_8_4_says` (`echo(tool, /, **arguments)`),
+  `::test_a_stand_in_is_plain_to_deep_reasoners_seams` (no `__cross_namespace__`, deep-copied to itself, told
+  `echo(*args, **kwargs)`).
+- **B5. Each server waits for its own `connect_timeout_s`, from one shared start** (§1.1 F, §4.4, §8.2, A.2). v1: one
+  deadline for all, at the largest connect timeout. Built: every connection is started first; then each is waited for
+  in turn until the shared start plus its own connect timeout. `McpServerStatus.seconds` holds, for `bound`, the time
+  from the shared start until its wait returned, and for `no_answer`, the time it was given (its connect timeout),
+  which `MCP_NO_ANSWER` prints. *Why (this design's reading):* §4.2 promises a grant's `connect_timeout_s` is
+  honoured, and one deadline at the largest would hold a 2 s server for 10 s; with every grant at the default (10 s),
+  as the panel writes them, nothing changes. *Pinned by:*
+  `test_session.py::test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline`,
+  `test_acp.py::test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadline` (a 2 s grant:
+  `no_answer` with `seconds` 2, decided 2 to 5 s after `worker.ready`). Open: §14 item 11.
+- **B6. A server that dies fails the call in flight with `SERVER_STOPPED` too** (§4.3, §4.5). v1: the call in flight
+  raises `McpError: Connection closed`, later calls `SERVER_STOPPED`. Built: `Connection.call` reads the `McpError`'s
+  code. `-32000` (`CONNECTION_CLOSED`) marks the connection dead and raises `SERVER_STOPPED`, whose detail is
+  `McpError: Connection closed`, for that call and every later one; `408` (`mcp`'s own read timeout) raises
+  `CALL_TIMEOUT`; any other is `CALL_FAILED`. *Why (this design's reading):* one sentence for a dead server, whichever
+  call met it. *Pinned by:* `test_shim.py::test_a_server_that_dies_fails_the_call_and_every_later_one_at_once`,
+  `test_acp.py::test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on`,
+  `test_shim.py::test_a_call_that_never_answers_raises_after_its_timeout`.
+- **B7. Check's process has two more ways to end** (§3.3, §9.1). `CHILD_ENDED` gains a third phase, `trying it`: a
+  child that ends while evaluating the tried expression leaves the build ✓, and the example carries the sentence. A
+  child that cannot be started (`Popen` raises `OSError`) is `unavailable`, `CHILD_ENDED` naming the error with phase
+  `starting`. *Why (this design's reading):* v1 named two phases only, and a child that cannot start is Check not
+  starting. *Pinned by:* `test_check.py::test_a_tool_that_ends_the_process_is_raised_saying_how_it_ended` (phase
+  `building the tool`); the two new cases are not pinned.
+
+**Where v1 was silent, and the signatures**
+
+- **B8. The frame's components, as built** (§2.1, §2.2, §8.6, A.6, Appendix B).
+  - `ToolEditorProps` has no `takenNames`, and has `onBackendLost` (D3's `OnBackendLost`, which D3's `attempt` needs
+    for every request); `McpServerRowProps` gains `onBackendLost` too. The editor does not check a name itself: the
+    backend's Check and `PUT` refuse a bad or reserved name (`invalid`), D2 a taken one (`409`), and the editor shows
+    the sentence that comes back. *Why (this design's reading):* one place for the rule, the backend's.
+  - `CheckResultProps` drops `saving`: the report renders the same whether it came from Check or from a refused save,
+    and offers **Save anyway** whenever `can_save_anyway`. *Why (this design's reading):* the flag changed nothing
+    shown.
+  - D3's `ConfirmRow` gains an optional `confirmTestId` (default D3's `dr-confirm-yes`), so the delete confirmation
+    carries Appendix B's `dr-tool-delete-confirm`. A new test id, `dr-check-status`, marks `CHECKING` and
+    `SAVING_CHECKING` while they show; the browser tests wait on it.
+  - Tool rows keep D3's text, `factory make · tools/word_count.py` (`factory rag` without a source), not v1's
+    `make · tools/word_count.py` and `built-in rag`. *Why (this design's reading):* D3's
+    `test_the_tools_tab_lists_tools_with_their_grants` asserts that text, and §10.4 keeps D3's tests green.
+  - With Canvas's settings unread (`mcp` null), `mcpRows` gives each grant a row in state `given` with `info` null,
+    drawn from its stored snapshot. *Why (this design's reading):* without Canvas's list, "gone" cannot be told from
+    "not read", and `MCP_SETTINGS_UNKNOWN` says which it is. *Pinned by:* `tools.test.ts` ("without Canvas's settings,
+    lists only the grants, none of them gone"), `test_tools_tab.py::test_without_canvas_settings_only_grants_are_shown`.
+  - Smaller: `toolDraftKey` returns `tool.<name>` (`tool.new`), to which D3's `drafts.ts` adds `dr-library.draft.`, so
+    the stored key is v1's. New exported names: `RESERVED_NAMES`, `McpSnapshot` and `grantSnapshot` (`ui/tools.ts`),
+    `MCP_TRANSPORTS` (`shared/protocol.ts`), `LibraryError.check` (`ui/api.ts`: the report a `422 check_failed`
+    carries), `mcpTestId` (`McpServerRow.tsx`). `vite.config.ts` assigns the chunk by module path (CodeMirror, Lezer,
+    their three helper packages, and `src/ui/editor/`), not by an object of package names.
+- **B9. Python signatures and names added** (§3.2, §4.6, §9.1, A.1–A.3).
+  - `ToolCheckFailed(name, report)`: the name is for `CHECK_FAILED`'s sentence, which names the tool.
+  - `Connection(…, name=…)`: the REPL name that `CALL_FAILED`, `CALL_TIMEOUT` and `SERVER_STOPPED` use (default: the
+    server's name); `open_session` and the shim's factory pass the alias.
+  - §9.1's sentences with fields are lower-case functions of them in `tools/texts.py` (`texts.reserved_name(name)`,
+    `texts.check_failed(name)`, …), D1 §5.6's convention, since the Code Guide forbids `.format()`; `BUILT`,
+    `MCP_NEEDS_COMMAND` and `MCP_NEEDS_URL` are constants. The shim's (§9.2) stay `str.format` templates, as v1
+    specified them (§14 item 14).
+  - New constants: `check.CHILD`; `wire.SECRET_MIN` (4), `SEEN_VERSION`, `REMOTE`; `shim.CALL_GRACE_S` (5 s past
+    `call_timeout_s`), `HTTP_TIMEOUT_S` and `HTTP_READ_TIMEOUT_S` (`mcp`'s own defaults, for the HTTP client the shim
+    builds), `REQUEST_TIMEOUT` (408), `CONNECTION_CLOSED` (-32000), `JSON_TYPES`, `MISSING_ENV`;
+    `session.GRANTED_NOWHERE`, `OUT_OF_REACH`, `LOG_TAIL` (300), `PRINTED`.
+  - `check_tool` reports an MCP grant's block as outcome `invalid` with `MCP_VIA_GRANT` (§3.2 item 3 named no
+    outcome). The guard exits with the command's code, or 128 plus the signal's number when a signal ended it (§4.6).
+
+  *Why (this design's reading)*, beyond the two named: each serves a sentence or a value v1 described in words.
+
+**Dependencies and wiring**
+
+- **B10. `mcp` resolves to 1.30.0 under `>=1.28,<2`** (header, §6.1 item 12, §12). v1 verified 1.28.1, the SDK
+  fork's lock. *Why:* the branch's lock takes the newest release in the range (recorded in `cd3e153`). M1 and M2 were
+  rechecked in 1.30.0's source by the build and again for this revision (§12's line numbers are 1.30.0's), and the
+  whole suite runs on it.
+- **B11. D1's golden recordings: only the `initialize` line changed, by hand** (§10.3). v1: re-recorded with D1's
+  command. Each of the 18 recordings differs from D3's base in that one line (`mcpCapabilities` `false` → `true`);
+  D1's `test_initialize_advertises_load_close_and_no_mcp_transports` is now
+  `test_initialize_advertises_load_close_and_http_and_sse_mcp`. *Why (recorded in `cf131e5`, "that line only"):*
+  nothing else in any stream changes.
+- **B12. Wiring** (§7.1, §7.2, §11.2).
+  - `pyproject.toml`'s ruff `extend-exclude` adds `tests/mcp/fixtures`: it holds `shim_v1.py`, the v1 shim frozen as a
+    Library stores it, which formatting would change (the comment in `pyproject.toml`).
+  - `create_app` imports `require_check` and `tool_routes` inside the function: `tools/routes.py` imports
+    `json_route` from `library/api.py`, so importing it at `api.py`'s module level is circular (the comment in the
+    code).
+  - `tools/routes.py` imports D2's private `_parse` (a body model's 400 with D2's `BAD_REQUEST`), so D4's bodies fail
+    exactly as D2's. *Why (this design's reading):* no second copy of D2's error mapping. A private name crossing
+    packages is for the Refactorer at Gate C: make it public beside `json_route`.
+  - `tests/processes.py` (30 lines) holds `running_after`, which `tests/tools/` and `tests/mcp/` share.
+
+**How the tests prove it**
+
+- **B13. D3's shared browser fixture Library gets no raising tool** (§10.4). v1 said `library_home` gains one. *Why:*
+  E8 (`test_e8_next_conversation.py`) runs real conversations from that Library, and `make_tools` builds every tool
+  block, granted or not (§11.2), so a raising tool there would stop every E8 conversation. D4's browser tests make
+  such a tool inside the test (`test_a_raising_factory_offers_save_anyway` writes `env_at_build.py` through the
+  editor).
+- **B14. Fixtures, as built** (§2.1's failure cells, §8.3, §10.2).
+  - The syntax error is `def make(` (inline in `test_check.py`), which Python 3.12 reports as `'(' was never closed`;
+    v1's `def make(:` gives only `invalid syntax` there. §2.1's cell is corrected. There is no `syntax.py`, and
+    `misspelled` is `word_count.py` with `factory: mkae`.
+  - Two fixtures more: `exits.py` (ends its process with code 3 while building) and `calls_model.py` (calls the model
+    from its factory). The agreement test runs eight: works, not_func, misspelled, import_error, hang, env_at_build,
+    prints, exits.
+  - A FastMCP tool returning a bare `dict` advertises no `outputSchema` and sends the dict as JSON text with no
+    structured content (measured again on 1.30.0 for this revision), so by §8.3 the shim returns that text as a `str`:
+    it never parses text as JSON. The fake server's `add` returns a `TypedDict` (`Sum`) to exercise the dict case.
+    *Pinned by:* `test_shim.py::test_results_are_unwrapped_dicts_text_or_blocks`.
+  - `echo_server.py` has eleven tools: `echo`, `add`, `plain` (text without structured content), `picture` (an image
+    block), `fail`, `token`, `env_names`, `sleep`, `crash`, `2nd-opinion` (no attribute name) and `whoami`;
+    `--sse PORT` beside `--http PORT`; with `ECHO_MARKER_DIR` set it writes a file named after its pid when it starts.
+    `catalog_server.py` is the live tier's.
+- **B15. Test names, as built** (§10.2–§10.4). Every name v1 listed exists. Added:
+  `test_check.py::test_a_name_d2_refuses_is_invalid_in_d2s_words`, `::test_an_mcp_grant_is_not_checked_as_a_tool_of_your_own`,
+  `::test_a_tool_that_ends_the_process_is_raised_saying_how_it_ended`,
+  `::test_a_check_that_cannot_start_deep_reasoner_in_time_is_unavailable`;
+  `test_routes.py::test_a_checked_tool_is_saved_with_its_grants`,
+  `::test_put_mcp_refuses_a_name_the_repl_cannot_bind[run_all, not a name, class]`;
+  `test_grants.py::test_mcp_block_needs_a_command_or_a_url`, `::test_the_shim_source_starts_with_its_marker_and_version`,
+  `::test_grant_record_reads_the_block`; `test_shim.py::test_a_stand_in_is_plain_to_deep_reasoners_seams`,
+  `::test_a_server_it_cannot_reach_becomes_a_stand_in_saying_why[crashes, hangs]`,
+  `::test_a_server_that_dies_fails_the_call_and_every_later_one_at_once`, `::test_a_hand_off_outside_the_grant_is_refused`;
+  `test_session.py::test_without_mcp_blocks_the_session_is_empty`; in D1's files,
+  `tests/acp/test_encoder.py::test_each_mcp_server_not_bound_is_a_notice_on_the_root[native, flat, replay]`; vitest's
+  `mount.test.ts` ("reads Canvas's MCP servers for the Tools tab only"); and `tests/library/test_ui.py::test_the_committed_build_is_complete`
+  now requires the editor chunk. `test_put_mcp_refuses_a_stdio_grant_without_a_command` runs stdio, http and sse, and
+  `test_an_http_server_is_reached_with_its_headers` http and sse.
+
+**Size**
+
+- **B16. About 3.3k lines of code and 3.5k of tests, against v1's ≈2.0k and ≈2.2k** (§6.1 item 14, §13) and the
+  spec's ≈1.0k with tests. Lines added over D3's `5effe26`, by §13's parts:
+
+  | Part | Code, v1 → built | Tests, v1 → built |
+  |---|---|---|
+  | Check: `check.py` 386, `check_child.py` 128, `texts.py` 91 | 300 → 605 | 330 → 526 (`test_check.py` 447, fixtures 79) |
+  | Routes and the gate: `routes.py` 77, D2's `api.py` 65 (and 42 removed: most of that change is `route` moved to module level as `json_route`) | 125 → 142 | 200 → 301 |
+  | MCP: `shim.py` 539, `wire.py` 163, `grants.py` 98, `session.py` 181 | 540 → 981 | 650 → 1,102 (`test_shim` 403, `test_session` 229, `test_grants` 172, `test_wire` 149, fake servers 149) |
+  | D1's changes | 90 → 101 | 330 → 567 (`tests/mcp/test_acp.py` 492, D1's test files 45, `tests/processes.py` 30) |
+  | Export and live tier | — | 200 → 227 |
+  | The frame: `ToolEditor` 361, `McpServerRow` 203, `tools.ts` 165, `tabs/tools.tsx` 151, `context.ts` 86, `editor/python.ts` 74, `CheckResult` 73, `texts.ts` 69, `python.tsx` 67, `types.ts` 59, `styles.css` 55, `protocol.ts` 51, `api.ts` 34, `mount.ts` 10, `vite.config.ts` 9, `package.json` 5, `fields.tsx` 3 | 920 → 1,475 | 480 → 788 (vitest 433, browser 352, `test_ui.py` 3) |
+  | `pyproject.toml`, the two packages' `__init__.py` | — → 7 | |
+  | **Total** | **≈1.98k → 3,311** | **≈2.19k → 3,511** |
+
+  Not counted: the built assets, the two lock files, D1's golden recordings (18 one-line changes, B11) and
+  `tests/mcp/fixtures/shim_v1.py` (539 lines, the v1 shim frozen as stored). The shim, Check and the editor
+  component grew most. The build recorded no reason; the estimate was this design's. Michael rules on it at Gate B.
+
+**Not built**
+
+- **B17. Left to D5 or to proposals, as v1 marked them:** §11.4 (E10 with MCP servers bound, the E12 step, D5's
+  `deep_reasoner` profile with `mcp_server_refs: null`, which D4 reads and does not create), §10.6's
+  cross-repository forwarding test, and D2's proposed `only_granted` (§11.2). Nothing in D4's code depends on them;
+  until §10.6 or E12 runs, the forwarding shape stays read, not run (§14 items 1 and 12).
 
 ---
 
@@ -720,9 +1045,11 @@ src/deep_reasoning/library/api.py         D2's: §11.2's changes
 canvas-app/src/…                          D3's project: §7.5
 tests/tools/                              test_check.py, test_routes.py, test_live.py, fixtures/ (§10)
 tests/mcp/                                test_wire.py, test_grants.py, test_shim.py, test_session.py, test_acp.py,
-                                          test_export.py, test_live.py, servers/ (fake MCP servers, run as scripts)
+                                          test_export.py, test_live.py, servers/ (fake MCP servers, run as scripts),
+                                          fixtures/shim_v1.py (v2: the v1 shim, frozen as a Library stores it)
+tests/processes.py                        v2: running_after, shared by tests/tools/ and tests/mcp/
 tests/canvas_app/test_tools_tab.py        D3's file, D4's tests added (§10.4)
-pyproject.toml                            dependencies += "mcp>=1.28,<2"
+pyproject.toml                            dependencies += "mcp>=1.28,<2"; v2: ruff's extend-exclude += tests/mcp/fixtures
 ```
 
 `tests/mcp/` is the package `tests.mcp` (`tests/__init__.py` exists, D1), so it never shadows the `mcp` library; the
@@ -747,37 +1074,49 @@ D2's `DELETE /tools/{name}`.
 ### 7.3 The worker, the run log and the encoder (in D1's files)
 
 - `worker/protocol.py`: `Start.mcp_servers: list[McpServerSpec] = []`.
-- `worker/runner.py`: `build` calls `open_session` and emits `mcp.status` (§4.4).
+- `worker/runner.py`: `build` calls `open_session` and, when it returns any status, emits `mcp.status` through the
+  recorder (§4.4).
 - `runlog.py`: `McpStatus` (`kind: "mcp.status"`, `servers: list[McpServerStatus]`) joins the `RunEvent` union.
 - `encoder.py`: `McpStatus` → one root `agent_message_chunk` per server whose state is `no_answer`, `failed` or
   `not_enabled`, text `mcp_notice(status) + "\n\n"`, in both modes and on replay; nothing for `bound` or `skipped`.
 - `supervisor.py`: `RunHandle.start(…, mcp_servers=…)` passes them in `Start`; the pump, after logging an `McpStatus`
-  that is not a replay, calls `remember_seen(home, run_id, servers)`.
-- `session.py`: `_start_run` computes the specs (§4.1) in the same `asyncio.to_thread` as the materialize.
+  (the pump sees live events only; a replay does not run it), calls `remember_seen(home, run_id, servers, now)`, and
+  logs an `OSError` there rather than failing the run.
+- `session.py`: `_start_run` computes the specs (§4.1) in the same `asyncio.to_thread` as the materialize
+  (`Session._materialize(run_dir)` returns both).
 - `agent.py`: `mcpCapabilities: {"http": True, "sse": True}`.
 - `texts.py`: `mcp_no_answer`, `mcp_failed`, `mcp_not_enabled` (§9.2).
 
 ### 7.4 The frame (`canvas-app/src/`, D3's project)
 
 ```text
-shared/protocol.ts       FrameParams.mcp: McpServerInfo[] | null; frameSearch and readFrameParams carry it (JSON)
+shared/protocol.ts       McpTransport, MCP_TRANSPORTS, McpServerInfo; FrameParams.mcp: McpServerInfo[] | null;
+                         frameSearch and readFrameParams carry it (JSON; an entry of another shape is dropped)
 page/context.ts          readMcpServers(request), mcpServersFromSettings(…)
 page/mount.ts            step 2 reads readMcpServers only when tab === "tools"
-ui/types.ts              CheckOutcome, ExampleResult, CheckReport, McpTransport, McpSeen, McpGrant
-ui/api.ts                checkTool, getMcp, putMcp; ToolBody.accept_check_failure; CheckBody, McpGrantBody
-ui/tools.ts              pure logic: splitTools, defaultToolName, mcpRows, snapshotOf, inheritedGrants, toolDraftKey
+ui/types.ts              CheckOutcome, ExampleResult, CheckReport, McpSeen, McpGrant
+ui/api.ts                checkTool, getMcp, putMcp; ToolBody.accept_check_failure; CheckBody, McpGrantBody;
+                         LibraryError.check (v2)
+ui/tools.ts              pure logic: RESERVED_NAMES, splitTools, defaultToolName, mcpRows, snapshotOf, grantSnapshot,
+                         inheritedGrants, toolDraftKey
 ui/editor/python.ts      CodeMirror 6, Python, loaded by import(): createPythonEditor(parent, value, onChange)
-ui/components/CodeField.tsx   (D3's) language "python" → the editor chunk; on a load failure, D3's textarea
+ui/components/python.tsx v2: PythonField, the source's field: mounts the editor chunk; on a load failure, D3's CodeField
+                         (a textarea). D3's CodeField is unchanged (§6.2 B1)
+ui/components/fields.tsx (D3's) ConfirmRow gains an optional confirmTestId (v2, §6.2 B8)
 ui/components/ToolEditor.tsx, CheckResult.tsx, McpServerRow.tsx
 ui/tabs/tools.tsx        D3's file, extended: banner, risk line, your tools, MCP servers
 ui/texts.ts              D4's sentences (§9.3)
-vite.config.ts           inlineDynamicImports: false; chunkFileNames "assets/[name].js"; manualChunks {editor: CodeMirror}
+vite.config.ts           inlineDynamicImports: false; chunkFileNames "assets/[name].js"; manualChunks: "editor" for
+                         CodeMirror, Lezer, their helpers (style-mod, w3c-keyname, crelt) and src/ui/editor/
 ```
 
 CodeMirror packages, as runtime dependencies: `@codemirror/state`, `@codemirror/view`, `@codemirror/commands`
 (`defaultKeymap`, `history`, `indentWithTab`), `@codemirror/language` (`syntaxHighlighting`, `defaultHighlightStyle`,
 `indentOnInput`, `bracketMatching`), `@codemirror/lang-python`. Budget: `assets/editor.js` at most 300 KB minified;
-`assets/app.js` stays under D3's 250 KB. The chunk's name is fixed, so `ui_routes` serves it like any built asset and
+`assets/app.js` stays under D3's 250 KB. *(v2, §6.2 B3: built, `editor.js` is 348 KB (118 KB gzip) and `app.js`
+169 KB. The editor takes `lang-python`'s bare `pythonLanguage` in a `LanguageSupport`, not `python()`, which would
+add autocompletion and 13 KB; it adds `lineNumbers`, `historyKeymap` and a four-space `indentUnit`. No CodeMirror
+Python editor fits 300 KB: Python's grammar alone takes it from 281 KB to 349 KB.)* The chunk's name is fixed, so `ui_routes` serves it like any built asset and
 D3's `test_the_committed_build_is_complete` adds it to its list.
 
 ### 7.5 Canvas's MCP settings in the frame
@@ -792,6 +1131,8 @@ D3's `test_the_committed_build_is_complete` adds it to its list.
   the **keys** of those maps (a value is never copied); `forwarded` = `enabled !== false` and (`refs === null` or the
   name is in `refs`); `why_not` = `"disabled"` or `"not_in_profile"`.
 - Either request failing → `null` (D3's tolerance).
+- As built (v2): the profile's refs are read from the answer's `profile.mcp_server_refs`, and a refs value that is not
+  a list counts as `null`. Both shapes were read from the SDK fork at `91430aa`, not run against it (§14 item 12).
 
 The list rides in the frame's URL as the `mcp` parameter (D3 §8.3). It carries commands, arguments and URLs, which a
 user may have put a token into; they are already stored unencrypted in Canvas's settings, and the URL stays on the
@@ -812,9 +1153,10 @@ no cause is `bad_factory`.
 
 ### 8.2 Connecting at once, giving up at once
 
-§4.4. Every `Connection.start()` is called before any wait; then `ready.wait(max(0, deadline - monotonic()))` in turn,
-which costs the longest wait, not their sum. A server given up is `abandon()`ed and forgotten: its cleanup runs on its
-own thread while the run proceeds.
+§4.4. Every `Connection.start()` is called before any wait; then, in turn, each
+`ready.wait(max(0, begun + its connect_timeout_s - monotonic()))`, which costs the longest connect timeout, not their
+sum (v2: each server's own timeout from one shared start, not one deadline at the largest, §6.2 B5). A server given
+up is `abandon()`ed and forgotten: its cleanup runs on its own thread while the run proceeds.
 
 ### 8.3 A call's result
 
@@ -827,6 +1169,10 @@ result.structuredContent is not None
 every content block is text                          → their texts joined by "\n" (a str; never parsed as JSON)
 otherwise                                            → [block.model_dump(mode="json") for each block] (images, resources)
 ```
+
+v2 (§6.2 B14): a FastMCP tool whose return annotation is a bare `dict` advertises no `outputSchema` and sends the dict
+as JSON text without structured content (measured on 1.30.0), so it arrives here as a `str`; a typed return (a
+`TypedDict`, a model) comes back as structured content, a dict. The rule stands: the shim never parses text.
 
 ### 8.4 The description
 
@@ -859,13 +1205,19 @@ Lines after the first start with two spaces, because deep_reasoner indents only 
 For each name in Canvas's list or in the grants: `granted` = a grant names it; `state` = `gone` (granted, not in
 Canvas's list), `disabled`, `not_in_profile`, or `given`; `changed` = granted and `snapshotOf(info)` differs from the
 grant's snapshot in transport, command, args, url, env names or header names; `old_shim` = `!grant.shim_current`.
-Rows in Canvas's order, then gone grants by name.
+Rows in Canvas's order, then gone grants by name. With Canvas's list unread (`null`, v2): one row per grant, in
+`GET /mcp`'s order, state `given`, `info` null, `changed` false; the row shows the grant's stored snapshot (§6.2 B8).
 
 ---
 
 ## 9 · Texts (verbatim; tests assert these)
 
 ### 9.1 The backend (`deep_reasoning/tools/texts.py`)
+
+As built (v2, §6.2 B9): a sentence with fields is a lower-case function of them that returns an f-string
+(`texts.reserved_name(name)`, `texts.child_ended(name, how, phase)`, `texts.mcp_server_taken(server, other)`, …), as
+D1 §5.6 does, since the Code Guide forbids `.format()`; the upper-case names below are the sentences' names. `BUILT`,
+`MCP_NEEDS_COMMAND` and `MCP_NEEDS_URL` are constants.
 
 | Name | Text |
 |---|---|
@@ -876,7 +1228,7 @@ Rows in Canvas's order, then gone grants by name.
 | `FACTORY_RAISED` | `tool '{name}': {factory} raised {type}: {message}` |
 | `BUILD_TIMEOUT` | `tool '{name}': building it took longer than {seconds:g} s, so Check stopped it. A tool is built at the start of every conversation; a factory must return quickly.` |
 | `READY_TIMEOUT` | `Check could not start deep_reasoner within {seconds:g} s, so it did not build the tool. Try again.` |
-| `CHILD_ENDED` | `tool '{name}': the Check process ended ({how}) while {phase}.` (`how`: `exit code 3`, `signal 11`; `phase`: `starting`, `building the tool`) |
+| `CHILD_ENDED` | `tool '{name}': the Check process ended ({how}) while {phase}.` (`how`: `exit code 3`, `signal 11`, or the error when the process could not start; `phase`: `starting`, `building the tool`, and v2's `trying it`, §6.2 B7) |
 | `EXAMPLE_TIMEOUT` | `TimeoutError: the expression did not finish within {seconds:g} s` |
 | `BUILTIN` | `'{factory}' is one of deep_reasoner's own factories. It is built when a conversation starts, with your model and files, so Check does not build it here.` |
 | `BUILT` | `builds` (the frame composes the ✓ line) |
@@ -897,13 +1249,14 @@ raised …").
 | `mcp_failed` | `⚠ MCP server '{server}' could not be started ({detail}); its tools are not bound in this conversation.` |
 | `mcp_not_enabled` | `⚠ MCP server '{server}' is granted to {namespaces} in the Library, but this conversation was not given it: enable it in Canvas's MCP settings. Its tools are not bound.` (`namespaces` joined with `, `) |
 
-The shim's own (`shim.py`, in the agent's REPL and prompt):
+The shim's own (`shim.py`, in the agent's REPL and prompt; `str.format` templates, constants of the shim, which
+imports only the standard library: §14 item 14):
 
 | Name | Text |
 |---|---|
 | `UNAVAILABLE` | `{name} is not available in this conversation: {reason}.` |
 | `NO_ANSWER` | reason: `its MCP server did not answer within {seconds:g} s when the conversation started` |
-| `COULD_NOT_START` | reason: `its MCP server could not be started ({detail})` (plain `dr` adds `; not set in the environment: {names}` when any is missing) |
+| `COULD_NOT_START` | reason: `its MCP server could not be started ({detail})` (plain `dr` adds `; not set in the environment: {names}` when any is missing: `MISSING_ENV`, v2, which is also added to `NO_ANSWER`) |
 | `NOT_ENABLED` | reason: `its MCP server is not enabled in this app's MCP settings` |
 | `NOT_REACHED` | reason: `no namespace this conversation can reach is granted it` |
 | `NOT_IN_SESSION` | reason: `it was not connected when this conversation started` |
@@ -967,10 +1320,14 @@ mock of our own code.
 `not_func.py` (returns a plain function), `misspelled` (`word_count.py` with `factory: mkae`), `import_error.py`
 (`import yaml_x`), `hang.py` (`time.sleep(3600)` in the factory), `spawns.py` (starts `sleep 3600` with `subprocess`,
 then hangs), `env_at_build.py` (reads `os.environ["D4_TOKEN"]` in the factory), `prints.py` (prints 1 MB while
-building), `syntax.py`. **Fake MCP servers** (`tests/mcp/servers/`): `echo_server.py` (FastMCP over stdio: `echo`,
-`add` → dict, `token` → its `ECHO_TOKEN`, `env_names` → its environment's names, `sleep(s)`, `crash` → `os._exit`;
-`--http PORT` serves streamable HTTP with `whoami` → the request's `Authorization`), `hang_server.py` (never reads its
-stdin), `crash_server.py` (prints its token to stderr and exits 1).
+building), and, v2, `exits.py` (ends its process with code 3 while building) and `calls_model.py` (calls the model
+from its factory); the syntax error is inline in `test_check.py`, `def make(`, not a `syntax.py` (§6.2 B14). **Fake
+MCP servers** (`tests/mcp/servers/`): `echo_server.py` (FastMCP over stdio: `echo`, `add` → a dict (a `TypedDict`,
+v2), `plain` (text only), `picture` (an image), `fail`, `token` → its `ECHO_TOKEN`, `env_names` → its environment's
+names, `sleep(s)`, `crash` → `os._exit`, `2nd-opinion` (no attribute name); `--http PORT` serves streamable HTTP and
+`--sse PORT` SSE, with `whoami` → the request's `Authorization`; `ECHO_MARKER_DIR` makes it write a file named after
+its pid when it starts), `hang_server.py` (never reads its stdin), `crash_server.py` (prints its token to stderr and
+exits 1), and the live tier's `catalog_server.py` (§10.5).
 
 | E9 case | Its null | Tests |
 |---|---|---|
@@ -979,7 +1336,7 @@ stdin), `crash_server.py` (prints its token to stderr and exits 1).
 | a misspelled factory | shows only at run time | `test_check.py::test_a_misspelled_factory_fails_check_naming_what_the_file_defines`; `test_routes.py::…[misspelled]` |
 | an import error | shows only at run time | `test_check.py::test_an_import_of_a_missing_module_fails_check_and_cannot_be_saved_anyway`; `test_routes.py::…[import_error]` |
 | a hanging factory | a Check past its time limit | `test_check.py::test_a_hanging_factory_is_stopped_at_the_build_limit` (default limits: the report arrives within ready time + 10 s + 1 s, outcome `timeout`), `::test_nothing_a_stopped_tool_started_is_left_running` (`spawns.py`: no `sleep 3600` afterwards) |
-| (all five) | a failure that shows only at run time | `test_check.py::test_check_and_make_tools_agree[every fixture]`: for each, Check's `ok` equals whether `make_tools` builds the same materialized config in a subprocess, and where deep_reasoner words the failure, the same words |
+| (all five) | a failure that shows only at run time | `test_check.py::test_check_and_make_tools_agree[works, not_func, misspelled, import_error, hang, env_at_build, prints, exits]`: for each, Check's `ok` equals whether `make_tools` builds the same materialized config in a subprocess, and where deep_reasoner words the failure, the same words |
 | an MCP server that crashes | blocks the session or takes the worker down | `test_session.py::test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted`; `test_acp.py::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers`, `::test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on` (the next cell and the next prompt are answered) |
 | an MCP server that hangs | blocks the session | `test_session.py::test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline` (three servers: decided by the deadline, not three times it); `test_acp.py::test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadline` (a 2 s `connect_timeout_s` in the grant); `test_shim.py::test_a_call_that_never_answers_raises_after_its_timeout` |
 | an MCP server not granted to the conversation's namespace | its tools in the REPL | `test_acp.py::test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt` (granted to `course_advisor`, the conversation in `router`: a cell's `dir()` and the fake model's first request lack it), `::test_a_sub_agent_spawned_into_a_granted_namespace_gets_it`, `::test_a_grant_reaches_a_child_namespace`, `::test_handing_a_server_to_an_ungranted_namespace_is_refused`; `test_session.py::test_a_server_granted_nowhere_is_not_started`, `::test_a_server_granted_only_where_spawning_is_not_allowed_is_not_started` |
@@ -988,17 +1345,20 @@ stdin), `crash_server.py` (prints its token to stderr and exits 1).
 
 | File | Pins (besides §10.2) |
 |---|---|
-| `tests/tools/test_check.py` | `test_a_syntax_error_fails_before_any_process_starts`; `test_a_reserved_name_is_invalid[subagent, run_all, FinalAnswer, Var, Func, task]`; `test_llm_is_not_reserved`; `test_a_built_in_factory_is_named_not_built`; `test_an_unknown_built_in_factory_is_refused_in_deep_reasoners_words`; `test_a_factory_raising_can_be_saved_anyway` (`env_at_build.py`: outcome `raised`, its frame in `tools/word_count.py`); `test_check_never_reaches_a_model` (a factory calling `client.chat.completions.create` gets a connection error; a fake model on another port records no request); `test_check_gets_no_secret` (`check_env` of an environment holding `OPENAI_API_KEY` and `OH_SECRET_KEY` has neither); `test_printing_cannot_corrupt_the_report` (`prints.py`); `test_an_example_that_raises_is_reported_and_the_build_stays_ok`; `test_a_slow_example_is_stopped_at_its_limit`; `test_the_temporary_folder_is_removed`; `test_not_func_and_unknown_factory_sentences_equal_make_tools` (tripwire on deep_reasoner's inline text) |
-| `tests/tools/test_routes.py` | Starlette's `TestClient` with `Host: 127.0.0.1:<port>`: `test_check_route_answers_200_with_a_report`; `test_a_grant_only_change_runs_no_check` (a broken tool stored through `Library.put_tool`, then a `PUT` that changes only `granted_in` answers 200); `test_save_anyway_stores_a_raising_tool_only_when_asked`; `test_a_structural_failure_cannot_be_saved_anyway`; `test_an_mcp_block_through_put_tools_is_refused`; `test_put_mcp_writes_the_block_and_the_shim_and_grants`; `test_put_mcp_resent_unchanged_makes_no_tool_version`; `test_a_server_cannot_be_granted_under_two_names`; `test_put_mcp_refuses_a_stdio_grant_without_a_command`; `test_get_mcp_lists_grants_with_their_last_seen_tools`; `test_get_mcp_says_when_a_grant_has_an_old_shim`; `test_mcp_routes_answer_only_their_own_host` (D2's guard) |
+| `tests/tools/test_check.py` | `test_a_syntax_error_fails_before_any_process_starts`; `test_a_reserved_name_is_invalid[subagent, run_all, FinalAnswer, Var, Func, task]`; `test_llm_is_not_reserved`; `test_a_built_in_factory_is_named_not_built`; `test_an_unknown_built_in_factory_is_refused_in_deep_reasoners_words`; `test_a_factory_raising_can_be_saved_anyway` (`env_at_build.py`: outcome `raised`, its frame in `tools/word_count.py`); `test_check_never_reaches_a_model` (a factory calling `client.chat.completions.create` gets a connection error; a fake model on another port records no request); `test_check_gets_no_secret` (`check_env` of an environment holding `OPENAI_API_KEY` and `OH_SECRET_KEY` has neither); `test_printing_cannot_corrupt_the_report` (`prints.py`); `test_an_example_that_raises_is_reported_and_the_build_stays_ok`; `test_a_slow_example_is_stopped_at_its_limit`; `test_the_temporary_folder_is_removed`; `test_not_func_and_unknown_factory_sentences_equal_make_tools` (tripwire on deep_reasoner's inline text); v2 adds `test_a_name_d2_refuses_is_invalid_in_d2s_words`, `test_an_mcp_grant_is_not_checked_as_a_tool_of_your_own`, `test_a_tool_that_ends_the_process_is_raised_saying_how_it_ended` (`exits.py`), `test_a_check_that_cannot_start_deep_reasoner_in_time_is_unavailable`; `test_check_never_reaches_a_model` uses `calls_model.py`; `test_the_temporary_folder_is_removed` runs `word_count` and `hang` |
+| `tests/tools/test_routes.py` | Starlette's `TestClient` with `Host: 127.0.0.1:<port>`: `test_check_route_answers_200_with_a_report`; `test_a_grant_only_change_runs_no_check` (a broken tool stored through `Library.put_tool`, then a `PUT` that changes only `granted_in` answers 200); `test_save_anyway_stores_a_raising_tool_only_when_asked`; `test_a_structural_failure_cannot_be_saved_anyway`; `test_an_mcp_block_through_put_tools_is_refused`; `test_put_mcp_writes_the_block_and_the_shim_and_grants`; `test_put_mcp_resent_unchanged_makes_no_tool_version`; `test_a_server_cannot_be_granted_under_two_names`; `test_put_mcp_refuses_a_stdio_grant_without_a_command`; `test_get_mcp_lists_grants_with_their_last_seen_tools`; `test_get_mcp_says_when_a_grant_has_an_old_shim`; `test_mcp_routes_answer_only_their_own_host` (D2's guard); v2 adds `test_a_checked_tool_is_saved_with_its_grants`, `test_put_mcp_refuses_a_name_the_repl_cannot_bind[run_all, not a name, class]`; `test_put_mcp_refuses_a_stdio_grant_without_a_command` runs stdio, http and sse |
 | `tests/mcp/test_wire.py` | `test_forwarded_specs_read_acps_stdio_http_and_sse_shapes`; `test_other_mcp_server_types_are_ignored`; `test_servers_named_reads_mcp_blocks_only`; `test_a_run_gets_only_the_specs_its_blocks_name` (`specs_for_run`: a forwarded server no block names, and its secrets, are not in the result); `test_redact_replaces_every_secret_value`; `test_the_seen_cache_round_trips_and_is_private` (0600, 0700) |
-| `tests/mcp/test_grants.py` | `test_mcp_block_for_stdio_http_and_sse`; `test_header_env_name`; `test_is_mcp_tool_needs_the_factory_and_the_marker`; `test_an_exported_and_reimported_grant_is_still_a_grant` |
-| `tests/mcp/test_shim.py` | plain mode (no `SESSION`): `test_the_shim_connects_from_its_block_with_env_from_the_environment` (`token` returns the variable's value); `test_results_are_unwrapped_dicts_text_or_blocks` (§8.3's table); `test_a_failed_call_raises_mcp_tool_error_with_the_servers_text`; `test_positional_arguments_follow_the_described_order`; `test_tools_without_an_identifier_are_called_by_their_exact_name`; `test_the_description_is_what_8_4_says` (exact text); `test_a_server_survives_fork` (`copy.deepcopy` returns the same object; no warning); `test_calls_from_many_threads_and_under_nest_asyncio`; `test_without_the_mcp_package_the_factory_returns_a_stand_in` (`mcp` hidden with `monkeypatch.setitem(sys.modules, "mcp", None)`); `test_the_shim_imports_only_the_standard_library_at_module_level` (its AST); `test_a_stored_v1_shim_works_with_todays_session` (a frozen copy of v1 in `fixtures/`); the guard: `test_the_guard_ends_its_server_when_its_parent_is_killed` (a parent process started for the test, `SIGKILL`ed; the server's pid is gone within 1.5 s); `test_the_guard_passes_the_exit_code`; HTTP: `test_an_http_server_is_reached_with_its_headers` (`whoami`) |
-| `tests/mcp/test_session.py` | `test_only_granted_and_reachable_servers_are_started`; `test_grant_sets_follow_deep_reasoners_resolution` (root, `a`, `a.b`); `test_a_granted_server_not_forwarded_is_not_enabled`; `test_statuses_carry_what_the_agent_is_told`; `test_a_server_given_up_is_ended_within_three_seconds` |
+| `tests/mcp/test_grants.py` | `test_mcp_block_for_stdio_http_and_sse`; `test_header_env_name`; `test_is_mcp_tool_needs_the_factory_and_the_marker`; `test_an_exported_and_reimported_grant_is_still_a_grant`; v2 adds `test_mcp_block_needs_a_command_or_a_url`, `test_the_shim_source_starts_with_its_marker_and_version`, `test_grant_record_reads_the_block` |
+| `tests/mcp/test_shim.py` | plain mode (no `SESSION`): `test_the_shim_connects_from_its_block_with_env_from_the_environment` (`token` returns the variable's value); `test_results_are_unwrapped_dicts_text_or_blocks` (§8.3's table); `test_a_failed_call_raises_mcp_tool_error_with_the_servers_text`; `test_positional_arguments_follow_the_described_order`; `test_tools_without_an_identifier_are_called_by_their_exact_name`; `test_the_description_is_what_8_4_says` (exact text); `test_a_server_survives_fork` (`copy.deepcopy` returns the same object; no warning); `test_calls_from_many_threads_and_under_nest_asyncio`; `test_without_the_mcp_package_the_factory_returns_a_stand_in` (`mcp` hidden with `monkeypatch.setitem(sys.modules, "mcp", None)`); `test_the_shim_imports_only_the_standard_library_at_module_level` (its AST); `test_a_stored_v1_shim_works_with_todays_session` (a frozen copy of v1 in `fixtures/`); the guard: `test_the_guard_ends_its_server_when_its_parent_is_killed` (a parent process started for the test, `SIGKILL`ed; the server's pid is gone within 1.5 s); `test_the_guard_passes_the_exit_code`; HTTP: `test_an_http_server_is_reached_with_its_headers` (`whoami`); v2 adds `test_a_stand_in_is_plain_to_deep_reasoners_seams`, `test_a_server_it_cannot_reach_becomes_a_stand_in_saying_why[crashes, hangs]`, `test_a_server_that_dies_fails_the_call_and_every_later_one_at_once`, `test_a_hand_off_outside_the_grant_is_refused`; the HTTP test runs http and sse |
+| `tests/mcp/test_session.py` | `test_only_granted_and_reachable_servers_are_started`; `test_grant_sets_follow_deep_reasoners_resolution` (root, `a`, `a.b`); `test_a_granted_server_not_forwarded_is_not_enabled`; `test_statuses_carry_what_the_agent_is_told`; `test_a_server_given_up_is_ended_within_three_seconds`; v2 adds `test_without_mcp_blocks_the_session_is_empty` |
 | `tests/mcp/test_acp.py` | D1's harness (`dr_acp(None, home)`, `FakeOpenAI`, `ShimConnection`), the Library at `home`, `open_session(cwd, mcp_servers=[…])`: `test_dr_acp_advertises_http_and_sse`; `test_a_granted_server_is_bound_and_a_cell_calls_it`; `test_a_forwarded_server_no_grant_names_is_never_started` (the fake server writes a marker file when it starts; there is none); `test_server_secrets_never_reach_the_run_log_or_the_transcript` (`crash_server.py` prints its token; the notice says `[redacted]`); `test_the_notice_replays_on_load`; `test_the_seen_cache_is_written_for_bound_servers`; `test_no_stdio_server_outlives_a_root_stop` (a cell in `while True: pass`; root Stop; within 2 s no fake server is running); `test_no_stdio_server_outlives_a_closed_session`; the E9 rows of §10.2 |
 | `tests/mcp/test_export.py` | `test_an_exported_grant_runs_under_dr` (`dr-library export`, then `dr <dir>/main.yaml` with `FakeOpenAI` scripted to call `echo.echo("hi")` and `ECHO_TOKEN` in the environment: exit 0, the cell's output `hi`) |
 
 **D1's files** gain: `tests/acp/harness.py`: `DrAcp.open_session(cwd, mcp_servers=())`; `test_agent.py`'s
 capability assertion; golden recordings re-recorded once if they hold the `initialize` response (D1's one command).
+*(v2, §6.2 B11: each recording's `initialize` line was changed by hand, nothing else; the capability test is now
+`test_initialize_advertises_load_close_and_http_and_sse_mcp`; `tests/acp/test_encoder.py` gains
+`test_each_mcp_server_not_bound_is_a_notice_on_the_root[native, flat, replay]`.)*
 
 ### 10.4 The Tools tab (D3's harness: `tests/canvas_app/`, Playwright, marker `browser`; and vitest)
 
@@ -1013,7 +1373,11 @@ stay green. D4 adds to `test_tools_tab.py`: `test_the_risk_line_is_under_the_saf
 (the frame opened with `mcp=`); `test_a_disabled_server_says_so_and_can_still_be_granted`;
 `test_a_grant_gone_from_canvas_offers_remove`; `test_a_changed_server_offers_update`;
 `test_the_last_seen_tools_are_shown` (a seen file written first); `test_without_canvas_settings_only_grants_are_shown`.
-`library_home`'s fixture gains a tool whose factory raises (D3 §8.3 allows it).
+`library_home`'s fixture gains a tool whose factory raises (D3 §8.3 allows it). *(v2, §6.2 B13: it does not; E8 runs
+real conversations from that Library and `make_tools` builds every block, so D4's tests make the raising tool inside
+`test_a_raising_factory_offers_save_anyway`.)* vitest also gains, v2, `mount.test.ts`'s "reads Canvas's MCP servers
+for the Tools tab only", and `tests/library/test_ui.py::test_the_committed_build_is_complete` requires the editor
+chunk.
 
 vitest: `protocol.test.ts` (the `mcp` parameter round-trips; bad JSON → `null`); `context.test.ts`
 (`mcpServersFromSettings`: stdio, http, sse and skipped entries; `disabled` and `not_in_profile`; no value of `env` or
@@ -1040,9 +1404,10 @@ with D1's harness. The facts asked for exist nowhere but in the tool, so the ans
    ZQ-417?" → the answer contains `ZQ-101`; the run log's `mcp.status` says `bound`, a cell calls
    `catalog.prerequisites(`, and the token appears nowhere in the run log or the updates.
 
-Cents per run, in D1's on-demand `live.yml` with the same secret.
+Cents per run, in D1's on-demand `live.yml` with the same secret. *(v2: both passed at `965f318`, run 37106223637,
+with D1's three and D2's one, 6 of 6 in 81 s.)*
 
-### 10.6 Across the repositories (proposed; D5's `crossrepo` harness)
+### 10.6 Across the repositories (proposed; D5's `crossrepo` harness; not built in D4, §6.2 B17)
 
 `tests/crossrepo/test_mcp_forwarding.py`: the agent-server from the SDK fork's pinned commit; `PATCH
 /api/settings/mcp/echo` with `echo_server.py` as a stdio server and one secret in its `env`; the `deep_reasoner`
@@ -1058,7 +1423,7 @@ These are findings for the Conductor; none is settled sideways.
 
 ### 11.1 D1
 
-D4 makes these changes in D1's files (§7.3), about 90 lines with the sentences:
+D4 makes these changes in D1's files (§7.3), about 90 lines with the sentences (v2: 101 added, `cf131e5`):
 
 - `Start.mcp_servers` (D1 §4.8 named it) and `AGENT_CAPABILITIES.mcpCapabilities = {"http": True, "sse": True}` (D1 §4.8
   anticipated the flip).
@@ -1066,11 +1431,57 @@ D4 makes these changes in D1's files (§7.3), about 90 lines with the sentences:
   notices. D1 §4.4's event table and §5.6's sentences should list it and them when D1 next revises; E4's schema check
   covers the notices as it covers the fresh-run notice.
 - `Worker.build` calls `open_session` between `load_dr_config` and `build_reasoner`; a failure inside it is caught per
-  server and never fails the build.
+  server and never fails the build. *(v2: a server's failure is caught; an error in deep_reasoner's own namespace
+  resolution, which `open_session` calls first, fails the build, as it would fail `build_reasoner` next.)*
 - The pump writes the seen cache (§4.7) for live, not replayed, `mcp.status` events.
 - The test harness's `open_session` takes `mcp_servers`.
 - **No change to D1's process handling**: stdio servers end through their guards (§4.6), so `RunHandle.kill` and the
   worker's `killpg(0)` stay as they are.
+
+**What D4 adds to D1's surface, as built (`cf131e5`; v2).** D1's design (v3, `c8d7fbb`) names no such event: its
+§4.4 lists the RunEvents and its §5.6 the sentences, and neither has these. This is the change D4 makes to D1's
+surface, written so that D1's next revision can take it in as it stands.
+
+- **The event** (D1 §4.4, "Sent by the worker"), in `acp/runlog.py`, joining the `RunEvent` union:
+
+  ```python
+  class McpStatus(_Ev):
+      """D4: how each MCP server a run's config names was bound, before build_reasoner."""
+
+      kind: Literal["mcp.status"] = "mcp.status"
+      servers: list[McpServerStatus]  # deep_reasoning.mcp.wire (Appendix A.2)
+  ```
+
+  The worker emits it through its recorder at most once per run: in the first prompt's build, after `load_dr_config`
+  and before `build_reasoner`, and only when the run's config has an MCP block. In the run log it follows that
+  prompt's `prompt.start` and precedes the root's `agent.start`. The front logs it as it logs every RunEvent; after
+  logging it, the pump writes the seen cache (§4.7). A replay re-encodes it and writes nothing.
+- **Its encoding** (a row for D1 §5.2; §5.3's "as in §5.2" covers flat mode): `mcp.status` → for each server whose
+  `state` is `no_answer`, `failed` or `not_enabled`, in the event's order, `root` → `agent_message_chunk`
+  `{"content": {"type": "text", "text": notice + "\n\n"}}` with no `_meta`, the fresh-run notice's form, so a client
+  that reads `_meta` tells it from an answer; nothing for `bound` or `skipped`. The same in native and flat mode and
+  on `session/load`. E4's schema check covers it as it covers every message `dr-acp` sends.
+- **Its three sentences** (D1 §5.6), in `acp/texts.py` as functions of their fields
+  (`texts.mcp_no_answer(server, seconds)`, `texts.mcp_failed(server, detail)`,
+  `texts.mcp_not_enabled(server, namespaces)`), one of them picked by `texts.mcp_notice(status)`:
+
+  | Name | Text |
+  |---|---|
+  | `MCP_NO_ANSWER` | `⚠ MCP server '{server}' did not answer within {seconds:g} s; its tools are not bound in this conversation.` (`seconds`: the status's, the server's connect timeout) |
+  | `MCP_FAILED` | `⚠ MCP server '{server}' could not be started ({detail}); its tools are not bound in this conversation.` (`detail`: the failure and the tail of what the server printed, its secrets redacted, §4.4) |
+  | `MCP_NOT_ENABLED` | `⚠ MCP server '{server}' is granted to {namespaces} in the Library, but this conversation was not given it: enable it in Canvas's MCP settings. Its tools are not bound.` (`namespaces`: the status's `granted`, joined with `, `; §14 item 10) |
+
+- **Around it** (D1 §4.8, §5.1, §7): `Start.mcp_servers: list[McpServerSpec] = []`, filled by `Session._materialize`
+  through `specs_for_run`; `RunHandle.start(…, mcp_servers=…)`; `initialize` advertises
+  `mcpCapabilities: {"http": true, "sse": true}`, which changes each golden recording's `initialize` line and renames D1's capability
+  test (§6.2 B11); the harness's `DrAcp.open_session(cwd, mcp_servers=())`. D1 §4.8's "≈30 lines" came to 101 in D1's
+  source files.
+- *Pinned by:*
+  `tests/acp/test_encoder.py::test_each_mcp_server_not_bound_is_a_notice_on_the_root[native, flat, replay]`;
+  `tests/mcp/test_acp.py::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers` (the notice, then the
+  answer), `::test_the_notice_replays_on_load`,
+  `::test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadline`,
+  `::test_the_seen_cache_is_written_for_bound_servers`, `::test_dr_acp_advertises_http_and_sse`.
 
 ### 11.2 D2
 
@@ -1078,13 +1489,16 @@ D4 makes these changes in D1's files (§7.3), about 90 lines with the sentences:
   Old clients are unaffected (the field is optional); `Library.put_tool` and import are not gated.
 - **Routes**: `create_app` appends `*tool_routes(lib)`. For that, D2's `route()` helper, today a closure inside
   `create_app`, becomes a module-level `json_route(path, method, handler)` with no change in behaviour, so D4's
-  routes are built the same way (the alternative is an eight-line copy in `tools/routes.py`).
+  routes are built the same way (the alternative is an eight-line copy in `tools/routes.py`). *(v2: built so,
+  `70dd540`; `tools/routes.py` also imports D2's private `_parse`, and `create_app` imports D4's modules inside
+  itself, to break an import cycle: §6.2 B12.)*
 - **No schema change, no migration**: MCP grants are tool rows (decision D), D2's recommendation.
 - **Proposed, not required**: `Library.materialize(…, only_granted: bool = False)`, with `LibraryCatalog` passing
   `True`, so a run's `main.yaml` holds only tools some namespace grants. Today an ungranted tool is still built in
   every conversation (`make_tools` builds every block), so a tool imported broken and granted nowhere still stops every
   conversation; an export keeps every tool. D4 does not depend on it: an ungranted MCP grant is never connected
-  (§4.4), and the gate keeps the panel from storing a broken tool.
+  (§4.4), and the gate keeps the panel from storing a broken tool. *(v2: not built, §6.2 B17. It is also why D3's
+  shared browser Library holds no raising tool, §6.2 B13.)*
 - D2 §6.5 said Check "can materialize the Library into a temporary directory"; D4 materializes only the tool being
   checked (one tool's failures, no others').
 
@@ -1092,15 +1506,20 @@ D4 makes these changes in D1's files (§7.3), about 90 lines with the sentences:
 
 All within D3 §8.3: `tabs/tools.tsx` extended, the banner kept at the top; `api.ts` gains `checkTool` (D2 §6.5's
 route) and `getMcp`, `putMcp`; `ToolBody` gains `accept_check_failure`; `FrameParams.mcp` with its read in
-`page/context.ts`, through `host.agentServer.request`, `null` on failure; `CodeField`'s `language: "python"` loads
-CodeMirror as the `editor` chunk, with `inlineDynamicImports` removed as D3 foresaw; tests beside D3's, with the same
-fixtures. One addition D3 should know: `page/mount.ts` step 2 reads `readMcpServers` for the Tools tab only (one
-line). The frame UI stays under 250 KB without the editor chunk (§7.4).
+`page/context.ts`, through `host.agentServer.request`, `null` on failure; a `PythonField` of D4's own loads
+CodeMirror as the `editor` chunk, with `inlineDynamicImports` removed as D3 foresaw (v2: v1 said D3's `CodeField`
+would, for `language: "python"`, which D3's decomposition cards use; §6.2 B1); tests beside D3's, with the same
+fixtures. Two additions D3 should know: `page/mount.ts` step 2 reads `readMcpServers` for the Tools tab only (one
+line), and D3's `ConfirmRow` gains an optional `confirmTestId` (v2, §6.2 B8). The frame UI stays under 250 KB without
+the editor chunk (§7.4; v2: `app.js` is 169 KB).
 
 **Branch base.** D4's code extends D3's files, so `v1-custom-tools` should be cut from `v1-decompositions-panel` once
-D3 is far enough, as D2's was cut from D1's (D2 §9 item 4).
+D3 is far enough, as D2's was cut from D1's (D2 §9 item 4). *(v2: so it was; D4's code is stacked on D3's `5effe26`.)*
 
 ### 11.4 D5
+
+None of this section is built in D4 (§6.2 B17). What it would use exists: `echo_server.py`, with its `env_names`
+tool.
 
 - **E10 with MCP servers bound** (D5 §1.2's final part): D4 provides `echo_server.py` and the grant to run E10 with a
   stdio server bound and a call made. Expected to hold unchanged: the provider key and the agent-server's secrets are
@@ -1135,8 +1554,9 @@ None.
 | R6 | `func(name, value, description).describe()` is what the agent is told | `v2/messages.py:184–189, 216–224` |
 | R7 | `fork` deep-copies the REPL, degrading per binding | `repls/backends.py:105–140` |
 | R8 | A client on loopback needs no key | `config.py:249–265` |
-| M1 | `stdio_client` starts the server in a new session, merges six variables into its environment, closes stdin then ends the process tree on exit | `mcp` 1.28.1 `client/stdio/__init__.py:28–66, 180–260` |
-| M2 | `ClientSession.call_tool(…, read_timeout_seconds=…)`, `list_tools(cursor=…)`, `streamable_http_client(url, http_client=…)`, `sse_client(url, headers=…)` | `client/session.py:386, 525`; `client/streamable_http.py:601`; `client/sse.py:30` |
+| M1 | `stdio_client` starts the server in a new session, merges six variables into its environment, closes stdin then ends the process tree on exit | `mcp` 1.28.1 `client/stdio/__init__.py:28–66, 180–260`; the same lines in 1.30.0 (v2) |
+| M2 | `ClientSession.call_tool(…, read_timeout_seconds=…)`, `list_tools(cursor=…)` (v2: the shim passes `params=PaginatedRequestParams(cursor=…)`), `streamable_http_client(url, http_client=…)`, `sse_client(url, headers=…)` | 1.28.1: `client/session.py:386, 525`; `client/streamable_http.py:601`; `client/sse.py:30`. 1.30.0 (v2): `client/session.py:386, 524–532`; `client/streamable_http.py:619`; `client/sse.py:35` |
+| M3 | (v2) A dead connection fails a request with `McpError` code -32000 ("Connection closed"); a read timeout is `McpError` code 408; a FastMCP tool returning a bare `dict` sends JSON text and no structured content | 1.30.0: `types.py:182`; `shared/session.py:296, 451`; measured (§6.2 B14) |
 | B1 | OpenHands forwards every enabled server of the profile's filtered `mcp_config` as ACP `mcpServers` at `session/new` and `session/load`, stdio always, HTTP and SSE when advertised, secrets in plain text | SDK fork `acp_agent.py:739–821, 3105–3120`; `profiles/resolver.py:160–168` |
 | B2 | `GET /api/settings` without `X-Expose-Secrets` redacts every secret value | `settings_router.py:113–177`; `mcp/config.py:64–74` |
 | B3 | App-backend requests have no read timeout through the bridge | `bridge.py:467–472`; `docker_runtime/proxy.py:96–97` |
@@ -1165,13 +1585,18 @@ spec costed at 40 lines; the event and notices in `dr-acp`. **If the Conductor w
 cleanly, each with what is lost: the seen cache (≈60 lines and its tests; the Tools tab then shows no server tools)
 and CodeMirror (≈60 lines and a dependency; a textarea with Tab handling instead).
 
+*(v2: built at 3,311 lines of code and 3,511 of tests, about 6.8k and 23 h; §6.2 B16 gives this table with the built
+figures. As built, CodeMirror is `ui/editor/python.ts` (74 lines) and `ui/components/python.tsx` (67), five packages
+and the 348 KB chunk, §6.2 B3.)*
+
 ---
 
 ## 14 · Open items, and what I was unsure about
 
 1. **The forwarding path was read, not run** (header): `_mcp_config_to_acp_servers`, the ACP 0.12.1 model shapes and
    the settings JSON. §10.6's test runs it; until then `forwarded_specs` accepts both a missing and a `"stdio"` `type`.
-2. **E9's "not granted to the conversation's namespace"** is designed per agent (decision G, §6 item 5). If Michael
+   *(v2: still read, not run; §10.6 was not built, §6.2 B17.)*
+2. **E9's "not granted to the conversation's namespace"** is designed per agent (decision G, §6.1 item 5). If Michael
    meant "only the conversation's own namespace, and never a sub-agent's", that is a narrower rule deep_reasoner does
    not have, and it would need the stand-in in every agent of a non-granted namespace even when spawned into a granted
    one.
@@ -1192,6 +1617,28 @@ and CodeMirror (≈60 lines and a dependency; a textarea with Tab handling inste
    but a model may still answer without calling it. A failure there is re-run once before it is read as a regression.
 9. **The Code Guide** says never to ship un-run fenced Python in a `.md`; this design, like D1's to D3's, carries
    signatures as fenced code, as the brief asks. A tension in the pages, not a choice made here.
+10. **The "not enabled" notice names every namespace whose resolved tools include the server** (v2, carried from the
+    build). `McpServerStatus.granted` is deep_reasoner's resolution (§4.4), so a grant to `root` makes
+    `MCP_NOT_ENABLED` list every namespace in the Library. The namespaces that grant it directly (the Library's
+    `granted_in`, which each materialized namespace file's own `tools` carries) would read better. Not changed by the
+    build; a small change in `open_session`, for Michael or D1's next revision to choose.
+11. **"Time to connect" can be overstated** (v2, carried from the build). A bound server's `seconds` is taken when its
+    own wait returns, and the waits run in turn (§6.2 B5), so a server that answered while an earlier one was still
+    awaited is recorded with the later time. It is in the run log only; the Tools tab shows no time.
+12. **Canvas's settings shape was read, not run** (v2, carried from the build): `agent_settings.mcp_config` from
+    `GET /api/settings` and `profile.mcp_server_refs` from `GET /api/agent-profiles/deep_reasoner`, both read from the
+    SDK fork at `91430aa` (§7.5). vitest's `context.test.ts` fixes the shape as read; §10.6's test or D5's E12, neither
+    built, would run it.
+13. **The editor's size, as reported and as measured** (v2). The build's report said CodeMirror's core alone is above
+    300 KB. This revision's measurement (§6.2 B3) has the packages the editor uses at 281 KB without Python's grammar
+    and 349 KB with it. The conclusion stands (no CodeMirror Python editor fits 300 KB); the reason is the grammar,
+    not the core.
+14. **The shim formats its sentences with `str.format`** (v2, found reading the build): §9.2's templates, as v1
+    specified them for a file that imports only the standard library, against the Code Guide's "never `.format()`";
+    small functions returning f-strings, as `tools/texts.py` and D1's `texts.py` have, would follow it. Any edit to
+    `shim.py` changes the text every new grant stores, so each existing grant then shows `MCP_SHIM_OLD` until its
+    **Update** (`shim_current` compares the stored source with today's byte for byte); a stored v1 shim keeps working
+    (`test_a_stored_v1_shim_works_with_todays_session`). For the Refactorer at Gate C, with §6.2 B12's `_parse`.
 
 ---
 
@@ -1199,6 +1646,7 @@ and CodeMirror (≈60 lines and a dependency; a textarea with Tab handling inste
 
 Python as it will be written, ruff-formatted, bodies `...`; TypeScript in declaration form (`declare` marks a body
 the sections above specify), one field per line. Paths are relative to `src/deep_reasoning/` or `canvas-app/src/`.
+v2: every block matches the code at `965f318`; a `# v2` comment marks what the build changed or added (§6.2).
 
 ### A.1 `tools/check.py`, `tools/check_child.py`
 
@@ -1229,10 +1677,15 @@ Outcome = Literal[
 ]
 OK_OUTCOMES: Final = frozenset({"built", "builtin"})
 SAVE_ANYWAY_OUTCOMES: Final = frozenset({"raised", "timeout", "unavailable"})
-RESERVED_NAMES: Final = frozenset({"FinalAnswer", "Func", "Var", "run_all", "subagent", "task"})
+RESERVED_NAMES: Final = frozenset(
+    {"FinalAnswer", "Func", "Var", "run_all", "subagent", "task"}
+)
 CHECK_MODEL_URL: Final = "http://127.0.0.1:9/v1"
 PASSED_ENV: Final = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TZ")
-SHOWN_LIMIT: Final = 2_000  # characters of printed output, tracebacks and example values
+# Characters of printed output, tracebacks and example values a report carries.
+SHOWN_LIMIT: Final = 2_000
+# v2: the module the throwaway process runs.
+CHILD: Final = "deep_reasoning.tools.check_child"
 
 
 @dataclass(frozen=True)
@@ -1258,7 +1711,8 @@ class CheckReport(BaseModel):
     outcome: Outcome
     message: str
     told: str | None  # deep_reasoner's func(name, value, description).describe()
-    traceback: str | None  # raised: the frames in tools/<name>.py and the exception line
+    # raised: the frames in tools/<name>.py and the exception line
+    traceback: str | None
     example: ExampleResult | None
     printed: str  # the last SHOWN_LIMIT characters the tool printed
     seconds: float | None  # loading the file and calling the factory
@@ -1292,7 +1746,8 @@ class ToolCheckFailed(LibraryError):
     code = "check_failed"
     status = 422
 
-    def __init__(self, report: CheckReport) -> None: ...
+    # v2: name, for CHECK_FAILED's sentence (§6.2 B9).
+    def __init__(self, name: str, report: CheckReport) -> None: ...
 
     def payload(self) -> dict[str, Any]:
         """{"error", "message", "check": report.model_dump(mode="json")}."""
@@ -1325,6 +1780,10 @@ McpState = Literal["bound", "no_answer", "failed", "not_enabled", "skipped"]
 MCP_FACTORY: Final = "mcp_server"
 SEEN_DIR: Final = "mcp"
 REDACTED: Final = "[redacted]"
+# v2: shorter values are not redacted: they would match everywhere.
+SECRET_MIN: Final = 4
+SEEN_VERSION: Final = 1  # v2: the seen cache's "v"
+REMOTE: Final = ("http", "sse")  # v2
 
 
 class McpServerSpec(BaseModel):
@@ -1346,7 +1805,8 @@ class McpServerStatus(BaseModel):
     state: McpState
     detail: str | None = None  # failed and skipped: why; secrets redacted
     granted: list[str] = []  # the namespaces whose resolved tools name it
-    seconds: float | None = None  # bound: time to connect
+    # bound: time to connect; v2: no_answer: the time waited.
+    seconds: float | None = None
     count: int = 0  # bound: its tools
     told: str | None = None  # bound: deep_reasoner's describe() of its binding
 
@@ -1379,7 +1839,12 @@ def redact(text: str, secrets: Iterable[str]) -> str:
     """Every secret of at least 4 characters replaced by REDACTED."""
 
 
-def remember_seen(home: Path, run: str, servers: Sequence[McpServerStatus], at: datetime) -> None:
+def remember_seen(
+    home: Path,
+    run: str,
+    servers: Sequence[McpServerStatus],
+    at: datetime,
+) -> None:
     """§4.7: one file per bound server, atomically, 0600 in a 0700 directory."""
 
 
@@ -1463,9 +1928,26 @@ SHIM_VERSION: Final = 1
 FACTORY: Final = "mcp_server"
 CONNECT_TIMEOUT_S: Final = 10.0
 CALL_TIMEOUT_S: Final = 120.0
+CALL_GRACE_S: Final = 5.0  # v2: past mcp's own read timeout, the call is given up here
 GUARD_POLL_S: Final = 0.5
 DESCRIPTION_LIMIT: Final = 300
 RESULT_KEY: Final = "result"
+HTTP_TIMEOUT_S: Final = 30.0  # v2: mcp's own defaults for its HTTP client
+HTTP_READ_TIMEOUT_S: Final = 300.0  # v2
+REQUEST_TIMEOUT: Final = 408  # v2: the code mcp's McpError carries for a read timeout
+CONNECTION_CLOSED: Final = -32000  # v2: mcp.types.CONNECTION_CLOSED
+JSON_TYPES: Final = {  # v2: §8.4's JSON Schema types as Python's
+    "string": "str",
+    "integer": "int",
+    "number": "float",
+    "boolean": "bool",
+    "array": "list",
+    "object": "dict",
+    "null": "None",
+}
+# §9.2's sentences are str.format templates here (UNAVAILABLE, NO_ANSWER, COULD_NOT_START,
+# MISSING_ENV (v2), NOT_ENABLED, NOT_REACHED, NOT_IN_SESSION, NO_MCP_PACKAGE, CALL_FAILED,
+# CALL_TIMEOUT, SERVER_STOPPED, HANDOFF_REFUSED, DESCRIPTION_HEAD).
 
 # Set by dr-acp's worker (deep_reasoning.mcp.session) before tools are built: bound name -> Func.
 SESSION: "dict[str, Any] | None" = None
@@ -1498,6 +1980,8 @@ class Connection:
         *,
         errlog: TextIO,
         call_timeout_s: float = CALL_TIMEOUT_S,
+        # v2: the REPL name its sentences use; default spec.name.
+        name: str | None = None,
     ) -> None: ...
 
     def start(self) -> None: ...
@@ -1507,7 +1991,8 @@ class Connection:
     def abandon(self) -> None: ...
 
     def call(self, tool: str, arguments: Mapping[str, Any]) -> Any:
-        """§8.3's result, or McpToolError; marks the connection dead when the server is gone."""
+        """§8.3's result, or McpToolError; marks the connection dead when the server is gone
+        (v2: SERVER_STOPPED for the call in flight too; McpError 408 is CALL_TIMEOUT, §4.3)."""
 
 
 class McpTool:
@@ -1536,7 +2021,8 @@ class Server:
         granted: frozenset[str] | None,
     ) -> None: ...
 
-    def __call__(self, tool: str, /, **arguments: Any) -> Any: ...
+    # v2: unannotated, so deep_reasoner tells the agent `name(tool, /, **arguments)` (§6.2 B4).
+    def __call__(self, tool, /, **arguments): ...
 
     def __cross_namespace__(self, src: str | None, dst: str) -> "Server":
         """With granted set: PermissionError (HANDOFF_REFUSED) for a hand-off outside it."""
@@ -1547,11 +2033,22 @@ class Server:
 
 
 class Unavailable:
+    """The stand-in for a server that is not bound: every call says why."""
+
+    __name__: str
+
     def __init__(self, name: str, reason: str) -> None: ...
 
-    def __call__(self, *args: Any, **kwargs: Any) -> NoReturn: ...
+    # v2: unannotated, as Server.__call__: the agent is told `name(*args, **kwargs)`.
+    def __call__(self, *args, **kwargs): ...
 
-    def __getattr__(self, attr: str) -> NoReturn: ...
+    def __getattr__(self, attr: str) -> NoReturn:
+        """v2: AttributeError for a name starting with "_" (inspect.signature probes
+        _partialmethod, deep_reasoner __cross_namespace__); McpToolError for any other."""
+
+    def __copy__(self) -> "Unavailable": ...  # v2
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> "Unavailable": ...  # v2
 
 
 def describe(name: str, spec: ServerSpec, tools: Sequence[Any]) -> str:
@@ -1583,17 +2080,29 @@ def guard(argv: Sequence[str]) -> NoReturn:
 
 ```python
 # mcp/session.py: the worker's side
+GRANTED_NOWHERE: Final = "granted to no namespace"  # v2: a skipped status's detail
+OUT_OF_REACH: Final = "granted only where this conversation cannot spawn"  # v2
+LOG_TAIL: Final = 300  # v2: characters of a failed server's own output in its status
+PRINTED: Final = '{failure}; it printed: "{tail}"'  # v2
+
+
 def open_session(
     cfg: V2Config,
     specs: Sequence[McpServerSpec],
     *,
     run_dir: Path,
 ) -> list[McpServerStatus]:
-    """§4.4: connect the granted, reachable servers at once under one deadline, install
-    shim.SESSION for every MCP block, and return one status per block."""
+    """§4.4: connect the granted, reachable servers at once, each within its own
+    connect_timeout_s from one shared start (v2; the code's docstring still says
+    "under one deadline"), install shim.SESSION for every MCP block, and return one
+    status per block."""
 
 
-def reachable(registry: NamespaceRegistry, start: str, names: Sequence[str]) -> set[str]:
+def reachable(
+    registry: NamespaceRegistry,
+    start: str,
+    names: Sequence[str],
+) -> set[str]:
     """The closure of {start} under deep_reasoner's check_spawn."""
 ```
 
@@ -1609,7 +2118,8 @@ class Start(BaseModel):
     config_path: str
     namespace: str
     client_overrides: dict[str, Any]  # merged over cfg.client
-    mcp_servers: list[McpServerSpec] = []  # D4: the forwarded servers the run's MCP blocks name
+    # D4: the forwarded servers the run's MCP blocks name
+    mcp_servers: list[McpServerSpec] = []
 
 
 # acp/runlog.py
@@ -1667,7 +2177,8 @@ class DrAcp:
 class _ToolBody(_Body):
     source: str | None = None
     granted_in: list[str] | None = None
-    accept_check_failure: bool = False  # D4: save a tool whose Check failed in a way it allows
+    # D4: save a tool whose Check failed in a way it allows
+    accept_check_failure: bool = False
 
 
 def json_route(
@@ -1683,6 +2194,7 @@ def json_route(
 ```ts
 // shared/protocol.ts
 export type McpTransport = "stdio" | "http" | "sse";
+export declare const MCP_TRANSPORTS: readonly McpTransport[]; // v2: readFrameParams checks entries against it
 
 export interface McpServerInfo {
   name: string; // the key in Canvas's MCP settings
@@ -1803,12 +2315,23 @@ export declare function checkTool(name: string, body: CheckBody): Promise<CheckR
 export declare function getMcp(): Promise<McpGrant[]>;
 export declare function putMcp(name: string, body: McpGrantBody): Promise<Written<McpGrant>>;
 
+// D3's error class; v2 adds one field
+export declare class LibraryError extends Error {
+  readonly status: number;
+  readonly code: string; // D2's codes, and D4's check_failed
+  readonly errors: readonly FieldError[];
+  readonly head: unknown; // conflict: the current record, or null
+  readonly check: CheckReport | null; // v2: check_failed's report
+}
+
 // ui/tools.ts
+export declare const RESERVED_NAMES: ReadonlySet<string>; // v2: §3.2's six, for defaultToolName
 export type McpRowState = "given" | "disabled" | "not_in_profile" | "gone";
+export type McpSnapshot = Omit<McpGrantBody, "granted_in" | "base_version">; // v2
 
 export interface McpRow {
   server: string;
-  info: McpServerInfo | null; // null: gone from Canvas's settings
+  info: McpServerInfo | null; // null: gone from Canvas's settings, or (v2) its settings unread
   grant: McpGrant | null;
   state: McpRowState;
   changed: boolean;
@@ -1833,17 +2356,18 @@ export declare function mcpRows(
   servers: readonly McpServerInfo[] | null,
   grants: readonly McpGrant[],
 ): McpRow[];
-export declare function snapshotOf(info: McpServerInfo): Omit<McpGrantBody, "granted_in" | "base_version">;
+export declare function snapshotOf(info: McpServerInfo): McpSnapshot;
+export declare function grantSnapshot(grant: McpGrant): McpSnapshot; // v2: what a grant stores, resent unchanged
 export declare function inheritedGrants(
   tool: string,
   effective: readonly Effective[],
 ): Record<string, string>; // namespace -> the ancestor that grants it
-export declare function toolDraftKey(name: string | null): string; // "dr-library.draft.tool.<name>" | ".new"
+// v2: "tool.<name>" | "tool.new"; D3's drafts.ts prefixes "dr-library.draft."
+export declare function toolDraftKey(name: string | null): string;
 
 // ui/editor/python.ts (the "editor" chunk)
 export interface PythonEditor {
-  setValue(value: string): void;
-  destroy(): void;
+  destroy(): void; // v2: no setValue; the editor owns its text once mounted (§6.2 B2)
 }
 
 export declare function createPythonEditor(
@@ -1852,20 +2376,30 @@ export declare function createPythonEditor(
   onChange: (value: string) => void,
 ): PythonEditor;
 
-// ui/components (props; Preact function components)
+// ui/components (props; Preact function components). OnBackendLost is D3's, from ui/load.ts.
+
+// ui/components/python.tsx (v2, §6.2 B1, B2)
+export interface PythonFieldProps {
+  label: string;
+  value: string; // the text the editor starts with; a caller that replaces it mounts a new field (a new key)
+  onChange: (value: string) => void;
+  testId: string;
+}
+
+export declare function PythonField(props: PythonFieldProps): JSX.Element;
+
 export interface ToolEditorProps {
   record: ToolRecord | null; // null: + New tool
   namespaces: readonly NamespaceRecord[];
   effective: readonly Effective[];
-  takenNames: ReadonlySet<string>;
   onSaved: (record: ToolRecord, created: boolean) => void;
   onDeleted: (name: string) => void;
+  onBackendLost: OnBackendLost; // v2; v1's takenNames is gone (§6.2 B8)
 }
 
 export interface CheckResultProps {
   report: CheckReport;
-  saving: boolean; // the report came back from a refused save
-  onSaveAnyway?: () => void;
+  onSaveAnyway?: () => void; // offered when report.can_save_anyway; v2: no saving flag (§6.2 B8)
 }
 
 export interface McpServerRowProps {
@@ -1874,6 +2408,18 @@ export interface McpServerRowProps {
   effective: readonly Effective[];
   takenNames: ReadonlySet<string>;
   onChanged: () => void;
+  onBackendLost: OnBackendLost; // v2
+}
+
+export declare const mcpTestId: (server: string) => string; // v2: Appendix B's <server>
+
+// ui/components/fields.tsx: D3's ConfirmRow, whose props are an inline type there; v2 adds one
+export interface ConfirmRowProps {
+  sentence: string;
+  confirm: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmTestId?: string; // v2: the confirming button's test id; dr-confirm-yes when absent
 }
 ```
 
@@ -1888,3 +2434,8 @@ Tools tab: `dr-tools-risk` · `dr-tool-<name>` (D3's row id) · `dr-tool-new` ·
 `dr-tool-help`, `dr-discard-draft` (D3's) · MCP: `dr-mcp-<server>` (the server's name with every character outside
 `[A-Za-z0-9_-]` as `_`), `dr-mcp-name-<server>`, `dr-mcp-grant-<server>-<namespace>`, `dr-mcp-seen-<server>`,
 `dr-mcp-update-<server>`, `dr-mcp-remove-<server>`, `dr-mcp-state-<server>`, `dr-mcp-unknown`.
+
+v2, as built: `dr-check-status` (the editor's `CHECKING` or `SAVING_CHECKING` line while it shows) is new;
+`dr-tool-delete-confirm` reaches D3's `ConfirmRow` through its new `confirmTestId`; the editor's view also reuses D3's
+`dr-back`, `dr-errors`, `dr-conflict`, `dr-reload-entry`, `dr-save-over` and `dr-tool-grant-list` (D3's
+`NamespaceChecklist` list for the prefix `dr-tool-grant`).
