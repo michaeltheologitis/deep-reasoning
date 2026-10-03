@@ -13,8 +13,9 @@ D1's design `f281109` (§2, §4.6) and its harness on `v1-dr-acp` at `21c2c7a` �
 (the App backend manager and bridge; every agent-server `file:line` below) · Canvas fork `deep-reasoning` at `02b7ac7`
 · deep_reasoner_beta `d7334ae`.
 
-**Matches the build at `5effe26`** (v2): D3's code (`3ce186a` … `5effe26`) on D2 as built (`90044f0`). Commits after
-it on this branch change only `docs/` and `as_built/`.
+**Matches the build at `2af80ef`** (v3): D3's code (`3ce186a` … `5effe26`, then four fixes after the as-built check:
+`450bed1`, `aaa97ef`, `4123ec7`, `2af80ef`) on D2 as built (`90044f0`). Commits after it on this branch change only
+`docs/` and `as_built/`.
 
 ## Gate B: what to read
 
@@ -24,12 +25,12 @@ the reference D4 and D5 build against (Michael: don't force compression); Gate B
 
 | # | Read | What it gives you | Minutes |
 |---|---|---|---|
-| 1 | This section and the v2 revision line below it | where the proof is, and which sentences of v1 changed | 8 |
+| 1 | This section and the v3 and v2 revision lines below it | where the proof is, and which sentences of v1 changed | 8 |
 | 2 | §1 | what D3 is (a page bundle in Canvas that mounts a frame the Library's backend serves), and decisions A–M | 10 |
-| 3 | §2 | the panel tab by tab, as the user meets it; v2's changes are marked | 15 |
+| 3 | §2 | the panel tab by tab, as the user meets it; v2's and v3's changes are marked | 15 |
 | 4 | §3.1 | where the design departs from the spec (v1's list; not yet ruled on) | 5 |
 | 5 | §3.2 | what the build changed, each with its reason and the test that pins it | 15 |
-| 6 | Open the run below | that both jobs are green at `5effe26` | 2 |
+| 6 | Open the run below | that both jobs are green at `2af80ef` | 2 |
 | 7 | `as_built/d3-decompositions-panel.md` | what exists, and its divergences, read from the code | 15 |
 
 **Two things to rule on.**
@@ -41,25 +42,27 @@ the reference D4 and D5 build against (Michael: don't force compression); Gate B
    said "No Python" (item 4: about 75 lines as built); adding and deleting namespaces, deleting decompositions, the run
    settings and the problems banner (item 5); two success lines (item 7); a second safety sentence (item 10).
 2. **Size.** The spec estimated D3 at ≈1.5k lines of TypeScript and ≈5 h at Gate C; v1 at ≈2.6k of code and ≈1.4k of
-   tests (§10). The build is **4,588 lines of code and 3,135 of tests** at `5effe26` (4,252 and 2,819 non-blank; the
+   tests (§10). The build is **4,610 lines of code and 3,206 of tests** at `2af80ef` (4,273 and 2,883 non-blank; the
    committed built files, generated, are not counted), about 26 h at Gate C at the workspace's rate. Two files carry
-   most of the growth: `tabs/namespaces.tsx`, 891 lines (v1: 380), and `components/editor.tsx`, 857 (v1: 250 with the
+   most of the growth: `tabs/namespaces.tsx`, 891 lines (v1: 380), and `components/editor.tsx`, 869 (v1: 250 with the
    cards); `styles.css`, 368, was in no line of v1's estimate. The build recorded no reason for the growth; the
    estimate was this design's. The breakdown is §3.2 B16 and §10. The Scout and the Refactorer, after Gate B, are
    where it shrinks.
 
-**The evidence.** One CI run, at `5effe26`, the branch's last commit that touches code.
+**The evidence.** One CI run, at `2af80ef`, the branch's last commit that touches code.
 
-- **CI**, [run 37090168700](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37090168700), on push,
+- **CI**, [run 37139529187](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37139529187), on push,
   both jobs green:
-  - **`canvas-app`** (D3's job, §7.6), 2 min 54 s: `tsc`, Prettier, vitest **148 passed, 1 skipped** (the skip is the
+  - **`canvas-app`** (D3's job, §7.6), 3 min 5 s: `tsc`, Prettier, vitest **150 passed, 1 skipped** (the skip is the
     guard that fails only when deep_reasoner_beta's configs are missing; they were checked out at `d7334ae`, so the
-    cards round trip ran over all of them), `npm run build`, the **committed-build check** (a fresh build leaves
-    `src/deep_reasoning/canvas_app` unchanged), then the browser tier against a real `dr-library serve`: **47 passed,
-    1 skipped** in 1 min 49 s, E8 among them. The skip is `test_the_notice_is_d5s_sentence_with_the_cap`, which waits
-    for D5's `dr_app` (§3.2 B19).
-  - **`test`** (D1's job): ruff and the deterministic suite, **531 passed** (52 live and browser tests deselected) in
-    6 min 26 s; `tests/library/test_ui.py`'s 16 cases among them.
+    cards round trip ran over all of them; without them, 149 passed and 2 skipped), `npm run build`, the
+    **committed-build check** (a fresh build leaves `src/deep_reasoning/canvas_app` unchanged), then the browser tier
+    against a real `dr-library serve`: **50 passed, 1 skipped** in 2 min 10 s, E8 among them. The skip is
+    `test_the_notice_is_d5s_sentence_with_the_cap`, which waits for D5's `dr_app` (§3.2 B19).
+  - **`test`** (D1's job): ruff and the deterministic suite, **531 passed** (55 live and browser tests deselected) in
+    6 min 17 s; `tests/library/test_ui.py`'s 16 cases among them.
+  - v2's evidence, [run 37090168700](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37090168700) at
+    `5effe26` (148 + 1 vitest, 47 + 1 browser, 531 passed), is superseded by this run.
 - **No live tier** (§7.1): no D3 test calls a model, and the one real service the panel talks to, D2's backend, runs
   for real in every browser test. The real desktop app is D5's E12 (layer 4). Gate B's evidence for D3 is the browser
   tier and E8, green in CI (spec §4 layer 5).
@@ -73,8 +76,9 @@ a parametrization.
 | **E8** (spec §4: "a decomposition saved in Create decomposition is used by the next conversation in that namespace, as our run log records"). Saved in Create decomposition in Chromium, against a real `dr-library serve`, while conversation A is open in `dr-acp` (D1's harness, stdio, D1's `FakeOpenAI`): A's next turn sends the model nothing of it; conversation B's menu offers `/rank-by-prerequisites` with its use-when line; B's `run.start` records namespace `router` and the decomposition at version 1; B's first model request holds its task | `test_e8_next_conversation.py::test_a_decomposition_saved_in_create_is_used_by_the_next_conversation_in_its_namespace` |
 | **E11, the panel's part** ("the decompositions panel mounts with the right conversation"): each mount carries its own conversation's namespace and whether it started, through the built bundle as Canvas loads it, and in a unit test | `test_page_bundle.py::test_the_frame_opens_with_the_conversations_namespace` (c2 → `course_advisor` picked; then c1 → `router`, `started=1`, `cap=7` in the frame's URL); `mount.test.ts › mountTab › mounts each conversation with its own namespace` |
 | **The frame protocol** (§4.3): the URL round-trips and falls back safely; the page accepts only the two messages, only from its own frame's window; `select-tab` moves Canvas's tab and the next mount takes the focus; `reload` and `not-ready` remount; Canvas's theme reaches the frame | `protocol.test.ts` (22 cases: `the frame's URL`, `isFrameMessage`); `mount.test.ts › mountTab ›` `selects the tab a frame asks for, and that tab's next mount takes the focus`, `ignores a message from any window but its frame's`, `remounts on reload, checking the backend again`, `remounts once when the frame's backend was not ready`, `leaves nothing behind when disposed during the backend check`; `test_page_bundle.py::test_the_built_bundle_activates_and_registers_four_tabs`, `::test_show_in_decompositions_selects_the_tab_and_opens_the_new_entry`, `::test_the_frame_takes_canvas_theme`; `test_backend_loss.py::test_a_backend_that_stops_answering_offers_restart` (the frame posts `reload` to a parent page on another site) |
-| **The backend before every mount** (§2.1, decision F): ready, start of the approved revision only, never `prepare`, the 45 s limit, an abort | `backend.test.ts › ensureBackend ›` (12 cases, among them `gives up on a backend still starting after the timeout`); `mount.test.ts › mountTab › says the backend is not approved, and Try again checks again`, `says when Canvas cannot show an App's frames` |
+| **The backend before every mount** (§2.1, decision F): ready, start of the approved revision only, never `prepare`, the 45 s limit, a start that gets no answer read from the status, an abort | `backend.test.ts › ensureBackend ›` (14 cases, among them `gives up on a backend still starting after the timeout` and, v3, `polls the status when start gets no answer, [until it is ready, and says why it did not start]`); `mount.test.ts › mountTab › says the backend is not approved, and Try again checks again`, `says when Canvas cannot show an App's frames` |
 | **Writes and conflicts** (§5.2, §5.3, decision H): every body is exactly D2's fields, `use_when` and `hint` always sent; a new decomposition is version 1 in the picked namespace; an edit is the next version; Attached to is the exact set; a stale save offers Reload or Save over it; an existing name offers Save mine as v*n* keeping its namespaces; an unchanged imported decomposition makes no version; a namespace edit changes one key of the namespace's own YAML and keeps the rest | `save.test.ts`; `api.test.ts › the requests`; `test_create.py::test_saving_stores_version_1_in_the_picked_namespace`, `::test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`, `::test_use_when_and_hint_survive_a_save_that_did_not_touch_them`, `::test_an_imported_decomposition_saved_unchanged_makes_no_new_version`, `::test_an_example_without_final_answer_asks_before_saving`; `test_browse.py::test_saving_an_opened_decomposition_makes_its_next_version`, `::test_attached_to_is_the_exact_set_after_a_save`, `::test_a_stale_save_offers_reload_or_save_over`, `::test_deleting_a_decomposition_detaches_it_everywhere`; `test_namespaces.py::test_override_sets_a_field_here_and_reset_removes_it`, `::test_keys_the_panel_does_not_show_survive_an_override`, `::test_yaml_values_mean_what_dr_reads`, `::test_attach_and_detach_change_only_this_namespaces_list` |
+| **Create decomposition's draft and errors** (§2.3): the draft survives a reload of the frame, the namespace picked included; D2's errors land on the card they name, and an error that names no card sits above the cards; Rename in YAML mode focuses the YAML, which holds the name | `test_create.py::test_a_draft_survives_reloading_the_frame`, `::test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (v3), `::test_validation_errors_show_on_the_card_they_name`, `::test_an_error_that_names_no_card_shows_above_the_cards` (v3), `::test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (v3) |
 | **Lossless cards** (§5.1, decision J): one card per message; the round trip is the identity on a table, on 2,000 generated conversations and on every decomposition in deep_reasoner_beta's configs | `cards.test.ts › messages ↔ cards ›` (the table; `round trip is identity over generated messages`; `round trip is identity over every decomposition in deep_reasoner_beta's configs`) |
 | **A Library D2 cannot resolve** (§3.2 B1): both tabs say why in D2's words, Decompositions falls back to attachments, and neither reports the backend lost | `test_browse.py::test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_namespaces.py::test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` |
 | **The safety notice** (D5 §2.3): on first open until understood, permanent in Tools, with the cap; the sentence without the key proxy | `test_notice.py::test_the_safety_notice_shows_until_understood`, `::test_without_the_key_proxy_the_notice_says_nothing_caps_spending`, `::test_the_notice_is_d5s_sentence_with_the_cap` (skipped until D5); `test_tools_tab.py::test_the_tools_tab_always_shows_the_safety_notice_with_the_cap[5, 12]` |
@@ -84,6 +88,16 @@ a parametrization.
 §7.2–§7.5 list every test file.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-03 · v3 · brought in line with the build at `2af80ef`: four fixes an Implementer made after the as-built
+  check (`450bed1`, `aaa97ef`, `4123ec7`, `2af80ef`), and two rulings of the Conductor's recorded as this design's
+  reading. Stop trusting: §2.1's `stopped or unhealthy` row, §4.2's and §5.4's "a request that fails is
+  `BACKEND_FAILED`", and B6's `errorDetail` bullet (a start that gets no answer now reads the status, B20); §2.3's
+  draft (it keeps the namespace picked, B21), where D2's errors that name no card sit (B22), and what Rename focuses in
+  YAML mode (B23); §7.2's and §7.3's counts; the Gate B evidence (now CI at `2af80ef`) and size (B16's v3 note); §10's
+  totals; §11 item 6 (built). Added without changing earlier sentences: §3.2 B20–B25, of which B24 (YAML mode has no
+  name field, and `NAME_REQUIRED` is a card-mode check) and B25 (Add namespace is not prefilled under `root` or Run
+  settings) are the rulings, and §2.4's sentence for B25; the property table's row for Create decomposition's draft and
+  errors, and the backend row's new case; v3 notes on B15's sizes, §7.6's time and §10's table. Nothing else of v2 changes.
 - 2026-10-03 · v2 · brought in line with the build at `5effe26`, after Proof Green (CI run 37090168700). Stop
   trusting: §2.1's `starting` row (the 45 s limit has a sentence, B4); §2.2's fallback and what triggers it (B1),
   "Attached to"'s inherited entries (B2) and Save on an opened decomposition (B3); §2.6's "a request that fails without
@@ -248,7 +262,7 @@ The panel is the drawer's column (20–70 % of the conversation area, resizable)
 |---|---|
 | `ready` | mounts the frame |
 | `starting` | polls the status every 500 ms, up to 45 s, saying "Starting the Library's backend…"; still `starting` after 45 s → `BACKEND_FAILED` with the detail `STILL_STARTING` ("The Library's backend did not start: it was still starting after 45 seconds.") and **Try again** (v2, B4) |
-| `stopped` or `unhealthy`, and `prepared_revision` = `revision` | `POST …/backend/start {revision}` (it returns once healthy or failed), saying "Starting the Library's backend…"; `ready` → mounts the frame; otherwise `BACKEND_FAILED` with the agent-server's `detail` and **Try again** |
+| `stopped` or `unhealthy`, and `prepared_revision` = `revision` | `POST …/backend/start {revision}` (it returns once healthy or failed), saying "Starting the Library's backend…"; `ready` → mounts the frame; otherwise `BACKEND_FAILED` with the agent-server's `detail` and **Try again**. (v3, B20: a start that gets no answer, the client's timeout or a network failure, reads the status and goes on by this table: `ready` mounts, `starting` is polled within the same 45 s, anything else is `BACKEND_FAILED` with the status's `detail`. A start the agent-server answered with an error is `BACKEND_FAILED` in its words.) |
 | `stopped` or `unhealthy`, not prepared for this revision | `NOT_APPROVED`, no call made |
 | `unsupported`, `missing` | `BACKEND_UNSUPPORTED` with the `detail` (an agent-server without S2 PR 3 on a Mac says "Canvas App backend does not support this platform") |
 
@@ -315,8 +329,8 @@ Library D2 cannot resolve, §2.2, B1.)
     checked ancestor (root, then each dotted prefix) is shown checked and fixed, "also used in <namespace>
     (inherited)", and this follows the boxes as the user clicks, before any save, not the saved `/effective` (v2, B2).
     So moving a decomposition from a parent to a child is one save: uncheck the parent, check the child, Save.
-  - **Save** validates first, as Create decomposition does: D2's errors on their cards, and D2's warnings ask **Save
-    anyway** / **Cancel** (v2, B3). Then `PUT /decompositions/<slug>` with `base_version` = the version opened,
+  - **Save** validates first, as Create decomposition does: D2's errors on their cards (those that name no card between
+    Attached to and the cards, v3, B22), and D2's warnings ask **Save anyway** / **Cancel** (v2, B3). Then `PUT /decompositions/<slug>` with `base_version` = the version opened,
     `namespaces` = the checked set (D2's exact-set rule), `use_when` and `hint` as shown. Success: `SAVED_EDIT`. A save
     that changes only Attached to makes no new version of the decomposition (D2 versions the namespaces' lists, D2
     decision B), so `SAVED_EDIT` names the version it had.
@@ -347,7 +361,8 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
 
 - **The namespace** is picked from the Library's namespaces (`GET /namespaces`), one of them, required. Preselected: the
   open conversation's namespace when the page found one and the Library has it, else the namespace new conversations
-  start in (`/health`'s `default_namespace`).
+  start in (`/health`'s `default_namespace`). (v3, B21: a namespace the user picked is part of the draft and wins over
+  the preselection while the Library still has it.)
 - **The slash command** beside the name is `/` + the `slug` `POST /validate` returns (D2 computes it; the panel never
   slugs by itself).
 - **Cards** (§5.1): a new decomposition starts with a task card and one step whose code is `FinalAnswer(...)`. A step
@@ -361,24 +376,28 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
   or stays in YAML with `YAML_SYNTAX` or `YAML_NOT_DECOMPOSITION`. A save from YAML mode sends that text as written.
 - **Live validation**: 400 ms after the last keystroke, `POST /validate {kind: "decomposition", yaml}`; D2's errors are
   shown on the card their `loc` names (`messages.3.content` → card 4; `name` → the name field; others above the cards),
-  in D2's (deep_reasoner's) words.
+  in D2's (deep_reasoner's) words. (v3, B22: "above the cards" is one error block between the namespace picker, or
+  Attached to, and the cards; in YAML mode, above the YAML field. A refused save's message shows there too.)
 - **Save** (§5.2): a name is required (`NAME_REQUIRED`; in YAML mode the name is the YAML's own, and D2's validation
-  speaks for it); validate; D2's warnings (today one: `NO_FINAL_ANSWER`) ask
+  speaks for it; YAML mode has no name field, v3, B24); validate; D2's warnings (today one: `NO_FINAL_ANSWER`) ask
   **Save anyway** / **Cancel**; then `PUT /decompositions/<slug>` with `namespaces: [picked]`, `use_when`, `hint`,
   `base_version: 0`.
   - **201:** the success line (below), the draft cleared, the form reset to a new decomposition; **Show in
     Decompositions** posts `select-tab` with `focus=<slug>`.
   - **409 `conflict` with a head** (the name exists): `EXISTS` — "'catalog lookup' already exists (v2, in router)." —
     with **Save mine as v3** (re-sends with `base_version` = the head's version and `namespaces` = the head's namespaces
-    plus the picked one, D2 §6.4) and **Rename** (focuses the name).
-  - **422:** D2's message and field errors, on their cards.
+    plus the picked one, D2 §6.4) and **Rename** (focuses the name; v3, B23: in YAML mode, which has no name field,
+    it focuses the YAML, which holds the name, and stays in YAML mode).
+  - **422:** D2's message and field errors, on their cards (v3, B22: the message in the error block above the cards).
 - **The success line** says what changed and what did not. When the page reported the conversation as started (its
   `namespace` option has a single value, which is how `dr-acp` fixes it after the first message, D1 §2 step 4), it is
   the spec's sentence, `SAVED_STARTED`. Otherwise (a conversation not started yet, or another agent) it is `SAVED`, which
   is true either way: "New conversations in course_advisor use it and offer it as /rank-by-prerequisites; a conversation
   that has already started keeps the run it began with."
 - **The draft** (every field, the cards or the YAML, and the mode) is saved on each change under
-  `dr-library.draft.create`, restored on the next mount, and cleared by a successful save or **Discard draft**.
+  `dr-library.draft.create`, restored on the next mount, and cleared by a successful save or **Discard draft**. (v3,
+  B21: the draft also keeps the namespace picked. Picking is a change to the draft, so it clears the result line and
+  shows **Discard draft**; after a save or **Discard draft** the picker returns to the preselection.)
 
 ### 2.4 Namespaces
 
@@ -402,8 +421,9 @@ root                                         ───────────�
 (On a narrow panel the tree sits above the fields.)
 
 - **The tree** comes from the dotted names (`a.b` under `a`; a top-level name under `root`). ★ marks the namespace new
-  conversations start in. **Add namespace** takes a name, prefilled with the selected namespace's name and a dot, and
-  sends `PUT /namespaces/<name> {yaml: "{\"name\": …}", base_version: 0}`; D2 refuses a bad name or a missing parent in
+  conversations start in. **Add namespace** takes a name, prefilled with the selected namespace's name and a dot (v3,
+  B25: empty when `root` or Run settings is selected, since `root`'s children are top-level names and Run settings is
+  not a namespace), and sends `PUT /namespaces/<name> {yaml: "{\"name\": …}", base_version: 0}`; D2 refuses a bad name or a missing parent in
   its own words. **Delete namespace** asks inline, then `DELETE …?base_version=`; D2's refusals (root, the default, a
   parent) are shown as they come.
 - **Each field** shows its effective value (`GET /namespaces/<name>/effective`) and its source, as the spec asks:
@@ -503,14 +523,16 @@ which item 1 rests, but no list of D3's; Michael rules on it at Gate B.
 10. **A second safety sentence**, `SAFETY_NO_CAP`, for a profile that runs `dr-acp --no-key-proxy`; D5's `SAFETY` states a
     cap that would then be false.
 11. **Size:** about 2.4k lines of code and 1.1k of tests, about 10 h at Gate C, against the spec's ≈1.5k and ≈5 h (§10).
-    *(v2: v1's own §10 already said ≈2.6k and ≈1.4k; built at 4.6k and 3.1k, about 26 h, §3.2 B16.)*
+    *(v2: v1's own §10 already said ≈2.6k and ≈1.4k; built at 4.6k and 3.1k, about 26 h, §3.2 B16; v3: 4.6k and 3.2k at `2af80ef`.)*
 
-### 3.2 Changed by the build (v2)
+### 3.2 Changed by the build (v2, v3)
 
 Each was checked against the code at `5effe26` and folded into the section named. B1–B6 change behaviour v1 specified
 or decide what it left open; B7–B9 are names, files and props, none of which changes §8.3's or §8.4's contract;
 B10–B15 are the tests, the wiring and the build; B16 is the size; B17–B19 are findings, each an open item in §11.
-Where the build recorded no reason, the reason given is marked as this design's reading.
+B20–B25 are v3, checked against the code at `2af80ef`: four fixes made after the as-built check (B20–B23) and two
+rulings of the Conductor's (B24, B25). Where the build recorded no reason, the reason given is marked as this design's
+reading.
 
 **Behaviour**
 
@@ -571,7 +593,8 @@ Where the build recorded no reason, the reason given is marked as this design's 
     `namespaces`, which D2 derives from those lists).
   - `/ui/`'s 503 carries the code `not_built` beside `UI_NOT_BUILT`, in D2's error shape.
   - `ensureBackend` takes the agent-server's own words from a failed request for `BACKEND_FAILED` (`errorDetail`: an
-    `HttpError`'s `detail`, else the error's message).
+    `HttpError`'s `detail`, else the error's message). (v3, B20: except a `start` that gets no answer, which now reads
+    the status instead.)
 
 **Names, files and props (§8.3's and §8.4's contracts unchanged)**
 
@@ -641,7 +664,9 @@ Where the build recorded no reason, the reason given is marked as this design's 
   server; `input: {app: "index.html"}`; `modulePreload: false` (this design's reading: one chunk, nothing to
   preload); the dev proxy's target is `DR_LIBRARY_URL`, else `http://127.0.0.1:8765`; vitest's default environment is
   `node`. Sizes at `5effe26`, from CI's build: the page bundle 6.96 kB (2.85 kB gzipped); the frame UI 151.78 kB of
-  JavaScript (48.94 kB gzipped), 4.05 kB of CSS and 0.37 kB of HTML. v1 expected under 10 kB and about 170 kB.
+  JavaScript (48.94 kB gzipped), 4.05 kB of CSS and 0.37 kB of HTML. v1 expected under 10 kB and about 170 kB. (v3:
+  CI's build at `2af80ef`: the page bundle 7.09 kB (2.89 kB gzipped), the frame's JavaScript 151.96 kB (49.00 kB
+  gzipped); the CSS and HTML unchanged.)
 
 **Size**
 
@@ -661,7 +686,9 @@ Where the build recorded no reason, the reason given is marked as this design's 
   The Implementer's figures, about 4.5k and 3.0k, count the same files more loosely. The build recorded no reason for
   the growth; the estimate was this design's: v1 sized the Namespaces tab at 380 and the editor with its cards at 250,
   and left the stylesheet out. At the workspace's 300 lines an hour, about 26 h at Gate C. Michael rules on it at
-  Gate B.
+  Gate B. *(v3: at `2af80ef`, code 4,610 (4,273) and tests 3,206 (2,883): B20–B23 added 22 lines of code
+  (`components/editor.tsx` 869, `page/backend.ts` 127) and 71 of tests (`backend.test.ts` 203, `test_create.py` 306);
+  still about 26 h.)*
 
 **Findings (no change to the design; each is an open item in §11)**
 
@@ -687,6 +714,52 @@ Where the build recorded no reason, the reason given is marked as this design's 
   `dr_app.texts.SAFETY.format(cap=7)`, so it assumes D5's constant has a `{cap}` field; it is skipped until D5's
   `dr_app` is installed (CI's one browser skip). If D5 writes it otherwise (a function, or a jinja2 template, since the
   Code Guide forbids `.format()` in our own code), the test follows D5 (§8.4 item 7, §11 item 13).
+
+**v3: fixed after the as-built check**
+
+- **B20. A `start` that gets no answer reads the status** (§2.1, §4.2, §5.4, §11 item 6; commit `450bed1`). v2 ended
+  every failed request in `BACKEND_FAILED`, so a `start` that outlasted C2's client (its requests "may take up to 60 s",
+  `src/types/canvas-extension.ts:162` at `db3b4b9`) or lost the network gave up while the backend was still coming up;
+  v1's §11 item 6 had said the page would fall back to polling. Built: when `POST …/start` rejects with an error that
+  carries no numeric `status` (a plain `Error`: the client's timeout, or the network), `ensureBackend` reads the status
+  and goes on by §2.1's table: `ready` mounts; `starting` is polled every 500 ms within the same 45 s, which count from
+  the start of the check; `stopped` or `unhealthy` is `BACKEND_FAILED` with the status's `detail`. A `start` the
+  agent-server answered (C2's `HttpError`, which carries the status it answered with) still ends in `BACKEND_FAILED` in
+  its own words. After the client's full 60 s timeout the 45 s have already passed, so a backend still `starting` then
+  ends in `STILL_STARTING` at once, and a `ready` one mounts. *Why (commit `450bed1`):* "a start that outlasts the
+  client's timeout gave up while the backend was still coming up." *Pinned by:* `backend.test.ts › ensureBackend ›
+  polls the status when start gets no answer, [until it is ready, and says why it did not start]` (`start` rejects
+  with `Error("Request timeout after 60000ms")`; the calls are status, start, status).
+- **B21. The Create draft keeps the namespace picked** (§2.3; commit `aaa97ef`). v2's draft held every field but the
+  picked namespace, so a reload preselected again. Built: the stored draft has an optional `picked`, which wins over the
+  preselection while the Library still has that namespace (else the preselection applies). Picking goes through the
+  draft like any edit: it clears the result line and shows **Discard draft**. A save or **Discard draft** clears the
+  draft, so the picker returns to the preselection, as for a new decomposition. *Why (commit `aaa97ef`):* "§2.3's draft
+  holds every field; the picked namespace was the one it left out." *Pinned by:*
+  `test_create.py::test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (`course_advisor` picked over the
+  preselected `router`, then a reload: still picked, the button reads "Save to course_advisor"; **Discard draft**:
+  `router` again).
+- **B22. D2's errors that name no card sit above the cards** (§2.3, §2.2; commit `4123ec7`). §2.3 put them above the
+  cards; v2 built their block, which also holds a refused save's message, below the cards, above the buttons. Built:
+  between the namespace picker (or, for an opened decomposition, Attached to) and the cards, and above the YAML field in
+  YAML mode. *Why (commit `4123ec7`):* §2.3's own placement. *Pinned by:*
+  `test_create.py::test_an_error_that_names_no_card_shows_above_the_cards` (the picked namespace deleted behind the
+  panel's back; D2's "There is no namespace 'router.archive' in the library." sits above card 0).
+- **B23. Rename in YAML mode focuses the YAML** (§2.3; commit `2af80ef`). YAML mode has no name field (B24), so v2's
+  Rename focused nothing there. Built: card mode focuses the name; YAML mode focuses the YAML field, which holds the
+  name, and stays in YAML mode. *Why (commit `2af80ef`):* "in YAML mode there is no name field, since the name is the
+  YAML's own, so Rename focused nothing." *Pinned by:*
+  `test_create.py::test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name`.
+- **B24. YAML mode has no name field, and `NAME_REQUIRED` is a card-mode check** (§2.3). v1 said "a name is required"
+  without saying in which mode. *Why (the Conductor's ruling, recorded as this design's reading):* in YAML mode the
+  name is the YAML's own, and D2's validation speaks for it, in deep_reasoner's words. **Not pinned:** no test asserts
+  `NAME_REQUIRED`, in either mode.
+- **B25. Add namespace is not prefilled when `root` or Run settings is selected** (§2.4). v1 prefilled "the selected
+  namespace's name and a dot" without exception. Built: empty for those two, `<selected>.` otherwise. *Why (the
+  Conductor's ruling, recorded as this design's reading):* `root`'s children are top-level names (§2.4's tree rule,
+  and deep_reasoner's: the parent of `a` is `root`), and Run settings is not a namespace. *Pinned by:*
+  `test_namespaces.py::test_adding_and_deleting_a_namespace` for the prefill under `router` (`router.`); **not pinned**
+  for `root` and Run settings.
 
 ---
 
@@ -789,7 +862,10 @@ that tab.
 
 **`ensureBackend(request, signal, onProgress)`** implements §2.1's table over `GET /api/canvas-extensions/installed/dr-library/backend`
 and `POST …/backend/start {revision}` (`canvas_extensions_router.py:327–370`). It never calls `prepare`. A request that
-fails is `BACKEND_FAILED` with the agent-server's own words (`errorDetail`, v2, B6); an abort rejects at once.
+fails is `BACKEND_FAILED` with the agent-server's own words (`errorDetail`, v2, B6); an abort rejects at once. (v3,
+B20: except a `start` that gets no answer, an error without a numeric `status`, such as the client's timeout or a
+network failure: then it reads the status and goes on by §2.1's table, within the same 45 s from the start of the
+check.)
 
 **`readConversationNamespace(request, conversationId)`**: `GET /api/conversations/<id>/events/search?kind=ACPSessionControlsEvent&sort_order=TIMESTAMP_DESC&limit=1`
 (C2 §7.2, S2 §7 item 4); the newest event's `config_options` entry with `id === "namespace"` gives `namespace` =
@@ -1111,7 +1187,9 @@ canonical form; the next poll shows it.
 §2.1's table. Timing: `start` returns when the health probe answers or fails (`backend.py:448–533`, 30 s by default);
 D2 measured about 1.4 s of imports, so a restarted backend shows in about two seconds. `starting` (another caller is
 starting it, for example D5's setup at launch) is polled at 500 ms up to 45 s, then given up with `STILL_STARTING`
-(v2, B4). An aborted mount stops polling at once.
+(v2, B4). An aborted mount stops polling at once. (v3, B20: a `start` that gets no answer, C2's client timing out after
+60 s or the network failing, reads the status and goes on as above; the 45 s count from the start of the check, so
+after a full 60 s timeout a backend still `starting` ends in `STILL_STARTING` at once.)
 
 ---
 
@@ -1147,7 +1225,8 @@ browser test asserts text, values and what the Library holds afterwards.
 | 5 · Gate B's evidence | the browser tests and E8, green in CI at the branch's head (spec §4: "D3 … through their end-to-end tests, Playwright written as tests that assert behaviour"); no real model is called |
 
 There is no live tier: nothing in the panel calls a model, and the one real service it talks to, D2's backend, runs for
-real in every browser test. (v2: so Proof Green for D3 is the CI run alone, run 37090168700 at `5effe26`.)
+real in every browser test. (v2: so Proof Green for D3 is the CI run alone, run 37090168700 at `5effe26`; v3: run
+37139529187 at `2af80ef`.)
 
 ### 7.2 vitest (`canvas-app/tests/`)
 
@@ -1157,7 +1236,7 @@ real in every browser test. (v2: so Proof Green for D3 is the CI run alone, run 
 | `yaml.test.ts` | the agreement table of the header's item 3 (each value as PyYAML reads it); `stringifyYaml` output reparses to the same value; multi-line strings are literal blocks; a syntax error throws with its message |
 | `protocol.test.ts` | `readFrameParams(frameSearch(p))` equals `p`; an unknown tab, a bad `theme` JSON or an unsafe token value falls back; `isFrameMessage` accepts the two shapes only |
 | `context.test.ts` | `spendCapFromArgs` table (`["--home", h, "--spend-cap-usd", "7"]` → `7`; `--spend-cap-usd=2.5` → `2.5`; absent → `5`; `--no-key-proxy` → `off`; `abc` → `5`); `readConversationNamespace` with a fake `request`: one value → started, several → not started, no event, another agent's options, a failing request → `null`; `readTheme` keeps the listed tokens and drops unsafe values |
-| `backend.test.ts` | `ensureBackend` over each row of §2.1's table with a fake `request` (calls and their order recorded): `ready` makes one call; `stopped` and prepared → `start` with the revision; not prepared → `NOT_APPROVED` and no `start`, never `prepare`; `starting` polls until ready; `start` answering `unhealthy` → `BACKEND_FAILED` with its detail; an abort stops polling |
+| `backend.test.ts` | `ensureBackend` over each row of §2.1's table with a fake `request` (calls and their order recorded): `ready` makes one call; `stopped` and prepared → `start` with the revision; not prepared → `NOT_APPROVED` and no `start`, never `prepare`; `starting` polls until ready; `start` answering `unhealthy` → `BACKEND_FAILED` with its detail; an abort stops polling; v3: a `start` that gets no answer reads the status, then mounts when it is ready or says why it did not start (B20) |
 | `mount.test.ts` (jsdom) | a fake host (C2's API at its boundary: `registerPage`, `agentServer.request`, `appBackend.mountFrame` appending an `iframe`): `activate` registers exactly the four tab ids; a mount builds the frame path from the conversation's namespace, the cap and the theme; a second mount for another conversation carries that conversation's namespace (E11's "mounts with the right conversation", D3's part); a `select-tab` message from the frame's window calls `surface.selectTab` and the next mount of that tab gets the focus; the same message from another window is ignored; `reload` remounts; `onError("not-ready")` remounts once; disposing during the backend check leaves the container empty and no frame |
 | `api.test.ts` | with `fetch` stubbed: every body is JSON with exactly D2's field names; a D2 error body → `LibraryError` with code, errors and head; the bridge's `{"detail"}` 503, a non-JSON 502 and a network failure → `BackendUnavailable` |
 | `save.test.ts` | `createBody`, `saveAsNextBody` (the head's namespaces first, the picked one once), `updateBody`; `use_when` and `hint` are always present (`null` when blank) |
@@ -1171,6 +1250,10 @@ corpus): `api` 28, `cards` 28 (the skip among them), `protocol` 22, `context` 18
 rest in Node. `mount.test.ts` adds two cases to v1's list: `says the backend is not approved, and Try again checks
 again` and `says when Canvas cannot show an App's frames`; `backend.test.ts` also pins the 45 s limit (`gives up on a
 backend still starting after the timeout`, B4).
+
+v3, at `2af80ef`: 151 cases. With deep_reasoner_beta's configs (CI), 150 passed and one skipped (the guard); without
+them, 149 passed and two skipped (the guard and the corpus round trip). `backend` has 14: B20 adds `polls the status
+when start gets no answer, [until it is ready, and says why it did not start]`.
 
 ### 7.3 Browser tests (`tests/canvas_app/`, pytest + Playwright, marker `browser`)
 
@@ -1189,12 +1272,13 @@ with the use-when lines and hints, `tools/word_count.py`; B10); `browser` is **m
 adds `serve` and `stop` (the server without the fixture, for E8), `parent_site` (files served from
 `http://localhost:<port>`, another site than the frame's, as Canvas's page is), `stale_head` (B1), `ui_url`,
 `write_new` and `SAFETY_ACK`. 48 cases in eight files, 47 passed and one skipped (D5's sentence, B19); the new test
-and the parametrizations are marked v2 below.
+and the parametrizations are marked v2 below. v3, at `2af80ef`: 51 cases, 50 passed and the same one skipped;
+`test_create.py` gains three (B21–B23), marked v3.
 
 | File | Tests (each named for its property) |
 |---|---|
 | `test_browse.py` | `test_decompositions_are_grouped_by_namespace_with_version_slash_command_and_use_when`; `test_an_inherited_decomposition_says_where_it_comes_from`; `test_top_level_and_unattached_decompositions_have_groups_of_their_own`; `test_saving_an_opened_decomposition_makes_its_next_version`; `test_attached_to_is_the_exact_set_after_a_save`; `test_a_stale_save_offers_reload_or_save_over`; `test_deleting_a_decomposition_detaches_it_everywhere`; `test_a_change_made_elsewhere_appears_without_a_reload` (a `put_decomposition` through the Python API; the row appears within the poll); `test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_focus_opens_that_decomposition` |
-| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end) |
+| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23) |
 | `test_namespaces.py` | `test_the_tree_follows_dotted_names_and_marks_the_default`; `test_each_field_shows_its_effective_value_and_source`; `test_override_sets_a_field_here_and_reset_removes_it`; `test_a_variable_is_overridden_and_reset_key_by_key`; `test_a_tool_granted_here_adds_to_the_inherited_ones`; `test_attach_and_detach_change_only_this_namespaces_list`; `test_start_new_conversations_here_moves_the_default` (`/health`'s `default_namespace`); `test_adding_and_deleting_a_namespace` (and D2's refusal for root, the default and a parent, in its words); `test_run_settings_edit_the_profile`; `test_yaml_values_mean_what_dr_reads` (a variable typed as `on` is stored `true`); `test_keys_the_panel_does_not_show_survive_an_override`; v2: `test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` (B1) |
 | `test_tools_tab.py` | `test_the_tools_tab_always_shows_the_safety_notice_with_the_cap` (v2: `[5, 12]`, the cap from the URL); `test_the_tools_tab_lists_tools_with_their_grants` |
 | `test_notice.py` | `test_the_safety_notice_shows_until_understood`; `test_the_notice_is_d5s_sentence_with_the_cap` (equal to `dr_app.texts.SAFETY` formatted with `7`; skipped until D5's package is in the environment); `test_without_the_key_proxy_the_notice_says_nothing_caps_spending` |
@@ -1263,7 +1347,7 @@ whole workflow, and the job is in D1's `ci.yml`). Its steps: checkout; `actions/
 "src/deep_reasoning/canvas_app differs from a fresh build"), and on failure the upload of `dist/` and `ui/` as the
 artifact `canvas-app-build`; `astral-sh/setup-uv` (Python 3.12); `uv sync --locked`;
 `uv run playwright install --with-deps chromium`; `uv run pytest -m browser tests/canvas_app -v -rA`, with `CI=true`.
-2 min 54 s at `5effe26`.
+2 min 54 s at `5effe26`; 3 min 5 s at `2af80ef` (v3).
 
 ---
 
@@ -1430,23 +1514,23 @@ not read). The spec estimated ≈1.5k lines of TypeScript and ≈5 h. The differ
 protocol, which exist because a page cannot reach its backend (C2 §6.1); the additions of §3 item 5; unit tests (the
 spec's figure had none); the browser tests that are Gate B's evidence (spec §4 layer 5); and E8 end to end.
 
-**v2, as built at `5effe26`** (§3.2 B16; all lines, the committed built files, the lockfile and the CI job's 54 lines
+**As built at `2af80ef`** (v3; v2 counted at `5effe26`, 22 lines of code and 71 of tests fewer; §3.2 B16; all lines, the committed built files, the lockfile and the CI job's 54 lines
 not counted):
 
 | Part | Code, v1 → built | Tests, v1 → built |
 |---|---|---|
-| The page bundle (`index` 12, `texts` 14, `host` 72, `context` 96, `backend` 117, `mount` 137) | 300 → 448 | 260 → 687 (`mount` 265, `backend` 178, `context` 119, `fakes.ts` 125) |
+| The page bundle (`index` 12, `texts` 14, `host` 72, `context` 96, `backend` 127, `mount` 137) | 300 → 458 | 260 → 712 (`mount` 265, `backend` 203, `context` 119, `fakes.ts` 125) |
 | The frame protocol | 70 → 165 | 50 → 110 |
 | UI core (`api` 186, `cards` 177, `app` 151, `types` 129, `texts` 105, `load` 89, `save` 66, `drafts` 49, `theme` 39, `tree` 36, `yaml` 26, `main` 15) | 820 → 1,068 | 330 → 831 (`cards` 338, `api` 244, `save` 81, `drafts` 60, `yaml` 57, `tree` 51) |
 | The stylesheet | — → 368 | — |
-| Components (`editor` 857, `fields` 176, `pickers` 72, `notices` 56) | 520 → 1,161 | — |
+| Components (`editor` 869, `fields` 176, `pickers` 72, `notices` 56) | 520 → 1,173 | — |
 | Tabs (`namespaces` 891, `browse` 184, `tools` 42, `create` 30, `props` 14) | 770 → 1,161 | — |
 | Python (`library/ui.py` 59, `canvas_app/__init__.py` 5; plus 10 lines in D2's `api.py` and `texts.py`) | 50 → 64 | 60 → 130 (`test_ui.py`) |
-| Browser tests (fixture Library 99, `conftest.py` 200, test files 990) and E8 (88) | — | 720 → 1,377 |
+| Browser tests (fixture Library 99, `conftest.py` 200, test files 1,036) and E8 (88) | — | 720 → 1,423 |
 | Build configuration (`package.json`, `tsconfig.json`, two Vite configs, `index.html`, Prettier, `.nvmrc`, `.gitattributes`, the manifest, the icon) | 110 → 153 | — |
-| **Total** | **≈2.6k → 4,588** | **≈1.4k → 3,135** |
+| **Total** | **≈2.6k → 4,610** | **≈1.4k → 3,206** |
 
-About 7.7k lines with tests, about 26 h at Gate C. The growth is in the two largest files (the Namespaces tab, three
+About 7.8k lines with tests, about 26 h at Gate C. The growth is in the two largest files (the Namespaces tab, three
 times v1's figure: seven field kinds, each with its own editor and actions, and the run settings; the editor, three
 and a half times: card and YAML modes, live validation, five outcomes with their actions, drafts and Attached to), the
 stylesheet v1 left out, and tests that grew with them. The build recorded no reason; the estimate was this design's.
@@ -1474,13 +1558,15 @@ stylesheet v1 left out, and tests that grew with them. The build recorded no rea
    about 60 lines to drop.
 6. **`host.agentServer.request`'s timeout** is not stated by C2; `start` can take up to the backend's 30 s health
    timeout. If the client's default is shorter, `ensureBackend` falls back to polling the status, which §2.1's table
-   already does for `starting`.
+   already does for `starting`. *(v3: C2's code states it, 60 s per request, `src/types/canvas-extension.ts:162` at
+   `db3b4b9`. The fallback was not in v2's build and is built since `450bed1`, for a timeout or a network failure,
+   §3.2 B20. Closed.)*
 7. **The spec's tooltip** "Show decompositions" versus C2's "Show Decompositions" (§3 item 8) is Michael's to care about
    or not.
 8. **D1's harness** requires `--config` today (`tests/acp/harness.py:180–203`); the E8 test needs it optional (§7.4).
    *(v2: resolved by D2's `90044f0`, §3.2 B12.)*
-9. **Size** (§10) is about twice the spec's estimate. *(v2: built at about 7.7k lines with tests, about five times the
-   spec's ≈1.5k and about twice v1's ≈4k; Michael rules on it at Gate B, §3.2 B16.)*
+9. **Size** (§10) is about twice the spec's estimate. *(v2: built at about 7.7k lines with tests (v3: 7.8k), about
+   five times the spec's ≈1.5k and about twice v1's ≈4k; Michael rules on it at Gate B, §3.2 B16.)*
 10. **(v2) D2 answers a stale head with a bare 500** on `/effective` and `/namespaces/<name>/effective` (§3.2 B1, §8.2).
     D2's to fix: a 422 in its error shape with the head's sentence. The panel works either way.
 11. **(v2) 19 messages in 10 of Dean's decompositions open as raw cards** (§3.2 B17): a blank line between `</think>`
