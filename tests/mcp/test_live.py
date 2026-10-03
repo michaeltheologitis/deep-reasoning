@@ -68,15 +68,19 @@ def test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent(
             return client, session, response
 
     client, session, response = run(body())
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    # Beside the runs, for the live job's artifact when this test fails.
+    (home / "transcript.jsonl").write_bytes(b"".join(client.lines))
+    (run_id,) = run_ids(client.printer.updates)
+    log = client.run_log(run_id)
+    ends = (e for e in log if e.kind in ("mcp.status", "agent.end", "prompt.end"))
+    ended = "\n".join(map(str, ends))
+    assert response.field_meta["deep_reasoner"]["outcome"] == "answered", ended
     answer = next(
         u["content"]["text"]
         for u in reversed(client.updates_on(session))
         if u["sessionUpdate"] == "agent_message_chunk"
     )
     assert "ZQ-101" in answer
-    (run_id,) = run_ids(client.printer.updates)
-    log = client.run_log(run_id)
     [status] = [e for e in log if e.kind == "mcp.status"]
     assert [(s.tool, s.state) for s in status.servers] == [("catalog", "bound")]
     assert any("catalog.prerequisites(" in e.code for e in log if e.kind == "cell.end")
