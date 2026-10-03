@@ -198,20 +198,23 @@ def test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline(
     assert 1.5 <= took < 3
 
 
+@pytest.mark.parametrize("printed", [{}, {"CRASH_SPLIT": "1"}], ids=["whole", "split"])
 def test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted(
-    tmp_path, run_dir, opened
+    tmp_path, run_dir, opened, printed
 ):
     cfg = config(
         tmp_path / "config", {"root": {"tools": ["wiki"]}}, {"wiki": mcp_block("wiki")}
     )
-    secret = spec("wiki", "crash_server.py", CRASH_TOKEN="crash-secret-value")
+    secret = spec(
+        "wiki", "crash_server.py", CRASH_TOKEN="crash-secret-value", **printed
+    )
     [status] = open_session(cfg, [secret], run_dir=run_dir)
     assert status.state == "failed"
     assert (
         status.detail
         == 'McpError: Connection closed; it printed: "invalid token [redacted]"'
     )
-    assert "crash-secret-value" in (run_dir / "mcp-wiki.log").read_text()
+    assert (run_dir / "mcp-wiki.log").read_text() == "invalid token [redacted]\n"
 
 
 def test_a_server_given_up_is_ended_within_three_seconds(tmp_path, run_dir, opened):

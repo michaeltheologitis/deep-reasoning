@@ -210,6 +210,9 @@ def test_server_secrets_never_reach_the_run_log_or_the_transcript(home, work, tm
     assert CRASH_SECRET not in (home / "runs" / run_id / "events.jsonl").read_text()
     assert CRASH_SECRET not in b"".join(client.lines).decode()
     assert CRASH_SECRET not in (home / "runs" / run_id / "worker.log").read_text()
+    assert (home / "runs" / run_id / "mcp-wiki.log").read_text() == (
+        "invalid token [redacted]\n"
+    )
 
 
 def test_the_notice_replays_on_load(home, work, tmp_path):

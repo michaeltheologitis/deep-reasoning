@@ -1,10 +1,13 @@
 """The worker's side of MCP (D4 §4.4): connect the granted, reachable servers a run's
 config names, all at once, before build_reasoner; install shim.SESSION."""
 
+import codecs
+import os
+import threading
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, TextIO
 
 from deep_reasoner.namespaces import (
     ROOT,
@@ -28,6 +31,8 @@ GRANTED_NOWHERE: Final = "granted to no namespace"
 OUT_OF_REACH: Final = "granted only where this conversation cannot spawn"
 LOG_TAIL: Final = 300  # characters of a failed server's own output in its status
 PRINTED: Final = '{failure}; it printed: "{tail}"'
+PIPE_READ: Final = 65_536  # bytes of a server's stderr read at a time
+DRAIN_S: Final = 2.0  # a failed server's last output reaches its log within this
 
 
 def _names(cfg: V2Config) -> list[str]:
@@ -84,26 +89,60 @@ def _shim_spec(spec: McpServerSpec) -> shim.ServerSpec:
     )
 
 
+def _secrets(spec: McpServerSpec) -> list[str]:
+    return [*spec.env.values(), *spec.headers.values()]
+
+
 def _failed_detail(failure: str, log: Path, spec: McpServerSpec) -> str:
     """The failure and the tail of what the server printed, every secret of its spec
     redacted."""
     tail = log.read_text(errors="replace").strip()[-LOG_TAIL:]
     detail = PRINTED.format(failure=failure, tail=tail) if tail else failure
-    return redact(detail, [*spec.env.values(), *spec.headers.values()])
+    return redact(detail, _secrets(spec))
+
+
+def _copy_redacted(source: int, log: TextIO, secrets: list[str]) -> None:
+    """What a server prints, from its pipe to its log with every secret redacted. A
+    secret can arrive split over two reads, so each read's last characters wait for the
+    next."""
+    held = max((len(secret) for secret in secrets), default=1) - 1
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    pending = ""
+    with open(source, "rb", buffering=0) as pipe, log:
+        while chunk := pipe.read(PIPE_READ):
+            pending = redact(pending + decoder.decode(chunk), secrets)
+            cut = max(0, len(pending) - held)
+            log.write(pending[:cut])
+            log.flush()
+            pending = pending[cut:]
+        log.write(redact(pending + decoder.decode(b"", final=True), secrets))
 
 
 class _Started:
-    """A connection open_session started, and what deciding it needs."""
+    """A connection open_session started, and what deciding it needs. The server's
+    stderr is a pipe that a thread copies into its log, redacted."""
 
     def __init__(
         self, alias: str, spec: McpServerSpec, block: dict[str, Any], log: Path
     ):
         self.spec, self.log = spec, log
         self.timeout = float(block.get("connect_timeout_s", shim.CONNECT_TIMEOUT_S))
+        out = log.open("w", encoding="utf-8")
+        source, sink = os.pipe()
+        self.copier = threading.Thread(
+            target=_copy_redacted,
+            args=(source, out, _secrets(spec)),
+            name=f"mcp-{alias}-log",
+            daemon=True,
+        )
+        self.copier.start()
+        # Closed in _decide once the server holds its own end; an abandoned connection's
+        # is closed when the connection is collected, which its running task prevents.
+        self.errlog = os.fdopen(sink, "w")
         self.connection = shim.Connection(
             _shim_spec(spec),
             name=alias,
-            errlog=log.open("w", encoding="utf-8"),
+            errlog=self.errlog,
             call_timeout_s=float(block.get("call_timeout_s", shim.CALL_TIMEOUT_S)),
         )
         self.connection.start()
@@ -115,12 +154,15 @@ def _decide(
     """The status's fields and the binding, once the server answered (after answered
     seconds) or its time is up (None)."""
     connection = started.connection
+    if answered is not None:
+        started.errlog.close()  # the connection has started its server, or never will
     if answered is not None and connection.failure is None:
         binding = shim.bound(alias, connection, granted=frozenset(granted))
         told = func(alias, binding.value, binding.description).describe()
         fields = {"state": "bound", "seconds": answered, "count": len(connection.tools)}
         return fields | {"told": told}, binding
     if answered is not None:
+        started.copier.join(DRAIN_S)
         detail = _failed_detail(connection.failure, started.log, started.spec)
         reason = shim.COULD_NOT_START.format(detail=detail)
         return {"state": "failed", "detail": detail}, shim.unavailable(alias, reason)
