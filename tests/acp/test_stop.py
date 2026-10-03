@@ -19,7 +19,7 @@ from deep_reasoning.acp.worker.stop import (
     resolve_stop_adapter,
 )
 from tests.acp.harness import dr_acp, run, run_ids, scripted_env
-from tests.acp.scenarios import BY_NAME, attributed_task, repl, scripted, task_and_turn
+from tests.acp.scenarios import BY_NAME, repl, scripted, task_and_turn
 
 DEPARTMENTS = [f"D{i}" for i in range(20)]
 COURSES = ["D0a", "D0b"]
@@ -70,40 +70,30 @@ def holding_the_siblings(respond):
     return held
 
 
-def stop_the_department(env, respond):
+async def stop_the_department(env, respond, tmp_path, home, work):
     """Ask, stop D0 once one of its course agents is announced, and collect the evidence."""
-
-    async def body(tmp_path, home, work):
-        async with FakeOpenAI(respond, latency_s=0.2) as model:
-            config = BY_NAME["linear"].write_config(tmp_path / "config", model.base_url)
-            async with dr_acp(config, home, env=env) as client:
-                root = await client.open_session(work)
-                turn = asyncio.create_task(client.ask(root, "Compare departments."))
-                course = await client.printer.wait_until(
-                    lambda p: next(
-                        (
-                            a
-                            for a in p.subagents.values()
-                            if a.field_meta["deep_reasoner"]["depth"] == 3
-                        ),
-                        None,
+    async with FakeOpenAI(respond, latency_s=0.2) as model:
+        config = BY_NAME["linear"].write_config(tmp_path / "config", model.base_url)
+        async with dr_acp(config, home, env=env) as client:
+            root = await client.open_session(work)
+            turn = asyncio.create_task(client.ask(root, "Compare departments."))
+            course = await client.printer.wait_until(
+                lambda p: next(
+                    (
+                        a
+                        for a in p.subagents.values()
+                        if a.field_meta["deep_reasoner"]["depth"] == 3
                     ),
-                    timeout=60,
-                )
-                department = client.printer.subagents[course.parent_session_id]
-                await client.conn.cancel(session_id=department.session_id)
-                response = await turn
-                (run_id,) = run_ids(client.printer.updates)
-                return (
-                    client,
-                    root,
-                    department,
-                    response,
-                    client.run_log(run_id),
-                    model.calls,
-                )
-
-    return body
+                    None,
+                ),
+                timeout=60,
+            )
+            department = client.printer.subagents[course.parent_session_id]
+            await client.conn.cancel(session_id=department.session_id)
+            response = await turn
+            (run_id,) = run_ids(client.printer.updates)
+            log = client.run_log(run_id)
+            return client, root, department, response, log, model.calls
 
 
 def by_task(subagents):
@@ -115,11 +105,8 @@ def evidence_common(client, root, department, response, log, calls):
     accepted = next(e for e in log if e.kind == "stop.accepted")
     assert accepted.accepted
     assert any(e.kind == "stop.request" and e.node == accepted.node for e in log)
-    late = Counter(
-        attributed_task(c.messages)
-        for c in calls
-        if c.started > accepted.t and attributed_task(c.messages) in BRANCH_TASKS
-    )
+    tasks = [task_and_turn(c.messages)[0] for c in calls if c.started > accepted.t]
+    late = Counter(task for task in tasks if task in BRANCH_TASKS)
     # A turn that began before the stop may still make its call; no later turn may.
     assert all(n <= 1 for n in late.values()), late
     agents = by_task(client.printer.subagents)
@@ -148,7 +135,7 @@ def test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_too
 ):
     respond = holding_the_siblings(scripted(PLAN))
     client, root, department, response, log, calls = run(
-        stop_the_department(scripted_env(), respond)(tmp_path, home, work)
+        stop_the_department(scripted_env(), respond, tmp_path, home, work)
     )
     agents, d0 = evidence_common(client, root, department, response, log, calls)
     output = root_cell_output(client, root)
@@ -178,7 +165,7 @@ def test_dean_stop_ends_the_branch_and_the_parent_keeps_every_siblings_result(
 ):
     env = scripted_env(DR_ACP_STOP_API="tests.acp.fakes.dean_stop:stop")
     client, root, department, response, log, calls = run(
-        stop_the_department(env, scripted(PLAN))(tmp_path, home, work)
+        stop_the_department(env, scripted(PLAN), tmp_path, home, work)
     )
     agents, d0 = evidence_common(client, root, department, response, log, calls)
     siblings = [

@@ -54,10 +54,6 @@ def scripted(plan: Plan, failing: frozenset[tuple[str, int]] = frozenset()):
     return respond
 
 
-def attributed_task(messages: list[dict[str, Any]]) -> str:
-    return task_and_turn(messages)[0]
-
-
 BASE_CONFIG: dict[str, Any] = {
     "model": "fake-model",
     "client": {"base_url": "", "api_key_env": "DR_ACP_TEST_KEY", "max_retries": 0},
