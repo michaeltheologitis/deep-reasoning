@@ -118,8 +118,26 @@ function transportOf(server: Entry): McpTransport | null {
   return server.transport === "sse" ? "sse" : "http";
 }
 
+/** The names of the headers the bridge sends for a server's auth (the SDK's to_http_headers):
+ * none for "none" and OAuth, which it does not forward. */
+function authHeaderNames(auth: unknown): string[] {
+  if (!isEntry(auth)) return [];
+  switch (auth.strategy) {
+    case "bearer":
+    case "basic":
+      return ["Authorization"];
+    case "api_key":
+      return [nonEmpty(auth.header_name) ? auth.header_name : "Authorization"];
+    case "header":
+      return isEntry(auth.headers) ? Object.keys(auth.headers) : [];
+    default:
+      return [];
+  }
+}
+
 /** Each server of Canvas's MCP settings: its target, and the names (never the values) of its
- * environment variables and headers; forwarded when enabled and in refs (null: all). */
+ * environment variables and of the headers it is sent, its auth's included; forwarded when
+ * enabled and in refs (null: all). */
 export function mcpServersFromSettings(
   mcpConfig: Readonly<Record<string, unknown>>,
   refs: readonly string[] | null,
@@ -144,7 +162,12 @@ export function mcpServersFromSettings(
           : [],
         url: transport === "stdio" ? null : (server.url as string),
         env: isEntry(server.env) ? Object.keys(server.env) : [],
-        headers: isEntry(server.headers) ? Object.keys(server.headers) : [],
+        headers: [
+          ...new Set([
+            ...(isEntry(server.headers) ? Object.keys(server.headers) : []),
+            ...authHeaderNames(server.auth),
+          ]),
+        ],
         forwarded: why_not === null,
         why_not,
       },
