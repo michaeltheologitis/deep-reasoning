@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from pydantic import ValidationError
 
 from deep_reasoning.library import configdir, shapes, store, texts
 from deep_reasoning.library.catalog import library_path
@@ -331,9 +332,15 @@ class Library:
         return [_history_entry(r) for r in rows]
 
     def effective(self, namespace: str) -> Effective:
+        """What namespace inherits; a stale head is LibraryValidationError, as at
+        materialize."""
         state = self.state()
         self._get(state.namespaces, "namespace", namespace)
-        return effective(state, namespace)
+        try:
+            return effective(state, namespace)
+        except ValidationError:
+            _refuse_stale(state)
+            raise
 
     def check(self) -> list[Problem]:
         """Every live head re-validated under the installed deep_reasoner, plus granted
@@ -517,11 +524,7 @@ class Library:
         state = self.state(rev=rev)
         namespace = namespace or state.profile.default_namespace
         self._get(state.namespaces, "namespace", namespace)
-        if problems := _stale(state):
-            sentences = [p.message for p in problems]
-            raise LibraryValidationError(
-                "\n".join(sentences), [FieldError(loc="", msg=s) for s in sentences]
-            )
+        _refuse_stale(state)
         if dest is not None and dest.exists() and any(dest.iterdir()):
             raise LibraryRefused(texts.dest_not_empty(str(dest)))
         made = dest is None or not dest.exists()
@@ -722,6 +725,15 @@ def _stale(state: LibraryState) -> list[Problem]:
             )
             problems.append(Problem(kind=kind, name=name, message=message))
     return problems
+
+
+def _refuse_stale(state: LibraryState) -> None:
+    """LibraryValidationError with one STALE_HEAD sentence per stale head, if any."""
+    if problems := _stale(state):
+        sentences = [p.message for p in problems]
+        raise LibraryValidationError(
+            "\n".join(sentences), [FieldError(loc="", msg=s) for s in sentences]
+        )
 
 
 def _empty(dest: Path, *, remove: bool) -> None:
