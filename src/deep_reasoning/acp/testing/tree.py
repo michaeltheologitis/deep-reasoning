@@ -7,15 +7,8 @@ from typing import Any
 
 from deep_reasoning.acp import ids
 from deep_reasoning.acp.runlog import Mode
-from deep_reasoning.acp.testing.client import (
-    field as one_line,
-)
-from deep_reasoning.acp.testing.client import (
-    first_text,
-    outcome_phrase,
-)
+from deep_reasoning.acp.testing.client import first_text, outcome_phrase
 
-OUTPUT = 40
 _RUN = re.compile(rf"({ids.RUN_ID})-")
 _CARD = re.compile(rf"({ids.RUN_ID})-n(\d+)-a\d+")
 
@@ -58,45 +51,9 @@ class RunNode:
     cost_usd: float | None  # the root's at the run's end: all runs so far
 
 
-def _cost(usd: float | None) -> str:
-    return f"{usd:.4f} USD"
-
-
-def _label(item: CellNode | MessageNode | AgentNode) -> str:
-    if isinstance(item, MessageNode):
-        return f"{item.outcome}  {one_line(item.text)}"
-    if isinstance(item, CellNode):
-        output = one_line(item.output, OUTPUT, output=True)
-        return f"{item.short}  {one_line(item.title)}  {item.status}" + (
-            f" → {output}" if output else ""
-        )
-    drive = f" (drive {item.drive})" if item.drive > 1 else ""
-    cost = f" · {_cost(item.cost_usd)}" if item.cost_usd is not None else ""
-    return f"{item.short}{drive}  {one_line(item.title)}  {item.outcome}{cost}"
-
-
-def _draw(lines: list[str], items: list[Any], prefix: str) -> None:
-    for i, item in enumerate(items):
-        last = i == len(items) - 1
-        lines.append(prefix + ("└─ " if last else "├─ ") + _label(item))
-        below = (
-            item.agents if isinstance(item, CellNode) else getattr(item, "items", [])
-        )
-        _draw(lines, below, prefix + ("   " if last else "│  "))
-
-
 @dataclass
 class Tree:
     runs: list[RunNode]  # in order of each run's first update
-
-    def __str__(self) -> str:
-        blocks = []
-        for run in self.runs:
-            cost = _cost(run.cost_usd) if run.cost_usd is not None else "cost unknown"
-            lines = [f"root {run.root_session_id} · run {run.run} · {cost}"]
-            _draw(lines, run.root.items, "")
-            blocks.append("\n".join(lines))
-        return "\n\n".join(blocks)
 
 
 def _run_of(update: Mapping[str, Any]) -> str | None:

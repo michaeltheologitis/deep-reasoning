@@ -10,15 +10,13 @@ import structlog
 from deep_reasoning.acp import __version__, ids, texts
 from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot
 from deep_reasoning.acp.costs import PriceTable
-from deep_reasoning.acp.encoder import commands_update
 from deep_reasoning.acp.route import ModelRoute
-from deep_reasoning.acp.runlog import Home, SessionIndex
+from deep_reasoning.acp.runlog import Home, SessionIndex, detail_of
 from deep_reasoning.acp.session import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
     AgentContext,
     Session,
-    detail_of,
     refusal,
 )
 from deep_reasoning.acp.wire import ClientMode, Outbox
@@ -89,12 +87,7 @@ class DrAcpAgent:
             raise refusal(INTERNAL_ERROR, sentence, "CATALOG_ERROR") from exc
 
     def _offer_menu(self, session: Session) -> None:
-        commands = list(session.commands.values())
-        self._after_response(
-            self._ctx.outbox.update(
-                *commands_update(session.id, commands, session.namespace)
-            )
-        )
+        self._after_response(self._ctx.outbox.update(*session.menu()))
 
     async def initialize(
         self,
@@ -184,10 +177,7 @@ class DrAcpAgent:
             was_started = session.started
             options = session.set_namespace(value)
             if not was_started:
-                commands = list(session.commands.values())
-                await self._ctx.outbox.update(
-                    *commands_update(session.id, commands, session.namespace)
-                )
+                await self._ctx.outbox.update(*session.menu())
         return {"configOptions": options}
 
     async def prompt(
@@ -204,12 +194,8 @@ class DrAcpAgent:
         """A root session id stops the run; a live child's id stops its branch."""
         if session_id in self._sessions:
             await self._sessions[session_id].stop_root()
-            return
-        for session in self._sessions.values():
-            if session.run is not None and session.run.child(session_id) is not None:
-                session.stop_child(session_id)
-                return
-        logger.warning(f"session/cancel for unknown session '{session_id}' ignored")
+        elif not any(s.stop_child(session_id) for s in self._sessions.values()):
+            logger.warning(f"session/cancel for unknown session '{session_id}' ignored")
 
     async def close_session(self, session_id: str, **meta: Any) -> dict[str, Any]:
         self._session(session_id)

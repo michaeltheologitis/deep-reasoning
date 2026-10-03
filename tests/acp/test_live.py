@@ -15,7 +15,7 @@ import pytest
 from deep_reasoning.acp import texts
 from deep_reasoning.acp.testing.tree import tree
 from tests.acp.harness import REPO, dr_acp, run, run_ids, scripted_env
-from tests.acp.scenarios import acp_tree, deep_reasoner_tree
+from tests.acp.scenarios import acp_tree, deep_reasoner_tree, tree_evidence
 
 pytestmark = [
     pytest.mark.live,
@@ -52,8 +52,9 @@ def test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all(
     assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
     (run_id,) = run_ids(client.printer.updates)
     rebuilt = tree(client.printer.updates)
-    agents = acp_tree(rebuilt)
-    assert agents == deep_reasoner_tree(home / "runs" / run_id)
+    run_dir = home / "runs" / run_id
+    agents, own = acp_tree(rebuilt), deep_reasoner_tree(run_dir)
+    assert agents == own, tree_evidence(agents, own, run_dir)
     assert len(agents) >= 3, "the program gives each department to a sub-agent"
     answer = next(
         u["content"]["text"]
@@ -65,8 +66,10 @@ def test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all(
     assert None not in calls, "every gpt-6-luna call has a price"
     root_cost = rebuilt.runs[0].cost_usd
     assert root_cost == pytest.approx(sum(calls))
-    children = [s.field_meta for s in client.printer.subagents.values()]
-    assert {m["deep_reasoner"]["status"] for m in children} <= {"done", "exhausted"}
+    children = [
+        s.field_meta["deep_reasoner"] for s in client.printer.subagents.values()
+    ]
+    assert {c["status"] for c in children} <= {"done", "exhausted"}, children
     child_costs = [
         a.cost_usd for a in _agents(rebuilt.runs[0].root) if a.short != "root"
     ]

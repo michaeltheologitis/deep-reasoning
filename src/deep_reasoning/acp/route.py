@@ -1,4 +1,4 @@
-"""How a run reaches its model, and what the worker's environment holds (§4.7, D5's seam)."""
+"""How a run reaches its model, and what the worker's environment holds (§4.7)."""
 
 import fnmatch
 from collections.abc import Mapping
@@ -14,6 +14,9 @@ class RouteGrant:
 
 
 class ModelRoute(Protocol):
+    """Grants each run its client settings and environment; release(run) follows the
+    run's end."""
+
     def grant(
         self, *, session: str, run: str, upstream: Mapping[str, Any]
     ) -> RouteGrant: ...
@@ -32,7 +35,7 @@ ALWAYS_REMOVED: tuple[str, ...] = (
 
 
 class DirectRoute:
-    """D1's only route: no overrides; the provider keys stay in the environment."""
+    """No overrides: the provider keys stay in the worker's environment."""
 
     def grant(
         self, *, session: str, run: str, upstream: Mapping[str, Any]

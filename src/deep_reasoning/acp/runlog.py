@@ -14,6 +14,13 @@ from deep_reasoning.acp.costs import CostLedger
 
 Mode = Literal["native", "flat"]
 RunEndReason = Literal["closed", "stopped", "crashed", "failed", "build_failed", "lost"]
+DETAIL_CAP = 2000
+
+
+def detail_of(exc: BaseException) -> str:
+    """An exception in the form deep_reasoner gives agent.end's detail, capped: every
+    detail in the log, and every sentence that quotes one, reads the same."""
+    return f"{type(exc).__name__}: {exc}"[:DETAIL_CAP]
 
 
 class _Ev(BaseModel):

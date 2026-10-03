@@ -13,7 +13,7 @@ import structlog
 from pydantic import BaseModel, ValidationError
 
 from deep_reasoning.acp.catalog import RunSource
-from deep_reasoning.acp.encoder import ChildRef, Encoder
+from deep_reasoning.acp.encoder import Encoder
 from deep_reasoning.acp.route import ModelRoute, worker_env
 from deep_reasoning.acp.runlog import (
     RUN_EVENT,
@@ -313,7 +313,3 @@ class RunHandle:
             await asyncio.wait_for(asyncio.shield(self._ended.wait()), grace_s)
         except TimeoutError:
             await self.kill("closed")
-
-    def child(self, session_id: str) -> ChildRef | None:
-        """The live child with this session id, for cancel routing."""
-        return self.encoder.child(session_id)
