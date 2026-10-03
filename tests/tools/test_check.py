@@ -48,7 +48,7 @@ except Exception as exc:
 else:
     print(json.dumps({"ok": True}))
 """
-MAKE_TOOLS_LIMIT_S = 15
+MAKE_TOOLS_LIMIT_S = 10
 
 
 def source(fixture: str) -> str:
