@@ -31,6 +31,7 @@ from tests.acp.scenarios import (
     deep_reasoner_tree,
     repl,
     scripted,
+    tree_evidence,
 )
 
 MODES = pytest.mark.parametrize("native", [True, False], ids=["native", "flat"])
@@ -77,7 +78,9 @@ def test_tree_rebuilt_from_the_stream_is_deep_reasoners_own(scenario, native, tm
     assert tuple(played.outcomes) == scenario.outcomes
     (run_id,) = run_ids(client.printer.updates)
     rebuilt = tree(client.printer.updates)
-    assert acp_tree(rebuilt) == deep_reasoner_tree(tmp_path / "home" / "runs" / run_id)
+    run_dir = tmp_path / "home" / "runs" / run_id
+    agents, own = acp_tree(rebuilt), deep_reasoner_tree(run_dir)
+    assert agents == own, tree_evidence(agents, own, run_dir)
     if native:
         assert_wire_order(client.lines, root)
     else:
@@ -88,7 +91,7 @@ def test_tree_rebuilt_from_the_stream_is_deep_reasoners_own(scenario, native, tm
             "session_message",
             "session_message_chunk",
         }
-    if len(acp_tree(rebuilt)) > 1:
+    if len(agents) > 1:
         assert [r.mode for r in rebuilt.runs] == ["native" if native else "flat"]
 
 
