@@ -28,6 +28,7 @@ from deep_reasoning.library.records import (
     LibraryNotFound,
     LibraryNotJson,
 )
+from deep_reasoning.library.ui import ui_routes
 
 Peer = tuple[str, int]
 JSON_TYPE = "application/json"
@@ -206,8 +207,9 @@ def create_app(
     *,
     same_user: Callable[[tuple[str, int], tuple[str, int]], bool] | None = None,
 ) -> Starlette:
-    """The routes of §6. same_user(client, server) is asked for every request; a False is
-    403 FORBIDDEN_PEER. Default: same_user_peer on Linux, no check elsewhere."""
+    """The routes of §6, then the panel's /ui/ (D3 §4.5). same_user(client, server) is
+    asked for every request; a False is 403 FORBIDDEN_PEER. Default: same_user_peer on
+    Linux, no check elsewhere."""
     if same_user is None and sys.platform == "linux":
         same_user = same_user_peer
     lib = library
@@ -368,6 +370,7 @@ def create_app(
         route("/tools/{name}/versions", "GET", versions("tool", "name")),
         route("/tools/{name}/versions/{n:int}", "GET", versions("tool", "name")),
         route("/export", "GET", export),
+        *ui_routes(),
     ]
 
     async def library_error(request: Request, exc: Exception) -> Response:
