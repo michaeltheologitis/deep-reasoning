@@ -100,18 +100,6 @@ def _invalid(
     return LibraryValidationError("\n".join([message, *extra]), errors)
 
 
-def _validated(
-    model: type[BaseModel], data: Mapping[str, Any]
-) -> tuple[BaseModel | None, list[FieldError]]:
-    try:
-        return model.model_validate(data), []
-    except ValidationError as exc:
-        return None, [
-            FieldError(loc=".".join(str(part) for part in e["loc"]), msg=e["msg"])
-            for e in exc.errors()
-        ]
-
-
 def _shaped(
     model: type[BaseModel],
     data: dict[str, Any],
@@ -123,7 +111,14 @@ def _shaped(
 ) -> tuple[BaseModel, str]:
     """Validate data with model, add the Library's own rule errors, and return the model
     and its canonical YAML; any error raises INVALID."""
-    validated, errors = _validated(model, data)
+    try:
+        validated, errors = model.model_validate(data), []
+    except ValidationError as exc:
+        validated = None
+        errors = [
+            FieldError(loc=".".join(str(part) for part in e["loc"]), msg=e["msg"])
+            for e in exc.errors()
+        ]
     if errors or rules:
         raise _invalid(name, label, [*errors, *rules], extra)
     return validated, canonical_yaml(
