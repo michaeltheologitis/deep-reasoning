@@ -202,6 +202,23 @@ def _zip(directory: Path, prefix: str) -> bytes:
     return data.getvalue()
 
 
+def json_route(
+    path: str, method: str, handler: Callable[[Request, bytes], Any]
+) -> Route:
+    """A route whose handler runs in a thread with the request and its body, and returns
+    a Response, a payload, or (payload, status); payloads are sent as JSON."""
+
+    async def endpoint(request: Request) -> Response:
+        body = await request.body() if method in BODY_METHODS else b""
+        result = await run_in_threadpool(handler, request, body)
+        if isinstance(result, Response):
+            return result
+        payload, status = result if isinstance(result, tuple) else (result, 200)
+        return JSONResponse(_dump(payload), status_code=status)
+
+    return Route(path, endpoint, methods=[method])
+
+
 def create_app(
     library: Library,
     *,
@@ -311,65 +328,56 @@ def create_app(
             },
         )
 
-    def route(
-        path: str, method: str, handler: Callable[[Request, bytes], Any]
-    ) -> Route:
-        async def endpoint(request: Request) -> Response:
-            body = await request.body() if method in BODY_METHODS else b""
-            result = await run_in_threadpool(handler, request, body)
-            if isinstance(result, Response):
-                return result
-            payload, status = result if isinstance(result, tuple) else (result, 200)
-            return JSONResponse(_dump(payload), status_code=status)
-
-        return Route(path, endpoint, methods=[method])
-
     def reading(
         read: Callable[..., Any], *params: str
     ) -> Callable[[Request, bytes], Any]:
         return lambda request, body: read(*(request.path_params[p] for p in params))
 
     routes = [
-        route("/health", "GET", health),
-        route("/problems", "GET", reading(lib.check)),
-        route("/validate", "POST", validate),
-        route("/profile", "GET", reading(lib.profile)),
-        route("/profile", "PUT", put_profile),
-        route("/profile/versions", "GET", versions("profile", None)),
-        route("/profile/versions/{n:int}", "GET", versions("profile", None)),
-        route("/namespaces", "GET", reading(lib.namespaces)),
-        route("/namespaces/{name}", "GET", reading(lib.namespace, "name")),
-        route("/namespaces/{name}", "PUT", put_namespace),
-        route("/namespaces/{name}", "DELETE", deleting("namespace", "name")),
-        route("/namespaces/{name}/effective", "GET", reading(lib.effective, "name")),
-        route("/namespaces/{name}/versions", "GET", versions("namespace", "name")),
-        route(
+        json_route("/health", "GET", health),
+        json_route("/problems", "GET", reading(lib.check)),
+        json_route("/validate", "POST", validate),
+        json_route("/profile", "GET", reading(lib.profile)),
+        json_route("/profile", "PUT", put_profile),
+        json_route("/profile/versions", "GET", versions("profile", None)),
+        json_route("/profile/versions/{n:int}", "GET", versions("profile", None)),
+        json_route("/namespaces", "GET", reading(lib.namespaces)),
+        json_route("/namespaces/{name}", "GET", reading(lib.namespace, "name")),
+        json_route("/namespaces/{name}", "PUT", put_namespace),
+        json_route("/namespaces/{name}", "DELETE", deleting("namespace", "name")),
+        json_route(
+            "/namespaces/{name}/effective", "GET", reading(lib.effective, "name")
+        ),
+        json_route("/namespaces/{name}/versions", "GET", versions("namespace", "name")),
+        json_route(
             "/namespaces/{name}/versions/{n:int}", "GET", versions("namespace", "name")
         ),
-        route(
+        json_route(
             "/effective",
             "GET",
             lambda request, body: [lib.effective(ns.name) for ns in lib.namespaces()],
         ),
-        route("/decompositions", "GET", reading(lib.decompositions)),
-        route("/decompositions/{slug}", "GET", reading(lib.decomposition, "slug")),
-        route("/decompositions/{slug}", "PUT", put_decomposition),
-        route("/decompositions/{slug}", "DELETE", deleting("decomposition", "slug")),
-        route(
+        json_route("/decompositions", "GET", reading(lib.decompositions)),
+        json_route("/decompositions/{slug}", "GET", reading(lib.decomposition, "slug")),
+        json_route("/decompositions/{slug}", "PUT", put_decomposition),
+        json_route(
+            "/decompositions/{slug}", "DELETE", deleting("decomposition", "slug")
+        ),
+        json_route(
             "/decompositions/{slug}/versions", "GET", versions("decomposition", "slug")
         ),
-        route(
+        json_route(
             "/decompositions/{slug}/versions/{n:int}",
             "GET",
             versions("decomposition", "slug"),
         ),
-        route("/tools", "GET", reading(lib.tools)),
-        route("/tools/{name}", "GET", reading(lib.tool, "name")),
-        route("/tools/{name}", "PUT", put_tool),
-        route("/tools/{name}", "DELETE", deleting("tool", "name")),
-        route("/tools/{name}/versions", "GET", versions("tool", "name")),
-        route("/tools/{name}/versions/{n:int}", "GET", versions("tool", "name")),
-        route("/export", "GET", export),
+        json_route("/tools", "GET", reading(lib.tools)),
+        json_route("/tools/{name}", "GET", reading(lib.tool, "name")),
+        json_route("/tools/{name}", "PUT", put_tool),
+        json_route("/tools/{name}", "DELETE", deleting("tool", "name")),
+        json_route("/tools/{name}/versions", "GET", versions("tool", "name")),
+        json_route("/tools/{name}/versions/{n:int}", "GET", versions("tool", "name")),
+        json_route("/export", "GET", export),
         *ui_routes(),
     ]
 
