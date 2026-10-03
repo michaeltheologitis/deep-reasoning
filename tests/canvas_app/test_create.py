@@ -235,6 +235,18 @@ def test_a_draft_survives_reloading_the_frame(open_ui):
     expect(page.get_by_test_id("dr-card-0-task")).to_have_value("")
 
 
+def test_a_draft_keeps_the_namespace_picked_over_the_preselected_one(open_ui):
+    page = open_ui(tab="create", namespace="router")
+    page.get_by_test_id("dr-namespace-course_advisor").check()
+    page.get_by_test_id("dr-name").fill(NAME)
+    page.reload()
+    expect(page.get_by_test_id("dr-name")).to_have_value(NAME)
+    expect(page.get_by_test_id("dr-namespace-course_advisor")).to_be_checked()
+    expect(page.get_by_test_id("dr-save")).to_have_text("Save to course_advisor")
+    page.get_by_test_id("dr-discard-draft").click()
+    expect(page.get_by_test_id("dr-namespace-router")).to_be_checked()
+
+
 def test_use_when_and_hint_survive_a_save_that_did_not_touch_them(
     open_ui, library_server
 ):

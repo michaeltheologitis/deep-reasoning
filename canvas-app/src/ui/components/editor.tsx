@@ -79,10 +79,12 @@ export interface DecompositionEditorProps {
   onBackendLost: OnBackendLost;
 }
 
-/** What is kept as the draft: the decomposition and, for an opened one, its Attached to. */
+/** What is kept as the draft: the decomposition and, for an opened one, its Attached to;
+ * in Create decomposition, the namespace the user picked. */
 interface Stored {
   draft: DecompositionDraft;
   attached: string[];
+  picked?: string;
 }
 
 type Outcome =
@@ -190,9 +192,13 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
   const [hasDraft, setHasDraft] = useState(
     () => loadDraft<Stored>(draftKey) !== null,
   );
-  const [picked, setPicked] = useState(() =>
+  const [preselection] = useState(() =>
     preselected(props.params, props.health, names),
   );
+  const picked =
+    stored.picked !== undefined && names.includes(stored.picked)
+      ? stored.picked
+      : preselection;
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [yamlView, setYamlView] = useState<string | null>(null);
@@ -422,7 +428,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
         <NamespacePicker
           namespaces={names}
           value={picked}
-          onChange={setPicked}
+          onChange={(name) => keep({ ...stored, picked: name })}
         />
       )}
       {draft.mode === "cards" ? (
