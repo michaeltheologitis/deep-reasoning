@@ -209,6 +209,13 @@ def test_adding_and_deleting_a_namespace(open_ui, library_server):
     )
 
 
+@pytest.mark.parametrize("selected", ["root", "run-settings"])
+def test_add_namespace_is_not_prefilled_under_root_or_run_settings(open_ui, selected):
+    page = open_ui(tab="namespaces", focus=selected)
+    page.get_by_test_id("dr-add-namespace").click()
+    expect(page.get_by_test_id("dr-new-namespace")).to_have_value("")
+
+
 def test_run_settings_edit_the_profile(open_ui, library_server):
     page = open_ui(tab="namespaces", focus="run-settings")
     expect(page.get_by_test_id("dr-field-entry_namespace")).to_have_count(0)
