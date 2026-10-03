@@ -40,178 +40,6 @@ ROOT = "root"
 PROFILE = "profile"
 
 
-def _refuse(sentence: str, loc: str) -> LibraryValidationError:
-    return LibraryValidationError(sentence, [FieldError(loc=loc, msg=sentence)])
-
-
-def _parent(name: str) -> str:
-    return name.rpartition(".")[0] or ROOT
-
-
-def _default_namespace(profile_yaml: str) -> str:
-    return (yaml.safe_load(profile_yaml) or {}).get("entry_namespace", ROOT)
-
-
-def _state(path: Path, rows: list[Row], rev: int) -> LibraryState:
-    """Records from live heads: derived lists (namespaces, top_level, granted_in) included."""
-    of = {
-        kind: [r.model_dump() for r in rows if r.kind == kind]
-        for kind in get_args(Kind)
-    }
-    for listing in of["profile"] + of["namespace"]:
-        listing["decompositions"] = listing["decompositions"] or []
-    [p] = of["profile"]
-    profile = ProfileRecord.model_validate(
-        {**p, "default_namespace": _default_namespace(p["yaml"])}
-    )
-    ordered = sorted(of["namespace"], key=lambda r: r["name"] != ROOT)
-    namespaces = {r["name"]: NamespaceRecord.model_validate(r) for r in ordered}
-
-    def derived(name: str, listed: Callable[[NamespaceRecord], list[str]]) -> list[str]:
-        return [n for n, ns in namespaces.items() if name in listed(ns)]
-
-    decompositions = {
-        r["name"]: DecompositionRecord.model_validate(
-            {
-                **r,
-                "namespaces": derived(r["name"], lambda ns: ns.decompositions),
-                "top_level": r["name"] in profile.decompositions,
-            }
-        )
-        for r in sorted(of["decomposition"], key=lambda r: r["slug"])
-    }
-    tools = {
-        r["name"]: ToolRecord.model_validate(
-            {**r, "granted_in": derived(r["name"], lambda ns: ns.data.get("tools", []))}
-        )
-        for r in of["tool"]
-    }
-    return LibraryState(
-        path=path,
-        rev=rev,
-        profile=profile,
-        namespaces=namespaces,
-        decompositions=decompositions,
-        tools=tools,
-    )
-
-
-def _records(state: LibraryState) -> dict[Kind, dict[str, Any]]:
-    """Every live head's record, by kind, then by name."""
-    return {
-        "profile": {PROFILE: state.profile},
-        "namespace": state.namespaces,
-        "decomposition": state.decompositions,
-        "tool": state.tools,
-    }
-
-
-def _check_invariants(rows: list[Row]) -> None:
-    """§2.5, over every live head inside the save's transaction."""
-    live = {(r.kind, r.name) for r in rows}
-    if ("profile", PROFILE) not in live or ("namespace", ROOT) not in live:
-        raise LibraryRefused(texts.REFUSE_ROOT)
-    namespaces = [r for r in rows if r.kind == "namespace"]
-    for ns in namespaces:
-        if ns.name != ROOT and ("namespace", _parent(ns.name)) not in live:
-            raise _refuse(texts.parent_missing(ns.name, _parent(ns.name)), "name")
-    [profile] = [r for r in rows if r.kind == "profile"]
-    default = _default_namespace(profile.yaml)
-    if ("namespace", default) not in live:
-        raise _refuse(texts.default_missing(default), "entry_namespace")
-    by_slug: dict[str, str] = {}
-    for d in (r for r in rows if r.kind == "decomposition"):
-        other = by_slug.setdefault(d.slug, d.name)
-        if other != d.name:
-            raise _refuse(texts.slug_taken(d.name, d.slug, other), "name")
-    for holder in [profile, *namespaces]:
-        where = (
-            "the top level"
-            if holder.kind == "profile"
-            else f"namespace '{holder.name}'"
-        )
-        seen: set[str] = set()
-        for name in holder.decompositions or []:
-            if ("decomposition", name) not in live:
-                raise _refuse(texts.unknown_decomposition(name), "decompositions")
-            if name in seen:
-                raise _refuse(texts.listed_twice(name, where), "decompositions")
-            seen.add(name)
-
-
-def _add(w: Writer, kind: Kind, name: str, **fields: Any) -> int | None:
-    """Write the next version unless the head is live and equal; the version written.
-    fields: yaml, and decompositions, slug, use_when, hint and source (default None)."""
-    fields = (
-        dict.fromkeys(("decompositions", "slug", "use_when", "hint", "source")) | fields
-    )
-    if fields["decompositions"] is not None:
-        fields["decompositions"] = list(fields["decompositions"])
-    head = _live(w, kind, name)
-    if head and head.model_dump(include=set(fields)) == fields:
-        return None
-    return w.add(kind, name, attached=fields.pop("decompositions"), **fields)
-
-
-def _live(w: Writer, kind: Kind, name: str) -> Row | None:
-    head = w.head(kind, name)
-    return head if head is not None and not head.deleted else None
-
-
-def _live_namespaces(w: Writer, named: Sequence[str], loc: str) -> list[Row]:
-    """Every live namespace; a name in named that is not one is refused, at loc."""
-    namespaces = [r for r in w.heads() if r.kind == "namespace"]
-    live = {ns.name for ns in namespaces}
-    if unknown := [name for name in named if name not in live]:
-        raise _refuse(texts.not_found("namespace", unknown[0]), loc)
-    return namespaces
-
-
-def _toggled(names: list[str], name: str, wanted: bool) -> list[str]:
-    """names with name appended when wanted, else without it."""
-    return [*names, name] if wanted else [n for n in names if n != name]
-
-
-def _attached_set(w: Writer, decomposition: str, wanted: Sequence[str]) -> None:
-    """Make wanted the exact set of namespaces whose lists name decomposition."""
-    for ns in _live_namespaces(w, wanted, "namespaces"):
-        want = ns.name in wanted
-        if (decomposition in ns.decompositions) != want:
-            listed = _toggled(ns.decompositions, decomposition, want)
-            _add(w, "namespace", ns.name, yaml=ns.yaml, decompositions=listed)
-
-
-def _top_level(w: Writer, decomposition: str, wanted: bool) -> None:
-    profile = w.head("profile", PROFILE)
-    if (decomposition in profile.decompositions) != wanted:
-        listed = _toggled(profile.decompositions, decomposition, wanted)
-        _add(w, "profile", PROFILE, yaml=profile.yaml, decompositions=listed)
-
-
-def _granted_set(w: Writer, tool: str, wanted: Sequence[str]) -> None:
-    """Make wanted the exact set of namespaces whose tools list names tool."""
-    for ns in _live_namespaces(w, wanted, "granted_in"):
-        tools, want = yaml.safe_load(ns.yaml).get("tools", []), ns.name in wanted
-        if (tool in tools) != want:
-            granted = _with_tools(ns, _toggled(tools, tool, want))
-            _add(
-                w, "namespace", ns.name, yaml=granted, decompositions=ns.decompositions
-            )
-
-
-def _with_tools(ns: Row, tools: list[str]) -> str:
-    data = yaml.safe_load(ns.yaml)
-    data.pop("tools", None)
-    if tools:
-        data["tools"] = tools
-    return shapes.validate_namespace(shapes.canonical_yaml(data)).yaml
-
-
-def _first_error(exc: LibraryValidationError) -> str:
-    first = exc.errors[0]
-    return f"{first.loc}: {first.msg}" if first.loc else first.msg
-
-
 class Library:
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -589,6 +417,77 @@ class Library:
         )
 
 
+# ── one save: the base version, what changed, the cascades, the invariants ────────────
+
+
+def _live(w: Writer, kind: Kind, name: str) -> Row | None:
+    head = w.head(kind, name)
+    return head if head is not None and not head.deleted else None
+
+
+def _add(w: Writer, kind: Kind, name: str, **fields: Any) -> int | None:
+    """Write the next version unless the head is live and equal; the version written.
+    fields: yaml, and decompositions, slug, use_when, hint and source (default None)."""
+    fields = (
+        dict.fromkeys(("decompositions", "slug", "use_when", "hint", "source")) | fields
+    )
+    if fields["decompositions"] is not None:
+        fields["decompositions"] = list(fields["decompositions"])
+    head = _live(w, kind, name)
+    if head and head.model_dump(include=set(fields)) == fields:
+        return None
+    return w.add(kind, name, attached=fields.pop("decompositions"), **fields)
+
+
+def _live_namespaces(w: Writer, named: Sequence[str], loc: str) -> list[Row]:
+    """Every live namespace; a name in named that is not one is refused, at loc."""
+    namespaces = [r for r in w.heads() if r.kind == "namespace"]
+    live = {ns.name for ns in namespaces}
+    if unknown := [name for name in named if name not in live]:
+        raise _refuse(texts.not_found("namespace", unknown[0]), loc)
+    return namespaces
+
+
+def _toggled(names: list[str], name: str, wanted: bool) -> list[str]:
+    """names with name appended when wanted, else without it."""
+    return [*names, name] if wanted else [n for n in names if n != name]
+
+
+def _attached_set(w: Writer, decomposition: str, wanted: Sequence[str]) -> None:
+    """Make wanted the exact set of namespaces whose lists name decomposition."""
+    for ns in _live_namespaces(w, wanted, "namespaces"):
+        want = ns.name in wanted
+        if (decomposition in ns.decompositions) != want:
+            listed = _toggled(ns.decompositions, decomposition, want)
+            _add(w, "namespace", ns.name, yaml=ns.yaml, decompositions=listed)
+
+
+def _top_level(w: Writer, decomposition: str, wanted: bool) -> None:
+    profile = w.head("profile", PROFILE)
+    if (decomposition in profile.decompositions) != wanted:
+        listed = _toggled(profile.decompositions, decomposition, wanted)
+        _add(w, "profile", PROFILE, yaml=profile.yaml, decompositions=listed)
+
+
+def _granted_set(w: Writer, tool: str, wanted: Sequence[str]) -> None:
+    """Make wanted the exact set of namespaces whose tools list names tool."""
+    for ns in _live_namespaces(w, wanted, "granted_in"):
+        tools, want = yaml.safe_load(ns.yaml).get("tools", []), ns.name in wanted
+        if (tool in tools) != want:
+            granted = _with_tools(ns, _toggled(tools, tool, want))
+            _add(
+                w, "namespace", ns.name, yaml=granted, decompositions=ns.decompositions
+            )
+
+
+def _with_tools(ns: Row, tools: list[str]) -> str:
+    data = yaml.safe_load(ns.yaml)
+    data.pop("tools", None)
+    if tools:
+        data["tools"] = tools
+    return shapes.validate_namespace(shapes.canonical_yaml(data)).yaml
+
+
 def _refuse_namespace_delete(w: Writer, name: str) -> None:
     if name == ROOT:
         raise LibraryRefused(texts.REFUSE_ROOT)
@@ -601,6 +500,111 @@ def _refuse_namespace_delete(w: Writer, name: str) -> None:
     ]
     if children:
         raise LibraryRefused(texts.refuse_children(name, children))
+
+
+def _check_invariants(rows: list[Row]) -> None:
+    """§2.5, over every live head inside the save's transaction."""
+    live = {(r.kind, r.name) for r in rows}
+    if ("profile", PROFILE) not in live or ("namespace", ROOT) not in live:
+        raise LibraryRefused(texts.REFUSE_ROOT)
+    namespaces = [r for r in rows if r.kind == "namespace"]
+    for ns in namespaces:
+        if ns.name != ROOT and ("namespace", _parent(ns.name)) not in live:
+            raise _refuse(texts.parent_missing(ns.name, _parent(ns.name)), "name")
+    [profile] = [r for r in rows if r.kind == "profile"]
+    default = _default_namespace(profile.yaml)
+    if ("namespace", default) not in live:
+        raise _refuse(texts.default_missing(default), "entry_namespace")
+    by_slug: dict[str, str] = {}
+    for d in (r for r in rows if r.kind == "decomposition"):
+        other = by_slug.setdefault(d.slug, d.name)
+        if other != d.name:
+            raise _refuse(texts.slug_taken(d.name, d.slug, other), "name")
+    for holder in [profile, *namespaces]:
+        where = (
+            "the top level"
+            if holder.kind == "profile"
+            else f"namespace '{holder.name}'"
+        )
+        seen: set[str] = set()
+        for name in holder.decompositions or []:
+            if ("decomposition", name) not in live:
+                raise _refuse(texts.unknown_decomposition(name), "decompositions")
+            if name in seen:
+                raise _refuse(texts.listed_twice(name, where), "decompositions")
+            seen.add(name)
+
+
+def _refuse(sentence: str, loc: str) -> LibraryValidationError:
+    return LibraryValidationError(sentence, [FieldError(loc=loc, msg=sentence)])
+
+
+def _parent(name: str) -> str:
+    return name.rpartition(".")[0] or ROOT
+
+
+# ── records from live heads ───────────────────────────────────────────────────────────
+
+
+def _state(path: Path, rows: list[Row], rev: int) -> LibraryState:
+    """Records from live heads: derived lists (namespaces, top_level, granted_in) included."""
+    of = {
+        kind: [r.model_dump() for r in rows if r.kind == kind]
+        for kind in get_args(Kind)
+    }
+    for listing in of["profile"] + of["namespace"]:
+        listing["decompositions"] = listing["decompositions"] or []
+    [p] = of["profile"]
+    profile = ProfileRecord.model_validate(
+        {**p, "default_namespace": _default_namespace(p["yaml"])}
+    )
+    ordered = sorted(of["namespace"], key=lambda r: r["name"] != ROOT)
+    namespaces = {r["name"]: NamespaceRecord.model_validate(r) for r in ordered}
+
+    def derived(name: str, listed: Callable[[NamespaceRecord], list[str]]) -> list[str]:
+        return [n for n, ns in namespaces.items() if name in listed(ns)]
+
+    decompositions = {
+        r["name"]: DecompositionRecord.model_validate(
+            {
+                **r,
+                "namespaces": derived(r["name"], lambda ns: ns.decompositions),
+                "top_level": r["name"] in profile.decompositions,
+            }
+        )
+        for r in sorted(of["decomposition"], key=lambda r: r["slug"])
+    }
+    tools = {
+        r["name"]: ToolRecord.model_validate(
+            {**r, "granted_in": derived(r["name"], lambda ns: ns.data.get("tools", []))}
+        )
+        for r in of["tool"]
+    }
+    return LibraryState(
+        path=path,
+        rev=rev,
+        profile=profile,
+        namespaces=namespaces,
+        decompositions=decompositions,
+        tools=tools,
+    )
+
+
+def _default_namespace(profile_yaml: str) -> str:
+    return (yaml.safe_load(profile_yaml) or {}).get("entry_namespace", ROOT)
+
+
+def _records(state: LibraryState) -> dict[Kind, dict[str, Any]]:
+    """Every live head's record, by kind, then by name."""
+    return {
+        "profile": {PROFILE: state.profile},
+        "namespace": state.namespaces,
+        "decomposition": state.decompositions,
+        "tool": state.tools,
+    }
+
+
+# ── validation, and heads that no longer validate ─────────────────────────────────────
 
 
 def _validator(
@@ -654,6 +658,14 @@ def _refuse_stale(state: LibraryState) -> None:
         raise LibraryValidationError(
             "\n".join(sentences), [FieldError(loc="", msg=s) for s in sentences]
         )
+
+
+def _first_error(exc: LibraryValidationError) -> str:
+    first = exc.errors[0]
+    return f"{first.loc}: {first.msg}" if first.loc else first.msg
+
+
+# ── files: a failed write undone, and a new library's first revision ──────────────────
 
 
 def _empty(dest: Path, *, remove: bool) -> None:
