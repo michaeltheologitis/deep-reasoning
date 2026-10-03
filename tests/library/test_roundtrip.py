@@ -13,10 +13,10 @@ from deep_reasoner.namespaces import ROOT, load_namespaces_from_dir
 from deep_reasoner.v2.cli import build_namespace_registry
 
 from deep_reasoning.acp.catalog import load_dr_config
+from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, LibraryImportError
 from tests.library import corpus
 from tests.library.conftest import run_dr
-from tests.library.fake_openai import FakeOpenAI
 
 TASK = "Which course comes after CS101?"
 ANSWER = '<think>ok</think>\n<repl>\nFinalAnswer("done")\n</repl>'
@@ -195,16 +195,16 @@ def scripted_run(
         **{key: "dummy" for key in DUMMY_KEYS},
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
     }
-    fake.requests.clear()
+    fake.calls.clear()
     done = run_dr(config, TASK, cwd=cwd, sets=sets, env=env)
     lines = done.stdout.strip().splitlines()
-    first = fake.requests[0]["messages"] if fake.requests else None
+    first = fake.calls[0].messages if fake.calls else None
     return done.returncode, lines[-1] if lines else "", first
 
 
 @pytest.fixture(scope="module")
 def fake():
-    with FakeOpenAI(ANSWER) as running:
+    with FakeOpenAI(lambda messages: ANSWER) as running:
         yield running
 
 

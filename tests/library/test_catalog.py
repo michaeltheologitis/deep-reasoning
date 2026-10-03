@@ -6,9 +6,9 @@ import pytest
 import yaml
 
 from deep_reasoning.acp.catalog import CommandEntry, ConfigCatalog
+from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, LibraryCatalog, LibraryNotFound
 from tests.library.conftest import example, run_dr, text
-from tests.library.fake_openai import FakeOpenAI
 
 ANSWER = '<think>ok</think>\n<repl>\nFinalAnswer("done")\n</repl>'
 
@@ -120,8 +120,8 @@ def test_building_a_catalog_imports_nothing_of_deep_reasoner(tmp_path):
     subprocess.run([sys.executable, "-c", probe], check=True)
 
 
-def first_user_messages(request: dict) -> list[str]:
-    return [m["content"] for m in request["messages"] if m["role"] == "user"]
+def user_texts(messages: list[dict]) -> list[str]:
+    return [m["content"] for m in messages if m["role"] == "user"]
 
 
 def test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace(
@@ -130,7 +130,7 @@ def test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace(
     """Design §7.3 below dr-acp's front: what LibraryCatalog hands D1's worker."""
     lib.import_config(router)
     catalog = LibraryCatalog(lib.path)
-    with FakeOpenAI(ANSWER) as fake:
+    with FakeOpenAI(lambda messages: ANSWER) as fake:
         profile = {
             **lib.profile().data,
             "client": {"base_url": fake.base_url, "api_key_env": "FAKE_KEY"},
@@ -152,12 +152,12 @@ def test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace(
                 lib.put_decomposition(text(example("summarize then rank", edit)))
             run_dir = tmp_path / f"run{len(runs)}"
             source = catalog.materialize("router", run_dir=run_dir)
-            fake.requests.clear()
+            fake.calls.clear()
             done = run_dr(
                 source.config_path, "Which course comes after CS101?", cwd=tmp_path
             )
             assert (done.returncode, done.stdout.splitlines()[-1]) == (0, "done")
-            runs.append((source, first_user_messages(fake.requests[0])))
+            runs.append((source, user_texts(fake.calls[0].messages)))
 
     (first, first_asks), (second, second_asks) = runs
     assert (first.namespace, second.namespace) == ("router", "router")
