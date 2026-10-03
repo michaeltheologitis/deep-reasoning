@@ -2,9 +2,10 @@
 
 **TASK-9** · System Designer · task branch `v1-custom-tools` in
 [deep-reasoning](https://github.com/michaeltheologitis/deep-reasoning) (v1 was written on `design/d4`, `e14fda7`; v2
-on the task branch) · against the approved spec [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012)
-(D4 in full; §1's "done when"; §2's decisions 1 and 7; §4's E9, E10 and the live tier; the dated notes at its end,
-read live on 2026-10-03, through "Scope additions approved, 2026-10-03").
+and v3 on the task branch; v4 on `design/d4-v4`, cut from it at `f69bc73` and merged back) · against the approved
+spec [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012) (D4 in full; §1's "done when"; §2's
+decisions 1 and 7; §4's E9, E10 and the live tier; the dated notes at its end, read live on 2026-10-03, through "Scope
+additions approved, 2026-10-03").
 **Pinned against:** D3's design at `ab6f2ec` on `design/d3` (§8.3 is D4's UI contract; §2.5, §4, Appendix A) · D2 as
 built on `v1-library-store` at `90044f0` (`src/deep_reasoning/library/`; its design `555472b`, §6.5 and §9 items 7
 and 10) · D1's design at `c8d7fbb` (§4.3, §4.4, §4.7, §4.8) and its code as merged into `90044f0` · D5's design at
@@ -12,77 +13,127 @@ and 10) · D1's design at `c8d7fbb` (§4.3, §4.4, §4.7, §4.8) and its code as
 bridge; `mcp` 1.28.1 in its lock) · deep_reasoner_beta `d7334ae` · `agent-client-protocol` 0.12.1 · `mcp` 1.28.1 for
 v1's probes; 1.30.0 as this branch's lock resolves it (v2, §6.2 B10).
 
-**Matches the build at `aa67f0a`** (v3): D4's code, `cd3e153` … `6fdee0d`, with D3's finished head `d4e9cd3` merged
-at `aa67f0a` (D4 was first stacked on D3's `5effe26`). The commits after it on this branch change only `docs/`. (v2
-matched `965f318`; `756f5f9` added the as-built document, `as_built/d4-custom-tools.md`, and excluded `as_built/` from
-the sdist.)
+**Matches the build at `f69bc73`** (v4): D4's code, `cd3e153` … `f69bc73`, on D3's finished head `d4e9cd3`, merged
+at `aa67f0a` (D4 was first stacked on D3's `5effe26`). Since v3, five commits: `1847ef0`, `9255778`, `7eb7812`,
+`933ac08`, `f69bc73` (§6.2 B24–B27); only `7eb7812` touches `src/` (the shim's `_type`, two lines), and the others
+are tests and the live job. Commits after `f69bc73` on this branch change only `docs/` and `as_built/`. (v3 matched
+`aa67f0a`, v2 `965f318`; `756f5f9` added the as-built document, `as_built/d4-custom-tools.md`, and excluded
+`as_built/` from the sdist.)
 
 ## Gate B: what to read
 
-**About 70 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D4's as-built document
-(`as_built/d4-custom-tools.md`, the Cartographer's; it also reports E9's and the live tier's measured results) and the
-two runs below. Everything after §6 is kept whole as the reference that D1's, D3's and D5's next revisions and the
-Gate C reviewers work against (Michael: don't force compression); Gate B does not need it.
+**About 70 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D4's as-built document and
+the three runs below. The as-built document is `as_built/d4-custom-tools.md`, the Cartographer's; its second
+revision, r2, read from the code at `f69bc73`, is being written on `as-built/d4-r2` and joins this branch before Gate
+B is called (until then the copy here is r1, at `965f318`). It also reports E9's and the live tier's measured
+results. Everything after §6 is kept whole as the reference that D1's, D3's and D5's next revisions and the Gate C
+reviewers work against (Michael: don't force compression); Gate B does not need it.
 
 | # | Read | What it gives you | Minutes |
 |---|---|---|---|
-| 1 | This section and the v3 and v2 revision lines below it | where the proof is, and which sentences of v1 and v2 changed | 9 |
+| 1 | This section and the v4, v3 and v2 revision lines below it | where the proof is, the live tier's record, and which sentences of v1–v3 changed | 10 |
 | 2 | §1 | what D4 is, and the decisions under it (F and L changed in v2) | 10 |
 | 3 | §2 | the Tools tab, and what the conversation and the agent are told | 8 |
 | 4 | §5 | what a tool or an MCP server can reach, said plainly | 4 |
 | 5 | §6.1 | where the design departs from the spec: written at design, not yet ruled on | 6 |
-| 6 | §6.2 | what the build changed (B1–B23), each with its reason and the test that pins it | 15 |
+| 6 | §6.2 | what the build changed (B1–B27), each with its reason and the test that pins it; B24–B27 are new in v4 | 16 |
 | 7 | §11.1, its last part | the RunEvent D4 adds to `dr-acp`, and its three sentences | 3 |
-| 8 | Open the two runs below | that CI is green at `aa67f0a`; the live tier is not yet (see the evidence) | 2 |
-| 9 | `as_built/d4-custom-tools.md` | what exists, its divergences, and E9 as measured | 12 |
+| 8 | Open the three runs below | that CI is green and the live tier passed twice, 6 of 6, at `f69bc73` | 3 |
+| 9 | `as_built/d4-custom-tools.md`, r2 | what exists, its divergences, and E9 as measured | 12 |
 
-**Two things to rule on.**
+**Two things to rule on.** Michael has not ruled on either for D4; v2 and v3 asked both, and both are refreshed here
+to `f69bc73`.
 
 1. **D4's departures from the spec** (§6.1, fourteen items, unchanged since v1) **and the build's changes** (§6.2,
-   B1–B23). The spec's dated notes accept D2's departures and S1's and S2's ("Rulings at design, 2026-10-02" (2), (3)); none
-   names D4's, so they reach Michael here for the first time. The ones a user meets: saving runs Check and refuses a
-   tool that cannot build (§6.1 item 1); Check runs without secrets or a model (item 2); six names are reserved
-   (item 3); a granted server that a conversation was not given, or that does not answer, leaves a stand-in and a
-   notice (item 7, §2.2); a grant reaches child namespaces and sub-agents spawned into a granted one (item 5), and a
-   hand-off outside it is refused (item 6); under plain `dr` an export needs each server's secrets in the environment
-   (item 8); the tool editor's CodeMirror chunk is 348 KB against a 300 KB budget (§6.2 B3). Since v2: a server
-   that `open_session` cannot start or bind fails alone and the run goes on (B19), while a namespace error still
-   fails the build, in one case where `build_reasoner` alone would not (§14 item 16); a write of the other kind over
-   a tool's row is refused, `409` (B20). Already ruled, on 2026-10-03 (relayed by the Conductor): a server's command-line arguments are not
-   secrets, so a server's log redacts its env and header values only (B18, §14 item 3).
-2. **Size.** The spec costed D4 at ≈1.0k lines with tests and ≈3 h at Gate C; v1 estimated ≈2.0k of code and ≈2.2k of
-   tests (§13). The build is **about 3.4k lines of code and 3.7k of tests** at `aa67f0a` (3,397 and 3,686 lines
-   added over D3's finished head `d4e9cd3`; the tests' figure leaves out `tests/mcp/fixtures/shim_v1.py`, the v1 shim
-   frozen as a Library stores it, 539 lines), about 7.1k lines and 24 h at Gate C at the workspace's rate (v2, at
-   `965f318`: 3,311 and 3,511). The breakdown is §6.2 B16. The build recorded no reason for the growth; the
-   estimate was this design's. The Scout and the Refactorer, after Gate B, are
-   where it shrinks; §13 names two parts that cut cleanly.
+   B1–B27). The spec's dated notes accept D2's departures and S1's and S2's ("Rulings at design, 2026-10-02" (2),
+   (3)); none names D4's, so they reach Michael here. The ones a user meets: saving runs Check and refuses a tool that
+   cannot build (§6.1 item 1); Check runs without secrets or a model (item 2); six names are reserved (item 3); a
+   granted server that a conversation was not given, or that does not answer, leaves a stand-in and a notice (item 7,
+   §2.2); a grant reaches child namespaces and sub-agents spawned into a granted one (item 5), and a hand-off outside
+   it is refused (item 6); under plain `dr` an export needs each server's secrets in the environment (item 8); the
+   tool editor's CodeMirror chunk is 348 KB against a 300 KB budget (§6.2 B3). Since v2: a server that `open_session`
+   cannot start or bind fails alone and the run goes on (B19), while a namespace error still fails the build, in one
+   case where `build_reasoner` alone would not (§14 item 16); a write of the other kind over a tool's row is refused,
+   `409` (B20). Since v3: a tool property whose schema is `true` or `false` is described as `Any` or `Never` instead
+   of failing its server (B26); that changes the shim's text, so a grant made before it reads `MCP_SHIM_OLD` until
+   its **Update** (none exists outside the tests: nothing has shipped). And one about the proof, not the product: the
+   two live tests now name the tool and the server in the task (B27), so they pin that each is bound and works when
+   the agent calls it, not that gpt-6-luna reaches for it unprompted, which twice it did not. Already ruled, on
+   2026-10-03 (relayed by the Conductor): a server's command-line arguments are not secrets, so a server's log redacts
+   its env and header values only (B18, §14 item 3).
+2. **Size.** The spec costed D4 at **≈1.0k lines with tests** and ≈3 h at Gate C; v1 estimated ≈2.0k of code and
+   ≈2.2k of tests (§13). The build is **3,399 lines of code and 3,778 of tests** at `f69bc73`, 7,177 in all, about
+   seven times the spec's figure and about 24 h at Gate C at the workspace's rate. These are lines added over D3's
+   finished head `d4e9cd3`; not counted are the built files, the two lock files, D1's golden recordings (18 one-line
+   changes), `tests/mcp/fixtures/shim_v1.py` (539 lines, the v1 shim frozen as a Library stores it) and the live
+   job's 18 lines in `.github/workflows/live.yml` (B25). Since v3 (`aa67f0a`: 3,397 and 3,686): 2 lines of code, the
+   shim's `_type` (B26), and 92 of tests, the two fake servers and three tests of B24 and B26 and the live tests'
+   changes (B25, B27). The breakdown is §6.2 B16. The build recorded no reason for the growth; the estimate was this
+   design's. The Scout and the Refactorer, after Gate B, are where it shrinks; §13 names two parts that cut cleanly.
 
-**The evidence.** Both runs are at `aa67f0a`, the branch's head and its last commit that touches code. (v2's, at
-`965f318`, were CI [run 37106223937](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223937),
-green, and live [run 37106223637](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223637), 6 of
-6.)
+**The evidence.** All three runs are at `f69bc73`, the branch's head and its last commit that touches code or tests.
+(v3's, at `aa67f0a`, were CI [run 37145903416](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37145903416),
+green, and live [run 37145903109](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37145903109), red;
+v2's, at `965f318`, CI [run 37106223937](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223937)
+and live [run 37106223637](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223637), 6 of 6.)
 
-- **CI**, [run 37145903416](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37145903416): two
-  jobs, both green. `test`: `ruff check`, `ruff format --check` and the deterministic suite, **680 passed** (the 6
-  live and 73 browser tests deselected, nothing skipped), in 8 min 49 s; 146 of the 680 are D4's (`tests/tools/` 69,
-  `tests/mcp/` 77), and D1's `tests/acp/test_encoder.py` carries D4's notice test. `canvas-app`: typecheck, format
-  check, vitest **190 passed, 1 skipped** (D3's), the build and "the committed build is what a fresh build gives",
-  then the browser tests in Chromium against a real `dr-library serve`, **72 passed, 1 skipped** (D5's `dr_app` is
-  not installed), in 3 min 27 s; 17 of the 72 are D4's. No test calls a model: the model is `FakeOpenAI` on
-  127.0.0.1, and every MCP server is a real FastMCP server of ours, over stdio, streamable HTTP or SSE.
-- **Live tier**, [run 37145903109](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37145903109):
-  **red, 5 of 6 passed** on gpt-6-luna in 4 min 10 s. D4's
-  `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent` failed at its first
-  assertion: the prompt ended `exhausted`, not `answered` (the agent used its turns without a final answer). The CI
-  log shows nothing more, and the test's run log was not kept. D4's other live test,
-  `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent`, passed, as did D1's three
-  and D2's one. The same test passed at `965f318`; since then `059b738` and `c2cfdc0` changed a stdio server's path
-  through `open_session` (§6.2 B18, B19), while the deterministic tests that run stdio servers through `dr-acp`
-  (`tests/mcp/test_acp.py`, 16) passed at `aa67f0a`. §14 item 8's rule applies: a live failure is re-run once before
-  it is read as a regression. **Until a re-run at `aa67f0a` passes, this evidence is not green and Gate B is not
-  ready**; the re-run's link replaces this one. It runs only on demand, as `.github/workflows/live.yml`
-  (`pytest -m live`).
+- **CI**, [run 37157785695](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157785695), on push:
+  two jobs, both green. `test` (8 min): `ruff check`, `ruff format --check` and the deterministic suite, **683
+  passed** (the 6 live and 73 browser tests deselected, nothing skipped) in 7 min 47 s; 149 of the 683 are D4's
+  (`tests/tools/` 69: `test_check.py` 42, `test_routes.py` 27; `tests/mcp/` 80: `test_shim.py` 23, `test_session.py`
+  17, `test_grants.py` 17, `test_acp.py` 16, `test_wire.py` 6, `test_export.py` 1), and D1's
+  `tests/acp/test_encoder.py` carries D4's notice test (three cases). `canvas-app` (4 min): typecheck, format check,
+  vitest **190 passed, 1 skipped** (D3's), the build (`app.js` 169 KB, `editor.js` 348 KB, §6.2 B3) and "the
+  committed build is what a fresh build gives", then the browser tests in Chromium against a real `dr-library serve`,
+  **72 passed, 1 skipped** (D5's `dr_app` is not installed) in 2 min 49 s; 17 of the 72 are D4's. No test in CI
+  calls a model: the model is `FakeOpenAI` on 127.0.0.1, and every MCP server is a real one of ours written with
+  `mcp` (FastMCP, or its low-level `Server` for `odd_server.py`), over stdio, streamable HTTP or SSE.
+- **Live tier, twice**, on gpt-6-luna, on demand (`.github/workflows/live.yml`, `pytest -m live`):
+  [run 37157799600](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157799600), **6 of 6** in
+  120 s, and [run 37157801762](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157801762), **6 of
+  6** in 79 s. The six, as they run on this branch: D4's two,
+  `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent` and
+  `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent`; D1's three,
+  `tests/acp/test_live.py::test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all`,
+  `::test_live_stopping_a_department_stops_it_and_its_course_agents` and
+  `::test_live_without_the_key_the_run_fails_before_any_call_and_says_which`; and D2's one,
+  `tests/library/test_live.py::test_an_edited_decomposition_reaches_a_real_run_at_its_saved_version`. Since `9255778`
+  the job keeps a failed run's evidence (§6.2 B25); neither run failed, so neither kept any.
+
+**The live tier's record on this branch, said plainly.** Since v2, D4's two live tests failed in four of eight
+attempts: the tool test twice at `7eb7812` and the MCP test twice at `aa67f0a`. Both passed in every attempt at the
+head.
+
+| Run (attempt) | At | Tool test | MCP test | D1's three and D2's one |
+|---|---|---|---|---|
+| [37106223637](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37106223637) | `965f318` (v2) | passed | passed | passed |
+| [37145903109](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37145903109) (1) | `aa67f0a` (v3) | passed | **failed**: `exhausted` | passed |
+| 37145903109 (2) | `aa67f0a` | passed | **failed**: `failed` | passed |
+| [37149393726](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37149393726) | `7eb7812` | passed | passed | D1's tree test failed (OpenAI refused a department's first call, as D1's `ac2ac87` reads it) |
+| [37153297958](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37153297958) (1) | `7eb7812` | **failed**: `exhausted` | passed | passed |
+| 37153297958 (2) | `7eb7812` | **failed**: `exhausted` | passed | passed |
+| [37157799600](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157799600) | `f69bc73` | passed | passed | passed |
+| [37157801762](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157801762) | `f69bc73` | passed | passed | passed |
+
+- **The tool test failed twice at `7eb7812`**, in both attempts of run 37153297958. Asked "How many credits is course
+  ZQ-417?", gpt-6-luna answered from nothing instead of using the REPL: 30 turns in each attempt and no cell written;
+  in the first, 9 replies were "4 credits." and 21 were empty; in the second, 18 said 4 credits. The tool says 7.
+  Each prompt ended `exhausted` at deep_reasoner's turn limit. The tool was built, bound and described
+  (`course_credits(code: str) -> int`), and the question was the one that had passed at `965f318`, twice at
+  `aa67f0a`, and in run 37149393726 at `7eb7812` (`933ac08`'s account, read from the evidence B25 kept).
+- **The MCP test failed twice at `aa67f0a`**, in both attempts of run 37145903109: the first prompt ended
+  `exhausted`, the second `failed`. Neither kept evidence (the job kept none before `9255778`), so why is not known.
+  `exhausted` fits the tool test's cause; `failed` does not, because a `failed` prompt is an error in the run, not a
+  model that would not call the server, and nothing since explains it. The test has passed in all five attempts
+  since: three at `7eb7812`, still asked bare ("What must a student finish before ZQ-417?"), calling
+  `catalog.prerequisites` from its first turn (`f69bc73`), and two at `f69bc73`. (v3 read the first attempt only; the
+  second, the re-run §14 item 8 asks for, failed too. `f69bc73`'s message says the test failed "once" at `aa67f0a`;
+  the run's two attempts say twice.)
+- **What changed.** `933ac08` and `f69bc73` name the tool and the server in the task, and keep every assertion
+  (§6.2 B27, §10.5): "Use course_credits to find how many credits course ZQ-417 is." and "Use the catalog server to
+  find what a student must finish before ZQ-417." So the live tier pins that a tool written in the Library, and a
+  server granted to the namespace, is bound into a real run and works when the agent calls it. It no longer pins that
+  the model chooses to call it (§14 item 8).
 
 **Which tests carry which property.** Each test's name states the property it pins. Python files are under
 `tests/tools/`, `tests/mcp/` and `tests/canvas_app/`; `[…]` is a parametrization.
@@ -91,16 +142,28 @@ green, and live [run 37106223637](https://github.com/michaeltheologitis/deep-rea
 |---|---|
 | **E9, your own tool.** A tool that cannot build is found by Check, in deep_reasoner's own words, and cannot be saved; a failure Check cannot attribute (the factory raised, ran past its limit, or Check did not start) is saved only when asked; a grant-only change runs no Check. Check and `make_tools` agree on every fixture. | `test_check.py::test_check_and_make_tools_agree[works, not_func, misspelled, import_error, hang, env_at_build, prints, exits]` (Check's `ok` is whether deep_reasoner's own `make_tools` builds the same materialized config in a subprocess, and where deep_reasoner words the failure, the same words); `::test_a_factory_that_returns_no_func_fails_check_in_deep_reasoners_words`; `::test_a_misspelled_factory_fails_check_naming_what_the_file_defines`; `::test_an_import_of_a_missing_module_fails_check_and_cannot_be_saved_anyway`; `::test_a_hanging_factory_is_stopped_at_the_build_limit`; `::test_nothing_a_stopped_tool_started_is_left_running`; `test_routes.py::test_a_tool_that_cannot_build_is_not_saved[not_func, misspelled, import_error]` (422 `check_failed` even with `accept_check_failure`; no revision made); `::test_a_structural_failure_cannot_be_saved_anyway`; `::test_save_anyway_stores_a_raising_tool_only_when_asked`; `::test_a_grant_only_change_runs_no_check` |
 | **Check builds a tool as a conversation would**, minus what only a conversation has (secrets, a model, its folder) | `test_check.py::test_a_working_tool_builds_and_says_what_the_agent_is_told` (deep_reasoner's own `describe()`); `::test_the_tried_expression_is_evaluated_with_the_tool_bound`; `::test_check_never_reaches_a_model` (a factory calling the model gets a connection error; a fake model on another port records nothing); `::test_check_gets_no_secret`; `::test_printing_cannot_corrupt_the_report`; `::test_a_tool_that_ends_the_process_is_raised_saying_how_it_ended`; `::test_an_example_that_ends_the_process_says_how_and_the_build_stays_ok`; `::test_a_check_whose_process_cannot_be_started_is_unavailable`; `::test_the_temporary_folder_is_removed[word_count, hang]`; `::test_not_func_and_unknown_factory_sentences_equal_make_tools` (a tripwire on deep_reasoner's inline text); and through `dr-acp`, a tool saved through the API is built and called: `tests/mcp/test_acp.py::test_a_tool_saved_through_the_api_is_built_and_called_in_the_next_conversation` |
-| **E9, MCP servers, end to end through `dr-acp`.** A server that crashes or never answers blocks neither the session nor the run and takes nothing down with it, nor does one that `open_session` cannot start or bind (v3); one not granted to an agent's namespace is not in that agent's REPL or prompt; a grant reaches child namespaces and sub-agents spawned into a granted namespace; a hand-off outside the grant is refused; no stdio server outlives its run | `test_acp.py::test_a_granted_server_is_bound_and_a_cell_calls_it`; `::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers`; `::test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on` (the next cell and the next prompt are answered); `::test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadline`; `::test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt` (a cell's `dir()` and the fake model's first request lack it); `::test_a_sub_agent_spawned_into_a_granted_namespace_gets_it`; `::test_a_grant_reaches_a_child_namespace`; `::test_handing_a_server_to_an_ungranted_namespace_is_refused`; `::test_no_stdio_server_outlives_a_root_stop`; `::test_no_stdio_server_outlives_a_closed_session`; `test_session.py::test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline`, `::test_a_server_granted_nowhere_is_not_started`, `::test_a_server_granted_only_where_spawning_is_not_allowed_is_not_started`, `::test_a_server_given_up_is_ended_within_three_seconds`, `::test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind[its log cannot be opened, its block has no number, it cannot be told]`, and the one error that still fails the build, `::test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway`; `test_shim.py::test_a_call_that_never_answers_raises_after_its_timeout`, `::test_the_guard_ends_its_server_when_its_parent_is_killed` |
-| **MCP grants are D2 tool rows** (decision D): the block snapshots the server, the source is the shim, `granted_in` grants it, a resend unchanged makes no version; neither kind of write replaces the other kind's row (v3); export and re-import keep a grant a grant; an export runs under `dr` | `test_routes.py::test_put_mcp_writes_the_block_and_the_shim_and_grants`; `::test_put_mcp_resent_unchanged_makes_no_tool_version`; `::test_a_server_cannot_be_granted_under_two_names`; `::test_put_mcp_refuses_a_name_the_repl_cannot_bind[run_all, not a name, class]`; `::test_an_mcp_block_through_put_tools_is_refused`; `::test_a_grant_cannot_replace_a_tool_of_your_own[new, the head's]`; `::test_a_tool_of_your_own_cannot_replace_a_grant[new, the head's]`; `::test_a_put_mcp_body_it_cannot_read_is_told_the_mcp_bodys_fields[no base_version, a yaml it does not have]`; `::test_get_mcp_lists_grants_with_their_last_seen_tools`; `::test_get_mcp_says_when_a_grant_has_an_old_shim`; `test_grants.py::test_is_mcp_tool_needs_the_factory_and_the_marker[…]`, `::test_an_exported_and_reimported_grant_is_still_a_grant`; `test_export.py::test_an_exported_grant_runs_under_dr` (`dr-library export`, then `dr` with `ECHO_TOKEN` in the environment: exit 0, the server's answer); `test_shim.py::test_a_stored_v1_shim_works_with_todays_session` |
-| **The shim's token** (a server's secret): it reaches the server from what the client forwarded, or under `dr` from the environment, and nothing else: not the Library or an export, the run log, the transcript, the worker's log, the server's own log (v3) or a failure's detail; a forwarded server that no grant names is never started | `test_wire.py::test_a_run_gets_only_the_specs_its_blocks_name`, `::test_redact_replaces_every_secret_value`; `test_session.py::test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted[whole, split]` (the server's log reads `invalid token [redacted]`, the token printed in one write or two); `test_acp.py::test_server_secrets_never_reach_the_run_log_or_the_transcript` (a crashing server prints its token: it is in none of `events.jsonl`, the ACP stream, `worker.log` or the server's own log), `::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers` (its notice reads `invalid token [redacted]`), `::test_a_forwarded_server_no_grant_names_is_never_started`; `test_shim.py::test_the_shim_connects_from_its_block_with_env_from_the_environment`; `test_routes.py::test_put_mcp_writes_the_block_and_the_shim_and_grants` (the block holds variable names only); the live tier's MCP test (the token is nowhere in the run log or the updates) |
-| **What the conversation is told** (§2.2, §11.1): one root notice per server not bound, in native and flat mode and on replay; what the agent is told of a bound server; the seen cache | `tests/acp/test_encoder.py::test_each_mcp_server_not_bound_is_a_notice_on_the_root[native, flat, replay]`; `test_acp.py::test_the_notice_replays_on_load`, `::test_the_seen_cache_is_written_for_bound_servers`, `::test_dr_acp_advertises_http_and_sse`; `test_session.py::test_statuses_carry_what_the_agent_is_told`; `test_shim.py::test_the_description_is_what_8_4_says` |
+| **E9, MCP servers, end to end through `dr-acp`.** A server that crashes or never answers blocks neither the session nor the run and takes nothing down with it, nor does one that `open_session` cannot start or bind (v3), nor one that prints more than a pipe holds (v4); one not granted to an agent's namespace is not in that agent's REPL or prompt; a grant reaches child namespaces and sub-agents spawned into a granted namespace; a hand-off outside the grant is refused; no stdio server outlives its run | `test_acp.py::test_a_granted_server_is_bound_and_a_cell_calls_it`; `::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers`; `::test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on` (the next cell and the next prompt are answered); `::test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadline`; `::test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt` (a cell's `dir()` and the fake model's first request lack it); `::test_a_sub_agent_spawned_into_a_granted_namespace_gets_it`; `::test_a_grant_reaches_a_child_namespace`; `::test_handing_a_server_to_an_ungranted_namespace_is_refused`; `::test_no_stdio_server_outlives_a_root_stop`; `::test_no_stdio_server_outlives_a_closed_session`; `test_session.py::test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline`, `::test_a_server_granted_nowhere_is_not_started`, `::test_a_server_granted_only_where_spawning_is_not_allowed_is_not_started`, `::test_a_server_given_up_is_ended_within_three_seconds`, `::test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind[its log cannot be opened, its block has no number, it cannot be told]`, (v4) `::test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_redacted` (1 MB at start and 256 KB a call: bound, and three calls answer), and the one error that still fails the build, `::test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway`; `test_shim.py::test_a_call_that_never_answers_raises_after_its_timeout`, `::test_the_guard_ends_its_server_when_its_parent_is_killed` |
+| **MCP grants are D2 tool rows** (decision D): the block snapshots the server, the source is the shim, `granted_in` grants it, a resend unchanged makes no version; neither kind of write replaces the other kind's row (v3); export and re-import keep a grant a grant; an export runs under `dr` | `test_routes.py::test_put_mcp_writes_the_block_and_the_shim_and_grants`; `::test_put_mcp_resent_unchanged_makes_no_tool_version`; `::test_a_server_cannot_be_granted_under_two_names`; `::test_put_mcp_refuses_a_name_the_repl_cannot_bind[run_all, not a name, class]`; `::test_an_mcp_block_through_put_tools_is_refused`; `::test_a_grant_cannot_replace_a_tool_of_your_own[new, the head's]`; `::test_a_tool_of_your_own_cannot_replace_a_grant[new, the head's]`; `::test_a_put_mcp_body_it_cannot_read_is_told_the_mcp_bodys_fields[no base_version, a yaml it does not have]`; `::test_get_mcp_lists_grants_with_their_last_seen_tools`; `::test_get_mcp_says_when_a_grant_has_an_old_shim`; `test_grants.py::test_is_mcp_tool_needs_the_factory_and_the_marker[…]`, `::test_an_exported_and_reimported_grant_is_still_a_grant`; `test_export.py::test_an_exported_grant_runs_under_dr` (`dr-library export`, then `dr` with `ECHO_TOKEN` in the environment: exit 0, the server's answer); `test_shim.py::test_a_stored_v1_shim_works_with_todays_session` (v4: a stored text older than today's, §6.2 B26) |
+| **The shim's token** (a server's secret): it reaches the server from what the client forwarded, or under `dr` from the environment, and nothing else: not the Library or an export, the run log, the transcript, the worker's log, the server's own log (v3) or a failure's detail; a forwarded server that no grant names is never started | `test_wire.py::test_a_run_gets_only_the_specs_its_blocks_name`, `::test_redact_replaces_every_secret_value`; `test_session.py::test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted[whole, split]` (the server's log reads `invalid token [redacted]`, the token printed in one write or two), (v4) `::test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_redacted` (its log is every line it printed, the token `[redacted]` in each); `test_acp.py::test_server_secrets_never_reach_the_run_log_or_the_transcript` (a crashing server prints its token: it is in none of `events.jsonl`, the ACP stream, `worker.log` or the server's own log), `::test_a_server_that_crashes_at_start_is_reported_and_the_run_answers` (its notice reads `invalid token [redacted]`), `::test_a_forwarded_server_no_grant_names_is_never_started`; `test_shim.py::test_the_shim_connects_from_its_block_with_env_from_the_environment`; `test_routes.py::test_put_mcp_writes_the_block_and_the_shim_and_grants` (the block holds variable names only); the live tier's MCP test (the token is nowhere in the run log or the updates) |
+| **What the conversation is told** (§2.2, §11.1): one root notice per server not bound, in native and flat mode and on replay; what the agent is told of a bound server, a tool whose properties take any value or none included (v4); the seen cache | `tests/acp/test_encoder.py::test_each_mcp_server_not_bound_is_a_notice_on_the_root[native, flat, replay]`; `test_acp.py::test_the_notice_replays_on_load`, `::test_the_seen_cache_is_written_for_bound_servers`, `::test_dr_acp_advertises_http_and_sse`; `test_session.py::test_statuses_carry_what_the_agent_is_told`, (v4) `::test_a_tool_whose_properties_take_any_value_or_none_is_bound_and_told_so`; `test_shim.py::test_the_description_is_what_8_4_says`, (v4) `::test_properties_that_take_any_value_or_none_are_described_as_any_and_never` (both told `odd.odd(anything: Any = …, nothing: Never = …) -> str`, §6.2 B26) |
 | **The Tools tab** (§2), in Chromium against a real `dr-library serve` | `test_tools_tab.py::test_the_risk_line_is_under_the_safety_banner`; `::test_a_new_tool_is_written_checked_and_saved_with_its_grants` (the stored source byte for byte); `::test_check_shows_what_the_agent_is_told_and_the_tried_value`; `::test_a_tool_that_cannot_build_shows_why_and_cannot_be_saved[not_func, misspelled, import_error]`; `::test_a_hanging_factory_shows_the_limit`; `::test_a_raising_factory_offers_save_anyway`; `::test_a_grant_tick_on_a_saved_tool_saves_without_unsaved_code`; `::test_an_inherited_grant_is_fixed`; `::test_the_editor_keeps_python_indentation`; `::test_canvas_mcp_servers_are_listed_and_granted_per_namespace`; `::test_a_disabled_server_says_so_and_can_still_be_granted`; `::test_a_grant_gone_from_canvas_offers_remove`; `::test_a_changed_server_offers_update`; `::test_the_last_seen_tools_are_shown`; `::test_without_canvas_settings_only_grants_are_shown`; D3's two Tools-tab tests stay green. vitest: `context.test.ts` (`mcpServersFromSettings`: no value of `env` or `headers` in the output; `readMcpServers`), `tools.test.ts`, `api.test.ts` (a `422 check_failed` carries the report), `protocol.test.ts`, `mount.test.ts` (Canvas's MCP servers are read for the Tools tab only) |
-| **Live tier**, on gpt-6-luna (spec §4 layer 5: "a tool written in the Library, and an MCP server, each used by an agent"); at `aa67f0a` the MCP test failed once (`exhausted`), see the evidence | `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent`: `PUT /tools/course_credits` through the API (the gate and the real Check run; Check says `built`), granted to `root`; "How many credits is course ZQ-417?" → the answer contains `7`, and a cell called `course_credits(` and printed `7`. `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent`: `PUT /mcp/catalog` granted to `root`; `session/new` forwards our catalog server with a random `CATALOG_TOKEN`, without which it refuses to answer; "What must a student finish before ZQ-417?" → the answer contains `ZQ-101`, `mcp.status` says `bound`, a cell called `catalog.prerequisites(`, and the token is nowhere in the run log or the updates |
+| **Live tier**, on gpt-6-luna (spec §4 layer 5: "a tool written in the Library, and an MCP server, each used by an agent"): a tool or a server is bound into a real run and works when the agent calls it; since v4 the task names which (§6.2 B27), so the model's choosing it is not pinned. Both passed twice at `f69bc73`; the record above has their failures | `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent`: `PUT /tools/course_credits` through the API (the gate and the real Check run; Check says `built`), granted to `root`; "Use course_credits to find how many credits course ZQ-417 is." (v4; v1–v3 asked "How many credits is course ZQ-417?") → the outcome is `answered`, the answer contains `7`, and a cell called `course_credits(` and printed `7`. `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent`: `PUT /mcp/catalog` granted to `root`; `session/new` forwards our catalog server with a random `CATALOG_TOKEN`, without which it refuses to answer; "Use the catalog server to find what a student must finish before ZQ-417." (v4; v1–v3 asked "What must a student finish before ZQ-417?") → the outcome is `answered`, the answer contains `ZQ-101`, `mcp.status` says `bound`, a cell called `catalog.prerequisites(`, and the token is nowhere in the run log or the updates |
 
-§10 maps every test file; §6.2 B15 lists the names added since v1.
+§10 maps every test file; §6.2 B15 lists the names v2 added, and B18–B27 v3's and v4's.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-03 · v4 · brought in line with the build at `f69bc73`: five commits after v3 (`1847ef0`, `9255778`,
+  `7eb7812`, `933ac08`, `f69bc73`); B-numbers are §6.2's. Stop trusting: the Gate B section's reading table, evidence,
+  rulings and size (now `f69bc73`'s: CI green, the live tier twice 6 of 6), and v3's account of the live tier (the MCP
+  test failed twice at `aa67f0a`, not once, and the tool test twice at `7eb7812`: the record is now in the Gate B
+  section); the "Matches the build" line; the property table's live-tier row (B27); §8.4's types, which now read a
+  boolean schema (B26); §10.5's two questions (B27); §14 item 8 (now only partly true) and item 15 (fixed for boolean
+  schemas, B26); B16's and §13's totals (3,399 and 3,778) and B16's file sizes; B19's example of a binding that cannot
+  be described, and B23's "byte-identical" (both changed by B26). Added without changing earlier sentences: §6.2
+  B24–B27; v4 notes in §4.4 (B24), §4.8 (the one plain-`dr` case that still stops a run), §10.2 (the fake servers),
+  §10.3 (v4's tests) and §10.5 (the kept evidence, B25); the property table's v4 tests; §14 item 17 (D4's head and
+  `main`); Appendix A's preface. §6.1 and B1–B23 stand as v3 left them, but for B16, B19's example and B23's second
+  bullet.
 - 2026-10-03 · v3 · brought in line with the build at `aa67f0a`: five D4 commits after the as-built document
   (`059b738`, `c2cfdc0`, `55f139f`, `4a86581`, `6fdee0d`) and D3's finished head merged; B-numbers are §6.2's. Stop
   trusting: the Gate B section's evidence, rulings and size (now `aa67f0a`'s; its live run is red, one MCP test
@@ -716,6 +779,10 @@ shim.SESSION = {alias: Func(Server(…, granted=frozenset(granted[alias]))) | a 
 return a McpServerStatus per block
 ```
 
+*(v4, §6.2 B24: the copying thread is also what keeps a talkative server answering. A server whose stderr fills a
+pipe nobody reads (64 KB) blocks on its next write and stops answering; a test pins that a server printing 1 MB at
+start and 256 KB on each call is bound, answers, and leaves a log with its token redacted on every line.)*
+
 The worker emits `mcp.status {servers: [...]}` (a new RunEvent, §7.3) through its recorder, up the event pipe like
 every worker event, when there is any MCP block, then builds (D1's view of it: §11.1).
 `make_tools` then calls each MCP block's factory, which returns `SESSION[alias]` without connecting (§4.3).
@@ -777,6 +844,12 @@ reading each `env` name and each header's variable from `dr`'s environment, one 
 the run goes on. No grant set is known there, so a hand-off is not refused (deep_reasoner's ordinary rule). Without
 `mcp` installed the run still starts and the stand-in says `pip install mcp`.
 
+*(v4: one case where the run does not go on. A server the shim reaches but whose tools it cannot describe raises in
+the factory, because `mcp_server` calls `bound()`, and so `describe()`, outside any handler; `make_tools` raises and
+the run does not start. Until `7eb7812` a property schema of `true` or `false`, which JSON Schema allows, did this;
+now only a property schema that is not a schema at all (a string, a number) does, which no valid server sends. Under
+`dr-acp` the same server fails alone (§6.2 B19, B26). Read in the code at `f69bc73`, not run; §14 item 15.)*
+
 ---
 
 ## 5 · What a tool or a server can reach
@@ -812,7 +885,7 @@ Said plainly, as the spec asks; the Tools tab says the short form (`TOOLS_RISK`)
 ## 6 · Departures from the spec, and what the build changed
 
 §6.1 is where this design departs from the approved spec (v1, unchanged in v2 but for marked notes). §6.2 is what the
-build changed in this design (v2). None is a re-scope.
+build changed in this design (v2; v3 and v4 added to it). None is a re-scope.
 
 ### 6.1 Where this design departs from, or adds to, the approved spec
 
@@ -860,14 +933,15 @@ not these; Michael rules on them at Gate B, with §6.2.
 The spec's known gap B8 (`factory_from` builders do not receive `config_path`) is mirrored by Check, so Check and a
 run agree, and is stated in `TOOL_HELP`; not worked around, as the spec says.
 
-### 6.2 Changed by the build (v2)
+### 6.2 Changed by the build (v2–v4)
 
-Each was checked against the code and folded into the section named: B1–B17 at `965f318` (v2), B18–B23 at
-`aa67f0a` (v3), with B7, B12 and B16 updated there. B1–B7 change behaviour or a contract v1 specified; B8–B9 are what
-v1 left open, and the signatures; B10–B12 are dependencies and wiring; B13–B15 are how the tests prove it; B16 is the
-size; B17 is what was not built; B18–B23 are what landed after the as-built document. Where the build recorded no reason,
-the reason given is marked as this design's reading. The B-numbers are this section's; the spec's known gap B8
-(`config_path`, above) is another list.
+Each was checked against the code and folded into the section named: B1–B17 at `965f318` (v2), B18–B23 at `aa67f0a`
+(v3), with B7, B12 and B16 updated there, and B24–B27 at `f69bc73` (v4), with B16, B19 and B23 updated there. B1–B7
+change behaviour or a contract v1 specified; B8–B9 are what v1 left open, and the signatures; B10–B12 are dependencies
+and wiring; B13–B15 are how the tests prove it; B16 is the size; B17 is what was not built; B18–B23 are what landed
+after the as-built document; B24–B27 what landed after v3. Where the build recorded no reason, the reason given is
+marked as this design's reading. The B-numbers are this section's; the spec's known gap B8 (`config_path`, above) is
+another list.
 
 **Behaviour**
 
@@ -1042,23 +1116,26 @@ the reason given is marked as this design's reading. The B-numbers are this sect
 
 **Size**
 
-- **B16. About 3.4k lines of code and 3.7k of tests, against v1's ≈2.0k and ≈2.2k** (§6.1 item 14, §13) and the
-  spec's ≈1.0k with tests. Lines added at `aa67f0a` over D3's finished head `d4e9cd3` (v2's column: at `965f318` over
-  `5effe26`), by §13's parts; the file sizes are v3's:
+- **B16. About 3.4k lines of code and 3.8k of tests, against v1's ≈2.0k and ≈2.2k** (§6.1 item 14, §13) and the
+  spec's ≈1.0k with tests. Lines added at `f69bc73` over D3's finished head `d4e9cd3` (v3's column: at `aa67f0a`, over
+  the same base; v2's: at `965f318` over `5effe26`), by §13's parts; the file sizes are v4's:
 
-  | Part | Code, v1 → v2 → v3 | Tests, v1 → v2 → v3 |
+  | Part | Code, v1 → v2 → v3 → v4 | Tests, v1 → v2 → v3 → v4 |
   |---|---|---|
-  | Check: `check.py` 392, `check_child.py` 128, `texts.py` 100 | 300 → 605 → 620 | 330 → 526 → 553 (`test_check.py` 474, fixtures 79) |
-  | Routes and the gate: `routes.py` 80, D2's `api.py` 70 (and 46 removed: most of that change is `route` moved to module level as `json_route`) | 125 → 142 → 150 | 200 → 301 → 341 |
-  | MCP: `shim.py` 539, `wire.py` 163, `grants.py` 98, `session.py` 244 | 540 → 981 → 1,044 | 650 → 1,102 → 1,207 (`test_shim` 403, `test_session` 304, `test_grants` 172, `test_wire` 149, fake servers 179) |
-  | D1's changes | 90 → 101 → 101 | 330 → 567 → 570 (`tests/mcp/test_acp.py` 495, D1's test files 45, `tests/processes.py` 30) |
-  | Export and live tier | — | 200 → 227 → 227 |
-  | The frame: `ToolEditor` 361, `McpServerRow` 203, `tools.ts` 165, `tabs/tools.tsx` 151, `context.ts` 86, `editor/python.ts` 74, `CheckResult` 73, `texts.ts` 69, `python.tsx` 67, `types.ts` 59, `styles.css` 55, `protocol.ts` 51, `api.ts` 34, `mount.ts` 10, `vite.config.ts` 9, `package.json` 5, `fields.tsx` 3 | 920 → 1,475 → 1,475 | 480 → 788 → 788 (vitest 433, browser 352, `test_ui.py` 3) |
-  | `pyproject.toml`, the two packages' `__init__.py` | — → 7 → 7 | |
-  | **Total** | **≈1.98k → 3,311 → 3,397** | **≈2.19k → 3,511 → 3,686** |
+  | Check: `check.py` 392, `check_child.py` 128, `texts.py` 100 | 300 → 605 → 620 → 620 | 330 → 526 → 553 → 553 (`test_check.py` 474, fixtures 79) |
+  | Routes and the gate: `routes.py` 80, D2's `api.py` 70 (and 46 removed: most of that change is `route` moved to module level as `json_route`) | 125 → 142 → 150 → 150 | 200 → 301 → 341 → 341 |
+  | MCP: `shim.py` 541, `wire.py` 163, `grants.py` 98, `session.py` 244 | 540 → 981 → 1,044 → 1,046 | 650 → 1,102 → 1,207 → 1,291 (`test_shim` 412, `test_session` 341, `test_grants` 172, `test_wire` 149, fake servers 217: `echo` 109, `odd` 31, `loud` 30, `catalog` 22, `crash` 14, `hang` 11) |
+  | D1's changes | 90 → 101 → 101 → 101 | 330 → 567 → 570 → 570 (`tests/mcp/test_acp.py` 495, D1's test files 45, `tests/processes.py` 30) |
+  | Export and live tier | — | 200 → 227 → 227 → 235 (`test_export.py` 67, the MCP live test 89, the tool live test 79) |
+  | The frame: `ToolEditor` 361, `McpServerRow` 203, `tools.ts` 165, `tabs/tools.tsx` 151, `context.ts` 86, `editor/python.ts` 74, `CheckResult` 73, `texts.ts` 69, `python.tsx` 67, `types.ts` 59, `styles.css` 55, `protocol.ts` 51, `api.ts` 34, `mount.ts` 10, `vite.config.ts` 9, `package.json` 5, `fields.tsx` 3 | 920 → 1,475 → 1,475 → 1,475 | 480 → 788 → 788 → 788 (vitest 433, browser 352, `test_ui.py` 3) |
+  | `pyproject.toml`, the two packages' `__init__.py` | — → 7 → 7 → 7 | |
+  | **Total** | **≈1.98k → 3,311 → 3,397 → 3,399** | **≈2.19k → 3,511 → 3,686 → 3,778** |
 
-  About 7.1k lines, about 24 h at Gate C at the workspace's rate. Not counted: the built assets, the two lock files, D1's golden recordings (18 one-line changes, B11) and
-  `tests/mcp/fixtures/shim_v1.py` (539 lines, the v1 shim frozen as stored). The shim, Check and the editor
+  About 7.2k lines (v3: 7.1k), about 24 h at Gate C at the workspace's rate. Not counted: the built assets, the two
+  lock files, D1's golden recordings (18 one-line changes, B11), `tests/mcp/fixtures/shim_v1.py` (539 lines, the v1
+  shim as stored) and, v4, the live job's 18 lines in `.github/workflows/live.yml` (B25). v4's growth is B24–B27: the
+  shim's `_type` (2 lines), two fake servers (38: `loud_server.py`, and `odd_server.py`'s
+  properties), three tests and B19's changed case (46), and the live tests (8). The shim, Check and the editor
   component grew most. The build recorded no reason; the estimate was this design's. Michael rules on it at Gate B.
 
 **Not built**
@@ -1088,16 +1165,17 @@ at `aa67f0a`.
   `test_acp.py::test_server_secrets_never_reach_the_run_log_or_the_transcript`, which now checks the server's log.
 - **B19. One server that `open_session` cannot start or bind fails alone; the run goes on** (§4.4, §4.5, §11.1;
   `c2cfdc0`). Found by the as-built (its §2 #3; v2's §11.1 note named only the namespace case): `open_session` had no
-  handler of its own, so an error about one server ended the whole build as D1's `build_failed`: its log not opening, its block not read (a `connect_timeout_s` that is
-  not a number), its binding not described (a tool property whose schema is `true`, which the shim's `describe`
-  cannot render, §14 item 15). Built: starting each server and deciding it each run under a handler; the error
+  handler of its own, so an error about one server ended the whole build as D1's `build_failed`: its log not opening,
+  its block not read (a `connect_timeout_s` that is not a number), its binding not described (a tool property whose
+  schema is `true`, which the shim's `describe` cannot render, §14 item 15; v4: it can since B26, so the test's case
+  now uses a schema that is a string). Built: starting each server and deciding it each run under a handler; the error
   becomes that server's status, `failed`, with its `"Type: message"` redacted as a failure's detail is, and a stand-in
   that says why; a connection already started is abandoned. The other servers bind. An error in deep_reasoner's own
   namespace resolution still fails the build. *Why (recorded in `c2cfdc0`):* §11.1 promised a failure caught per
   server; and in a run built from the Library, D2's invariants (root exists, every namespace's parent exists, checked
-  on every save) leave only namespace errors that `build_reasoner` raises next anyway. *Caveat:* a hand-written
-  config run through `dr-acp --config`, with a broken namespace outside the entry namespace's chain, fails here when
-  it has an MCP block, where `build_reasoner` alone would not (§14 item 16). *Pinned by:*
+  on every save) leave only namespace errors that `build_reasoner` raises next anyway. *Caveat:* a hand-written config
+  run through `dr-acp --config`, with a broken namespace outside the entry namespace's chain, fails here when it has
+  an MCP block, where `build_reasoner` alone would not (§14 item 16). *Pinned by:*
   `test_session.py::test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind[…]` (cases: its log cannot
   be opened, its block has no number, it cannot be told; a new fake server, `tests/mcp/servers/odd_server.py`) and
   `::test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway` (`open_session` and
@@ -1129,9 +1207,71 @@ at `aa67f0a`.
   - The tool editor's header is `Tools › <name> v<n>`, without §2.1's `· saved <date>`. The build recorded no reason.
   - `tests/mcp/fixtures/shim_v1.py` is byte-identical to today's `shim.py`, so until the shim changes,
     `test_a_stored_v1_shim_works_with_todays_session` exercises today's text; what it pins now is that a stored file,
-    loaded through `load_tool_factory`, reads the package's `SESSION`.
+    loaded through `load_tool_factory`, reads the package's `SESSION`. *(v4: no longer identical. `7eb7812` changed
+    today's `_type` (B26) and left the fixture as it was stored, so the test now runs an older stored text against
+    today's `SESSION`, which is what it was written for.)*
   - The agreement test's eight cases leave out `spawns.py`, which
     `test_check.py::test_nothing_a_stopped_tool_started_is_left_running` covers instead.
+
+**After v3 (v4)**
+
+Each landed after v3, and was checked against the code at `f69bc73`. Only B26 changes product code; B24 is a test,
+B25 the live job's machinery, B27 the live tier's two questions.
+
+- **B24. A server that prints more than a pipe holds still answers, and its log is still redacted** (§4.4; `1847ef0`;
+  a test, no code change). Since B18 a stdio server's stderr is a pipe that a thread copies into
+  `runs/<run>/mcp-<alias>.log`. *Why (recorded in `1847ef0`):* if that copy stopped, a server printing more than the
+  pipe holds (64 KB) would block on its own stderr and stop answering, and no test pinned it. A new fake server,
+  `tests/mcp/servers/loud_server.py`, prints 1 MB at start and 256 KB on each call of its one tool, `say`, with its
+  `LOUD_TOKEN` on every line. *Pinned by:*
+  `test_session.py::test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_redacted`: the server is
+  bound, three calls answer, and once it has ended its log is exactly every line it printed, with the token as
+  `[redacted]`. The commit records that with the copier never started the server is `no_answer` at its 10 s connect
+  timeout, so the test fails without the copy.
+- **B25. The live job keeps a failed run's evidence** (§10.5; `9255778`; the job and one test, no product code).
+  `.github/workflows/live.yml` runs pytest with `--basetemp="$RUNNER_TEMP/live"`. On a failure, a step checks that no
+  file under it holds the model key (`grep -rqF -- "$OPENAI_API_KEY"`), and only if that passed is every test's dr home
+  uploaded as the artifact `live-dr-homes`, kept 7 days: its runs' `events.jsonl`, `llm_calls.jsonl`, deep_reasoner's
+  trace, `worker.log` and each `mcp-<alias>.log` (redacted, B18). `tests/mcp/test_live.py` writes the ACP transcript
+  to `<home>/transcript.jsonl`, and its first assertion's message is the run's `mcp.status`, `agent.end` and
+  `prompt.end` events, one per line: how the server was bound, and how each agent and the prompt ended. *Why
+  (recorded in `9255778`):* run 37145903109 failed the MCP live test twice at `aa67f0a` and kept nothing to say why;
+  the job log held only the assertion. *Used:* the three failed attempts at `7eb7812` kept their homes, and B27's
+  account of the tool test's failure is read from them. Not pinned by a test (it is the job's own machinery); the
+  commit records a local check that a scripted run's home holds neither the key nor the server's token. The step
+  checks the model key only; the catalog server's token is a random value made for the run.
+- **B26. The shim describes a property schema of `true` as `Any` and of `false` as `Never`** (§8.4, §4.8, §14 item
+  15; `7eb7812`). JSON Schema allows a boolean as a schema: `true` takes any value, `false` none. v1–v3's `_type` read
+  every property schema as a mapping, so a tool with such a property could not be described: under `dr-acp` its
+  server failed alone (B19); under plain `dr` the shim's factory raised `AttributeError`, `make_tools` raised, and the
+  whole run did not start. Built: `_type(schema: Mapping[str, Any] | bool)` answers `Any` for `true` and `Never` for
+  `false`, the nearest names §8.4's types have. *Why (recorded in `7eb7812`):* the as-built found it (the commit
+  cites its #26), and §14 item 15 had left it open. *The stored shim,* as §14 item 14 foresaw: the edit changes the
+  text every new grant stores, so a grant written before it reads `MCP_SHIM_OLD` until its **Update**; it keeps
+  working under `dr-acp`, where its factory only reads `SESSION`, and under plain `dr` its export keeps the old
+  `_type` until then. Nothing has shipped, so no grant outside the tests has the old text. The marker stays at
+  version 1: the contract between a stored shim and the package (`SESSION`) is unchanged, `is_mcp_tool` reads only
+  the marker's prefix, and `shim_current` compares the text. `tests/mcp/fixtures/shim_v1.py` stays as it was stored
+  (B23). *Pinned by:* `test_session.py::test_a_tool_whose_properties_take_any_value_or_none_is_bound_and_told_so`
+  (under `dr-acp`'s worker) and `test_shim.py::test_properties_that_take_any_value_or_none_are_described_as_any_and_never`
+  (plain `dr`), each told `odd.odd(anything: Any = …, nothing: Never = …) -> str`. `odd_server.py` takes its
+  properties from `ODD_PROPERTIES` (by default `{"anything": true, "nothing": false}`), and B19's case "it cannot be
+  told" now gives it a property schema that is not a schema at all (a string): `AttributeError: 'str' object has no
+  attribute 'get'`. *Left:* under plain `dr`, such a server, which no valid server sends, still stops the run (§4.8,
+  §14 item 15).
+- **B27. The two live tests name their tool or server in the task** (§10.5, §14 item 8; `933ac08`, `f69bc73`). The
+  tool test asks "Use course_credits to find how many credits course ZQ-417 is." (v1–v3: "How many credits is course
+  ZQ-417?"); the MCP test asks "Use the catalog server to find what a student must finish before ZQ-417." (v1–v3:
+  "What must a student finish before ZQ-417?"), naming the server, not its method. Each is a `TASK` constant with a
+  one-line comment saying why. Every assertion stays: the outcome `answered`; the answer holds `7`, and a cell called
+  `course_credits(` and printed `7`; or the answer holds `ZQ-101`, `mcp.status` says `bound`, a cell called
+  `catalog.prerequisites(`, and the token is in neither the run log nor the updates. *Why (recorded in `933ac08` and
+  `f69bc73`):* asked bare, gpt-6-luna answered "4 credits." without writing a cell, 30 turns in each of the two
+  attempts of run 37153297958, although the tool was built, bound and described; the MCP test's bare question had
+  the same weakness, though it answered in all three runs at `7eb7812`. What the tests pin is that a tool or server
+  is bound and works when called, not that the model chooses to call it. *Departs from* v1's §10.5 only in what it
+  adds: the facts are still the tool's and the server's alone; the task now also says where they are. *Pinned by:*
+  the two live runs at `f69bc73`, 6 of 6 each (Gate B section).
 
 ---
 
@@ -1301,8 +1441,14 @@ per tool, in the server's order:
 params:  required properties first, then the others with " = …", each "{prop}: {type}"; type from JSON Schema:
          string str · integer int · number float · boolean bool · array list · object dict · null None ·
          a list of types joined by " | " · absent Any
+         v4: the schema true Any · the schema false Never
 returns: the type of "result" for the Python SDK's wrapper; dict for another outputSchema; str without one
 ```
+
+*(v4, §6.2 B26: JSON Schema allows a boolean as a schema, `true` taking any value and `false` none, so a property's
+schema need not be a mapping. v1–v3 read every one as a mapping and could not describe such a tool (§14 item 15);
+`Any` and `Never` are the nearest names the table has. A tool `odd` with `{"anything": true, "nothing": false}` is
+told `odd.odd(anything: Any = …, nothing: Never = …) -> str`.)*
 
 Lines after the first start with two spaces, because deep_reasoner indents only the first line of a description
 (`v2/messages.py:221–224`).
@@ -1444,7 +1590,10 @@ v2), `plain` (text only), `picture` (an image), `fail`, `token` → its `ECHO_TO
 names, `sleep(s)`, `crash` → `os._exit`, `2nd-opinion` (no attribute name); `--http PORT` serves streamable HTTP and
 `--sse PORT` SSE, with `whoami` → the request's `Authorization`; `ECHO_MARKER_DIR` makes it write a file named after
 its pid when it starts), `hang_server.py` (never reads its stdin), `crash_server.py` (prints its token to stderr and
-exits 1), and the live tier's `catalog_server.py` (§10.5).
+exits 1), and the live tier's `catalog_server.py` (§10.5). *(v3 added `odd_server.py`, written with `mcp`'s
+low-level `Server`: one tool, `odd`, whose properties are, v4, `ODD_PROPERTIES` (JSON; by default
+`{"anything": true, "nothing": false}`, §6.2 B26). v4 adds `loud_server.py`: one tool, `say`, and 1 MB of stderr at
+start and 256 KB a call, its `LOUD_TOKEN` on every line (§6.2 B24).)*
 
 | E9 case | Its null | Tests |
 |---|---|---|
@@ -1466,8 +1615,8 @@ exits 1), and the live tier's `catalog_server.py` (§10.5).
 | `tests/tools/test_routes.py` | Starlette's `TestClient` with `Host: 127.0.0.1:<port>`: `test_check_route_answers_200_with_a_report`; `test_a_grant_only_change_runs_no_check` (a broken tool stored through `Library.put_tool`, then a `PUT` that changes only `granted_in` answers 200); `test_save_anyway_stores_a_raising_tool_only_when_asked`; `test_a_structural_failure_cannot_be_saved_anyway`; `test_an_mcp_block_through_put_tools_is_refused`; `test_put_mcp_writes_the_block_and_the_shim_and_grants`; `test_put_mcp_resent_unchanged_makes_no_tool_version`; `test_a_server_cannot_be_granted_under_two_names`; `test_put_mcp_refuses_a_stdio_grant_without_a_command`; `test_get_mcp_lists_grants_with_their_last_seen_tools`; `test_get_mcp_says_when_a_grant_has_an_old_shim`; `test_mcp_routes_answer_only_their_own_host` (D2's guard); v2 adds `test_a_checked_tool_is_saved_with_its_grants`, `test_put_mcp_refuses_a_name_the_repl_cannot_bind[run_all, not a name, class]`; `test_put_mcp_refuses_a_stdio_grant_without_a_command` runs stdio, http and sse; v3 adds `test_a_grant_cannot_replace_a_tool_of_your_own[new, the head's]`, `test_a_tool_of_your_own_cannot_replace_a_grant[new, the head's]` (B20), `test_a_put_mcp_body_it_cannot_read_is_told_the_mcp_bodys_fields[no base_version, a yaml it does not have]` (B21) |
 | `tests/mcp/test_wire.py` | `test_forwarded_specs_read_acps_stdio_http_and_sse_shapes`; `test_other_mcp_server_types_are_ignored`; `test_servers_named_reads_mcp_blocks_only`; `test_a_run_gets_only_the_specs_its_blocks_name` (`specs_for_run`: a forwarded server no block names, and its secrets, are not in the result); `test_redact_replaces_every_secret_value`; `test_the_seen_cache_round_trips_and_is_private` (0600, 0700) |
 | `tests/mcp/test_grants.py` | `test_mcp_block_for_stdio_http_and_sse`; `test_header_env_name`; `test_is_mcp_tool_needs_the_factory_and_the_marker`; `test_an_exported_and_reimported_grant_is_still_a_grant`; v2 adds `test_mcp_block_needs_a_command_or_a_url`, `test_the_shim_source_starts_with_its_marker_and_version`, `test_grant_record_reads_the_block` |
-| `tests/mcp/test_shim.py` | plain mode (no `SESSION`): `test_the_shim_connects_from_its_block_with_env_from_the_environment` (`token` returns the variable's value); `test_results_are_unwrapped_dicts_text_or_blocks` (§8.3's table); `test_a_failed_call_raises_mcp_tool_error_with_the_servers_text`; `test_positional_arguments_follow_the_described_order`; `test_tools_without_an_identifier_are_called_by_their_exact_name`; `test_the_description_is_what_8_4_says` (exact text); `test_a_server_survives_fork` (`copy.deepcopy` returns the same object; no warning); `test_calls_from_many_threads_and_under_nest_asyncio`; `test_without_the_mcp_package_the_factory_returns_a_stand_in` (`mcp` hidden with `monkeypatch.setitem(sys.modules, "mcp", None)`); `test_the_shim_imports_only_the_standard_library_at_module_level` (its AST); `test_a_stored_v1_shim_works_with_todays_session` (a frozen copy of v1 in `fixtures/`); the guard: `test_the_guard_ends_its_server_when_its_parent_is_killed` (a parent process started for the test, `SIGKILL`ed; the server's pid is gone within 1.5 s); `test_the_guard_passes_the_exit_code`; HTTP: `test_an_http_server_is_reached_with_its_headers` (`whoami`); v2 adds `test_a_stand_in_is_plain_to_deep_reasoners_seams`, `test_a_server_it_cannot_reach_becomes_a_stand_in_saying_why[crashes, hangs]`, `test_a_server_that_dies_fails_the_call_and_every_later_one_at_once`, `test_a_hand_off_outside_the_grant_is_refused`; the HTTP test runs http and sse |
-| `tests/mcp/test_session.py` | `test_only_granted_and_reachable_servers_are_started`; `test_grant_sets_follow_deep_reasoners_resolution` (root, `a`, `a.b`); `test_a_granted_server_not_forwarded_is_not_enabled`; `test_statuses_carry_what_the_agent_is_told`; `test_a_server_given_up_is_ended_within_three_seconds`; v2 adds `test_without_mcp_blocks_the_session_is_empty`; v3 adds `test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind[its log cannot be opened, its block has no number, it cannot be told]` and `test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway` (B19); `test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted` runs `whole` and `split` and reads the server's log (B18) |
+| `tests/mcp/test_shim.py` | plain mode (no `SESSION`): `test_the_shim_connects_from_its_block_with_env_from_the_environment` (`token` returns the variable's value); `test_results_are_unwrapped_dicts_text_or_blocks` (§8.3's table); `test_a_failed_call_raises_mcp_tool_error_with_the_servers_text`; `test_positional_arguments_follow_the_described_order`; `test_tools_without_an_identifier_are_called_by_their_exact_name`; `test_the_description_is_what_8_4_says` (exact text); `test_a_server_survives_fork` (`copy.deepcopy` returns the same object; no warning); `test_calls_from_many_threads_and_under_nest_asyncio`; `test_without_the_mcp_package_the_factory_returns_a_stand_in` (`mcp` hidden with `monkeypatch.setitem(sys.modules, "mcp", None)`); `test_the_shim_imports_only_the_standard_library_at_module_level` (its AST); `test_a_stored_v1_shim_works_with_todays_session` (a frozen copy of v1 in `fixtures/`); the guard: `test_the_guard_ends_its_server_when_its_parent_is_killed` (a parent process started for the test, `SIGKILL`ed; the server's pid is gone within 1.5 s); `test_the_guard_passes_the_exit_code`; HTTP: `test_an_http_server_is_reached_with_its_headers` (`whoami`); v2 adds `test_a_stand_in_is_plain_to_deep_reasoners_seams`, `test_a_server_it_cannot_reach_becomes_a_stand_in_saying_why[crashes, hangs]`, `test_a_server_that_dies_fails_the_call_and_every_later_one_at_once`, `test_a_hand_off_outside_the_grant_is_refused`; the HTTP test runs http and sse; v4 adds `test_properties_that_take_any_value_or_none_are_described_as_any_and_never` (B26), and `test_a_stored_v1_shim_works_with_todays_session` now runs a stored text older than today's (B23) |
+| `tests/mcp/test_session.py` | `test_only_granted_and_reachable_servers_are_started`; `test_grant_sets_follow_deep_reasoners_resolution` (root, `a`, `a.b`); `test_a_granted_server_not_forwarded_is_not_enabled`; `test_statuses_carry_what_the_agent_is_told`; `test_a_server_given_up_is_ended_within_three_seconds`; v2 adds `test_without_mcp_blocks_the_session_is_empty`; v3 adds `test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind[its log cannot be opened, its block has no number, it cannot be told]` and `test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway` (B19); `test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted` runs `whole` and `split` and reads the server's log (B18); v4 adds `test_a_tool_whose_properties_take_any_value_or_none_is_bound_and_told_so` (B26) and `test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_redacted` (B24), and the case `it cannot be told` gives `odd_server.py` a property schema that is a string (B26) |
 | `tests/mcp/test_acp.py` | D1's harness (`dr_acp(None, home)`, `FakeOpenAI`, `ShimConnection`), the Library at `home`, `open_session(cwd, mcp_servers=[…])`: `test_dr_acp_advertises_http_and_sse`; `test_a_granted_server_is_bound_and_a_cell_calls_it`; `test_a_forwarded_server_no_grant_names_is_never_started` (the fake server writes a marker file when it starts; there is none); `test_server_secrets_never_reach_the_run_log_or_the_transcript` (`crash_server.py` prints its token; the notice says `[redacted]`); `test_the_notice_replays_on_load`; `test_the_seen_cache_is_written_for_bound_servers`; `test_no_stdio_server_outlives_a_root_stop` (a cell in `while True: pass`; root Stop; within 2 s no fake server is running); `test_no_stdio_server_outlives_a_closed_session`; the E9 rows of §10.2; v3: `test_server_secrets_never_reach_the_run_log_or_the_transcript` also reads the server's own log (B18) |
 | `tests/mcp/test_export.py` | `test_an_exported_grant_runs_under_dr` (`dr-library export`, then `dr <dir>/main.yaml` with `FakeOpenAI` scripted to call `echo.echo("hi")` and `ECHO_TOKEN` in the environment: exit 0, the cell's output `hi`) |
 
@@ -1508,22 +1657,32 @@ carrying the report).
 Spec §4 layer 5: "D4: a tool written in the Library, and an MCP server, each used by an agent". Each test sets up a
 Library at a temporary home with the starter profile (gpt-6-luna on OpenAI, D2 decision M), writes through the HTTP
 API (`create_app`, `TestClient`), so the gate and the real Check run, then drives a real `dr-acp --home` over stdio
-with D1's harness. The facts asked for exist nowhere but in the tool, so the answer can only come from it.
+with D1's harness. The facts asked for exist nowhere but in the tool, so the answer can only come from it. *(v4,
+§6.2 B27: and the task names the tool, or the server, in which they are. Asked bare, gpt-6-luna twice answered from
+nothing; so the tier pins that a tool or server is bound into a real run and works when the agent calls it, not that
+the model chooses to call it.)*
 
 1. `tests/tools/test_live.py::test_live_a_tool_written_in_the_library_is_used_by_the_agent`: `PUT /tools/course_credits`
    (a factory whose `course_credits(code: str) -> int` knows `ZQ-417` is 7 credits), granted to `root`; the response
-   is 201 and a Check report on the same body says `built`; prompt "How many credits is course ZQ-417?" → the answer
+   is 201 and a Check report on the same body says `built`; prompt "Use course_credits to find how many credits
+   course ZQ-417 is." (v4; v1–v3: "How many credits is course ZQ-417?") → the outcome is `answered` and the answer
    contains `7`; the run log holds a cell whose code calls `course_credits(` and whose output contains `7`.
 2. `tests/mcp/test_live.py::test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent`: a FastMCP stdio
    server of ours (`catalog_server.py`: `prerequisites(course: str) -> list[str]`, `ZQ-417` → `["ZQ-101"]`, refusing
    to answer without its `CATALOG_TOKEN`); `PUT /mcp/catalog` granted to `root`; `session/new` forwards it as the
-   bridge would (`McpServerStdio` with `env: [{CATALOG_TOKEN, …}]`); prompt "What must a student finish before
-   ZQ-417?" → the answer contains `ZQ-101`; the run log's `mcp.status` says `bound`, a cell calls
-   `catalog.prerequisites(`, and the token appears nowhere in the run log or the updates.
+   bridge would (`McpServerStdio` with `env: [{CATALOG_TOKEN, …}]`); prompt "Use the catalog server to find what a
+   student must finish before ZQ-417." (v4, naming the server, not its method; v1–v3: "What must a student finish
+   before ZQ-417?") → the outcome is `answered` and the answer contains `ZQ-101`; the run log's `mcp.status` says
+   `bound`, a cell calls `catalog.prerequisites(`, and the token appears nowhere in the run log or the updates.
+   v4 (§6.2 B25): the test writes the ACP transcript to `<home>/transcript.jsonl`, and a prompt that does not end
+   `answered` fails with the run's `mcp.status`, `agent.end` and `prompt.end` events as its message.
 
 Cents per run, in D1's on-demand `live.yml` with the same secret. *(v2: both passed at `965f318`, run 37106223637,
 with D1's three and D2's one, 6 of 6 in 81 s. v3: at `aa67f0a`, run 37145903109, the MCP test failed once, its
-prompt `exhausted`; the tool test passed; §14 item 8's re-run is pending, Gate B section.)*
+prompt `exhausted`; the tool test passed; §14 item 8's re-run is pending, Gate B section. v4: that run's re-run
+failed too, its prompt `failed`; the tool test failed twice at `7eb7812`; both passed twice at `f69bc73`, runs
+37157799600 and 37157801762, 6 of 6 each. The Gate B section has the whole record. Since `9255778` a failed run
+keeps every test's dr home as the artifact `live-dr-homes`, after a check that none holds the model key, §6.2 B25.)*
 
 ### 10.6 Across the repositories (proposed; D5's `crossrepo` harness; not built in D4, §6.2 B17)
 
@@ -1714,9 +1873,9 @@ spec costed at 40 lines; the event and notices in `dr-acp`. **If the Conductor w
 cleanly, each with what is lost: the seen cache (≈60 lines and its tests; the Tools tab then shows no server tools)
 and CodeMirror (≈60 lines and a dependency; a textarea with Tab handling instead).
 
-*(v2: built at 3,311 lines of code and 3,511 of tests, about 6.8k and 23 h; v3: 3,397 and 3,686, about 7.1k and
-24 h. §6.2 B16 gives this table with the built figures. As built, CodeMirror is `ui/editor/python.ts` (74 lines) and `ui/components/python.tsx` (67), five packages
-and the 348 KB chunk, §6.2 B3.)*
+*(v2: built at 3,311 lines of code and 3,511 of tests, about 6.8k and 23 h; v3: 3,397 and 3,686, about 7.1k and 24 h;
+v4: 3,399 and 3,778, about 7.2k and 24 h. §6.2 B16 gives this table with the built figures. As built, CodeMirror is
+`ui/editor/python.ts` (74 lines) and `ui/components/python.tsx` (67), five packages and the 348 KB chunk, §6.2 B3.)*
 
 ---
 
@@ -1747,7 +1906,13 @@ and the 348 KB chunk, §6.2 B3.)*
 8. **The live tier depends on the model choosing the tool**; the facts are unguessable and the tool is described,
    but a model may still answer without calling it. A failure there is re-run once before it is read as a regression.
    *(v3: at `aa67f0a` the MCP test's prompt ended `exhausted` once, live run 37145903109; its re-run is pending, and
-   the Gate B section says so.)*
+   the Gate B section says so.)* *(v4: now only partly true. The re-run failed too, its prompt `failed`, which is not
+   the model declining a tool; and at `7eb7812` the tool test's prompt ended `exhausted` twice, gpt-6-luna answering
+   "4 credits." without a cell. Since `933ac08` and `f69bc73` the task names the tool or the server (§6.2 B27), so
+   the model is told which to use; it must still call it correctly, and a run can still fail for the model's own
+   reasons. What the tier no longer shows is the model reaching unprompted for a tool it is merely told about. The
+   rule stands, and since §6.2 B25 a failure's evidence is kept, so the next one can be read rather than re-run
+   blind.)*
 9. **The Code Guide** says never to ship un-run fenced Python in a `.md`; this design, like D1's to D3's, carries
    signatures as fenced code, as the brief asks. A tension in the pages, not a choice made here.
 10. **The "not enabled" notice names every namespace whose resolved tools include the server** (v2, carried from the
@@ -1775,13 +1940,20 @@ and the 348 KB chunk, §6.2 B3.)*
 15. **The shim cannot describe a tool property whose schema is `true` or `false`** (v3, found by `c2cfdc0`'s fake
     `odd_server.py`). JSON Schema allows a boolean schema; §8.4's `_type` reads every property schema as a mapping and
     raises `AttributeError`. Since §6.2 B19 that server fails alone (`MCP_FAILED`) rather than the run, but a valid
-    server cannot be bound. Reading a boolean schema as `Any` would fix it; not changed by the build.
+    server cannot be bound. Reading a boolean schema as `Any` would fix it; not changed by the build. *(v4: fixed by
+    `7eb7812`, §6.2 B26: `true` is `Any`, `false` `Never`. What is left is a property schema that is not a schema at
+    all (a string, a number), which no valid server sends: under `dr-acp` that server fails alone, and under plain
+    `dr` the shim's factory raises and the run does not start (§4.8; read in the code, not run).)*
 16. **A namespace error fails the build in one case `build_reasoner` alone would not** (v3, §6.2 B19).
     `open_session` resolves every namespace of the config to find each grant (§4.4, `registry.resolve(ns)` for each),
     while `build_reasoner` resolves what the run needs. So a hand-written config run through `dr-acp --config`, with a
     broken namespace outside the entry namespace's chain, fails at build when it has an MCP block. This is the
     Conductor's caveat on `c2cfdc0`; I read it in the code and did not reproduce it. A run built from the Library
     cannot reach it (D2's invariants). Left as is; for Michael to accept, or for D1's next revision.
+17. **D4's head will move under it** (v4): it carries D1 as at `21f4a8b`, before the literate refactor `main` merged
+    today (`32c7f61`), so once D2 and then D3 are brought onto `main`, D4 follows and its 101 lines in D1's files
+    (§11.1) land on D1's refactored modules: a new head, no D4 behaviour changed, and the Gate B runs are `f69bc73`'s,
+    not that head's.
 
 ---
 
@@ -1790,6 +1962,8 @@ and the 348 KB chunk, §6.2 B3.)*
 Python as it will be written, ruff-formatted, bodies `...`; TypeScript in declaration form (`declare` marks a body
 the sections above specify), one field per line. Paths are relative to `src/deep_reasoning/` or `canvas-app/src/`.
 v2: every block matches the code at `965f318`; a `# v2` comment marks what the build changed or added (§6.2).
+v4: and at `f69bc73`; no signature here changed after v3 (`7eb7812` changed only the shim's private `_type`, §6.2
+B26).
 
 ### A.1 `tools/check.py`, `tools/check_child.py`
 
