@@ -128,6 +128,19 @@ def test_validation_errors_show_on_the_card_they_name(open_ui, library_server):
     ]
 
 
+def test_an_error_that_names_no_card_shows_above_the_cards(open_ui, library_server):
+    page = open_ui(tab="create", namespace="router.archive")
+    write_new(page, NAME, TASK)
+    library_server.library().delete("namespace", "router.archive")
+    page.get_by_test_id("dr-save").click()
+    errors = page.get_by_test_id("dr-errors")
+    expect(errors).to_contain_text(
+        "There is no namespace 'router.archive' in the library."
+    )
+    first_card = page.get_by_test_id("dr-card-0")
+    assert errors.bounding_box()["y"] < first_card.bounding_box()["y"]
+
+
 def test_an_example_without_final_answer_asks_before_saving(open_ui, library_server):
     page = open_ui(tab="create")
     write_new(page, "no answer", TASK, code="print(1)")

@@ -431,6 +431,15 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
           onChange={(name) => keep({ ...stored, picked: name })}
         />
       )}
+      {(outcome?.kind === "failed" || others.length > 0) && (
+        <div class="banner error" role="alert" data-testid="dr-errors">
+          {outcome?.kind === "failed" ? (
+            <p class="message">{outcome.message}</p>
+          ) : (
+            <FieldErrors errors={others} located />
+          )}
+        </div>
+      )}
       {draft.mode === "cards" ? (
         <CardList
           cards={draft.cards}
@@ -468,15 +477,6 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
           >
             {LABELS.editYaml}
           </button>
-        </div>
-      )}
-      {(outcome?.kind === "failed" || others.length > 0) && (
-        <div class="banner error" role="alert" data-testid="dr-errors">
-          {outcome?.kind === "failed" ? (
-            <p class="message">{outcome.message}</p>
-          ) : (
-            <FieldErrors errors={others} located />
-          )}
         </div>
       )}
       <div class="actions">
