@@ -16,7 +16,7 @@ it on this branch change only `docs/`.
 ## Gate B: what to read
 
 **About 50 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D2's
-as-built document (the Cartographer's, under `as_built/`, written alongside this revision; it also
+as-built document (`as_built/d2-library-store.md`, the Cartographer's; it also
 reports E7's measured results) and the two runs below. Everything after §3 is kept whole as the
 reference D3, D4 and D5 build against (Michael: don't force compression); Gate B does not need it.
 
@@ -28,7 +28,7 @@ reference D3, D4 and D5 build against (Michael: don't force compression); Gate B
 | 4 | §3.2 | what the build changed, each with its reason and the test that pins it | 12 |
 | 5 | §6.1 and §6.2 | the HTTP contract D3 and D4 build against | 5 |
 | 6 | Open the two runs below | that they are green at `90044f0` | 2 |
-| 7 | The as-built document | what exists, its divergences, and E7 as measured | 10 |
+| 7 | `as_built/d2-library-store.md` | what exists, its divergences, and E7 as measured | 10 |
 
 **One thing to rule on: size.** Michael accepted D2 at "about 1.9k lines with tests" (spec,
 "Rulings at design, 2026-10-02" (2), from §3.1 item 16's estimate). The build is **2,684 lines of
