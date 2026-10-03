@@ -16,6 +16,9 @@ interface ConfigOption {
 
 const PROFILE_PATH = "/api/agent-profiles/deep_reasoner";
 const DECIMAL = /^\d+(\.\d+)?$/;
+/** The events search matches an event's module-qualified class name, not the kind in its JSON. */
+const ACP_SESSION_CONTROLS_EVENT_KIND =
+  "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent";
 
 /** The newest ACPSessionControlsEvent's option "namespace": its current value, and started when it
  * offers exactly one value. No event, no such option, or any failure → null. */
@@ -26,7 +29,7 @@ export async function readConversationNamespace(
   if (conversationId === null) return null;
   const path =
     `/api/conversations/${encodeURIComponent(conversationId)}/events/search` +
-    "?kind=ACPSessionControlsEvent&sort_order=TIMESTAMP_DESC&limit=1";
+    `?kind=${ACP_SESSION_CONTROLS_EVENT_KIND}&sort_order=TIMESTAMP_DESC&limit=1`;
   try {
     const page = await request<{
       items?: { config_options?: ConfigOption[] }[];
