@@ -1,5 +1,6 @@
 // The decomposition editor of §2.2 and §2.3: Create decomposition (record null) and an opened one.
 
+import type { Ref } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { FrameParams, TabId } from "../../shared/protocol";
@@ -79,10 +80,12 @@ export interface DecompositionEditorProps {
   onBackendLost: OnBackendLost;
 }
 
-/** What is kept as the draft: the decomposition and, for an opened one, its Attached to. */
+/** What is kept as the draft: the decomposition and, for an opened one, its Attached to;
+ * in Create decomposition, the namespace the user picked. */
 interface Stored {
   draft: DecompositionDraft;
   attached: string[];
+  picked?: string;
 }
 
 type Outcome =
@@ -190,15 +193,20 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
   const [hasDraft, setHasDraft] = useState(
     () => loadDraft<Stored>(draftKey) !== null,
   );
-  const [picked, setPicked] = useState(() =>
+  const [preselection] = useState(() =>
     preselected(props.params, props.health, names),
   );
+  const picked =
+    stored.picked !== undefined && names.includes(stored.picked)
+      ? stored.picked
+      : preselection;
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [yamlView, setYamlView] = useState<string | null>(null);
   const [yamlError, setYamlError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const nameField = useRef<HTMLInputElement>(null);
+  const yamlField = useRef<HTMLDivElement>(null);
   const { draft } = stored;
   const text = draftYaml(draft);
 
@@ -422,8 +430,17 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
         <NamespacePicker
           namespaces={names}
           value={picked}
-          onChange={setPicked}
+          onChange={(name) => keep({ ...stored, picked: name })}
         />
+      )}
+      {(outcome?.kind === "failed" || others.length > 0) && (
+        <div class="banner error" role="alert" data-testid="dr-errors">
+          {outcome?.kind === "failed" ? (
+            <p class="message">{outcome.message}</p>
+          ) : (
+            <FieldErrors errors={others} located />
+          )}
+        </div>
       )}
       {draft.mode === "cards" ? (
         <CardList
@@ -433,6 +450,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
         />
       ) : (
         <YamlField
+          containerRef={yamlField}
           value={draft.yaml}
           error={yamlError}
           onChange={(yaml) => {
@@ -462,15 +480,6 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
           >
             {LABELS.editYaml}
           </button>
-        </div>
-      )}
-      {(outcome?.kind === "failed" || others.length > 0) && (
-        <div class="banner error" role="alert" data-testid="dr-errors">
-          {outcome?.kind === "failed" ? (
-            <p class="message">{outcome.message}</p>
-          ) : (
-            <FieldErrors errors={others} located />
-          )}
         </div>
       )}
       <div class="actions">
@@ -538,7 +547,9 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
         }
         onRename={() => {
           setOutcome(null);
-          nameField.current?.focus();
+          // In YAML mode the name is the YAML's own (§2.3).
+          if (draft.mode === "cards") nameField.current?.focus();
+          else yamlField.current?.querySelector("textarea")?.focus();
         }}
         onReload={(head) => {
           restart(fresh(head));
@@ -678,9 +689,10 @@ function YamlField(props: {
   error: string | null;
   onChange: (value: string) => void;
   onEditCards: () => void;
+  containerRef: Ref<HTMLDivElement>;
 }) {
   return (
-    <div class="yaml-edit">
+    <div class="yaml-edit" ref={props.containerRef}>
       <CodeField
         label="YAML"
         language="yaml"

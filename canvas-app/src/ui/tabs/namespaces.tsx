@@ -2,7 +2,7 @@
 // Every action changes one key of the namespace's (or the profile's) own YAML document and
 // saves it at once, with the version it was read at (§5.3).
 
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 
 import {
   deleteNamespace,
@@ -105,6 +105,7 @@ export function NamespacesTab(props: TabProps) {
   );
   const [message, setMessage] = useState<string | null>(null);
   const [adding, setAdding] = useState<string | null>(null);
+  const selections = useRef(0);
   const data = library.data;
   if (!data)
     return library.error ? (
@@ -120,9 +121,18 @@ export function NamespacesTab(props: TabProps) {
         : ROOT;
 
   const select = (name: string) => {
+    selections.current += 1;
     setSelected(name);
     setMessage(null);
     setAdding(null);
+  };
+
+  /** A select for when a write is answered: dropped if another node was selected meanwhile. */
+  const selectOnAnswer = () => {
+    const since = selections.current;
+    return (name: string) => {
+      if (selections.current === since) select(name);
+    };
   };
 
   /** A write, then the Library again; D2's refusal is shown as it comes. */
@@ -135,10 +145,11 @@ export function NamespacesTab(props: TabProps) {
   }
 
   async function addNamespace(name: string) {
+    const selectAdded = selectOnAnswer();
     const result = await write(() =>
       putNamespace(name, { yaml: JSON.stringify({ name }), base_version: 0 }),
     );
-    if (result.ok) select(name);
+    if (result.ok) selectAdded(name);
   }
 
   const startAdding = () =>
@@ -217,7 +228,7 @@ export function NamespacesTab(props: TabProps) {
             rev={props.rev}
             write={write}
             onBackendLost={props.onBackendLost}
-            onDeleted={(parent) => select(parent)}
+            onDeleted={selectOnAnswer()}
           />
         )}
       </div>

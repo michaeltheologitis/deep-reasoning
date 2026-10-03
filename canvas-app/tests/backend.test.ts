@@ -32,14 +32,18 @@ function status(
   };
 }
 
-/** The agent-server: each GET answers the next of statuses (the last repeats); start answers started. */
+/** The agent-server: each GET answers the next of statuses (the last repeats); start answers
+ * started, after startTakesMs. */
 function agentServer(
   statuses: BackendStatus[],
   started?: BackendStatus | Error,
+  startTakesMs = 0,
 ) {
   let next = 0;
-  return fakeAgentServer((call) => {
+  return fakeAgentServer(async (call) => {
     if (call.path === START) {
+      if (startTakesMs > 0)
+        await new Promise((resolve) => setTimeout(resolve, startTakesMs));
       if (started instanceof Error) throw started;
       return started;
     }
@@ -148,6 +152,46 @@ describe("ensureBackend", () => {
       ok: false,
       message: BACKEND_FAILED(detail),
     });
+  });
+
+  it.each([
+    ["until it is ready", [status("starting"), status("ready")], { ok: true }],
+    [
+      "and says why it did not start",
+      [status("unhealthy", { detail: "Backend exited with code 1" })],
+      { ok: false, message: BACKEND_FAILED("Backend exited with code 1") },
+    ],
+  ])(
+    "polls the status when start gets no answer, %s",
+    async (_, after, expected) => {
+      const server = agentServer(
+        [status("stopped"), ...after],
+        new Error("Request timeout after 60000ms"),
+      );
+      const { result } = check(server);
+      await vi.advanceTimersByTimeAsync(BACKEND_POLL_MS);
+      expect(await result).toEqual(expected);
+      expect(server.calls.slice(0, 3)).toEqual([
+        { path: BACKEND_PATH },
+        { method: "POST", path: START, body: { revision: "r2" } },
+        { path: BACKEND_PATH },
+      ]);
+    },
+  );
+
+  it("gives a backend still starting after start timed out a fresh 45 s", async () => {
+    const clientTimeoutMs = 60_000;
+    const stillStarting = Array<BackendStatus>(40).fill(status("starting"));
+    const server = agentServer(
+      [status("stopped"), ...stillStarting, status("ready")],
+      new Error(`Request timeout after ${clientTimeoutMs}ms`),
+      clientTimeoutMs,
+    );
+    const { result } = check(server);
+    await vi.advanceTimersByTimeAsync(
+      clientTimeoutMs + stillStarting.length * BACKEND_POLL_MS,
+    );
+    expect(await result).toEqual({ ok: true });
   });
 
   it.each(["missing", "unsupported"] as const)(

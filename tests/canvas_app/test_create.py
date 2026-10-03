@@ -99,6 +99,20 @@ def test_the_saved_line_says_the_started_conversation_does_not_change(
     expect(page.get_by_test_id("dr-show-in-decompositions")).to_be_visible()
 
 
+def test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing(
+    open_ui, library_server
+):
+    library = library_server.library()
+    rev = library.rev()
+    page = open_ui(tab="create")
+    write_new(page, "", TASK)
+    page.get_by_test_id("dr-save").click()
+    expect(page.get_by_test_id("dr-name-errors")).to_have_text(
+        "Give the decomposition a name."
+    )
+    assert library.rev() == rev
+
+
 def test_validation_errors_show_on_the_card_they_name(open_ui, library_server):
     page = open_ui(tab="create")
     page.get_by_test_id("dr-name").fill(" spaced")
@@ -126,6 +140,19 @@ def test_validation_errors_show_on_the_card_they_name(open_ui, library_server):
         "summarize then rank",
         "triage nightly",
     ]
+
+
+def test_an_error_that_names_no_card_shows_above_the_cards(open_ui, library_server):
+    page = open_ui(tab="create", namespace="router.archive")
+    write_new(page, NAME, TASK)
+    library_server.library().delete("namespace", "router.archive")
+    page.get_by_test_id("dr-save").click()
+    errors = page.get_by_test_id("dr-errors")
+    expect(errors).to_contain_text(
+        "There is no namespace 'router.archive' in the library."
+    )
+    first_card = page.get_by_test_id("dr-card-0")
+    assert errors.bounding_box()["y"] < first_card.bounding_box()["y"]
 
 
 def test_an_example_without_final_answer_asks_before_saving(open_ui, library_server):
@@ -161,6 +188,27 @@ def test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces
     saved = library_server.library().decomposition("catalog lookup")
     assert (saved.version, saved.namespaces) == (2, ["root", "course_advisor"])
     assert saved.data["messages"][0]["content"] == TASK
+
+
+def test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name(open_ui):
+    page = open_ui(tab="create")
+    page.get_by_test_id("dr-view-yaml").click()
+    page.get_by_test_id("dr-edit-yaml").click()
+    existing = {
+        "name": "catalog lookup",
+        "messages": [
+            {"role": "user", "content": TASK},
+            {"role": "assistant", "content": "<repl>\nFinalAnswer(1)\n</repl>\n"},
+        ],
+    }
+    page.get_by_test_id("dr-yaml").fill(json.dumps(existing))
+    page.get_by_test_id("dr-save").click()
+    expect(page.get_by_test_id("dr-conflict")).to_contain_text(
+        "'catalog lookup' already exists (v1, in root)."
+    )
+    page.get_by_test_id("dr-rename").click()
+    expect(page.get_by_test_id("dr-conflict")).to_have_count(0)
+    expect(page.get_by_test_id("dr-yaml")).to_be_focused()
 
 
 def test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards(
@@ -233,6 +281,18 @@ def test_a_draft_survives_reloading_the_frame(open_ui):
     expect(page.get_by_test_id("dr-name")).to_have_value("")
     page.reload()
     expect(page.get_by_test_id("dr-card-0-task")).to_have_value("")
+
+
+def test_a_draft_keeps_the_namespace_picked_over_the_preselected_one(open_ui):
+    page = open_ui(tab="create", namespace="router")
+    page.get_by_test_id("dr-namespace-course_advisor").check()
+    page.get_by_test_id("dr-name").fill(NAME)
+    page.reload()
+    expect(page.get_by_test_id("dr-name")).to_have_value(NAME)
+    expect(page.get_by_test_id("dr-namespace-course_advisor")).to_be_checked()
+    expect(page.get_by_test_id("dr-save")).to_have_text("Save to course_advisor")
+    page.get_by_test_id("dr-discard-draft").click()
+    expect(page.get_by_test_id("dr-namespace-router")).to_be_checked()
 
 
 def test_use_when_and_hint_survive_a_save_that_did_not_touch_them(

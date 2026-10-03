@@ -1,14 +1,41 @@
+import re
+from collections.abc import Callable
+
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from tests.canvas_app.conftest import get_json, stale_head
 
 pytestmark = pytest.mark.browser
+HELD_WAIT_MS = 10_000
+HELD_POLL_MS = 20
 
 
 def select(page: Page, namespace: str) -> None:
     page.get_by_test_id(f"dr-node-{namespace}").click()
     expect(page.get_by_test_id("dr-namespace-title")).to_have_text(namespace)
+
+
+def hold_next(page: Page, method: str) -> Callable[[], Route]:
+    """Holds the frame's next <method> request under /namespaces/. The function returned waits
+    until it is sent and gives its route, for the test to let through with continue_()."""
+    held: list[Route] = []
+
+    def hold(route: Route) -> None:
+        if route.request.method == method and not held:
+            held.append(route)
+        else:
+            route.continue_()
+
+    def sent() -> Route:
+        for _ in range(HELD_WAIT_MS // HELD_POLL_MS):
+            if held:
+                return held[0]
+            page.wait_for_timeout(HELD_POLL_MS)
+        raise AssertionError(f"the frame sent no {method}")
+
+    page.route(re.compile(r"/namespaces/"), hold)
+    return sent
 
 
 def edit_value(page: Page, editor: str, value: str) -> None:
@@ -201,12 +228,54 @@ def test_adding_and_deleting_a_namespace(open_ui, library_server):
     page.get_by_test_id("dr-add-namespace").click()
     page.get_by_test_id("dr-new-namespace").fill("course_advisor.deep")
     page.get_by_test_id("dr-create-namespace").click()
+    expect(page.get_by_test_id("dr-namespace-title")).to_have_text(
+        "course_advisor.deep"
+    )
     select(page, "course_advisor")
     page.get_by_test_id("dr-delete-namespace").click()
     page.get_by_test_id("dr-confirm-yes").click()
     expect(page.get_by_test_id("dr-message")).to_have_text(
         "'course_advisor' has namespaces under it (course_advisor.deep); delete them first."
     )
+
+
+@pytest.mark.parametrize("selected", ["root", "run-settings"])
+def test_add_namespace_is_not_prefilled_under_root_or_run_settings(open_ui, selected):
+    page = open_ui(tab="namespaces", focus=selected)
+    page.get_by_test_id("dr-add-namespace").click()
+    expect(page.get_by_test_id("dr-new-namespace")).to_have_value("")
+
+
+def add_router_next(page: Page) -> None:
+    page.get_by_test_id("dr-add-namespace").click()
+    page.get_by_test_id("dr-new-namespace").fill("router.next")
+    page.get_by_test_id("dr-create-namespace").click()
+
+
+def delete_selected(page: Page) -> None:
+    page.get_by_test_id("dr-delete-namespace").click()
+    page.get_by_test_id("dr-confirm-yes").click()
+
+
+@pytest.mark.parametrize(
+    ("focus", "method", "write", "node", "count"),
+    [
+        ("router", "PUT", add_router_next, "router.next", 1),
+        ("router.archive", "DELETE", delete_selected, "router.archive", 0),
+    ],
+    ids=["add", "delete"],
+)
+def test_a_write_answered_after_another_node_is_selected_keeps_that_selection(
+    open_ui, focus, method, write, node, count
+):
+    page = open_ui(tab="namespaces", focus=focus)
+    sent = hold_next(page, method)
+    write(page)
+    answer = sent()
+    select(page, "course_advisor")
+    answer.continue_()
+    expect(page.get_by_test_id(f"dr-node-{node}")).to_have_count(count)
+    expect(page.get_by_test_id("dr-namespace-title")).to_have_text("course_advisor")
 
 
 def test_run_settings_edit_the_profile(open_ui, library_server):

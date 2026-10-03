@@ -39,14 +39,15 @@ export type BackendCheck =
 
 /** §2.1's table over GET BACKEND_PATH and POST BACKEND_PATH/start {revision}; never prepare.
  * ready → ok; starting → poll every BACKEND_POLL_MS up to BACKEND_START_TIMEOUT_MS;
- * stopped or unhealthy and prepared for this revision → start once; not prepared →
+ * stopped or unhealthy and prepared for this revision → start once, polling as for starting,
+ * within a fresh BACKEND_START_TIMEOUT_MS, when start gets no answer; not prepared →
  * NOT_APPROVED; missing or unsupported → BACKEND_UNSUPPORTED. An abort rejects at once. */
 export async function ensureBackend(
   request: AgentServerRequest,
   signal: AbortSignal,
   onProgress: (sentence: string) => void,
 ): Promise<BackendCheck> {
-  const deadline = Date.now() + BACKEND_START_TIMEOUT_MS;
+  let deadline = Date.now() + BACKEND_START_TIMEOUT_MS;
   const read = () => request<BackendStatus>({ path: BACKEND_PATH });
   let status: BackendStatus;
   try {
@@ -86,12 +87,23 @@ export async function ensureBackend(
         method: "POST",
         path: `${BACKEND_PATH}/start`,
         body: { revision: status.revision },
+      }).catch((error: unknown) => {
+        // §11 item 6: start can outlast the client's timeout (60 s, past the 45 s); the status
+        // then says how it went, and a backend still starting gets its own 45 s.
+        if (answered(error)) throw error;
+        deadline = Date.now() + BACKEND_START_TIMEOUT_MS;
+        return read();
       });
     }
   } catch (error) {
     signal.throwIfAborted();
     return { ok: false, message: BACKEND_FAILED(errorDetail(error)) };
   }
+}
+
+/** The agent-server answered: the client's HttpError carries the status it answered with. */
+function answered(error: unknown): boolean {
+  return typeof (error as { status?: unknown } | null)?.status === "number";
 }
 
 /** The agent-server's own words: an HttpError's {detail}, else the error's message. */
