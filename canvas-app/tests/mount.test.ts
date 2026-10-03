@@ -15,13 +15,26 @@ import {
   TAB_TITLES,
   readFrameParams,
 } from "../src/shared/protocol";
-import { type Answer, controlsEvent, deferred, fakeHost } from "./fakes";
+import {
+  type Answer,
+  controlsEvent,
+  deferred,
+  eventsSearch,
+  fakeHost,
+  messageEvent,
+} from "./fakes";
 
 const THEME = { "--oh-surface": "#21252F", "color-scheme": "dark" };
-const NAMESPACES: Record<string, ReturnType<typeof controlsEvent>> = {
-  c1: controlsEvent("router", ["router"]),
-  c2: controlsEvent("course_advisor", ["root", "router", "course_advisor"]),
-};
+const ALL = ["root", "router", "course_advisor"];
+/** Each conversation's events on the agent-server: c1 started in router, c2 has not started. */
+const searchEvents = eventsSearch({
+  c1: [
+    controlsEvent("router", ALL, ["summarize"]),
+    messageEvent("Which course first?"),
+    controlsEvent("router", ["router"]),
+  ],
+  c2: [controlsEvent("course_advisor", ALL)],
+});
 
 function backend(state = "ready") {
   return {
@@ -43,9 +56,7 @@ const agentServer: Answer = (call: CanvasExtensionAgentServerRequest) => {
       profile: { acp_args: ["--spend-cap-usd", "7"] },
     };
   }
-  const conversation =
-    /^\/api\/conversations\/([^/]+)\//.exec(call.path)?.[1] ?? "";
-  return NAMESPACES[conversation] ?? { items: [] };
+  return searchEvents(call);
 };
 
 function context(conversationId: string, tab: TabId = "create") {

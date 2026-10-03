@@ -37,24 +37,73 @@ export function fakeAgentServer(answer: Answer): FakeAgentServer {
   return { request, calls };
 }
 
-export function controlsEvent(namespace: string, values: string[]) {
+/** An event as the events search returns it: null fields left out (S2 §3.2 B2). */
+export interface WireEvent {
+  kind: string;
+  [field: string]: unknown;
+}
+
+/** What the events search's `kind` matches: the event's module-qualified class name
+ * (event_service.py:550 in the SDK fork at dr-1), never the `kind` in its JSON. */
+const QUALIFIED_KINDS: Record<string, string> = {
+  ACPSessionControlsEvent:
+    "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent",
+  MessageEvent: "openhands.sdk.event.llm_convertible.message.MessageEvent",
+};
+
+/** dr-acp's controls: the namespace option offering values (one once the conversation started),
+ * and the namespace's commands. */
+export function controlsEvent(
+  namespace: string,
+  values: string[],
+  commands: string[] = [],
+): WireEvent {
   return {
-    items: [
+    kind: "ACPSessionControlsEvent",
+    source: "agent",
+    available_commands: commands.map((name) => ({ name, description: name })),
+    config_options: [
       {
-        kind: "ACPSessionControlsEvent",
-        available_commands: [],
-        config_options: [
-          {
-            id: "namespace",
-            name: "Namespace",
-            type: "select",
-            current_value: namespace,
-            options: values.map((value) => ({ value, name: value })),
-          },
-        ],
+        id: "namespace",
+        name: "Namespace",
+        type: "select",
+        current_value: namespace,
+        description: "The namespace this conversation runs in.",
+        options: values.map((value) => ({ value, name: value })),
       },
     ],
-    next_page_id: null,
+  };
+}
+
+export function messageEvent(text: string): WireEvent {
+  return {
+    kind: "MessageEvent",
+    source: "user",
+    llm_message: { role: "user", content: [{ type: "text", text }] },
+  };
+}
+
+/** The agent-server's GET /api/conversations/<id>/events/search over each conversation's events,
+ * oldest first, as event_router.py and event_service.py answer it at dr-1: `kind` is matched
+ * against the module-qualified class name; TIMESTAMP_DESC walks from the newest; `limit` caps
+ * the page. Any other path, or an unknown conversation, is a 404. */
+export function eventsSearch(conversations: Record<string, WireEvent[]>) {
+  return ({ path }: CanvasExtensionAgentServerRequest) => {
+    const url = new URL(path, "http://agent-server");
+    const id = /^\/api\/conversations\/([^/]+)\/events\/search$/.exec(
+      url.pathname,
+    )?.[1];
+    const events =
+      id === undefined ? undefined : conversations[decodeURIComponent(id)];
+    if (events === undefined) throw new HttpError(404, { detail: "Not Found" });
+    const kind = url.searchParams.get("kind");
+    const matching = events.filter(
+      (event) => kind === null || QUALIFIED_KINDS[event.kind] === kind,
+    );
+    if (url.searchParams.get("sort_order") === "TIMESTAMP_DESC")
+      matching.reverse();
+    const limit = Number(url.searchParams.get("limit") ?? 100);
+    return { items: matching.slice(0, limit), next_page_id: null };
   };
 }
 

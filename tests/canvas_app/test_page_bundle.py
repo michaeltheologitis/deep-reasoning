@@ -14,7 +14,9 @@ pytestmark = pytest.mark.browser
 BUNDLE = resources.files("deep_reasoning.canvas_app").joinpath("dist", "index.js")
 # C2's host (C2 §7, A.1, A.11) over a fake agent-server: the backend is ready, conversation
 # c1 has started in router, c2 has not started in course_advisor, and the profile caps
-# spend at $7. mountFrame appends the frame at the backend's address, as C2's does at the
+# spend at $7. The events search answers as the SDK fork's at dr-1 does: its kind is the
+# module-qualified class name, and TIMESTAMP_DESC with limit 1 is the newest match
+# (S2 §3.2 B2). mountFrame appends the frame at the backend's address, as C2's does at the
 # ingress; selectTab disposes the tab's page and mounts the next one, as C2's panel does.
 PARENT = """<!doctype html>
 <meta charset="utf-8">
@@ -24,10 +26,26 @@ PARENT = """<!doctype html>
 <div id="panel" style="width: 600px; height: 700px"></div>
 <script type="module">
   const BACKEND = %(backend)s;
-  const CONTROLS = {
-    c1: { namespace: "router", values: ["router"] },
-    c2: { namespace: "course_advisor", values: ["root", "router", "course_advisor"] },
+  const CONTROLS_KIND = "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent";
+  const ALL = ["root", "router", "course_advisor"];
+  const controls = (namespace, values) => ({
+    kind: "ACPSessionControlsEvent",
+    available_commands: [],
+    config_options: [{
+      id: "namespace", name: "Namespace", type: "select", current_value: namespace,
+      options: values.map((value) => ({ value, name: value })),
+    }],
+  });
+  // Each conversation's controls events, oldest first.
+  const EVENTS = {
+    c1: [controls("router", ALL), controls("router", ["router"])],
+    c2: [controls("course_advisor", ALL)],
   };
+  function search(id, query) {
+    const found = query.get("kind") === CONTROLS_KIND ? [...(EVENTS[id] ?? [])] : [];
+    if (query.get("sort_order") === "TIMESTAMP_DESC") found.reverse();
+    return { items: found.slice(0, Number(query.get("limit") ?? 100)), next_page_id: null };
+  }
   function answer({ path }) {
     if (path === "/api/canvas-extensions/installed/dr-library/backend") {
       return { name: "dr-library", state: "ready", revision: "r1", prepared_revision: "r1", detail: null };
@@ -35,13 +53,8 @@ PARENT = """<!doctype html>
     if (path === "/api/agent-profiles/deep_reasoner") {
       return { name: "deep_reasoner", profile: { acp_args: ["--spend-cap-usd", "7"] } };
     }
-    const id = path.split("/")[3];
-    const controls = CONTROLS[id];
-    if (!controls) return { items: [] };
-    const options = controls.values.map((value) => ({ value, name: value }));
-    return { items: [{ config_options: [
-      { id: "namespace", name: "Namespace", type: "select", current_value: controls.namespace, options },
-    ] }] };
+    const url = new URL(path, location.origin);
+    return search(url.pathname.split("/")[3], url.searchParams);
   }
   const registered = new Map();
   window.selected = [];
