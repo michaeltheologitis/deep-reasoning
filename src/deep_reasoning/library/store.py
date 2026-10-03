@@ -159,7 +159,7 @@ def refuse_network_filesystem(path: Path, *, mounts: Path = MOUNTS) -> None:
 def connect(path: Path, *, mounts: Path = MOUNTS) -> sqlite3.Connection:
     """Refuses a network filesystem (Linux); migrates an older schema."""
     refuse_network_filesystem(path, mounts=mounts)
-    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    conn = sqlite3.connect(path, autocommit=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
@@ -169,29 +169,20 @@ def connect(path: Path, *, mounts: Path = MOUNTS) -> sqlite3.Connection:
 
 
 def migrate(conn: sqlite3.Connection) -> None:
+    """Apply MIGRATIONS[user_version:], each in its own BEGIN IMMEDIATE: two processes
+    migrating at once apply a step once, and a step that fails leaves the file as it
+    was. In autocommit mode executescript commits nothing of its own."""
     (version,) = conn.execute("PRAGMA user_version").fetchone()
     for target, script in enumerate(MIGRATIONS[version:], start=version + 1):
         conn.execute("BEGIN IMMEDIATE")
         try:
             (current,) = conn.execute("PRAGMA user_version").fetchone()
             if current < target:
-                for statement in _statements(script):
-                    conn.execute(statement)
-                conn.execute(f"PRAGMA user_version = {target}")
+                conn.executescript(f"{script}\nPRAGMA user_version = {target};")
             conn.execute("COMMIT")
         except BaseException:
             conn.execute("ROLLBACK")
             raise
-
-
-def _statements(script: str) -> Iterator[str]:
-    """The script's statements one by one (executescript would commit our transaction)."""
-    statement = ""
-    for line in script.splitlines(keepends=True):
-        statement += line
-        if sqlite3.complete_statement(statement):
-            yield statement
-            statement = ""
 
 
 def create(path: Path, seed: Callable[[Path], None]) -> bool:
