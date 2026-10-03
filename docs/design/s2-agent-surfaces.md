@@ -12,8 +12,8 @@ commit, which touches only `AGENTS.md` and `CLAUDE.md`, so every line number bel
 (`docs/design/d1-dr-acp.md` §5, the ACP contract S2 forwards) · Canvas fork `deep-reasoning` at
 `02b7ac7` (`1ff45c2` plus its ASE commit).
 
-**Matches the build at `5e3317f`** (v2.2): `feat/agent-surfaces` in the draft pull request
-[michaeltheologitis/software-agent-sdk#1](https://github.com/michaeltheologitis/software-agent-sdk/pull/1)
+**Matches the build at `5e3317f`** (v2.2; v2.3 adds only CI evidence): `feat/agent-surfaces` in the
+draft pull request [michaeltheologitis/software-agent-sdk#1](https://github.com/michaeltheologitis/software-agent-sdk/pull/1)
 against the fork's `deep-reasoning` (head `1f2b52d`). The branch holds 18 commits that
 `deep-reasoning` lacks. Sixteen are S2's, grouped as the three PRs: PR 1 `28ca2e1`, `c3d1db8`,
 `d0d3fe1`, `5252840`, `e2ec3a9`, `4027912`, `00a5310`, `5e3317f`; PR 2 `132db0f`, `8523177`,
@@ -33,7 +33,7 @@ the PR split build against (Michael: don't force compression); Gate B does not n
 
 | # | Read | What it gives you | Minutes |
 |---|---|---|---|
-| 1 | This section and the v2.2, v2.1 and v2 revision lines below it | where the proof is, and which sentences of v1 changed | 10 |
+| 1 | This section and the v2.3, v2.2, v2.1 and v2 revision lines below it | where the proof is, and which sentences of v1 changed | 10 |
 | 2 | §1 | what S2 changes; v2 corrects its order-and-independence paragraph | 5 |
 | 3 | §3.1 | the departures from the spec: the ten accepted on 2026-10-02, all still true; items 11 and 12 new | 4 |
 | 4 | §3.2 | what the build changed, each with its reason and the test that pins it | 12 |
@@ -68,19 +68,23 @@ Refactorer, after Gate B, are where it shrinks.
     public-type-budget, agent-server-api, validate-acp-providers); **TypeScript client integration
     tests** ([37146974428](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974428): smoke-test, integration-test); **Persisted settings
     compatibility checks** ([37146974370](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974370)); **REST API breakage checks**
-    ([37146974332](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974332)) and the **Version bump guard**
+    ([37146974332](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974332), attempt 2, against `v1.50.1`, below) and the **Version bump guard**
     ([37146974326](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974326)), green with the caveats below.
   - Also green: Pre-commit checks ([37146974316](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974316)), Check Docstrings
     ([37146974314](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974314)), Deprecation deadlines ([37146974368](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974368)),
     TypeScript client endpoint audit ([37146974355](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974355)).
+- **The REST breakage check, against upstream's `v1.50.1`** (v2.3). Michael pushed the
+  `v1.50.1` tag to the fork, and the check was re-run on PR #1 at `5e3317f`
+  ([attempt 2 of run 37146974332](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974332/job/111276569669)): it fetched the tag, ran oasdiff 1.19.1 against it and
+  passed (exit 0). It reports eight changes, and the script's policy allows every one, filing all
+  eight under its notice "Additive oneOf/anyOf expansion or enum-value additions detected in response
+  schemas": `ACPSessionControlsEvent` added to the event `oneOf` in two 200 responses, and
+  `darwin-amd64` and `darwin-arm64` added to the backend `artifacts` keys in the three 200 responses
+  that carry a manifest. §4.9 lists them. The platform keys are B14's fallback at work, in CI for the
+  first time. The same check on PR #2 (S1's, at `a3279be`, [attempt 2 of run
+  37146975811](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146975811/job/111276572426)) reports the same eight plus S1's `ACPSessionMessageEvent`,
+  `ACPSessionTextEvent` and `ACPSubagentEvent` in the same two `oneOf` lists, and passes.
 - **What CI's green does not cover** (B25):
-  - **The REST breakage check ran without its oasdiff comparison.** The fork carries no `v1.50.1` tag, so the script
-    could not build its baseline (`git archive v1.50.1`: "not a valid object name") and, by its own
-    rule, ran only its static and deprecation-policy checks and exited 0; oasdiff did not run. The
-    oasdiff comparison of S2 against v1.50.1 is still the Implementer's local run at `28e5654` (PR
-    #1's description: passes). The two commits after it that touch the API add tests and document
-    the icon route's response; that route is new since v1.50.1, so oasdiff has nothing to compare
-    there.
   - **The SDK API breakage check was skipped**: the version-bump guard runs "Check Python API
     compatibility" only when a package version changes, and none did. The Conductor ran it locally
     at S2's head: one error, upstream's (`ACPAgentSettings.llm` against PyPI 1.50.1), the same on
@@ -165,6 +169,11 @@ provider's session mode). §10 item 16 (the unmasked 500) is now pinned as it is
 
 **Revisions** (newest first; the Gate B reader approved the previous one, so each line says which
 sentences to stop trusting):
+- 2026-10-03 · v2.3 · the REST breakage check re-run against `v1.50.1`, on the Conductor's request:
+  Michael pushed upstream's tag to the fork, and attempt 2 of run 37146974332 on PR #1 at `5e3317f`
+  ran oasdiff and passed. Stop trusting v2.2's "the REST breakage check ran without its oasdiff
+  comparison" (the Gate B section, §4.9's REST row). Added: oasdiff's findings under §4.9's table;
+  notes in B14, §6.4 and §10 items 5 and 11. The build and every reading of its code are unchanged.
 - 2026-10-03 · v2.2 · brought in line with `5e3317f` (`13e5904`, `5e3317f`, and the fork-only
   `1f2b52d` merged as `c12f7b4`), on the Conductor's request; the Gate B evidence is now PR #1's CI
   and the live run at `5e3317f`. Stop trusting: the header's commit list and `git diff` range; the
@@ -542,7 +551,9 @@ marked as this design's reading.
   downgraded; every other response enum addition stays breaking." *Pinned by:*
   `test_backend_artifact_platform_additions_are_downgraded_and_nothing_else` (cross-tests, in CI).
   The oasdiff check itself runs only for pull requests to `main`; it passed in the Implementer's
-  local run at `28e5654`.
+  local run at `28e5654`. *(v2.3: and in CI, on PR #1 at `5e3317f` against `v1.50.1` (B25): oasdiff
+  reported both keys in the three responses that carry a manifest, and the pattern downgraded all six
+  entries; §4.9 lists them.)*
 - **B15. websockets 15.0.1 has `proxy`, so the item stays** (`759ffb2`; §6.1, §10 item 6).
   `bridge_websocket` passes `proxy=None` for a loopback target and `proxy=True` (websockets' default,
   the system's proxies) otherwise; loopback is one constant, `_LOOPBACK_HOSTS`, shared with
@@ -1020,13 +1031,43 @@ appear under their generated names.
 
 | Guard | What PR 1 does to it | Expected | Ran, at Gate B (v2) |
 |---|---|---|---|
-| REST breakage (oasdiff) | new routes; new optional request fields (`acp_config_options` on the start request and on `ACPAgent`); one new member of the event `oneOf` | additive routes and fields pass; the `oneOf` addition is downgraded to a notice by the script's own rule | oasdiff: locally at `28e5654`, passing. *v2.2:* the workflow runs on PR #1 (B25) and is green at `5e3317f`, but without oasdiff: the fork has no `v1.50.1` tag |
+| REST breakage (oasdiff) | new routes; new optional request fields (`acp_config_options` on the start request and on `ACPAgent`); one new member of the event `oneOf` | additive routes and fields pass; the `oneOf` addition is downgraded to a notice by the script's own rule | oasdiff: locally at `28e5654`, passing. *v2.3:* CI on PR #1 at `5e3317f` against `v1.50.1` (attempt 2 of run 37146974332), passing, with the eight findings below. (v2.2's first attempt ran without oasdiff: the fork had no `v1.50.1` tag then.) |
 | Weak-schema ratchet | eight new schemas, all fully typed | the allowlist stays exact | *v2.2:* not in CI (`server.yml`, main-only; B23); locally at `5e3317f` (the Conductor), passing, 62 allowlisted, after `13e5904` |
 | Persisted settings | nothing in `ACPAgentSettings`, profiles or settings | untouched | *v2.2:* CI at `5e3317f` (B25) |
 | SDK API breakage | additions only; `_apply_acp_model` and the other changed helpers are private | passes | *v2.2:* CI step skipped (no version change); locally at S2's head (the Conductor): one upstream error, none from S2 |
 | Docstrings (MDX) | fenced code only in docstrings, no `>>>` | passes | CI, Check Docstrings |
 | TypeScript client CI | hand-written types; generated file untouched | passes | *v2.2:* CI at `5e3317f`, 355 tests, and its integration tests (B25) |
 | Endpoint audit | report-only; the two new routes are listed as client-ahead | report clean | CI |
+
+**What oasdiff reported** (v2.3; [attempt 2 of run 37146974332](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146974332/job/111276569669), S2 at `5e3317f` against
+`v1.50.1`, oasdiff 1.19.1). Eight changes, all in 200 responses, all under the script's notice
+"Additive oneOf/anyOf expansion or enum-value additions detected in response schemas. This is
+expected for extensible discriminated-union APIs and does not break backward compatibility."; the
+check exits 0. The log names schema paths, not routes; the routes here are read from S2's OpenAPI
+document at `5e3317f`, where these are the only responses that reach `Event` or a manifest.
+
+- `ACPSessionControlsEvent` added to the `oneOf` list of `Event`, twice (PR 1):
+  - "the response body `oneOf` list": `GET /api/conversations/{conversation_id}/events/{event_id}`;
+  - "the `items/anyOf[#/components/schemas/Event]/` response property `oneOf` list":
+    `GET /api/conversations/{conversation_id}/events` (the batch read, a list of `Event | null`).
+- `darwin-amd64` and `darwin-arm64` added as enum values of
+  `backend/anyOf[subschema #1: CanvasExtensionBackend]/artifacts/propertyNames/` under the manifest,
+  six entries (PR 3, downgraded by B14's pattern):
+  - at `manifest/anyOf[subschema #1: CanvasExtensionManifest]/…`, twice each: the two routes that
+    answer one `InstalledCanvasExtensionResponse`, `POST /api/canvas-extensions/install` and
+    `GET /api/canvas-extensions/installed/{extension_name}`;
+  - at `canvas_extensions/items/manifest/anyOf[subschema #1: CanvasExtensionManifest]/…`, once
+    each: `GET /api/canvas-extensions/installed`.
+
+Not reported, and nothing to report: the new routes and the new optional request fields, which are
+not breaking. Not seen, either: the route C2 reads the controls from,
+`GET /api/conversations/{conversation_id}/events/search`, declares no response schema (`{}`; it
+answers a `JSONResponse`, as at `v1.50.1`), so oasdiff has nothing there to compare. That is
+upstream's, and S2 does not change it.
+
+On PR #2 (S1's, at `a3279be`; [attempt 2 of run 37146975811](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37146975811/job/111276572426)) the check reports the same
+eight, except that each of the two `oneOf` entries also adds S1's `ACPSessionMessageEvent`,
+`ACPSessionTextEvent` and `ACPSubagentEvent`, and passes.
 
 ### 4.10 Tests for PR 1
 
@@ -1209,6 +1250,8 @@ list is extensible by nature. This is the one guard in S2 I could not settle wit
 `_EXTENSIBLE_DISCRIMINATOR_PROPERTY_RE` (`CanvasExtensionBackend\b.*\bartifacts/propertyNames\b`)
 rather than a pattern beside it; a test pins that only those keys are downgraded. The check itself
 runs only for pull requests to `main`; it passed in the Implementer's local run at `28e5654`.)*
+*(v2.3: and in CI, on PR #1 at `5e3317f` against `v1.50.1`; the six entries it downgraded are listed
+in §4.9.)*
 
 ---
 
@@ -1414,7 +1457,7 @@ branch `ci/fork-live`, a `workflow_dispatch` taking `sdk_ref`, `suites`, `sdk_re
    *(v2: built so, `1d2627b`.)*
 5. **Possible guard objection (§6.4):** oasdiff on `BackendPlatform`'s new keys. Settled by running
    the check on PR 3's draft PR. *(v2: resolved, it objected, and the fallback is built, §3.2 B14;
-   settled by a local run, not a draft PR, B18.)*
+   settled by a local run, not a draft PR, B18. v2.3: confirmed in CI at `5e3317f`, §4.9.)*
 6. **Unverified on hardware:** `os.killpg` on a zombie-only group on macOS (§6.1), and websockets
    15.0.1's `proxy` parameter (§6.1). Both are settled by the macOS job and the lock, and recorded in
    the as-built. *(v2: resolved; macOS does answer EPERM, B12; 15.0.1 has `proxy`, B15.)*
@@ -1436,7 +1479,9 @@ branch `ci/fork-live`, a `workflow_dispatch` taking `sdk_ref`, `suites`, `sdk_re
     breakage check has no recorded run. They run in CI once the PR split opens the per-PR drafts onto
     `main`, which is before Gate C, not before Gate B. *(v2.2: resolved for CI by `1f2b52d`, B25; what
     stays outside CI is the REST check's oasdiff (no `v1.50.1` tag in the fork), the SDK API check
-    (skipped without a version change) and the schema ratchet (`server.yml`), each run locally.)*
+    (skipped without a version change) and the schema ratchet (`server.yml`), each run locally.
+    v2.3: the REST check's oasdiff now runs in CI too, against `v1.50.1`, §4.9; the other two stay
+    outside.)*
 12. *(v2)* **The live tier ran inside S1's head.** Run 37141960911 checked out `0cfb6a2`, which
     carries `6f97bf3` unchanged under S1's five commits; S1's changes to `acp_agent.py` route updates
     below S2's line (§8 item 3), so the result stands for S2 as stacked. The six provider previews
