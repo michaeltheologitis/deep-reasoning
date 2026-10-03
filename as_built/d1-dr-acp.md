@@ -10,6 +10,13 @@ then: design v3, which took in that version's D-1 to D-15, and the fourteen comm
 `c8d7fbb..2a15388` (the literate refactor `77c65f6..65428c4`, two rulings of Michael's in
 `96926d0` and `e00a78f`, and his request in `2a15388`).
 
+**Revised 2026-10-03, after Gate C was called**, for `72d9588` (E1's reference; a tenth scenario)
+and `0053bbf` (the live tier's failure messages), on `v1-dr-acp` and in #7 and #8. Both touch only
+`tests/acp/`; `src/` is as at `2a15388` [run]. Revised: D-12 (now in §2.1), §1's counts, §4.7's
+Expectations paragraph, §6.1, §6.2, §6.4, §6.5, §6.8, §7. The design on the branch is v4
+(`554fccb`), whose text on these points is v3's; `design/d1-e1` is not read. In the revised
+passages, [run] means run at `0053bbf`.
+
 **Evidence marks.** Every claim carries one.
 - **[run]**: executed in this sandbox at `2a15388`: the full suite
   (`DR_BETA_CHECKOUT=/home/user/deep_reasoner_beta uv run pytest`: 233 passed, 4 deselected,
@@ -46,7 +53,7 @@ pump (one task per run): event line ─▶ RunLog.append (runs/<run>/events.json
 |---|---|---|
 | front and worker | 2,719 | `src/deep_reasoning/acp/`, `…/acp/worker/` |
 | client-side helpers, shipped in the package | 424 | `src/deep_reasoning/acp/testing/` |
-| tests | 4,010, plus 584 lines of golden recordings | `tests/` |
+| tests | 4,082, plus 622 lines of golden recordings (at `0053bbf`) | `tests/` |
 
 Counted the Refactorer's way (non-blank lines of `.py` files under `src/` and `tests/`):
 
@@ -57,10 +64,11 @@ Counted the Refactorer's way (non-blank lines of `.py` files under `src/` and `t
 | `96926d0`, genai-prices | 3,276 | 3,942 |
 | `e00a78f`, display helpers deleted | 3,143 | 3,855 |
 | `2a15388`, Claude Code test | 3,143 | 4,010 |
+| `0053bbf`, E1's `unanswered` | 3,143 | 4,082 |
 
 The shipped `src/deep_reasoning/acp/prices.yaml` (11 lines) is gone. [run]
 
-237 tests: 233 deterministic (no network beyond 127.0.0.1), 4 marked `live`. [run]
+241 tests at `0053bbf`: 237 deterministic (no network beyond 127.0.0.1), 4 marked `live`. [run]
 
 The front imports neither deep_reasoner nor OpenHands at start-up: after importing `cli`, `agent`,
 `supervisor` and `wire`, no `deep_reasoner*` or `*openhands*` module is loaded. It does import
@@ -73,8 +81,9 @@ front only inside `ConfigCatalog`'s methods (in a thread), and by the worker. [r
 
 The design at `2a15388` is v3 (`c8d7fbb`). v3 took in D-1 to D-15 of this document's previous
 version, as its §3.2 B1–B18 and §3.3 C1–C2; §2.2 keeps them, each with where v3 records it and
-whether it still holds. §2.1 is what departs from v3: D-16, which v3 did not take in, and what the
-fourteen commits after it changed. The changelog holds no `drift:` line for TASK-2 [read: the
+whether it still holds. §2.1 is what departs from v3: D-16, which v3 did not take in, what the
+fourteen commits after it changed, and D-12 as `72d9588` revised it. The changelog holds no
+`drift:` line for TASK-2 [read: the
 Changelog database, queried 2026-10-03]; every item below was found from the code. "Design §x" and
 "v3 §x" cite `c8d7fbb`.
 
@@ -133,6 +142,26 @@ sibling named but not cancelled. [read; run: the held test passes in this sandbo
 average of about 13]
 
 **The client-side helpers and the proof**
+
+**D-12 · E1's reference takes an agent that never got a reply from our run log** (revised
+2026-10-03, at `0053bbf`). `scenarios.deep_reasoner_tree` (`scenarios.py:278–319`) reads
+deep_reasoner's files as before (agents from `llm_calls.jsonl`, kind `agent` or a fork's
+code-writing kind-`llm` node, and from `claude_calls.jsonl`; cells from the `<repl>` turns of the
+node YAML's conversation), then adds each agent our run log starts that has no `usage` event there,
+under its run-log ancestry, with its `cell.end` count (none, for a child that never got a reply). An
+agent with a `usage` event that deep_reasoner's files lack is still a difference. deep_reasoner
+writes nothing for an agent until one of its model calls returns (§4.7), while the stream announces
+and closes every agent (design §5.2). **For such agents the reference is our own run log, not a
+record independent of the stream's source.** A Claude Code agent's files give no cells, so D-18's
+tests compare only its parent links and count cells against the run log and the transcript. A
+failed comparison prints both trees and each disputed agent's run-log events, long texts cut to 300
+characters at each end (`scenarios.tree_evidence`; `test_agent.py:83`, `test_live.py:57`). E1 gains
+a tenth scenario, `unanswered` (§6.2). Design v4 (`554fccb`, as v3): §3.2 B14 and §8.1's E1 row read
+agents from the two files only; B14, §8.1 and §8.3 say nine scenarios. Reason (commit `72d9588`):
+live run 37149393726 (§6.8). [run: on `unanswered`'s two run directories the previous function
+returns `{1: (None, 2)}` and this one `{1: (None, 2), 2: (1, 0), 3: (1, 0)}`, the stream's tree; on
+run 37149393726's, `{1: (None, 3)}` and the stream's `{1: (None, 3), 2: (1, 0), 3: (1, 0)}`; the
+suite]
 
 **D-17 · The client-side helpers keep no display.** `Printer` is `updates`, `subagents` (a plain
 `dict` by full session id), `commands` and `wait_until()` (`testing/client.py:115–169`). There is
@@ -274,12 +303,8 @@ D-18), deselected by default (`pyproject.toml:44–45`), run by `live.yml` on de
 in §6. `test_claude_code.py` is named for deep_reasoner's backbone, not for a module of ours.
 [read]
 
-**D-12 · E1's reference tree is read differently.** v3: B14. `scenarios.deep_reasoner_tree`
-(`scenarios.py:246–273`): agents are the nodes whose model calls `llm_calls.jsonl` logs as kind
-`agent`, a fork's kind-`llm` node that writes code, or the node a `claude_calls.jsonl` row runs
-for; cells are the turns with a `<repl>` block in the node YAML's conversation. For a Claude Code
-agent it gives no cells, so D-18's tests compare only its parent links with it, and count cells
-against the run log and the session's transcript. [read]
+**D-12** (E1's reference, v3's B14) is revised: since `72d9588` it also reads our run log; see
+§2.1.
 
 **D-13 · E3's null is relaxed to "at most one call per branch agent after the stop".** v3: B12.
 `test_stop.py:108–111` allows each branch agent at most one model call that starts after
@@ -503,6 +528,16 @@ and `dr repl exec` as the Claude session's way to act. `tests/conftest.py` impor
 deep_reasoner modules with `pytest` hidden from `sys.modules`, because deep_reasoner runs its
 notebook tests on import wherever pytest is imported. [read]
 
+**For the Expectations row at merge: deep_reasoner's run directory has no record of an agent that
+never got a reply.** At `d7334ae`, `LogProcessor` writes `llm_calls.jsonl` on `llm.call`,
+`claude_calls.jsonl` on `claude.call`, and a node YAML on an `agent*` event carrying `messages`,
+which in `v2/` is `agent.loop` alone (`logging_utils.py:307–330, 361–368`); all three are logged
+only once their call has returned (`v2/llm_coro.py:103–111, 232–240`, `v2/claude_code.py:842–846`),
+and `agent.start`/`agent.end` carry no messages (`v2/agent.py:789–801`). An agent whose drive ends
+before any reply leaves nothing there, so E1 reads it from our run log (D-12;
+`tests/acp/scenarios.py::deep_reasoner_tree`). [read; run: run 37149393726's run directory holds
+files for node 1 only, while its run log starts nodes 1, 2 and 3]
+
 genai-prices (0.1.9, D-9): `genai_prices.Usage`, `genai_prices.data.providers`, and
 `DataSnapshot(…).calc(usage, model, None, None, None)`, which raises `LookupError` for a model it
 does not know and returns `total_price` and `model.context_window`; `calc` prices at
@@ -538,40 +573,50 @@ model secrets, masked]
 
 | Run | Commit | Conditions | Result |
 |---|---|---|---|
+| CI `ci` [37157372658](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157372658) | `0053bbf` | as at `2a15388` below | ruff check and format clean; **237 passed**, 4 deselected, 187.4 s [CI] |
+| CI `live` [37157389645](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37157389645) | `ac2ac87`, #8's head: `src/`, `tests/`, `uv.lock`, `live.yml` as at `0053bbf` | as at `2a15388` below | **4 passed**, 220 deselected, 50.8 s; no agent went unanswered, so the run-log half of D-12 was not exercised [CI] |
+| this sandbox | `0053bbf` | as at `2a15388` below; load average 15 to 20 | `test_agent.py`: **48 passed**, 243.6 s; the suite: **237 passed**, 4 deselected, 470.2 s. An earlier `test_agent.py` run with `--basetemp` under a long scratch path failed the two `claude` E1 tests with `OSError: AF_UNIX path too long`, from the socket deep_reasoner's `repl_cli_interface.serve` opens under the run directory [run] |
+| CI `live` [37149393726](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37149393726) | `7eb7812`, D4's branch: D1's `21f4a8b` plus D4's own changes to `src/deep_reasoning/acp/`; `scenarios.py`'s reference and `test_live.py` as at `2a15388` | D1's three gpt-6-luna tests and D4's three live tests | **failed**: D1's tree test, `{1: (None, 3), 2: (1, 0), 3: (1, 0)} == {1: (None, 3)}`; 5 passed (§6.8) [CI] |
 | CI `ci` [37144598450](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37144598450) | `2a15388` | ubuntu-latest, Python 3.12.3, deep_reasoner at `d7334ae`, beta configs present | ruff check and format clean; **233 passed**, 4 deselected, 218.8 s [CI] |
 | CI `live` [37144608009](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37144608009) | `2a15388` | ubuntu-latest, Python 3.12.3, `OPENAI_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` secrets, Node 22.23.3, Claude Code 2.1.285, genai-prices 0.1.9, no beta configs | **4 passed**, 216 deselected, 47.9 s [CI] |
 | this sandbox | `2a15388` | Linux, 4 CPUs, load average about 13 (other agents' suites), `DR_BETA_CHECKOUT=/home/user/deep_reasoner_beta` (`d7334ae`) | **233 passed**, 4 deselected, 396.6 s; no failure to rerun [run] |
 | earlier, code of `21f4a8b` | `21f4a8b`, `1fef880`, `1652b5a`, `c8d7fbb` | as above, 3 live tests | `ci` 37052495476 (`21f4a8b`) 230 passed; `live` 37053166300 (`21f4a8b`) 3 passed; `ci` 37086236436 (`1fef880`) passed; `ci` 37086285097 (`1652b5a`) **failed**: the interim stop test (D-19), 229 passed; `ci` 37086294973 and `live` 37086300425 (`c8d7fbb`) passed [CI] |
 | earlier: `ci` 37049699113, `live` 37050366757 | `db47b5e` | — | ci failed 2 golden tests (`failing` scenario: `FakeOpenAI` counted tokens from characters, and tracebacks carry install paths), fixed in `381f81d`; live passed [CI] |
 
-GitHub lists ten runs on `v1-dr-acp`, those above; none is at the thirteen commits between
-`c8d7fbb` and `2a15388`. [CI]
+At `2a15388`, GitHub listed ten runs on `v1-dr-acp`, those from `2a15388` down; none is at the
+thirteen commits between `c8d7fbb` and `2a15388`. Since: `ci` 37148543910 at `554fccb` (design
+only) and 37157372658 at `0053bbf`, both passed. [CI]
 
 Reproduce: `DR_BETA_CHECKOUT=<deep_reasoner_beta at d7334ae> uv run pytest` (the deterministic tier);
 `OPENAI_API_KEY=… CLAUDE_CODE_OAUTH_TOKEN=… uv run pytest -m live` (the live tier; the Claude test
 needs the `claude` CLI on `PATH` and skips without its token).
 
-66 of the 233 deterministic tests spawn a real `dr-acp` over stdio through `tests/acp/harness.py`,
+70 of the 237 deterministic tests spawn a real `dr-acp` over stdio through `tests/acp/harness.py`,
 and so do the 4 live tests; in each, every message `dr-acp` sends is validated against the vendored
 ACP schema 1.24.1 (sha256 checked) and every stdout line must parse as JSON-RPC 2.0 (E2, E4). [read:
-counted from the code (65 before, plus D-18's twin); run: they pass]
+counted from the code (65 at `c8d7fbb`, D-18's twin, `unanswered`'s four); run: they pass]
 
 ### 6.2 E1 · tree fidelity
 
-`test_agent.py::test_tree_rebuilt_from_the_stream_is_deep_reasoners_own`, 9 scenarios × {native, flat}
-= 18 tests: `linear` (a main decomposition, then a resumed prompt), `fanout2`, `fanout20`, `depth3`,
+`test_agent.py::test_tree_rebuilt_from_the_stream_is_deep_reasoners_own`, 10 scenarios × {native, flat}
+= 20 tests: `linear` (a main decomposition, then a resumed prompt), `fanout2`, `fanout20`, `depth3`,
 `namespace`, `fork`, `exhausted`, `failing` (a failing cell and a child whose model answers 500),
-`claude` (deep_reasoner's fake `claude` CLI). Each runs `dr-acp` against `FakeOpenAI` and asserts:
-each prompt's outcome; the tree `testing.tree()` rebuilds from the client's updates equals the
-reference read from deep_reasoner's own run directory (per agent node: its parent and its cell count,
-D-12); native: every child's announcement names a cell already sent on its parent, nothing reaches a
-child session before its announcement, every prompt response follows a root `usage_update`; flat: only
-the root session is used and no unstable update kind appears. **18/18 passed** [CI, run].
-Baseline beside each arm: deep_reasoner's own files for the same run.
+`unanswered` (the root's `run_all` of two children: the first's first call answers 500, and
+`FakeOpenAI` holds the second's until the root's next turn, so `run_all` cancels it before any
+reply; `scripted(…, held=)`, `scenarios.py:44–67, 249–266`), `claude` (deep_reasoner's fake `claude`
+CLI). Each runs `dr-acp` against `FakeOpenAI` and asserts: each prompt's outcome; the tree
+`testing.tree()` rebuilds from the client's updates equals the reference (per agent node: its parent
+and its cell count, D-12); native: every child's announcement names a cell already sent on its
+parent, nothing reaches a child session before its announcement, every prompt response follows a
+root `usage_update`; flat: only the root session is used and no unstable update kind appears.
+**20/20 passed** at `0053bbf` [CI, run]. Baseline beside each arm: deep_reasoner's own files for
+the same run, and our run log for an agent with no model call (only `unanswered`'s two children,
+which end `failed` on the 500 and on `CancelledError: ` [run]; D-12).
 
-`test_each_stream_matches_its_golden_recording`, the same 18: per-stream sequences and the rebuilt tree
-equal `tests/acp/golden/<scenario>.<mode>.jsonl` (D-15); the recordings did not change since
-`21f4a8b`. **18/18 passed** [CI, run]. Re-record with `uv run python -m tests.acp.golden record`.
+`test_each_stream_matches_its_golden_recording`, the same 20: per-stream sequences and the rebuilt tree
+equal `tests/acp/golden/<scenario>.<mode>.jsonl` (D-15); the nine earlier scenarios' recordings did
+not change since `21f4a8b`, and `unanswered`'s are new in `72d9588`. **20/20 passed** [CI, run].
+Re-record with `uv run python -m tests.acp.golden record`.
 
 D-18's deterministic twin adds a Claude Code root that acts through `dr repl exec` (a fake CLI, two
 snippets): its tree, cells and `claude` usage, as §6.8 lists. **Passed** [CI, run].
@@ -618,7 +663,7 @@ own stdout, which is `worker.log` [read]), the 10 MB print arrives cut to under 
 elided`; an import hook that prints to stdout and to fd 1 while the front imports: the print lands
 on stderr and every stdout line stays JSON-RPC. `test_supervisor.py`: `os._exit(1)` in a cell gives
 `crashed` with exit code 1 and the `worker.log` path, and the next prompt answers after
-`FRESH_AFTER_ERROR`. Plus the JSON-RPC line check in all 66 spawning tests. **All passed** [CI, run].
+`FRESH_AFTER_ERROR`. Plus the JSON-RPC line check in all 70 spawning tests. **All passed** [CI, run].
 
 ### 6.5 E4 · contracts
 
@@ -628,7 +673,7 @@ children, one calls the `llm` tool, a second prompt resumes the root) and assert
 `agent.start` drives and parent cells, the root's cells (`puppeteered`, `think`, `think`), every cell
 closed, the children's answers, think versus tool calls, and the thought. **Passed at `d7334ae` on
 every push** [CI, run]. **Against Dean's `main`: never run** (D-16). Schema: the harness check of §6.1,
-on every message of 66 deterministic and 4 live tests; **no violation** [CI, run].
+on every message of 70 deterministic and 4 live tests; **no violation** [CI, run].
 
 ### 6.6 E11 · surfaces (D1's part)
 
@@ -657,13 +702,33 @@ Run 37144608009 at `2a15388`, four tests, durations from the log's timestamps [C
 | Test | Conditions | Asserts | Result |
 |---|---|---|---|
 | `test_claude_code.py::test_live_claude_code_on_sonnet_answers_through_acp_and_each_snippet_is_a_cell` | Claude Code CLI 2.1.285 on model alias `sonnet`, Michael's subscription token, `max_budget_usd` 0.5 | `What is 17 times 23?` answered with `391` through ACP; root backbone `claude_code`; every `usage` a `claude` call on `sonnet`; the tree's agents and parents are deep_reasoner's; one root cell per `cell.end`, the last calling `FinalAnswer`, in order among the transcript's `dr repl exec` snippets (D-18) | passed, ~8.9 s |
-| `test_live.py::test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all` | gpt-6-luna, `docs/configs/advising`, priced by genai-prices (the harness's `prices.yaml` holds only `fake-model`) | `/compare-departments Which department is lighter for a first-year student, CS or STAT?` answers; the rebuilt tree equals deep_reasoner's with ≥ 3 agents; the answer names `STAT`; every call priced; root cost = sum of the log's call costs; every child cost strictly between 0 and the root's | passed, ~21.6 s |
+| `test_live.py::test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all` | gpt-6-luna, `docs/configs/advising`, priced by genai-prices (the harness's `prices.yaml` holds only `fake-model`) | `/compare-departments Which department is lighter for a first-year student, CS or STAT?` answers; the rebuilt tree equals the reference (D-12) with ≥ 3 agents; the answer names `STAT`; every call priced; root cost = sum of the log's call costs; every child idle `done` or `exhausted`; every child cost strictly between 0 and the root's | passed, ~21.6 s |
 | `test_live.py::test_live_stopping_a_department_stops_it_and_its_course_agents` | as above | stop a department once a course agent is announced (interim): the root answers; `stop.accepted` for that node; the department and its course agents idle `cancelled`, `status: stopped`; no more `usage` events from the branch after the stop than it has agents; the stop thought on the department | passed, ~12.8 s |
 | `test_live.py::test_live_without_the_key_the_run_fails_before_any_call_and_says_which` | no `OPENAI_API_KEY` | `build_failed`, the sentence naming `OPENAI_API_KEY`, no `usage` in the log | passed, ~3.3 s |
 
-Baseline: deep_reasoner's own run directory for the tree and the cells; the run log's own `usage`
-events for the cost sum. The run's spend is not recorded: the tests assert relations between costs
-and print no amount. [CI, read]
+Baseline: deep_reasoner's own run directory for the tree and the cells (our run log for an agent
+with no model call, D-12); the run log's own `usage` events for the cost sum. The run's spend is not
+recorded: the tests assert relations between costs and print no amount. [CI, read]
+
+Since `0053bbf` a failed tree comparison prints `tree_evidence` (D-12) and a failed status check
+prints each child's `_meta.deep_reasoner`, `detail` included (`test_live.py:57, 69–72`). The
+status check itself dates from `9ece2e5`; design §8.4's list for this test does not name it. Run
+37157389645 passed all four at `ac2ac87` (§6.1). [CI, read]
+
+**Observed risk: OpenAI refuses a call with `invalid_prompt`.** In run 37149393726 (D4's branch,
+§6.1) the root's puppeteered cell gave each department to a sub-agent with `run_all`; OpenAI
+answered department 2's first call `400`, code `invalid_prompt` ("flagged as potentially violating
+our usage policy"), which ended `run_all` and cancelled department 3 before any reply; the root
+answered `STAT` on its own. The test failed on the tree comparison alone, `{1: (None, 3), 2: (1, 0),
+3: (1, 0)}` against `{1: (None, 3)}` [CI]. On that run's log and run directory (the job's
+`live-dr-homes` artifact), at `0053bbf`: the reference equals the stream's tree; replayed through
+the encoder, the log gives both children idle `status: failed`, with the 400's full text and
+`CancelledError: `; every assertion before the status check holds. So the test as it stands fails
+at the status check, and its message names the refusal [run: an uncommitted script; the live
+encoder and the test itself were not run]. GitHub lists 14 attempts of `live.yml` (12 runs); in
+the 11 I confirmed ran D1's three gpt-6-luna tests (six on D1's branches, five on D4's), the
+refusal surfaced once, on a sub-agent's first call; D4's other four attempts failed in D4's own
+tests. Its trigger is unknown: the refusal's text gives none beyond the policy. [CI]
 
 ---
 
@@ -688,6 +753,12 @@ and print no amount. [CI, read]
   synthetic events, and the stop sentences as text and selection. [run and CI for what is tested;
   read for what is not]
 - **The weekly tripwire against Dean's `main`**: never run (D-16).
+- **An agent that never got a reply** (D-12): E1 checks it against our run log, written by the
+  recorder whose events the stream encodes, not against deep_reasoner. `unanswered` fakes the
+  refusal as a 500.
+- **OpenAI's `invalid_prompt` refusal** (§6.8): trigger unknown, not reproduced. That the fixed live
+  test fails at the status check comes from a replay of run 37149393726's log; no live run since
+  `0053bbf` has had an agent go unanswered.
 - **OpenHands' bridge**: no test runs against it. The prompt layout D-1 handles is reproduced from the
   bridge's source as constants (`harness.py:48–67`); the 2 s cancel drain, the 1,800 s idle watchdog
   and the ≤ 2 s wait for a root `usage_update` are the design's citations, not observed. [read]
