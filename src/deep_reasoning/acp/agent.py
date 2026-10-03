@@ -12,13 +12,12 @@ from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot
 from deep_reasoning.acp.costs import PriceTable
 from deep_reasoning.acp.encoder import commands_update
 from deep_reasoning.acp.route import ModelRoute
-from deep_reasoning.acp.runlog import Home, SessionIndex
+from deep_reasoning.acp.runlog import Home, SessionIndex, detail_of
 from deep_reasoning.acp.session import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
     AgentContext,
     Session,
-    detail_of,
     refusal,
 )
 from deep_reasoning.acp.wire import ClientMode, Outbox

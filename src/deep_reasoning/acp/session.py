@@ -29,6 +29,7 @@ from deep_reasoning.acp.runlog import (
     RunEndReason,
     RunLog,
     SessionIndex,
+    detail_of,
 )
 from deep_reasoning.acp.supervisor import RunHandle
 from deep_reasoning.acp.wire import ClientMode, Outbox
@@ -58,16 +59,11 @@ STOP_REASONS: dict[str, Literal["end_turn", "max_turn_requests", "cancelled"]] =
 INVALID_PARAMS = -32602
 INVALID_REQUEST = -32600
 INTERNAL_ERROR = -32603
-DETAIL_CAP = 2000
 
 
 def refusal(code: int, sentence: str, name: str) -> RequestError:
     """A JSON-RPC error whose message is the §5.6 sentence, verbatim (§5.5)."""
     return RequestError(code, sentence, {"deep_reasoner": {"error": name}})
-
-
-def detail_of(exc: BaseException) -> str:
-    return f"{type(exc).__name__}: {exc}"[:DETAIL_CAP]
 
 
 @dataclass(frozen=True)
