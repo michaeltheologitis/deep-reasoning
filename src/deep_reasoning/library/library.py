@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from deep_reasoning.library import configdir, shapes, store, texts
 from deep_reasoning.library.catalog import library_path
-from deep_reasoning.library.effective import Effective, effective
+from deep_reasoning.library.effective import Effective, defined_tools, effective
 from deep_reasoning.library.records import (
     Change,
     DecompositionMeta,
@@ -292,27 +292,21 @@ class Library:
         """Every live head re-validated under the installed deep_reasoner, plus granted
         tools the Library does not define and spawn targets it does not hold."""
         state = self.state()
+        defined = defined_tools(state)
         problems = _stale(state)
-        has_model = bool(state.profile.data.get("model"))
         for ns in state.namespaces.values():
-            for tool in ns.data.get("tools", []):
-                if tool not in state.tools and not (tool == "llm" and has_model):
-                    problems.append(
-                        Problem(
-                            kind="namespace",
-                            name=ns.name,
-                            message=texts.unknown_tool(ns.name, tool),
-                        )
-                    )
-            for target in ns.data.get("spawn") or []:
-                if target not in state.namespaces:
-                    problems.append(
-                        Problem(
-                            kind="namespace",
-                            name=ns.name,
-                            message=texts.unknown_spawn(ns.name, target),
-                        )
-                    )
+            tools, spawn = ns.data.get("tools", []), ns.data.get("spawn") or []
+            missing = [
+                texts.unknown_tool(ns.name, t) for t in tools if t not in defined
+            ]
+            missing += [
+                texts.unknown_spawn(ns.name, t)
+                for t in spawn
+                if t not in state.namespaces
+            ]
+            problems += [
+                Problem(kind="namespace", name=ns.name, message=m) for m in missing
+            ]
         return problems
 
     def validate(
