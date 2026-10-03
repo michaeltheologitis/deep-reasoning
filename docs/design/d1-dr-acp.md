@@ -412,9 +412,9 @@ how the tests prove it; B15 is the signatures; B16 is what is still unverified; 
 - **B18. `close` does not wait for a prompt** (§4.2 `session.py`). Found by the Cartographer
   (as-built D-5). `session/close`, shutdown and the close inside `session/load` do not take the
   session lock (`session.py:143`, `agent.py:168, 183`), so a close during a prompt ends that
-  prompt with outcome `closed` instead of waiting for it. Reason: waiting would hold a close, and
-  OpenHands' shutdown, behind a prompt that may run for minutes; ending it is what the bridge
-  expects of a close. `prompt`, `set_config_option` and `load` still serialize on the lock.
+  prompt with outcome `closed` instead of waiting for it. The build recorded no reason; the
+  Conductor's reading is that waiting would hold a close, and OpenHands' shutdown, behind a prompt
+  that may run for minutes. Michael rules on it at Gate B. `prompt`, `set_config_option` and `load` still serialize on the lock.
 
 ### 3.3 Where the build followed the Code Guide over v2 (v3)
 
