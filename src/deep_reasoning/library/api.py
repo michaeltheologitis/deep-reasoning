@@ -138,6 +138,8 @@ class _DecompositionBody(_Body):
 class _ToolBody(_Body):
     source: str | None = None
     granted_in: list[str] | None = None
+    # D4: save a tool whose Check failed in a way it allows (D4 §3.5).
+    accept_check_failure: bool = False
 
 
 class _ValidateBody(BaseModel):
@@ -224,9 +226,14 @@ def create_app(
     *,
     same_user: Callable[[tuple[str, int], tuple[str, int]], bool] | None = None,
 ) -> Starlette:
-    """The routes of §6, then the panel's /ui/ (D3 §4.5). same_user(client, server) is
+    """The routes of §6, then the panel's /ui/ (D3 §4.5), then D4's tool and MCP routes
+    (D4 §7.2); a tool's PUT passes D4's Check first (D4 §3.5). same_user(client, server) is
     asked for every request; a False is 403 FORBIDDEN_PEER. Default: same_user_peer on
     Linux, no check elsewhere."""
+    # D4's routes build on json_route, so they are imported only once this module is.
+    from deep_reasoning.tools.check import require_check
+    from deep_reasoning.tools.routes import tool_routes
+
     if same_user is None and sys.platform == "linux":
         same_user = same_user_peer
     lib = library
@@ -280,6 +287,13 @@ def create_app(
 
     def put_tool(request: Request, body: bytes) -> Any:
         name, sent = request.path_params["name"], _parse(_ToolBody, body)
+        require_check(
+            lib,
+            name,
+            sent.yaml,
+            sent.source,
+            accept_failure=sent.accept_check_failure,
+        )
         existed = _exists(lambda: lib.tool(name))
         record = lib.put_tool(
             name,
@@ -379,6 +393,7 @@ def create_app(
         json_route("/tools/{name}/versions/{n:int}", "GET", versions("tool", "name")),
         json_route("/export", "GET", export),
         *ui_routes(),
+        *tool_routes(lib),
     ]
 
     async def library_error(request: Request, exc: Exception) -> Response:
