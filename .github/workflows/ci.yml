@@ -27,3 +27,40 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pytest
+
+  # D3's panel: the TypeScript checks and unit tests, then the browser tests and E8 against
+  # a real dr-library serve (about 4 minutes).
+  canvas-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DR_BETA_CHECKOUT: ${{ github.workspace }}/deep_reasoner_beta
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: canvas-app/.nvmrc
+          cache: npm
+          cache-dependency-path: canvas-app/package-lock.json
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - name: deep_reasoner_beta's configs at the pinned commit, read in place by the cards round trip
+        run: |
+          git init -q "$DR_BETA_CHECKOUT"
+          git -C "$DR_BETA_CHECKOUT" fetch -q --depth 1 https://github.com/DeanLight/deep_reasoner_beta d7334ae6ea884617a377d9f1ce872530d898484c
+          git -C "$DR_BETA_CHECKOUT" checkout -q FETCH_HEAD
+      - run: npm ci
+        working-directory: canvas-app
+      - run: npm run typecheck
+        working-directory: canvas-app
+      - run: npm run format:check
+        working-directory: canvas-app
+      - run: npm test
+        working-directory: canvas-app
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run pytest -m browser tests/canvas_app -v -rA
