@@ -58,15 +58,6 @@ class Outbox:
         except (ConnectionError, OSError):
             logger.debug("dr_acp.update_dropped", session=session_id)
 
-    def observe(self, fn: Callable[[dict[str, Any]], None]) -> None:
-        """fn sees every outgoing JSON-RPC message (tests, golden recording)."""
-
-        def outgoing(event: StreamEvent) -> None:
-            if event.direction is StreamDirection.OUTGOING:
-                fn(event.message)
-
-        self._conn.add_observer(outgoing)
-
     @property
     def seconds_since_last_send(self) -> float:
         return time.monotonic() - self._last_send
