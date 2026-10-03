@@ -28,12 +28,21 @@ the Gate C stack is cut. This revision is committed on `refactor/d1` and changes
 
 The code is read as a stack of semantic PRs cut from `2a15388`, tests included; this doc is the
 reference beside them. Where the two differ, that is a finding to raise, not a reading to choose.
-The PR Splitter names the stack, and the Conductor fills in this list:
+The stack is open in michaeltheologitis/deep-reasoning, bottom-up, each PR based on the one above it
+in this list (2026-10-03). The design doc and the as-built document stay on `v1-dr-acp` and enter no
+PR, so `main`'s `pyproject.toml` excludes only `docs/` from the sdist (`as_built/` never reaches
+`main`); §8.5's exclusion sentence describes this branch.
 
 | # | PR | What it holds | Read beside |
 |---|---|---|---|
-| 1 | *(the Conductor fills this in from the PR Splitter's stack)* | | |
-| … | | | |
+| 1 | [#1](https://github.com/michaeltheologitis/deep-reasoning/pull/1) | TASK-1's research and contract doc; not D1 | the TASK-1 spec |
+| 2 | [#2](https://github.com/michaeltheologitis/deep-reasoning/pull/2) | `runlog.py`, `ids.py`, `costs.py`; `pyproject.toml`, `ci.yml` | §4.4, §5.1, §4.7 (costs), §6.2, §8.5 |
+| 3 | [#3](https://github.com/michaeltheologitis/deep-reasoning/pull/3) | `catalog.py`, `route.py`; deep_reasoner as a dependency, `conftest.py` | §4.6, §4.7 (route), §8.5 |
+| 4 | [#4](https://github.com/michaeltheologitis/deep-reasoning/pull/4) | `encoder.py`, `texts.py`, `tests/acp/streams.py` | §4.5, §5.2–§5.6, §6.2 |
+| 5 | [#5](https://github.com/michaeltheologitis/deep-reasoning/pull/5) | `testing/` | §8.2 |
+| 6 | [#6](https://github.com/michaeltheologitis/deep-reasoning/pull/6) | `worker/recorder.py`, `worker/stop.py` | §4.3, §6.1, §6.3 |
+| 7 | [#7](https://github.com/michaeltheologitis/deep-reasoning/pull/7) | `cli.py`, `wire.py`, `agent.py`, `session.py`, `supervisor.py`, `worker/runner.py`, `worker/protocol.py`; the harness, E1–E3, golden recordings, `acp-tripwire.yml` | §4.2, §4.3, §5, §6.4, §8.1, §8.3, §8.5 |
+| 8 | [#8](https://github.com/michaeltheologitis/deep-reasoning/pull/8) | `test_live.py`, `test_claude_code.py`, `docs/configs/advising/` | §8.4, §8.5 |
 
 For any PR: its modules' sections are in the map below; the tests that carry each property are
 §8.1's table, each named for the property it pins; what changed since Gate B, each change with its
