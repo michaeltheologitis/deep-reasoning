@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from deep_reasoner.v2.cli import build_reasoner
 from deep_reasoner.v2.messages import func
 
 from deep_reasoning.acp.catalog import load_dr_config
@@ -42,8 +43,11 @@ def spec(name: str, script: str = "echo_server.py", **env: str) -> McpServerSpec
     )
 
 
-def config(directory: Path, namespaces: dict, tools: dict, entry: str = "root"):
-    """A dr config with these namespaces and MCP blocks, loaded as the worker loads it."""
+def config(
+    directory: Path, namespaces: dict, tools: dict, entry: str = "root", **fields
+):
+    """A dr config with these namespaces and MCP blocks, and any other fields of
+    main.yaml, loaded as the worker loads it."""
     (directory / "tools").mkdir(parents=True)
     for alias in tools:
         (directory / "tools" / f"{alias}.py").write_text(shim_source())
@@ -53,7 +57,7 @@ def config(directory: Path, namespaces: dict, tools: dict, entry: str = "root"):
         "entry_namespace": entry,
         "namespaces": namespaces,
         "tools": tools,
-    }
+    } | fields
     (directory / "main.yaml").write_text(yaml.safe_dump(main))
     return load_dr_config(directory / "main.yaml")
 
@@ -215,6 +219,74 @@ def test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted(
         == 'McpError: Connection closed; it printed: "invalid token [redacted]"'
     )
     assert (run_dir / "mcp-wiki.log").read_text() == "invalid token [redacted]\n"
+
+
+@pytest.mark.parametrize(
+    ("script", "fields", "in_the_way", "error"),
+    [
+        (
+            "echo_server.py",
+            {},
+            "mcp-wiki.log",
+            lambda log: f"IsADirectoryError: [Errno 21] Is a directory: '{log}'",
+        ),
+        (
+            "echo_server.py",
+            {"connect_timeout_s": "ten"},
+            None,
+            lambda log: "ValueError: could not convert string to float: 'ten'",
+        ),
+        (
+            "odd_server.py",
+            {},
+            None,
+            lambda log: "AttributeError: 'bool' object has no attribute 'get'",
+        ),
+    ],
+    ids=["its log cannot be opened", "its block has no number", "it cannot be told"],
+)
+def test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind(
+    tmp_path, run_dir, opened, script, fields, in_the_way, error
+):
+    cfg = config(
+        tmp_path / "config",
+        {"root": {"tools": ["wiki", "echo"]}},
+        {"wiki": mcp_block("wiki", **fields), "echo": mcp_block("echo")},
+    )
+    if in_the_way:
+        (run_dir / in_the_way).mkdir()
+    servers = [spec("wiki", script), spec("echo", ECHO_TOKEN="t")]
+    statuses = {s.tool: s for s in open_session(cfg, servers, run_dir=run_dir)}
+    wiki, echo = statuses["wiki"], statuses["echo"]
+    assert (wiki.state, wiki.detail) == ("failed", error(run_dir / "mcp-wiki.log"))
+    reason = shim.COULD_NOT_START.format(detail=wiki.detail)
+    assert shim.SESSION["wiki"].description == shim.UNAVAILABLE.format(
+        name="wiki", reason=reason
+    )
+    assert echo.state == "bound"
+    assert shim.SESSION["echo"].value.echo("still here") == "still here"
+
+
+def test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway(
+    tmp_path, run_dir, opened
+):
+    directory = tmp_path / "config"
+    (directory / "namespaces").mkdir(parents=True)
+    for file in ("a.yaml", "also_a.yaml"):
+        (directory / "namespaces" / file).write_text("name: a\n")
+    cfg = config(
+        directory,
+        {"root": {"tools": ["echo"]}},
+        {"echo": mcp_block("echo")},
+        namespaces_dir="namespaces",
+    )
+    with pytest.raises(ValueError) as opening:
+        open_session(cfg, [spec("echo")], run_dir=run_dir)
+    with pytest.raises(ValueError) as building:
+        build_reasoner(cfg, run_dir=run_dir)
+    assert str(opening.value) == str(building.value)
+    assert "Duplicate namespace name 'a'" in str(opening.value)
+    assert list(run_dir.iterdir()) == []
 
 
 def test_a_server_given_up_is_ended_within_three_seconds(tmp_path, run_dir, opened):

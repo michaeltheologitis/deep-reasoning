@@ -148,6 +148,19 @@ class _Started:
         self.connection.start()
 
 
+def _failed(alias: str, detail: str) -> tuple[dict[str, Any], Any]:
+    """A failed status's fields, and the stand-in that says why."""
+    reason = shim.COULD_NOT_START.format(detail=detail)
+    return {"state": "failed", "detail": detail}, shim.unavailable(alias, reason)
+
+
+def _failed_by(
+    alias: str, exc: Exception, spec: McpServerSpec
+) -> tuple[dict[str, Any], Any]:
+    """§11.1: an error about one server fails that server alone, its secrets redacted."""
+    return _failed(alias, redact(f"{type(exc).__name__}: {exc}", _secrets(spec)))
+
+
 def _decide(
     alias: str, started: _Started, granted: list[str], answered: float | None
 ) -> tuple[dict[str, Any], Any]:
@@ -163,9 +176,9 @@ def _decide(
         return fields | {"told": told}, binding
     if answered is not None:
         started.copier.join(DRAIN_S)
-        detail = _failed_detail(connection.failure, started.log, started.spec)
-        reason = shim.COULD_NOT_START.format(detail=detail)
-        return {"state": "failed", "detail": detail}, shim.unavailable(alias, reason)
+        return _failed(
+            alias, _failed_detail(connection.failure, started.log, started.spec)
+        )
     connection.abandon()
     reason = shim.NO_ANSWER.format(seconds=started.timeout)
     fields = {"state": "no_answer", "seconds": started.timeout}
@@ -210,14 +223,22 @@ def open_session(
             statuses[alias].state = "not_enabled"
             session[alias] = shim.unavailable(alias, shim.NOT_ENABLED)
         else:
-            log = run_dir / f"mcp-{alias}.log"
-            started[alias] = _Started(alias, forwarded[block["server"]], block, log)
+            spec, log = forwarded[block["server"]], run_dir / f"mcp-{alias}.log"
+            try:
+                started[alias] = _Started(alias, spec, block, log)
+            except Exception as exc:  # noqa: BLE001 -- reported as this server's status
+                fields, session[alias] = _failed_by(alias, exc, spec)
+                statuses[alias] = statuses[alias].model_copy(update=fields)
     # Every server was started above; each wait costs only what is left of its time.
     for alias, server in started.items():
         left = begun + server.timeout - time.monotonic()
         ready = server.connection.wait_ready(left)
         answered = round(time.monotonic() - begun, 3) if ready else None
-        fields, session[alias] = _decide(alias, server, granted[alias], answered)
+        try:
+            fields, session[alias] = _decide(alias, server, granted[alias], answered)
+        except Exception as exc:  # noqa: BLE001 -- reported as this server's status
+            server.connection.abandon()
+            fields, session[alias] = _failed_by(alias, exc, server.spec)
         statuses[alias] = statuses[alias].model_copy(update=fields)
     shim.SESSION = session
     return [statuses[alias] for alias in blocks]
