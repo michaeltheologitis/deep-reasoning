@@ -1,0 +1,19 @@
+# The use-when lines and hints dr-library import reads beside main.yaml.
+v: 1
+library: fixture
+rev: 1
+namespace: router
+deep_reasoner: fixture
+profile: 1
+namespaces: {}
+decompositions: {}
+tools: {}
+metadata:
+  catalog lookup:
+    use_when: one course at a time
+    hint: a course code
+  summarize then rank:
+    use_when: comparing many courses
+    hint: the courses
+  triage nightly:
+    use_when: starts the nightly triage
