@@ -87,5 +87,10 @@ def mcp_server_taken(server: str, other: str) -> str:
     return f"MCP server '{server}' is already granted as '{other}'."
 
 
+def mcp_name_taken(name: str) -> str:
+    """The frame's MCP_NAME_TAKEN (§9.3), for a grant over a tool of your own."""
+    return f"A tool named '{name}' exists: choose another name."
+
+
 MCP_NEEDS_COMMAND = "A stdio MCP server needs a command."
 MCP_NEEDS_URL = "An HTTP or SSE MCP server needs a URL."

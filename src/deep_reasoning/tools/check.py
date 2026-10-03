@@ -28,8 +28,10 @@ from deep_reasoning.library.records import (
     FieldError,
     LibraryBadRequest,
     LibraryError,
+    LibraryRefused,
     LibraryValidationError,
 )
+from deep_reasoning.mcp.grants import is_mcp_tool
 from deep_reasoning.mcp.wire import MCP_FACTORY
 from deep_reasoning.tools import texts
 
@@ -365,11 +367,13 @@ def require_check(
     *,
     accept_failure: bool,
 ) -> None:
-    """§3.5: returns when the PUT may proceed; raises ToolCheckFailed or LibraryBadRequest.
+    """§3.5: returns when the PUT may proceed; raises ToolCheckFailed, LibraryBadRequest
+    or LibraryRefused.
 
-    YAML D2 refuses → return (put_tool raises D2's 422); an MCP grant's block → 400;
-    canonical block and source equal the head's → return; otherwise check_tool, and
-    refuse unless it can be saved (or saved anyway, when asked).
+    YAML D2 refuses → return (put_tool raises D2's 422); an MCP grant's block → 400; a
+    head that is an MCP grant → 409; canonical block and source equal the head's →
+    return; otherwise check_tool, and refuse unless it can be saved (or saved anyway,
+    when asked).
     """
     try:
         shaped = shapes.validate_tool(name, yaml_text, source)
@@ -378,6 +382,8 @@ def require_check(
     if shaped.data.get("factory", name) == MCP_FACTORY:
         raise LibraryBadRequest(texts.mcp_via_grant(name))
     head = library.state().tools.get(name)
+    if head is not None and is_mcp_tool(head):
+        raise LibraryRefused(texts.mcp_via_grant(name))
     if head is not None and (head.yaml, head.source) == (shaped.yaml, source):
         return
     report = check_tool(name, yaml_text, source)

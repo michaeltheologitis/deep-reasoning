@@ -192,6 +192,26 @@ def test_an_mcp_block_through_put_tools_is_refused(client, no_check):
     assert response.json()["message"] == texts.mcp_via_grant("github")
 
 
+@pytest.mark.parametrize("base_version", [0, 1], ids=["new", "the head's"])
+def test_a_grant_cannot_replace_a_tool_of_your_own(client, lib, no_check, base_version):
+    lib.put_tool("word_count", "factory: make", source=source("word_count"))
+    response = grant(client, "word_count", base_version=base_version)
+    assert (response.status_code, response.json()["error"]) == (409, "refused")
+    assert response.json()["message"] == texts.mcp_name_taken("word_count")
+    record = lib.tool("word_count")
+    assert (record.version, record.source) == (1, source("word_count"))
+
+
+@pytest.mark.parametrize("base_version", [0, 1], ids=["new", "the head's"])
+def test_a_tool_of_your_own_cannot_replace_a_grant(client, lib, no_check, base_version):
+    grant(client)
+    response = put_tool(client, "github", base_version=base_version)
+    assert (response.status_code, response.json()["error"]) == (409, "refused")
+    assert response.json()["message"] == texts.mcp_via_grant("github")
+    record = lib.tool("github")
+    assert (record.version, record.source) == (1, shim_source())
+
+
 def test_put_mcp_writes_the_block_and_the_shim_and_grants(client, lib, no_check):
     response = grant(client)
     assert response.status_code == 201

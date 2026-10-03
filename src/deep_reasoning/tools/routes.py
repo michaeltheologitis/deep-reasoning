@@ -53,6 +53,8 @@ def tool_routes(library: Library) -> list[Route]:
         if errors := tool_name_errors(name):
             raise LibraryValidationError(errors[0].msg, errors)
         tools = lib.state().tools
+        if name in tools and not is_mcp_tool(tools[name]):
+            raise LibraryRefused(texts.mcp_name_taken(name))
         taken = [
             t.name
             for t in tools.values()
