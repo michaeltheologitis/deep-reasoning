@@ -22,6 +22,7 @@ from tests.acp.scenarios import repl, scripted
 PRICES = PriceTable(
     {"m": Price(input_per_mtok=1.0, output_per_mtok=2.0, context_window=100)}
 )
+DR_RUN = "20261002-000000-abcdef"
 FAN_OUT = repl(
     "r = run_all([anext(subagent().send(f'Summarize C{i}')) for i in (1, 2)])",
     "print(r)",
@@ -59,7 +60,7 @@ class Recording:
             max_iter=4,
             backbone=backbone,
             namespace="root",
-            run="20261002-000000-abcdef",
+            run=DR_RUN,
         )
 
     def think(self, node: int, *ancestry: int, reply: str):
@@ -89,6 +90,10 @@ def rec(tmp_path):
     return Recording(tmp_path)
 
 
+def pick(event: dict, *keys: str) -> tuple:
+    return tuple(event[key] for key in keys)
+
+
 def test_a_think_reply_is_a_thought_and_a_cell_its_execution_closes(rec):
     rec.start(1).think(1, reply=repl("x = 1", "print(x)", think="Set x."))
     rec.execute(1, source="x = 1\nprint(x)", output="1")
@@ -98,15 +103,11 @@ def test_a_think_reply_is_a_thought_and_a_cell_its_execution_closes(rec):
         "thought", "cell.start", "cell.end", "agent.end"
     )
     assert thought == {"kind": "thought", "node": 1, "text": "Set x."}
-    assert (start["cell"], start["code"], start["origin"]) == (
-        1,
-        "x = 1\nprint(x)",
-        "think",
-    )
-    assert (end["cell"], end["output"], end["interrupted"]) == (1, "1", False)
-    assert (inferred_start["cell"], inferred_start["origin"]) == (2, "inferred")
+    assert pick(start, "cell", "code", "origin") == (1, "x = 1\nprint(x)", "think")
+    assert pick(end, "cell", "output", "interrupted") == (1, "1", False)
+    assert pick(inferred_start, "cell", "origin") == (2, "inferred")
     assert inferred_end["output"] == "FinalAnswer: 'one'"
-    assert (agent_end["status"], agent_end["answer"]) == ("done", "one")
+    assert pick(agent_end, "status", "answer") == ("done", "one")
 
 
 def test_a_reply_without_a_block_is_only_a_thought(rec):
@@ -119,28 +120,15 @@ def test_a_reply_without_a_block_is_only_a_thought(rec):
 def test_a_child_names_its_parents_open_cell(rec):
     rec.start(1).think(1, reply=FAN_OUT).start(2, 1, 2, task="Summarize C1")
     child = rec.events("agent.start")[-1]
-    assert (
-        child["parent"],
-        child["ancestry"],
-        child["depth"],
-        child["parent_cell"],
-    ) == (1, [1, 2], 2, 1)
-    assert (child["drive"], child["backbone"], child["dr_run"]) == (
-        1,
-        "chat",
-        "20261002-000000-abcdef",
-    )
+    assert pick(child, "parent", "ancestry") == (1, [1, 2])
+    assert pick(child, "depth", "parent_cell") == (2, 1)
+    assert pick(child, "drive", "backbone", "dr_run") == (1, "chat", DR_RUN)
 
 
 def test_a_child_of_a_parent_with_no_open_cell_opens_an_inferred_one_first(rec):
     rec.start(1).start(2, 1, 2)
     inferred, child = rec.events("cell.start", "agent.start")[1:]
-    assert (
-        inferred["node"],
-        inferred["cell"],
-        inferred["code"],
-        inferred["origin"],
-    ) == (1, 1, "", "inferred")
+    assert pick(inferred, "node", "cell", "code", "origin") == (1, 1, "", "inferred")
     assert child["parent_cell"] == 1
     rec.execute(1, source="r = subagent('x')", output="(no output)")
     assert rec.events("cell.end")[-1]["code"] == "r = subagent('x')"
@@ -178,12 +166,8 @@ def test_model_calls_are_priced_and_owned_by_the_agent_that_made_them(rec):
         "cost_source": "table",
         "context_window": 100,
     }
-    assert (tool["node"], tool["call"], tool["cost_usd"], tool["cost_source"]) == (
-        1,
-        "tool",
-        None,
-        None,
-    )
+    assert pick(tool, "node", "call") == (1, "tool")
+    assert pick(tool, "cost_usd", "cost_source") == (None, None)
 
 
 def test_a_claude_session_is_an_exact_cost_and_a_thought(rec):
@@ -201,12 +185,8 @@ def test_a_claude_session_is_an_exact_cost_and_a_thought(rec):
     )
     start, usage, thought = rec.events("agent.start", "usage", "thought")
     assert start["backbone"] == "claude_code"
-    assert (
-        usage["call"],
-        usage["cost_usd"],
-        usage["cost_source"],
-        usage["tokens_in"],
-    ) == ("claude", 0.01, "claude", 5)
+    assert pick(usage, "call", "cost_source", "tokens_in") == ("claude", "claude", 5)
+    assert usage["cost_usd"] == 0.01
     assert thought["text"] == "ok"
 
 
@@ -232,14 +212,10 @@ def test_a_forks_own_llm_and_repl_nodes_work_for_the_fork(rec):
     usage, start, end, agent_end = rec.events(
         "usage", "cell.start", "cell.end", "agent.end"
     )[-4:]
-    assert (usage["node"], usage["call"]) == (3, "think")
-    assert (start["node"], start["code"], start["origin"]) == (
-        3,
-        "FinalAnswer(42)",
-        "think",
-    )
-    assert (end["node"], end["cell"]) == (3, 1)
-    assert (agent_end["node"], agent_end["answer"]) == (3, "42")
+    assert pick(usage, "node", "call") == (3, "think")
+    assert pick(start, "node", "code", "origin") == (3, "FinalAnswer(42)", "think")
+    assert pick(end, "node", "cell") == (3, 1)
+    assert pick(agent_end, "node", "answer") == (3, "42")
 
 
 def test_an_agent_that_ends_in_a_cell_closes_it_interrupted(rec):
@@ -247,12 +223,8 @@ def test_an_agent_that_ends_in_a_cell_closes_it_interrupted(rec):
         1, status="failed", detail="RunKilled: "
     )
     cell_end, agent_end = rec.events("cell.end", "agent.end")
-    assert (cell_end["cell"], cell_end["code"], cell_end["interrupted"]) == (
-        1,
-        "loop()",
-        True,
-    )
-    assert (agent_end["status"], agent_end["detail"]) == ("failed", "RunKilled: ")
+    assert pick(cell_end, "cell", "code", "interrupted") == (1, "loop()", True)
+    assert pick(agent_end, "status", "detail") == ("failed", "RunKilled: ")
 
 
 def test_an_exhausted_agent_answers_deep_reasoners_sentence(rec):
@@ -360,9 +332,10 @@ def test_a_stop_for_an_unknown_or_ended_agent_is_not_accepted(rec):
     rec.start(1).think(1, reply=FAN_OUT).start(2, 1, 2).end(2, 1, 2)
     rec.recorder.note_stop(9, "interim")
     rec.recorder.note_stop(2, "interim")
-    assert [
-        (e["node"], e["accepted"], e["reason"]) for e in rec.events("stop.accepted")
-    ] == [
+    refusals = [
+        pick(e, "node", "accepted", "reason") for e in rec.events("stop.accepted")
+    ]
+    assert refusals == [
         (9, False, "no such agent in this run"),
         (2, False, "the agent has already ended"),
     ]
