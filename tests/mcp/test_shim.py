@@ -254,6 +254,15 @@ def test_a_server_it_cannot_reach_becomes_a_stand_in_saying_why(
     assert built.description == f"echo is not available in this conversation: {reason}."
 
 
+def test_properties_that_take_any_value_or_none_are_described_as_any_and_never(
+    factory,
+):
+    odd = factory(name="odd", server="odd", args=[str(SERVERS / "odd_server.py")])
+    assert isinstance(odd.value, shim.Server)
+    described = odd.description.splitlines()
+    assert "  odd.odd(anything: Any = …, nothing: Never = …) -> str" in described
+
+
 def test_a_call_that_never_answers_raises_after_its_timeout(factory):
     server = factory(call_timeout_s=1).value
     started = time.monotonic()

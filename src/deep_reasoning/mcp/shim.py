@@ -395,7 +395,9 @@ class Unavailable:
         return self
 
 
-def _type(schema: Mapping[str, Any]) -> str:
+def _type(schema: Mapping[str, Any] | bool) -> str:
+    if isinstance(schema, bool):  # JSON Schema's `true` takes any value, `false` none
+        return "Any" if schema else "Never"
     declared = schema.get("type")
     if isinstance(declared, list):
         return " | ".join(JSON_TYPES.get(t, "Any") for t in declared)

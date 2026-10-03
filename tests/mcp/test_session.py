@@ -222,32 +222,35 @@ def test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted(
     assert (run_dir / "mcp-wiki.log").read_text() == "invalid token [redacted]\n"
 
 
+NOT_A_SCHEMA = {"ODD_PROPERTIES": '{"anything": "string"}'}
+
+
 @pytest.mark.parametrize(
-    ("script", "fields", "in_the_way", "error"),
+    ("wiki", "fields", "in_the_way", "error"),
     [
         (
-            "echo_server.py",
+            ("echo_server.py", {}),
             {},
             "mcp-wiki.log",
             lambda log: f"IsADirectoryError: [Errno 21] Is a directory: '{log}'",
         ),
         (
-            "echo_server.py",
+            ("echo_server.py", {}),
             {"connect_timeout_s": "ten"},
             None,
             lambda log: "ValueError: could not convert string to float: 'ten'",
         ),
         (
-            "odd_server.py",
+            ("odd_server.py", NOT_A_SCHEMA),
             {},
             None,
-            lambda log: "AttributeError: 'bool' object has no attribute 'get'",
+            lambda log: "AttributeError: 'str' object has no attribute 'get'",
         ),
     ],
     ids=["its log cannot be opened", "its block has no number", "it cannot be told"],
 )
 def test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind(
-    tmp_path, run_dir, opened, script, fields, in_the_way, error
+    tmp_path, run_dir, opened, wiki, fields, in_the_way, error
 ):
     cfg = config(
         tmp_path / "config",
@@ -256,7 +259,8 @@ def test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind(
     )
     if in_the_way:
         (run_dir / in_the_way).mkdir()
-    servers = [spec("wiki", script), spec("echo", ECHO_TOKEN="t")]
+    script, env = wiki
+    servers = [spec("wiki", script, **env), spec("echo", ECHO_TOKEN="t")]
     statuses = {s.tool: s for s in open_session(cfg, servers, run_dir=run_dir)}
     wiki, echo = statuses["wiki"], statuses["echo"]
     assert (wiki.state, wiki.detail) == ("failed", error(run_dir / "mcp-wiki.log"))
@@ -266,6 +270,17 @@ def test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind(
     )
     assert echo.state == "bound"
     assert shim.SESSION["echo"].value.echo("still here") == "still here"
+
+
+def test_a_tool_whose_properties_take_any_value_or_none_is_bound_and_told_so(
+    tmp_path, run_dir, opened
+):
+    cfg = config(
+        tmp_path / "config", {"root": {"tools": ["odd"]}}, {"odd": mcp_block("odd")}
+    )
+    [status] = open_session(cfg, [spec("odd", "odd_server.py")], run_dir=run_dir)
+    assert status.state == "bound"
+    assert "\n  odd.odd(anything: Any = …, nothing: Never = …) -> str" in status.told
 
 
 def test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_anyway(
