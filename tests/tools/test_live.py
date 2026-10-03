@@ -38,6 +38,9 @@ def make(client, params):
     )
 '''
 TOOL = {"yaml": "factory: make", "source": COURSE_CREDITS}
+# The task names the tool: the test pins that a Library tool is bound and works when
+# called, not that the model chooses to call it (asked bare, it guesses instead).
+TASK = "Use course_credits to find how many credits course ZQ-417 is."
 
 
 def test_live_a_tool_written_in_the_library_is_used_by_the_agent(
@@ -60,7 +63,7 @@ def test_live_a_tool_written_in_the_library_is_used_by_the_agent(
         env = scripted_env(OPENAI_API_KEY=os.environ["OPENAI_API_KEY"])
         async with dr_acp(None, home, env=env) as client:
             session = await client.open_session(work)
-            response = await client.ask(session, "How many credits is course ZQ-417?")
+            response = await client.ask(session, TASK)
             return client, session, response
 
     client, session, response = run(body())
