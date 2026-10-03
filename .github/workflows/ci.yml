@@ -58,6 +58,24 @@ jobs:
         working-directory: canvas-app
       - run: npm test
         working-directory: canvas-app
+      - run: npm run build
+        working-directory: canvas-app
+      - name: The committed build is what a fresh build gives
+        run: |
+          changed="$(git status --porcelain -- src/deep_reasoning/canvas_app)"
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            echo "::error::src/deep_reasoning/canvas_app differs from a fresh build: commit the build artifact's files"
+            exit 1
+          fi
+      - name: The fresh build, to commit
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canvas-app-build
+          path: |
+            src/deep_reasoning/canvas_app/dist
+            src/deep_reasoning/canvas_app/ui
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
