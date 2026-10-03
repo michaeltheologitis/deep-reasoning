@@ -27,6 +27,9 @@ pytestmark = [
 ]
 
 CATALOG = Path(__file__).parent / "servers" / "catalog_server.py"
+# The task names the server: the test pins that a granted server is bound and works
+# when called, not that the model chooses to call it (asked bare, it may guess).
+TASK = "Use the catalog server to find what a student must finish before ZQ-417."
 
 
 def test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent(
@@ -62,9 +65,7 @@ def test_live_an_mcp_server_granted_to_the_namespace_is_used_by_the_agent(
         env = scripted_env(OPENAI_API_KEY=os.environ["OPENAI_API_KEY"])
         async with dr_acp(None, home, env=env) as client:
             session = await client.open_session(work, [forwarded])
-            response = await client.ask(
-                session, "What must a student finish before ZQ-417?"
-            )
+            response = await client.ask(session, TASK)
             return client, session, response
 
     client, session, response = run(body())
