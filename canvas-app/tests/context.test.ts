@@ -170,6 +170,68 @@ describe("mcpServersFromSettings", () => {
     expect(JSON.stringify(servers)).not.toContain(REDACTED);
   });
 
+  // auth as GET /api/settings sends it: the names are the headers the bridge sends for it,
+  // after the server's own, each once.
+  it.each<[string, Record<string, unknown>, string[]]>([
+    [
+      "bearer",
+      { strategy: "bearer", value: REDACTED },
+      ["X-Trace", "Authorization"],
+    ],
+    [
+      "basic",
+      { strategy: "basic", username: "ada", password: REDACTED },
+      ["X-Trace", "Authorization"],
+    ],
+    [
+      "an API key without a header name",
+      { strategy: "api_key", value: REDACTED },
+      ["X-Trace", "Authorization"],
+    ],
+    [
+      "an API key with a header name",
+      { strategy: "api_key", value: REDACTED, header_name: "X-Api-Key" },
+      ["X-Trace", "X-Api-Key"],
+    ],
+    [
+      "named headers",
+      {
+        strategy: "header",
+        headers: { "X-Tenant": REDACTED, "X-Trace": REDACTED },
+      },
+      ["X-Trace", "X-Tenant"],
+    ],
+    ["none", { strategy: "none" }, ["X-Trace"]],
+    [
+      "OAuth",
+      {
+        strategy: "oauth2",
+        authentication: {
+          type: "oauth",
+          client_id: "c",
+          client_secret: REDACTED,
+        },
+      },
+      ["X-Trace"],
+    ],
+  ])(
+    "adds the header names a remote server's auth sends: %s",
+    (_, auth, headers) => {
+      const read = mcpServersFromSettings(
+        {
+          postgres: {
+            url: "https://db.lab.example/mcp",
+            headers: { "X-Trace": REDACTED },
+            auth,
+          },
+        },
+        null,
+      );
+      expect(read.map((s) => s.headers)).toEqual([headers]);
+      expect(JSON.stringify(read)).not.toContain(REDACTED);
+    },
+  );
+
   it.each<[string[] | null, Record<string, string | null>]>([
     [null, { github: null, postgres: null, wiki: null, slack: "disabled" }],
     [
