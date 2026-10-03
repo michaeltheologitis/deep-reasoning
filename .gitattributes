@@ -1,0 +1,3 @@
+# The App's built files (D3 §4.6): generated from canvas-app/, committed, checked by CI.
+src/deep_reasoning/canvas_app/dist/** linguist-generated=true -diff
+src/deep_reasoning/canvas_app/ui/** linguist-generated=true -diff
