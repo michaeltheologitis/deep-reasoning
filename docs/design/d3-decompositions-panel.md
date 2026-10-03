@@ -92,6 +92,14 @@ a parametrization.
 §7.2–§7.5 list every test file.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-03 · v5 · one fix after Gate B, found by C2's Cartographer: the page searched the controls event by a `kind`
+  the agent-server never matches, so every mount framed the panel with namespace `null` and `started` false (§3.2 B27;
+  tests `141784a`, fix and rebuilt bundle `436c513`). Stop trusting: §1's traffic, line 3, and §4.2's
+  `readConversationNamespace` path, which say `kind=ACPSessionControlsEvent` (the query is
+  `kind=openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent`); §7.2's `context.test.ts` row ("with a fake
+  `request`": the cases now run over a fake of the events search, B27); the header's "Matches the build at `d4e9cd3`",
+  and this section's evidence and counts (vitest is now 152 passed, 1 skipped, with the configs), until a CI run at the
+  new head is recorded. Added without changing earlier sentences: §3.2 B27. Nothing else of v4 changes.
 - 2026-10-03 · v4 · brought in line with the build at `d4e9cd3`: four commits after v3 (`c5964ff`, `02b93dc`,
   `54625ab`, `d4e9cd3`). Stop trusting: B20's, §2.1's, §4.2's and §5.4's "within the same 45 s" and "a backend still
   `starting` ends in `STILL_STARTING` at once" (the 45 s now restart when a start gets no answer, `c5964ff`; §11 item
@@ -795,6 +803,37 @@ reading.
   `test_namespaces.py::test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (the
   frame's `PUT` or `DELETE` held in the browser, `course_advisor` selected, then the write let through: the write
   lands and `course_advisor` stays selected). Two behaviours are left as they are (§11 items 15 and 16).
+
+**v5: after Gate B**
+
+- **B27. The controls event is searched by its module-qualified kind** (§1's traffic, §4.2, §7.2; commits `141784a`,
+  `436c513`). v1 wrote `kind=ACPSessionControlsEvent`, copied from C2's design v1 §7.2. The agent-server's events
+  search compares `kind` with the event's module-qualified class name (`event_service.py:550` in the SDK fork at
+  `dr-1`, `cef3b24`), so the short kind matched nothing: every mount framed the panel with namespace `null` and
+  `started` false, Create decomposition preselected the Library's default namespace instead of the conversation's, and
+  the success line was never `SAVED_STARTED`. Built: `kind=openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent`
+  (`ACP_SESSION_CONTROLS_EVENT_KIND` in `context.ts`, the TypeScript client's name for the same value), with
+  `sort_order=TIMESTAMP_DESC&limit=1` as before. No test caught it because the fakes answered any events path with the
+  conversation's controls (the browser tier's fake agent-server ignored the query; the vitest fake ignored the path),
+  and `context.test.ts` pinned the very path this design had written. *Why (S2's design v2, §3.2 B2 and §7's route
+  table; C2's design v2 §7.2):* "Upstream's search compares `f"{module}.{name}"`"; the event's own JSON `kind` stays
+  `ACPSessionControlsEvent`. Checked for this revision against the real agent-server at `dr-1`, through the SDK fork's
+  own `test_acp_router.py` harness (the real app, the scripted ACP agent; a probe, not committed): D3's old path
+  answers `{"items": [], "next_page_id": null}`, the new one the last persisted controls event, its null fields left
+  out. *Pinned by:* fakes that answer as that search does: `canvas-app/tests/fakes.ts`'s `eventsSearch` (`kind`
+  against the module-qualified class name, `TIMESTAMP_DESC` from the newest, `limit`, events without their null
+  fields) and the browser tier's fake agent-server in `test_page_bundle.py`. Each of these fails on the short kind:
+  `context.test.ts › readConversationNamespace ›` `started: the newest controls event offers one value`, `not started:
+  the first event after a start, before the agent's menu`, `the newest event is the state: a namespace picked after the
+  start`; `mount.test.ts › mountTab ›` `frames /ui/ with the conversation's namespace, the cap, the theme and Canvas's
+  origin`, `mounts each conversation with its own namespace`; and, through the rebuilt bundle,
+  `test_page_bundle.py::test_the_frame_opens_with_the_conversations_namespace`. No D3 tier runs the agent-server (§7.1),
+  so the value is pinned against a fake modelled on the real filter, not the filter itself.
+  Checked against the rest of S2's contract, with nothing else to change: the newest event is the state (S2 B4), and
+  the page reads only the newest controls event, never an older one; the first event after a start or a resume may
+  have no commands yet (B4), and the page reads only `config_options`, which that event carries from dr-acp's
+  `session/new` or `session/load` answer (D1's `agent.py` returns the namespace option in both); events leave out
+  their null fields (B2), and the page reads `id`, `current_value` and `options`, which S2's model never leaves null.
 
 ---
 
