@@ -227,8 +227,7 @@ def namespace_config(
     decomposition_yamls: Sequence[str],
 ) -> NamespaceConfig:
     """A namespace head's canonical YAML with its attached decompositions' canonical YAML
-    inlined as `decompositions`, in the given (attachment) order, validated. Used by
-    materialize and by the effective view."""
+    inlined as `decompositions`, in the given (attachment) order, validated."""
     data = yaml.safe_load(namespace_yaml)
     bodies = [yaml.safe_load(text) for text in decomposition_yamls]
     if bodies:
