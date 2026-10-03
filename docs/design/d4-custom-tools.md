@@ -1334,6 +1334,25 @@ design's reading.
   a block D2 refuses; D3's `api.test.ts` case "a D2 validation error carries its field errors" pins only that the
   frame keeps them.
 
+**Decided at Gate B**
+
+- **B30 (2026-10-03). An export names the header variables a remote server's `auth` sends** (§4.8, §6.1 item 8,
+  §7.5; the Gate B section's third ruling, which Michael decided as (b); as-built r2 #12). `mcpServersFromSettings`
+  adds to a server's `headers`, after its own and each name once, the headers the bridge sends for its `auth`:
+  `Authorization` for `bearer`, `basic` and an `api_key` without a `header_name`; the `header_name` when it has one;
+  a `header` strategy's keys; none for `none` or `oauth2`. A grant then names a variable for each
+  (`POSTGRES_AUTHORIZATION`), which under `dr` holds the whole header value (`Bearer …`), and a grant made before
+  offers **Update**. The Python side and `MCP_EXPORT_NOTE` are unchanged: an `auth` header is now a header. The names
+  were run, not read: on the SDK fork at `91430aa`, `_remote_mcp_headers` sends exactly these, and `GET
+  /api/settings` without `X-Expose-Secrets` returns `strategy`, `username`, `header_name` and the header keys, every
+  secret as `**********` and an unset one absent (§14 item 12, for `auth`). An `auth` whose secret is unset still
+  names its header, which the bridge does not send; under `dr` that variable, unset too, is left out (§4.3). Stop
+  trusting §7.5's v5 note that an entry's `auth` is not read. OAuth stays unexported (§14 item 6). *Pinned by:*
+  `context.test.ts`'s "adds the header names a remote server's auth sends" [bearer, basic, an API key without a
+  header name, an API key with a header name, named headers, none, OAuth]; the rest of the path was pinned already,
+  by `test_grants.py::test_mcp_block_for_stdio_http_and_sse[http]` and
+  `test_shim.py::test_an_http_server_is_reached_with_its_headers[http, sse]`.
+
 ---
 
 ## 7 · Modules
