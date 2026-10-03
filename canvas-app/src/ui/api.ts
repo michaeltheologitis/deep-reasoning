@@ -91,9 +91,7 @@ export class BackendUnavailable extends Error {
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
-function isLibraryErrorBody(
-  body: unknown,
-): body is {
+function isLibraryErrorBody(body: unknown): body is {
   error: string;
   message: string;
   errors?: FieldError[];

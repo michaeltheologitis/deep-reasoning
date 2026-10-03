@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type NamespaceNode, namespaceTree } from "../src/ui/tree";
+import { type NamespaceNode, ancestors, namespaceTree } from "../src/ui/tree";
 
 const leaf = (name: string, ...children: NamespaceNode[]): NamespaceNode => ({
   name,
@@ -37,5 +37,15 @@ describe("namespaceTree", () => {
 
   it("puts a name whose parent is missing under root", () => {
     expect(namespaceTree(["root", "a.b"])).toEqual(leaf("root", leaf("a.b")));
+  });
+});
+
+describe("ancestors", () => {
+  it.each([
+    ["root", []],
+    ["router", ["root"]],
+    ["router.archive.old", ["root", "router", "router.archive"]],
+  ])("of %s are %j, as deep_reasoner chains them", (name, chain) => {
+    expect(ancestors(name)).toEqual(chain);
   });
 });
