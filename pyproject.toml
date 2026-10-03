@@ -15,9 +15,14 @@ dependencies = [
     "ipython",
 ]
 
+[project.scripts]
+dr-acp = "deep_reasoning.acp.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest",
+    "jsonschema",
+    "referencing",
     "ruff",
 ]
 

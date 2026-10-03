@@ -626,7 +626,9 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "jsonschema" },
     { name = "pytest" },
+    { name = "referencing" },
     { name = "ruff" },
 ]
 
@@ -643,7 +645,9 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "jsonschema" },
     { name = "pytest" },
+    { name = "referencing" },
     { name = "ruff" },
 ]
 
