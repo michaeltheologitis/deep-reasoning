@@ -7,7 +7,13 @@ import {
   readTheme,
   spendCapFromArgs,
 } from "../src/page/context";
-import { HttpError, controlsEvent, fakeAgentServer } from "./fakes";
+import {
+  HttpError,
+  controlsEvent,
+  eventsSearch,
+  fakeAgentServer,
+  messageEvent,
+} from "./fakes";
 
 describe("spendCapFromArgs", () => {
   it.each([
@@ -45,50 +51,74 @@ describe("readSpendCap", () => {
 });
 
 describe("readConversationNamespace", () => {
-  const SEARCH =
-    "/api/conversations/c%201/events/search?kind=ACPSessionControlsEvent&sort_order=TIMESTAMP_DESC&limit=1";
+  const ALL = ["root", "router", "course_advisor"];
 
   it.each([
     [
-      "one value: the first message was sent",
-      controlsEvent("router", ["router"]),
+      "started: the newest controls event offers one value",
+      [
+        controlsEvent("router", ALL),
+        controlsEvent("router", ALL, ["summarize"]),
+        messageEvent("Which course first?"),
+        controlsEvent("router", ["router"]),
+      ],
       { namespace: "router", started: true },
     ],
     [
-      "several values: not started",
-      controlsEvent("router", ["root", "router", "course_advisor"]),
+      "not started: the first event after a start, before the agent's menu",
+      [controlsEvent("router", ALL)],
       { namespace: "router", started: false },
     ],
-    ["no event", { items: [], next_page_id: null }, null],
+    [
+      "the newest event is the state: a namespace picked after the start",
+      [
+        controlsEvent("router", ALL, ["summarize"]),
+        controlsEvent("course_advisor", ALL),
+      ],
+      { namespace: "course_advisor", started: false },
+    ],
+    ["no controls event", [messageEvent("hello")], null],
     [
       "another agent's options",
-      {
-        items: [
-          {
-            config_options: [{ id: "model", current_value: "x", options: [] }],
-          },
-        ],
-      },
+      [
+        {
+          kind: "ACPSessionControlsEvent",
+          available_commands: [],
+          config_options: [
+            {
+              id: "model",
+              name: "Model",
+              type: "select",
+              current_value: "x",
+              options: [],
+            },
+          ],
+        },
+      ],
       null,
     ],
-    ["an answer of another shape", { detail: "?" }, null],
-  ])("%s", async (_, answer, expected) => {
-    const server = fakeAgentServer(() => answer);
+  ])("%s", async (_, events, expected) => {
+    const server = fakeAgentServer(eventsSearch({ "c 1": events }));
     expect(await readConversationNamespace(server.request, "c 1")).toEqual(
       expected,
     );
-    expect(server.calls).toEqual([{ path: SEARCH }]);
+    expect(server.calls).toHaveLength(1);
+  });
+
+  it("is null for an answer of another shape", async () => {
+    const server = fakeAgentServer(() => ({ detail: "?" }));
+    expect(await readConversationNamespace(server.request, "c1")).toBeNull();
   });
 
   it("is null when the request fails", async () => {
-    const server = fakeAgentServer(() =>
-      Promise.reject(new HttpError(500, null)),
-    );
+    const server = fakeAgentServer(eventsSearch({}));
     expect(await readConversationNamespace(server.request, "c1")).toBeNull();
   });
 
   it("is null without a conversation, and asks nothing", async () => {
-    const server = fakeAgentServer(() => controlsEvent("router", ["router"]));
+    const server = fakeAgentServer(
+      eventsSearch({ c1: [controlsEvent("router", ["router"])] }),
+    );
     expect(await readConversationNamespace(server.request, null)).toBeNull();
     expect(server.calls).toEqual([]);
   });
