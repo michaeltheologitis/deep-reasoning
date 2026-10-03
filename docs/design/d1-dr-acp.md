@@ -6,52 +6,67 @@ D4's MCP note, §4, the 2026-10-02 amendment).
 **Pinned against:** deep_reasoner_beta `d7334ae6ea884617a377d9f1ce872530d898484c` ·
 `agent-client-protocol` 0.12.1 (the SDK fork's lock) · ACP schema 1.24.1 `schema.unstable.json`
 (sha256 `6449a87a…09109e`) · SDK fork at `53a4bc5` (`acp_agent.py` line numbers; its
-`deep-reasoning` branch adds only the ASE commit) · Canvas fork at `1ff45c2` (likewise).
+`deep-reasoning` branch adds only the ASE commit) · Canvas fork at `1ff45c2` (likewise) ·
+`genai-prices` 0.1.9 (v4) · the Claude Code CLI 2.1.285, in the live tier only (v4).
 
-**Matches the build at `21f4a8b`** (v3). Commits after it on this branch change only `docs/`, `as_built/` and the sdist's exclude list.
+**Matches the code at `2a15388`** (v4): the head of `v1-dr-acp`, and of `refactor/d1`, from which
+the Gate C stack is cut. This revision is committed on `refactor/d1` and changes only this file.
 
-## Gate B: what to read
+**The evidence.** Both runs are at `2a15388`.
 
-**About 35 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, the
-as-built document (`as_built/d1-dr-acp.md`, the Cartographer's, which also reports the experiments'
-measured results) and the two runs below. Everything after §3 is kept whole as the reference that
-S1, C1, S2, D2 and D5 build against; Gate B does not need it.
+- **CI**, [run 37144598450](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37144598450):
+  `ruff check`, `ruff format --check` and the deterministic suite, **233 passed** (the 4 live
+  tests deselected), in 3 min 39 s. No test calls a model: each spawns `dr-acp` over stdio
+  against `FakeOpenAI`, a scripted OpenAI-compatible endpoint on 127.0.0.1, or, for the Claude
+  Code backbone, against a fake `claude` CLI.
+- **Live tier**, [run 37144608009](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37144608009):
+  **4 of 4 passed**, in 48 s: Claude Code on Sonnet, on Michael's subscription, in about 9 s, and
+  the three gpt-6-luna tests through `dr-acp` with the `docs/configs/advising` config (§8.4). It
+  runs only on demand, as `.github/workflows/live.yml`.
 
-| # | Read | What it gives you | Minutes |
+## Gate C: reading beside the PRs
+
+The code is read as a stack of semantic PRs cut from `2a15388`, tests included; this doc is the
+reference beside them. Where the two differ, that is a finding to raise, not a reading to choose.
+The PR Splitter names the stack, and the Conductor fills in this list:
+
+| # | PR | What it holds | Read beside |
 |---|---|---|---|
-| 1 | This section and the v3 revision line below it | where the proof is, and which sentences of v2 changed | 6 |
-| 2 | §1 and §2 | what `dr-acp` is, and one conversation as it goes over the wire | 10 |
-| 3 | §3.1 | where the design departs from the approved spec (unchanged since v2) | 6 |
-| 4 | §3.2 and §3.3 | what the build changed, each with its reason, and three Code Guide decisions | 10 |
-| 5 | Open the two runs below | that they are green at `21f4a8b` | 3 |
-| 6 | `as_built/d1-dr-acp.md`, §1, §2 and §6 | what exists, its divergences from v2, and the experiments as measured | 15 |
+| 1 | *(the Conductor fills this in from the PR Splitter's stack)* | | |
+| … | | | |
 
-**The evidence.** Both runs are at `21f4a8b`, the branch's last commit that touches code.
+For any PR: its modules' sections are in the map below; the tests that carry each property are
+§8.1's table, each named for the property it pins; what changed since Gate B, each change with its
+reason, is §3.4.
 
-- **CI**, [run 37052495476](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37052495476):
-  `ruff check`, `ruff format --check` and the deterministic suite, **230 passed** (the 3 live
-  tests deselected), in 2 min 53 s. No test calls a model: each spawns `dr-acp` over stdio
-  against `FakeOpenAI`, a scripted OpenAI-compatible endpoint on 127.0.0.1.
-- **Live tier**, [run 37053166300](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37053166300):
-  **3 of 3 passed** on gpt-6-luna through `dr-acp`, with the `docs/configs/advising` config (§8.4),
-  in 39 s. It runs only on demand, as `.github/workflows/live.yml`.
-
-**Which tests carry which property.** Each test's name states the property it pins. Files are
-under `tests/acp/`; `[…]` is a parametrization.
-
-| Property | Tests |
+| Module | Section |
 |---|---|
-| **E1** The tree a client rebuilds from the ACP stream alone is deep_reasoner's own: every agent under the cell that spawned it, every cell under its agent, in native and flat mode | `test_agent.py::test_tree_rebuilt_from_the_stream_is_deep_reasoners_own[9 scenarios × native, flat]`; `test_agent.py::test_each_stream_matches_its_golden_recording[same 18]` |
-| **E2** Nothing but JSON-RPC reaches `dr-acp`'s stdout | `test_cli.py::test_writes_to_stdout_inside_a_run_never_reach_the_acp_stream` (10 MB to `sys.stdout`, raw `os.write(1, …)`); `test_cli.py::test_a_print_while_the_front_imports_cannot_corrupt_the_stream`; `test_supervisor.py::test_a_worker_that_dies_mid_prompt_is_reported_crashed_and_the_next_prompt_is_fresh` (`os._exit(1)` in a cell); and every test that spawns `dr-acp` checks each line it wrote |
-| **E3** Root Stop answers `cancelled` within 2 s and leaves every agent `stopped`; Stop on one sub-agent stops its branch at the next turn, with no more than the call already under way, and through Dean's API the parent keeps every sibling's result | `test_supervisor.py::test_root_stop_in_a_busy_cell_answers_cancelled_within_two_seconds`; `test_supervisor.py::test_root_stop_under_twenty_spinning_children_ends_each_within_two_seconds`; `test_stop.py::test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took`; `test_stop.py::test_dean_stop_ends_the_branch_and_the_parent_keeps_every_siblings_result` |
-| **E4** deep_reasoner still logs what the recorder reads; every message `dr-acp` sends is valid ACP 1.24.1 | `test_recorder.py::test_tripwire_deep_reasoner_still_logs_everything_the_recorder_reads` (and weekly against Dean's `main`, `.github/workflows/acp-tripwire.yml`); the schema check runs inside every test that spawns `dr-acp`, which fails on any invalid message; `test_wire.py::test_installed_acp_is_the_pinned_0_12_1` |
-| **E11** (D1's part) The menu follows the namespace; the first prompt clears it and fixes the namespace; late commands and namespace changes are refused with their sentences; the run records its namespace | `test_session.py::test_menu_follows_the_namespace_and_the_first_prompt_fixes_both`; `::test_a_decomposition_after_the_first_message_is_answered_and_nothing_runs`; `::test_the_namespace_is_fixed_once_the_conversation_started`; `::test_a_bad_option_is_refused_with_its_sentence[…]`; `::test_a_command_without_a_task_is_rejected_and_the_session_stays_open` |
-| Replay and shutdown | `test_agent.py::test_load_replays_every_run_and_marks_a_killed_one_lost`; `test_agent.py::test_close_ends_the_live_run_closed_and_load_then_starts_fresh`; `test_wire.py::test_shutdown_closes_a_live_run_within_1_4_seconds_and_exits_0[stdin closed, SIGTERM]` |
-| **Live tier**, on gpt-6-luna | `test_live.py::test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all` (E1 on a real model, and the root's cost is the sum of every call); `test_live.py::test_live_stopping_a_department_stops_it_and_its_course_agents` (E3's branch Stop on a real model); `test_live.py::test_live_without_the_key_the_run_fails_before_any_call_and_says_which` |
-
-§8.1 maps every experiment to its files, unit tests included.
+| `cli.py`, `wire.py`, `agent.py`, `session.py`, `supervisor.py` | §4.2; the contract they keep with a client, §5 |
+| `worker/` | §4.3; `recorder.py` §6.1, `stop.py` §6.3, root Stop §6.4 |
+| `runlog.py`, `ids.py` | §4.4, §5.1, §7 |
+| `encoder.py`, `texts.py` | §4.5, §5.2–§5.6, §6.2 |
+| `catalog.py` | §4.6 |
+| `route.py`, `costs.py` | §4.7 |
+| `testing/`, `tests/acp/` | §8.1–§8.4 |
+| `pyproject.toml`, `.github/workflows/` | §8.5 |
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-03 · v4 · brought in line with D1 after its cleanup, at `2a15388`, for Gate C. Since
+  Gate B: two rulings of Michael's and a request of his, costs priced by genai-prices (§3.4 H1),
+  the display helpers deleted (H2) and a live test on Claude Code (H3); and the literate refactor,
+  which changed no behaviour (H4–H9), one of whose test fixes found H10. The Gate B reading
+  section is replaced by the Gate C pointer above. Stop trusting: §4.1's `prices.yaml` and §4.7's
+  `costs.py` block and pricing order (H1); §3.2 B16 and §10 item 1, both now resolved (H1);
+  §8.2's `Printer.lines`, `show()`, line format, `SubagentMap`, `Subagent.short`, `Tree.__str__`
+  and drawing, §5.1's "Printer short form" column, and the short-id lookup in §3.1 items 12 and 13
+  (H2); §8.4's three live tests and §8.5's `live.yml` and secrets (H3); where §4.2's `detail` is
+  defined (H4); §4.2's `Outbox.observe` (H5); §6.3's and §7's `StopReceipt`, the stop adapters'
+  and `Recorder.note_stop`'s return types, and `Recorder.arm` (H6); §4.2's `RunHandle.child`,
+  `Session.stop_child`'s return and `cancel`'s routing (H7); §8.5's sdist excludes and §8.2's
+  tree defaults and notice rule, v3 errors (H11). Added without changing earlier sentences:
+  `Session.menu()` (H8); §6.3's note on a collateral sibling that runs on (H10) and §10 item 8;
+  §8.1's Claude Code row; §9's EXP-27 and EXP-28, row R18 and the genai-prices rows. Every change
+  is listed, with its reason, in §3.4.
 - 2026-10-03 · v3 · brought in line with the build at `21f4a8b`, after Proof Green. **The live doc
   is gone:** the spec's amendment of 2026-10-02 made Gate B's evidence the tests ("Item (6) …
   'Gate B live doc', now means these tests"), so `docs/dr-acp.ipynb` is deleted (v2's `docs`
@@ -90,10 +105,10 @@ under `tests/acp/`; `[…]` is a parametrization.
 **Where this file lives, and why nothing trips over it.** `docs/design/` on the task branch. This
 repo has no docs site (no `mkdocs.yml`), pytest is pointed at `tests/` only
 (`[tool.pytest.ini_options] testpaths = ["tests"]`, §8.5), the package uses a `src/` layout so
-`docs/` is not in the wheel, the sdist excludes `docs/`, and ruff skips it (§8.5). The PR split
-leaves it behind.
+`docs/` is not in the wheel, the sdist excludes `docs/` (and `as_built/`), and ruff skips it
+(§8.5). The PR split leaves it behind.
 
-**Reading guide.** Gate B: the section above. S1, C1 and S2 design against §5, which is their
+**Reading guide.** Gate C: the section above. S1, C1 and S2 design against §5, which is their
 contract. D2 against §4.6 and §4.4. D5 against §4.7 and §5.1. The Implementer and the Cartographer
 read everything; the client side the tests drive `dr-acp` with is §8.2 (`Printer`, `tree()`), and
 §7 is the signature index.
@@ -202,9 +217,10 @@ The order below is the order on the wire. Names in `code` are RunEvents (§4.4) 
 
 ## 3 · Departures from the spec, and what the build changed
 
-§3.1 is where this design departs from the approved spec (v1 and v2, unchanged in v3). §3.2 is
-what the build changed in this design, and §3.3 where it followed the Code Guide over it (both
-v3). None is a re-scope.
+§3.1 is where this design departs from the approved spec (v1 and v2, unchanged in v3; v4 notes
+on items 12 and 13). §3.2 is what the build changed in this design, and §3.3 where it followed the
+Code Guide over it (both v3). §3.4 is what changed between Gate B and Gate C (v4): two rulings and
+a request of Michael's, and the literate refactor. None is a re-scope.
 
 ### 3.1 Where this design departs from, or adds to, the approved spec
 
@@ -255,12 +271,16 @@ what was approved, it goes back to Michael.
     for them (`await printer.wait_until(...)`). `printer.commands` is keyed by root
     session (`printer.commands[s.session_id]`), and `printer.subagents` by full session id, with
     a short id such as `"n2"` still accepted when exactly one sub-agent has it: short ids repeat
-    in every run. §8.2.
+    in every run. §8.2. *v4:* Michael's ruling of 2026-10-03 went further and deleted the display
+    side altogether (§3.4 H2): `Printer` has no `show()` and no lines, and `printer.subagents` is
+    a plain dict by full session id, with no short-id lookup. The mock-up's printed lines have no
+    counterpart in the code; `tree()` is how a test reads a run.
 13. **`session/cancel` takes the full child session id (v2).** The mock-up's
     `conn.cancel(session_id="n3")` used the printer's short form; `dr-acp` ignores an id it does
     not know (a notification has no error reply) and logs it at WARNING. Short ids repeat in every
     run and every conversation, so they cannot address a session (decision F). A client reads the
-    id from the announcement (`printer.subagents["n3"].session_id`).
+    id from the announcement (`printer.subagents["n3"].session_id`; v4: the announcement's
+    `sessionId`, which is the key of `printer.subagents`, §8.2).
 14. **The parent's cell output names `deep_reasoning.acp.worker.stop.StoppedByUser` (v2),** not the
     mock-up's bare `StoppedByUser`: deep_reasoner formats a cell's exception with
     `traceback.format_exc()` (`repls/backends.py:523–524`, `v2/repl_coro.py:84–85`), which
@@ -399,7 +419,9 @@ how the tests prove it; B15 is the signatures; B16 is what is still unverified; 
   per million output, context window 1,050,000, as OpenRouter and eesel.ai list OpenAI's standard
   tier (a web search on 2026-10-02; openai.com was unreachable from the build sandbox). Not checked
   against OpenAI's page; `prices.yaml` says so in the entry's `source` (§4.7, §10 item 1). A wrong
-  price makes the costs wrong, not the tree.
+  price makes the costs wrong, not the tree. *Resolved in v4* (§3.4 H1): the shipped `prices.yaml`
+  is gone, and genai-prices' bundled data prices gpt-6-luna, including the tier above 272K input
+  tokens that the secondary listings missed.
 
 **Wiring**
 
@@ -436,6 +458,112 @@ how the tests prove it; B15 is the signatures; B16 is what is still unverified; 
   the machine's time zone, and a naive `datetime.now()` is what ruff's `DTZ` rules flag (not among
   the defaults this repo runs).
 
+### 3.4 Changed between Gate B and Gate C (v4)
+
+Each item was checked against the code at `2a15388` and folded into the section named. H1–H3 are
+Michael's, all of 2026-10-03; H4–H9 are the literate refactor (`77c65f6..65428c4`), which changed
+no behaviour; H10 is what one of its test fixes found about the interim; H11 corrects three errors
+in v3.
+
+**Michael's rulings and request**
+
+- **H1. Costs are priced by genai-prices' bundled data, not by a shipped `prices.yaml`** (§4.7,
+  §5.2, §5.8, §8.5; resolves §3.2 B16 and §10 item 1). Michael's ruling, "stick to what
+  genai-prices gives us", after the Scout found that the shipped table underpriced gpt-6-luna
+  prompts above 272K input tokens (300K in and 10K out: $0.0675, not $0.0350; as-built D-9).
+  `PriceTable.estimate` now takes, in order: the provider's reported cost; a `$DR_HOME/prices.yaml`
+  entry; genai-prices; else no cost. The context window comes from the same entry or model.
+  `$DR_HOME/prices.yaml` stays because D5's design relies on it (the key proxy's `UNPRICED`
+  remedy, E10's and E12's priced fake models), and the test harness prices `fake-model` through
+  it. `cost_source` stays `table` for both the home's entry and genai-prices. genai-prices is read
+  offline: `costs.GENAI_PRICES` is a `DataSnapshot` of its bundled providers, never the
+  process-wide snapshot `calc_price` reads, which genai-prices' opt-in `UpdatePrices` replaces with
+  a download. Nothing starts `UpdatePrices`. The dependency is `genai-prices>=0.1.9,<0.2`, locked at
+  0.1.9. *Pinned by:* `test_costs.py::test_genai_prices_prices_gpt_6_luna_and_a_prompt_above_272k_tokens_at_its_long_rates[…]`,
+  `::test_a_home_entry_overrides_genai_prices_and_prices_a_model_it_does_not_know`,
+  `::test_a_provider_reported_cost_wins_over_genai_prices`,
+  `::test_a_model_genai_prices_does_not_know_has_an_unknown_cost_not_zero[…]`,
+  `::test_prices_come_from_genai_prices_bundled_data_even_after_a_download`,
+  `::test_pricing_a_call_needs_no_network_and_starts_no_background_thread`.
+- **H2. The display helpers are deleted** (§8.2, §4.1, §5.1, §7; §3.1 items 12 and 13 annotated).
+  Michael's ruling: nothing read them once the live doc was gone (v3). Deleted: `Printer.lines`
+  and `show()`, the line format, `SubagentMap`, `Subagent.short`, and `Tree.__str__` with its
+  drawing. `Printer.subagents` is now a plain dict keyed by full session id. Kept: `Caps`,
+  `ShimConnection`, `Printer`'s `updates`, `subagents`, `commands` and `wait_until`,
+  `outcome_phrase`, `first_text`, `tree()` and its nodes with their short ids (the live tier and
+  `test_tree.py` read them as data), `ids.short`, and `FakeOpenAI`. D2–D4's tests read a
+  `Printer`'s `updates` and `commands`, and D5's design uses `tree()`. *Pinned by:*
+  `test_client.py::test_subagents_are_keyed_by_full_id_and_hold_their_latest_update`,
+  `test_tree.py::test_a_child_driven_twice_is_an_agent_per_drive`.
+- **H3. A live test on Claude Code, with Sonnet, on Michael's subscription** (§8.4, §8.5, §8.1,
+  §9). Michael's request. `tests/acp/test_claude_code.py` holds the live test and a twin on a fake
+  `claude` CLI that runs in the default suite. `live.yml` installs the Claude Code CLI 2.1.285 and
+  passes `CLAUDE_CODE_OAUTH_TOKEN`, never `ANTHROPIC_API_KEY`. Two deep_reasoner bugs are worked
+  around in the test, not in `dr-acp`, and are logged for Dean as Expectations rows: EXP-27
+  (`claude_code.child_env` drops every `CLAUDE_CODE*` variable, the subscription token among them)
+  and EXP-28 (a config whose agents all run on Claude Code still needs a chat client key). *Pinned
+  by:* `test_claude_code.py::test_live_claude_code_on_sonnet_answers_through_acp_and_each_snippet_is_a_cell`,
+  `::test_a_claude_code_root_on_sonnet_answers_and_each_snippet_it_runs_is_a_cell`.
+
+**The literate refactor** (no change of behaviour)
+
+- **H4. `detail_of` and `DETAIL_CAP` live in `runlog.py`** (§4.2's `detail`, §7). `session.py`
+  and `worker/runner.py` each defined both, identically (`77c65f6`). The form is the run log's,
+  and the front and the worker both import `runlog.py`, which imports nothing heavy.
+- **H5. `Outbox.observe` is deleted** (§4.2 `wire.py`; `b2fb48a`). Nothing in `dr-acp` called
+  it: the schema check runs on the client (§3.2 B10), and the golden recordings are taken from the
+  client's side (§8.3).
+- **H6. The stop adapters return nothing; `stop.accepted` is the receipt** (§6.3, §7; `5a0a5a8`).
+  Deleted: `StopReceipt`; the `-> StopReceipt` returns of `StopAdapter.stop`, `DeanStop.stop`,
+  `InterimStop.stop` and `Recorder.note_stop`; and `Recorder.arm`. The worker's control thread
+  discarded the receipt. The same four facts (node, mode, accepted, reason) reach the front in the
+  `stop.accepted` event, which the run log keeps and the tests read. `InterimStop.stop` calls
+  `recorder.note_stop(node, "interim")`, as `DeanStop.stop` calls it with `"dean"`.
+- **H7. `session/cancel` looks a child up once** (§4.2 `agent.py`, `session.py`, `supervisor.py`;
+  `d4d7930`). `RunHandle.child` is deleted. `Session.stop_child(id)` asks its live run's encoder,
+  stops the branch when that child is running, and returns whether its run has a child of that id
+  (it returned `None`). `cancel` logs an id that no session claims. The outcomes are the same.
+- **H8. `Session.menu()`** (§4.2; `70e1988`). The session builds its own
+  `available_commands_update`. Before, the menu was built in three places: twice in `DrAcpAgent`,
+  and once in the session, which spelled the cleared menu as a literal `[]`. Now `DrAcpAgent`
+  sends `menu()` after `session/new` and `session/load` and before `set_config_option`'s response,
+  and the session sends it, empty, when the conversation starts.
+- **H9. Prose, a private inlining and tests.** Docstrings now state each contract instead of who
+  calls it or which later task implements it (`89f1ad3`). This doc keeps its signature docstrings
+  wherever they still hold, since they name the seams (D2's, D5's) that the code no longer names.
+  The encoder's private `_dr` and `_closed_card` are inlined (`a597668`). The encoder's tests
+  compare against the hand-written wire shapes in `tests/acp/streams.py` (`42733ad`). The
+  recorder's tests assert one field tuple per line (`83344a1`). The stop tests' helper is a plain
+  async function (`65428c4`).
+
+**What a test fix found**
+
+- **H10. A collateral sibling of an interim stop can run on to `done`** (§6.3, §8.1 E3, §10 item
+  8; `ffa97f3`). `test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took`
+  failed under load (2 of 12 runs, then 4 of 15, with eight busy processes on four CPUs). A
+  department that D0's `StoppedByUser` named as stopped with it was never cancelled, and it ended
+  `done`. The cause: `run_all` ends its other coroutines by cancelling them as `asyncio.run` shuts
+  its loop down, and an openai call cancelled mid-response can swallow the cancellation and carry
+  on (httpx 0.28.1, httpcore 1.0.9, anyio 4.15.1). Apart from `dr-acp`, 4 of 600 such cancelled
+  calls ran to completion unloaded, and 43 of 600 under load. The fix is in the test: the fake
+  model holds D0's siblings' first answers until the root's next turn, which comes only after
+  `run_all` has ended. Each sibling is then still waiting for its model's response when the stop
+  ends `run_all`, and a cancellation there always lands. That made it 20 of 20 under the same load.
+  The assertion is unchanged. The interim is unchanged too, so against a real model the parent's
+  cell output can name a sibling that then ends `done`, and the tree shows it `done`, by §6.3's
+  last classification row. Dean's API cancels no sibling (§6.3, point 6).
+
+**Corrections to v3**, found while checking every section against `2a15388`; the code did not
+change for any of them:
+
+- **H11.** The sdist excludes `as_built/` as well as `docs/` (§8.5, and the note on where this file
+  lives). The as-built commit `b67aa29`, after `21f4a8b`, added it, and v3's header said the
+  exclude list had changed, but v3's §8.5 still said `docs/` only. And `testing.tree`'s
+  `CellNode.agents` and `AgentNode.items` default to empty lists (`field(default_factory=list)`),
+  as they have since the build; v3's §8.2 block gave them no default. And `tree()` leaves a
+  fresh-run notice out of the tree (it carries no run), where v3's §8.2 said the notice belongs
+  to the run around it.
+
 ---
 
 ## 4 · Modules and seams
@@ -452,13 +580,13 @@ src/deep_reasoning/acp/
     agent.py                       DrAcpAgent: the ACP methods
     session.py                     Session: options, commands, prompt state machine, runs
     supervisor.py                  RunHandle: spawn, pipes, pump, stop, kill, close
-    runlog.py                      RunEvent models, RunLog, SessionIndex, Home, Mode
+    runlog.py                      RunEvent models, RunLog, SessionIndex, Home, Mode, detail_of
     encoder.py                     Encoder: RunEvents → ACP updates (native, flat, replay)
-    ids.py                         id derivation and the short forms the printer uses
+    ids.py                         id derivation, and the short forms tree()'s nodes carry
     catalog.py                     Catalog protocol, CatalogSnapshot, ConfigCatalog, load_dr_config
     route.py                       ModelRoute protocol, DirectRoute, environment scrub
-    costs.py                       PriceTable, Price, CostEstimate, CostLedger
-    prices.yaml                    shipped price and context-window table
+    costs.py                       PriceTable ($DR_HOME's entries over genai-prices), Price,
+                                   CostEstimate, CostLedger (v4: no shipped prices.yaml)
     texts.py                       every user-visible sentence (§5.6), in one place
     worker/__main__.py             python -m deep_reasoning.acp.worker
     worker/runner.py               control loop, build, drive, close
@@ -466,8 +594,8 @@ src/deep_reasoning/acp/
     worker/stop.py                 StopAdapter, DeanStop, InterimStop, StoppedByUser
     worker/protocol.py             control messages (front → worker)
     testing/__init__.py            for tests, never imported by dr-acp itself
-    testing/client.py              ShimConnection, Caps, Printer, Subagent (§8.2)
-    testing/tree.py                tree(), Tree and its nodes (§8.2)
+    testing/client.py              ShimConnection, Caps, Printer, Subagent, outcome_phrase (§8.2)
+    testing/tree.py                tree(), Tree and its nodes (§8.2; v4: not drawn)
     testing/fake_model.py          FakeOpenAI: an OpenAI-compatible endpoint on 127.0.0.1
 tests/acp/…                        §8
 ```
@@ -540,9 +668,6 @@ class Outbox:
         """A session/update notification, raw JSON: {"sessionId": ..., "update": update}.
         Dropped once the client has closed the pipe: the run log still has it."""
 
-    def observe(self, fn: Callable[[dict[str, Any]], None]) -> None:
-        """fn sees every outgoing JSON-RPC message (tests, golden recording)."""
-
     @property
     def seconds_since_last_send(self) -> float: ...
 
@@ -577,6 +702,8 @@ class ClientMode:
 
 `use_unstable_protocol=True` is needed for `session/close` (S2's preview closes its probe
 session). Unimplemented unstable methods (`fork`, `resume`, `list`) answer method-not-found.
+`Outbox` has no observer hook (v4, §3.4 H5): the tests see what `dr-acp` sent from the client's
+side of a real pipe (§8.1).
 
 **`agent.py`.** The ACP surface. Handlers get the router's keyword arguments and return raw dicts.
 
@@ -643,11 +770,17 @@ def user_text(blocks: list[Any]) -> tuple[str, list[str]]:
     """
 ```
 
-`cancel` routes by id: a root session id → `Session.stop_root()`; an id in any live run's child
-map → `Session.stop_child()`; anything else is ignored, since it is a notification and has no error
+The menu goes out as the session builds it, `Session.menu()` (v4, §3.4 H8): after the responses
+to `session/new` and `session/load` (P6), and before the response to `set_config_option` (§5.4
+rule 5).
+
+`cancel` routes by id: a root session id → `Session.stop_root()`; otherwise each session is asked
+`Session.stop_child(id)` until one answers `True` (its live run has a child of that id; v4,
+§3.4 H7). An id no session claims is ignored, since `cancel` is a notification and has no error
 reply, and logged at WARNING (`session/cancel for unknown session '<id>' ignored`), so a client
-that sent a short id such as `n3` finds out from `dr-acp`'s stderr. A cancel racing an ended agent
-does not rewrite its outcome.
+that sent a short id such as `n3` finds out from `dr-acp`'s stderr. The id of a child that has
+already ended is claimed, so it is not logged, and nothing is stopped. A cancel racing an ended
+agent does not rewrite its outcome.
 
 **`session.py`.** One per root session; holds the options, the commands and the runs; serializes
 `prompt`, `set_config_option` and `load` with an `asyncio.Lock`; `cancel` and `close` never take it (B18).
@@ -690,6 +823,10 @@ class Session:
     def offer(self, namespace: str) -> None:
         """The menu of a namespace, until the conversation starts."""
 
+    def menu(self) -> Update:
+        """The current menu as an available_commands_update; empty once the
+        conversation has started. v4 (§3.4 H8)."""
+
     def options(self) -> list[dict[str, Any]]:
         """The namespace option, narrowed once started."""
 
@@ -701,7 +838,9 @@ class Session:
 
     async def stop_root(self) -> None: ...
 
-    def stop_child(self, child_session_id: str) -> None: ...
+    def stop_child(self, child_session_id: str) -> bool:
+        """Stop the child's branch if it is running; False if the live run has no child
+        of that id. v4 (§3.4 H7): it returned None."""
 
     async def close(self, grace_s: float = 2.0) -> None: ...
 
@@ -751,8 +890,8 @@ class PromptResult:
    A *reply* is one root `agent_message_chunk` carrying
    `_meta.deep_reasoner = {"run": null, "prompt": null, "outcome": <outcome>}` (§5.2's closing
    message, sent by the session because no run log holds it).
-4. If not started: started = True; send `available_commands_update []` then the narrowed
-   `config_option_update`; write the session index.
+4. If not started: started = True; send `available_commands_update []` (`self.menu()` with the
+   commands cleared, v4) then the narrowed `config_option_update`; write the session index.
 5. If `self.run` is None: `run_id = ids.new_run_id()`; `source = await
    asyncio.to_thread(catalog.materialize, namespace, run_dir=home.run_dir(run_id))` (an exception →
    reply `texts.build_failed(detail)`, outcome `build_failed`, no run, `last_end` unchanged);
@@ -771,7 +910,8 @@ class PromptResult:
 
 `detail`, wherever an exception becomes one (a materialize failure here, a build or drive failure
 in the worker, §4.3), is `f"{type(exc).__name__}: {exc}"`, the form deep_reasoner gives
-`agent.end.detail` (`agent.py:904`), capped at 2,000 characters: for a missing key,
+`agent.end.detail` (`agent.py:904`), capped at 2,000 characters. Both processes make it with one
+function, `runlog.detail_of` (capped at `runlog.DETAIL_CAP`; v4, §3.4 H4, §7). For a missing key:
 ``ValueError: Missing API key. Set `OPENAI_API_KEY` (preferred) or `OPENAI_API_KEY`.``
 (`build_client`, `config.py:256–266`, called by `build_reasoner`, `v2/cli.py:342`).
 
@@ -834,10 +974,10 @@ class RunHandle:
 
     async def close(self, grace_s: float = 2.0) -> None:
         """Send Close; kill("closed") if the worker has not exited after grace_s."""
-
-    def child(self, session_id: str) -> ChildRef | None:
-        """The live child with this session id, for cancel routing."""
 ```
+
+`RunHandle` has no child lookup (v4, §3.4 H7): the session asks the run's encoder
+(`Encoder.child`, §4.5), as it already did for `prompt_in_flight`, `root_usage` and `root_cost`.
 
 `Session.close(grace_s)` closes its live run with the same grace: 2 s for `session/close`, 0.3 s at
 shutdown.
@@ -906,7 +1046,8 @@ RunEvents (§4.4) without `seq` and `t`, which the front assigns, one JSON objec
    main loop through `loop.call_soon_threadsafe`. EOF (the front died) → `os.killpg(0, SIGKILL)`.
 2. On `Start` (the process already runs in the session's `cwd`): `set_cache_dir(None)`;
    `quiet_http_client_logs()`; `recorder = Recorder(sink, PriceTable.load(home))`, the home being
-   the run directory's grandparent, so `$DR_HOME/prices.yaml` applies in the worker too; the stop
+   the run directory's grandparent, so `$DR_HOME/prices.yaml` applies in the worker too (over
+   genai-prices, §4.7); the stop
    adapter (`resolve_stop_adapter`, §6.3);
    `configure_structlog_fixture(console=False, extra_processors=[recorder, LogProcessor(run_dir.parent)],
    default_level=logging.WARNING)`; a SIGTERM handler that calls `recorder.mute()` and then raises
@@ -1369,10 +1510,14 @@ OpenHands' bridge passes the agent-server's whole environment plus the conversat
 `transports.py:13–30`). Without the key the first prompt answers `build_failed` with
 deep_reasoner's own message, which names the variable (§4.2's `detail`).
 
-**`costs.py`.** Chat-backbone cost is an estimate until A7.
+**`costs.py`.** Chat-backbone cost is an estimate until A7. Since v4 the estimate is
+genai-prices', not a table we ship (Michael's ruling of 2026-10-03, §3.4 H1).
 
 ```python
 CostSource = Literal["provider", "table", "claude"]
+# genai-prices' bundled data, never a download: calc_price reads the process-wide
+# snapshot, which UpdatePrices replaces with what it fetches (v4).
+GENAI_PRICES = DataSnapshot(providers=providers, from_auto_update=False)
 
 
 @dataclass(frozen=True)
@@ -1403,25 +1548,50 @@ class CostEstimate:
 
 
 class PriceTable:
+    """The home's own entries, laid over genai-prices (v4)."""
+
     def __init__(self, prices: Mapping[str, Price]) -> None: ...
 
     @classmethod
     def load(cls, home: Home) -> PriceTable:
-        """The package's prices.yaml, with $DR_HOME/prices.yaml over it."""
+        """$DR_HOME/prices.yaml: per model id or glob, input_per_mtok and
+        output_per_mtok in USD per million tokens, and context_window in tokens.
+        No entries without the file; nothing is shipped (v4)."""
 
     def price(self, model: str | None) -> Price | None:
-        """The entry whose key is the model id, else the longest glob that matches it."""
+        """The home's entry whose key is the model id, else the longest glob that
+        matches it."""
 
-    def estimate(self, model: str | None, usage: Mapping[str, Any]) -> CostEstimate: ...
+    def estimate(self, model: str | None, usage: Mapping[str, Any]) -> CostEstimate:
+        """The provider's reported cost; else the home's entry; else genai-prices;
+        else usd None: an unknown cost, never zero (v4)."""
 ```
 
-`estimate`: `usage["cost"]` when the provider reports it (OpenRouter) → source `provider`; else the
-table entry whose key equals the model id, or is the longest matching `*`-glob → source `table`;
-else `usd=None`. Tokens: `prompt_tokens`/`input_tokens` and `completion_tokens`/`output_tokens`,
-as `RunStats.add_usage` reads them (`run_stats.py:52–61`). Claude spend is exact: `claude.call`'s
-`cost_usd`, source `claude`. `prices.yaml` ships entries with `source` and `as_of` for each. It
-ships `gpt-6-luna` at $0.10 in and $0.50 out per million tokens, context window 1,050,000, taken
-from secondary listings, not OpenAI's page, and so unverified (v3, §3.2 B16, §10 item 1).
+`estimate`, in order (v4, §3.4 H1):
+1. `usage["cost"]` when the provider reports it (OpenRouter) → source `provider`.
+2. Else the home's entry (`$DR_HOME/prices.yaml`), the one whose key equals the model id or, failing
+   that, the longest matching `*`-glob → source `table`.
+3. Else genai-prices: `GENAI_PRICES.calc(Usage(input_tokens=…, output_tokens=…), model, None, None,
+   None)`, which finds the model id among its bundled providers and applies the model's price
+   tiers → source `table`.
+4. Else, for a model neither knows (genai-prices raises `LookupError`) or no model, `usd=None`.
+
+The context window comes from the same entry or genai-prices model, even when the provider reports
+the cost. Tokens: `prompt_tokens`/`input_tokens` and `completion_tokens`/`output_tokens`, as
+`RunStats.add_usage` reads them (`run_stats.py:52–61`). Claude spend is exact: `claude.call`'s
+`cost_usd`, source `claude`, and no context window (the recorder does not price a Claude call).
+
+**Nothing ships a price** (v4). The package's `prices.yaml` is deleted, and with it v3's
+unverified gpt-6-luna entry (§3.2 B16, §10 item 1). For gpt-6-luna, genai-prices 0.1.9 gives
+$0.10 in and $0.50 out per million tokens up to 272K input tokens, and $0.20 in and $0.75 out
+above that, for the whole call (300K in and 10K out is $0.0675; v3's table said $0.0350), and a
+context window of 1,050,000. `$DR_HOME/prices.yaml` stays, for a model genai-prices does not know
+or that a deployment prices differently: D5's design relies on it (the key proxy's `UNPRICED`
+remedy, E10's and E12's priced fake models), and the test harness prices `fake-model` through it
+(`tests/acp/harness.py`). **genai-prices runs offline:** `GENAI_PRICES` is a `DataSnapshot` of the
+bundled providers. It is never the process-wide snapshot that `calc_price` reads, which
+genai-prices' opt-in `UpdatePrices` replaces with a download. Nothing in `dr-acp` starts
+`UpdatePrices`, so pricing makes no network call and starts no thread.
 
 ### 4.8 `mcpServers`: the seam to D4
 
@@ -1461,7 +1631,7 @@ answers `build_failed` and says which variable to set. Shutdown: close stdin or 
  "authMethods": []}
 ```
 
-| Thing | Id | Example (run `20261002-142233-4f1a2b`) | Printer short form |
+| Thing | Id | Example (run `20261002-142233-4f1a2b`) | Short form (`ids.short`) |
 |---|---|---|---|
 | root session | `s-` + 16 hex, made at `session/new` | `s-7c1f9e0a2b4d6e8f` | `root` |
 | child session | `<run>-n<node>` | `20261002-142233-4f1a2b-n2` | `n2` |
@@ -1471,10 +1641,11 @@ answers `build_failed` and says which variable to set. Shutdown: close stdin or 
 | answer message (child's transcript) | `<run>-n<node>-r<drive>` | `…-n2-r1` | — |
 
 `node` is deep_reasoner's `node_id`. Node ids are shared with the LLM and Claude nodes deep_reasoner
-allocates, so sibling agents need not be consecutive (`#1 › #2`, then `#1 › #4`). The printer's
-short forms are what the spec's mock-ups print. **They are for display only:** every run has an
-`n2` and a `c1.1`, so on the wire, and in `session/cancel`, ids are always the full ones
-(`ids.short` maps full to short, never back).
+allocates, so sibling agents need not be consecutive (`#1 › #2`, then `#1 › #4`). The short forms
+are what the spec's mock-ups print; since v4 the only code that shows them is `tree()`, whose nodes
+carry them (`AgentNode.short`, `CellNode.short`, §8.2), and the `Printer` has none (§3.4 H2).
+**They are for display only:** every run has an `n2` and a `c1.1`, so on the wire, and in
+`session/cancel`, ids are always the full ones (`ids.short` maps full to short, never back).
 
 ### 5.2 Emission table, native mode
 
@@ -1525,11 +1696,13 @@ the whole task (at most 2,000 characters) and is sent only when the title was cu
 `usage_update`: `{"used": U, "size": W, ["cost": {"amount": usd, "currency": "USD"},] "_meta":
 {"deep_reasoner": {"cost_source", "tokens_in", "tokens_out", "unknown_calls"}}}`. `U` = the tokens
 of the node's latest think call (prompt + completion), its context; `W` = the model's context
-window from the price table, `0` when unknown. `cost` is the node's inclusive cumulative total and
+window from the price table (the home's entry, else genai-prices, §4.7; v4), `0` when unknown. `cost` is the node's inclusive cumulative total and
 is **omitted** while any contributing call has no estimate (`unknown_calls > 0`): ACP forbids
 fabricating a total from incomplete counts, and a missing cost is unknown, not zero.
 `cost_source` is the one source of every priced call in the total (`provider`, `table` or
 `claude`), `mixed` when there are several (v3, §3.2 B8), and `null` when no call had a cost.
+`table` means priced by `dr-acp` from token counts: a `$DR_HOME/prices.yaml` entry or, since v4,
+genai-prices' bundled data (§4.7).
 
 The prompt response: `{"stopReason": …, "_meta": {"deep_reasoner": {"run": run_id | null,
 "outcome": PromptResult.outcome}}}`. Stop reasons: answered → `end_turn`; exhausted →
@@ -1679,10 +1852,10 @@ Code Guide forbids `.format()`. The upper-case name is what an error's `data` ca
 |---|---|---|---|
 | `_meta.openhands.parentToolCallId` | `subagent_update` (native), flat agent cards | the `toolCallId` of the parent's cell that spawned (or re-drove) the child; always a call already sent on the parent's session | S1 (persists), C1 (placement) |
 | `_meta.deep_reasoner.{run,node,parent,depth,namespace,backbone,drive}` | `subagent_update`, flat cards | the node's identity in deep_reasoner's tree | E1, our tests, golden replays; no fork |
-| `_meta.deep_reasoner.{status,detail,stopped_by,collateral}` | idle `subagent_update`, closed flat cards | outcome (`done`, `exhausted`, `failed`, `stopped`, `crashed`); for `stopped`, the target whose stop ended it and, with `collateral: true`, that it was cancelled beside the target rather than in its branch | as above, `testing.tree` |
+| `_meta.deep_reasoner.{status,detail,stopped_by,collateral}` | idle `subagent_update`, closed flat cards | outcome (`done`, `exhausted`, `failed`, `stopped`, `crashed`); for `stopped`, the target whose stop ended it and, with `collateral: true`, that it was cancelled beside the target rather than in its branch | as above, `testing.tree` (`outcome_phrase`) |
 | `_meta.deep_reasoner.{run,prompt,outcome}` | the root's closing `agent_message_chunk` (§5.2's `CM`) | which run and prompt the message closes, and how (`PromptResult.outcome` or `lost`); `run` and `prompt` null for a rejected prompt | `testing.tree`, tests |
 | `_meta.deep_reasoner.{run,node,parent,depth,cell,origin}` | cell `tool_call` | the cell's owner and how it was opened | E1 (flat tree), tests |
-| `_meta.deep_reasoner.{cost_source,tokens_in,tokens_out,unknown_calls}` | `usage_update` | how the cost was obtained; `cost_source` is `provider`, `table`, `claude`, `mixed` (v3) or null | tests, the live tier |
+| `_meta.deep_reasoner.{cost_source,tokens_in,tokens_out,unknown_calls}` | `usage_update` | how the cost was obtained; `cost_source` is `provider`, `table` (a `$DR_HOME/prices.yaml` entry or genai-prices, v4), `claude`, `mixed` (v3) or null | tests, the live tier |
 | `_meta.deep_reasoner.{decomposition,namespace}` | each `availableCommands` entry | the decomposition the command opens | tests |
 | `_meta.deep_reasoner.{run,outcome}` | the prompt response | which run answered, and how the turn ended | E11, tests |
 
@@ -1792,19 +1965,12 @@ class StoppedByUser(Exception):
     ) -> None: ...
 
 
-@dataclass(frozen=True)
-class StopReceipt:
-    node: int
-    mode: Literal["dean", "interim"]
-    accepted: bool  # False: unknown node, or it already ended
-    reason: str | None
-
-
 class StopAdapter(Protocol):
     mode: Literal["dean", "interim"]
 
-    def stop(self, node_id: int) -> StopReceipt:
-        """Thread-safe; returns at once."""
+    def stop(self, node_id: int) -> None:
+        """Thread-safe; returns at once. Whether the stop was accepted is the
+        stop.accepted event the recorder emits (v4: no receipt)."""
 
 
 class DeanStop:
@@ -1814,7 +1980,7 @@ class DeanStop:
 
     def __init__(self, fn: Callable[[int], None], recorder: Recorder) -> None: ...
 
-    def stop(self, node_id: int) -> StopReceipt:
+    def stop(self, node_id: int) -> None:
         """fn(node_id), then recorder.note_stop(node_id, "dean"), as one step for the
         recorder (under recorder.holding()), and fn only while recorder.running(node_id):
         stop.accepted marks the moment the stop is in force, and no agent.end is
@@ -1826,15 +1992,21 @@ class InterimStop:
 
     def __init__(self, recorder: Recorder) -> None: ...
 
-    def stop(self, node_id: int) -> StopReceipt:
-        """recorder.arm(node_id)."""
+    def stop(self, node_id: int) -> None:
+        """recorder.note_stop(node_id, "interim"): the target's branch raises at its
+        next agent.turn."""
 
 
-def resolve_stop_adapter(recorder: Recorder, spec: str | None) -> StopAdapter: ...
+def resolve_stop_adapter(recorder: Recorder, spec: str | None) -> StopAdapter:
+    """DeanStop over the function spec names ("module:attr"), else InterimStop."""
 ```
 
-Both adapters make the recorder emit `stop.accepted` and record the target, so classification
-works the same in both modes. **When Dean ships, the change is one line**: `DEAN_STOP_API`.
+Both adapters call `Recorder.note_stop`, which records the target and emits `stop.accepted`
+(`accepted` false, with a `reason`, for an unknown node or one that has already ended), so
+classification works the same in both modes. The adapters return nothing: `stop.accepted` is the
+receipt, the one the run log keeps and the tests read (v4, §3.4 H6: v3's `StopReceipt` carried the
+same four facts to a control thread that discarded them). **When Dean ships, the change is one
+line**: `DEAN_STOP_API`.
 
 **Targets.** The recorder keeps every accepted target with the drive it had when the stop was
 accepted. A target is **armed** while that drive is still its current one: ending does not disarm
@@ -1878,7 +2050,12 @@ In the example, n4 is row 2 (`stopped`, by #2), n5 row 3 (`stopped`, by #2; v1 c
 running siblings in its `run_all` are cancelled; the parent's cell output names them (the
 `StoppedByUser` text, §5.6), and each of them turns `idle`/`cancelled` with `collateral` in its
 `_meta`. A collateral sibling that is itself waiting on its own children is cancelled only when
-they finish, and they are not stopped: their results are discarded. (2) A Claude-backbone agent's
+they finish, and they are not stopped: their results are discarded. A collateral sibling may also
+not end at all (v4, §3.4 H10). `gather` cancels it as `run_all`'s private loop shuts down, and an
+openai call cancelled mid-response can swallow the cancellation (httpx 0.28.1, httpcore 1.0.9,
+anyio 4.15.1). The sibling then runs on and ends `done`, by the last row of the classification
+table above. The tree shows it `done`, but the parent's cell output, written when the target
+raised, named it as stopped with the target. (2) A Claude-backbone agent's
 one turn is a whole Claude session, so the stop lands when it ends; the child's session says so at
 once (`stop_requested`). (3) A running cell is never interrupted, in either mode (A3).
 
@@ -1927,9 +2104,11 @@ Load-bearing signatures are given in full where their module is described: `Opti
 control messages (§4.3); every RunEvent, `Mode`, `RunLog` (§4.4); `Encoder`, `ChildRef` and the
 encoder's module helpers (§4.5); `Catalog`, `CatalogSnapshot`, `CommandEntry`, `RunSource`,
 `slug`, `load_dr_config`, `ConfigCatalog` (§4.6); `ModelRoute`, `RouteGrant`, `DirectRoute`,
-`worker_env`, `CostLedger`, `PriceTable`, `Price`, `CostEstimate` (§4.7); `StopAdapter`, `DeanStop`, `InterimStop`, `StoppedByUser`,
-`StopReceipt`, `resolve_stop_adapter`, `DEAN_STOP_API` (§6.3); `Caps`, `ShimConnection`,
-`Printer`, `Subagent`, `SubagentMap`, `tree`, `Tree` and its nodes (§8.2). The rest, by process:
+`worker_env`, `CostLedger`, `PriceTable`, `Price`, `CostEstimate`, `GENAI_PRICES` (§4.7);
+`StopAdapter`, `DeanStop`, `InterimStop`, `StoppedByUser`, `resolve_stop_adapter`,
+`DEAN_STOP_API` (§6.3); `Caps`, `ShimConnection`, `Printer`, `Subagent`, `outcome_phrase`,
+`first_text`, `tree`, `Tree` and its nodes (§8.2). v4 deleted `StopReceipt`, `SubagentMap`,
+`Outbox.observe`, `RunHandle.child` and `Recorder.arm` (§3.4). The rest, by process:
 
 #### Front process
 
@@ -1964,6 +2143,15 @@ def short(id_: str) -> str:
 
 
 # runlog.py
+DETAIL_CAP = 2000
+
+
+def detail_of(exc: BaseException) -> str:
+    """f"{type(exc).__name__}: {exc}", capped at DETAIL_CAP: the form deep_reasoner gives
+    agent.end's detail, so every detail in the log, and every sentence that quotes one,
+    reads the same (§4.2). v4: here, not in session.py and worker/runner.py."""
+
+
 @dataclass(frozen=True)
 class Home:
     root: Path
@@ -2018,8 +2206,10 @@ class Recorder:
 
     def set_puppeteer(self, turns: Sequence[str]) -> None: ...
 
-    def note_stop(self, node: int, mode: Literal["dean", "interim"]) -> StopReceipt:
-        """Record an accepted target (§6.3) and emit stop.accepted."""
+    def note_stop(self, node: int, mode: Literal["dean", "interim"]) -> None:
+        """Record a running agent as a stop target (§6.3), and emit stop.accepted saying
+        whether it was one. An interim target's branch raises at its next agent.turn.
+        v4: returns nothing, and is what InterimStop calls (no arm())."""
 
     def holding(self) -> threading.RLock:
         """The recorder's lock, for a step no event may interleave with (v3, DeanStop)."""
@@ -2027,11 +2217,9 @@ class Recorder:
     def running(self, node: int) -> bool:
         """The agent is known and its current drive has not ended (v3)."""
 
-    def arm(self, node: int) -> StopReceipt:
-        """Interim: note_stop(node, "interim"); the target now raises at agent.turn."""
-
     def emit(self, kind: str, **fields: Any) -> None:
-        """The runner's own events (worker.ready, prompt.end), and the recorder's."""
+        """Send one RunEvent unless muted, under the lock: the runner's own events
+        (worker.ready, prompt.end), and the recorder's."""
 
     def mute(self) -> None:
         """Send nothing more: the front is ending the run and describes its end itself (v3)."""
@@ -2109,20 +2297,22 @@ Tests are one `test_<module>.py` per module (v3, §3.3 C2), so an experiment is 
 tests across files; "Where" names them (all under `tests/acp/`). Every test that spawns `dr-acp`
 does so through `tests/acp/harness.py`'s `dr_acp()`, which talks to it over stdio with a
 `ShimConnection` (native) or a plain `ClientSideConnection` (flat), serves the model from
-`FakeOpenAI` over real HTTP (v3, B11), and on exit fails the test if any line `dr-acp` wrote is not
-JSON-RPC 2.0 (E2) or any message it sent is not valid ACP 1.24.1 (E4).
+`FakeOpenAI` over real HTTP (v3, B11; a Claude Code root runs a fake or the real `claude` CLI
+instead, §8.4), and on exit fails the test if any line `dr-acp` wrote is not JSON-RPC 2.0 (E2) or
+any message it sent is not valid ACP 1.24.1 (E4).
 
 | Experiment | Where | How |
 |---|---|---|
 | **E1** tree fidelity | `test_agent.py::test_tree_rebuilt_from_the_stream_is_deep_reasoners_own`, `::test_each_stream_matches_its_golden_recording` (each over 9 scenarios × native, flat); units in `test_recorder.py`, `test_encoder.py`, `test_tree.py` | Nine scripted runs (`scenarios.py`: linear; `run_all` of 2 and of 20; depth 3; a spawn into another namespace; `fork()`; exhausted; a failing cell; the Claude backbone with deep_reasoner's `write_fake_claude_cli`), each a small `dr` config with `client.base_url` at `FakeOpenAI`. A client records every update, in native and in flat mode; `testing.tree()` rebuilds parent links and cells per node. deep_reasoner's own tree is read from the same run directory (v3, B14): agents from `llm_calls.jsonl` and `claude_calls.jsonl`, each agent's cells from the `<repl>` turns of its node YAML's conversation (`scenarios.py::deep_reasoner_tree`). Native runs also check the wire order: every `parentToolCallId` names a call already sent, and every prompt response follows a root `usage_update`. Null: any difference. |
 | **E2** stdio integrity | `test_cli.py::test_writes_to_stdout_inside_a_run_never_reach_the_acp_stream`, `::test_a_print_while_the_front_imports_cannot_corrupt_the_stream`; `test_supervisor.py::test_a_worker_that_dies_mid_prompt_is_reported_crashed_and_the_next_prompt_is_fresh` | 10 MB to `sys.stdout` and `os.write(1, …)` in a cell; an import hook that prints, to `sys.stdout` and to fd 1, while the front imports its modules; `os._exit(1)` in a cell. Every line must parse as JSON-RPC; after the crash the next prompt answers (fresh run). |
-| **E3** stop | `test_supervisor.py::test_root_stop_in_a_busy_cell_answers_cancelled_within_two_seconds`, `::test_root_stop_under_twenty_spinning_children_ends_each_within_two_seconds`; `test_stop.py::test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took`, `::test_dean_stop_ends_the_branch_and_the_parent_keeps_every_siblings_result`; classification in `test_recorder.py` | Root Stop during `while True: pass` and during a 20-way fan-out: `cancelled` within 2 s (the spec allows 5; the bridge needs 2), every child `stopped`. One child of a 20-way fan-out with children of its own, through the interim and through the fake Dean API. `FakeOpenAI` timestamps each call and attributes it by the task in its messages. Null: more than one call started after the stop by any one agent of the stopped branch (v3, B12: the call of a turn already under way is allowed); any agent of the stopped branch reported `failed` rather than `stopped` (one cancelled by `gather` before its own turn included); with the fake API, a sibling's result missing from the parent's `run_all`; in the interim, a sibling cancelled without the parent's cell output naming it. |
+| **E3** stop | `test_supervisor.py::test_root_stop_in_a_busy_cell_answers_cancelled_within_two_seconds`, `::test_root_stop_under_twenty_spinning_children_ends_each_within_two_seconds`; `test_stop.py::test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took`, `::test_dean_stop_ends_the_branch_and_the_parent_keeps_every_siblings_result`; classification in `test_recorder.py` | Root Stop during `while True: pass` and during a 20-way fan-out: `cancelled` within 2 s (the spec allows 5; the bridge needs 2), every child `stopped`. One child of a 20-way fan-out with children of its own, through the interim and through the fake Dean API. `FakeOpenAI` timestamps each call and attributes it by the task in its messages. In the interim test the fake holds D0's siblings' first answers until the root's next turn, so each is still waiting for its model when D0's stop ends `run_all`, where a cancellation always lands (v4, §3.4 H10: one cancelled mid-response can be swallowed). Null: more than one call started after the stop by any one agent of the stopped branch (v3, B12: the call of a turn already under way is allowed); any agent of the stopped branch reported `failed` rather than `stopped` (one cancelled by `gather` before its own turn included); with the fake API, a sibling's result missing from the parent's `run_all`; in the interim, a sibling cancelled without the parent's cell output naming it. |
 | **E4** contracts | `test_recorder.py::test_tripwire_deep_reasoner_still_logs_everything_the_recorder_reads`; the schema check in `harness.py`; `test_wire.py::test_installed_acp_is_the_pinned_0_12_1` | Tripwire: the real deep_reasoner, on its `FakeCompletionClient`, runs a main decomposition that fans out two children, one calling the `llm` tool, then a second prompt; every event and field §6.1 reads is checked (names, the `<observation>` wrapper, the `FinalAnswer:` line, `kind` of think and tool calls, `agent.start` per drive), at `d7334ae` on every push, and weekly with `test_agent.py` against Dean's `main` (`acp-tripwire.yml`). Schema (v3, B10): the client side of every spawned `dr-acp` validates each message it receives (updates, responses, errors) against the vendored `tests/acp/schema/acp-1.24.1.unstable.json` (sha256 checked). Red is reported, never absorbed. |
 | **E11** (D1's part) | `test_session.py::test_menu_follows_the_namespace_and_the_first_prompt_fixes_both`, `::test_a_decomposition_after_the_first_message_is_answered_and_nothing_runs`, `::test_a_command_without_a_task_is_rejected_and_the_session_stays_open`, `::test_a_bad_option_is_refused_with_its_sentence`, `::test_the_namespace_is_fixed_once_the_conversation_started` | Commands per namespace, changed by `set_config_option`; cleared and narrowed at the first prompt; the late-command and fixed-namespace errors verbatim; the run log's `run.start.namespace` equals the chosen one. |
 | replay, shutdown, failures | `test_agent.py::test_load_replays_every_run_and_marks_a_killed_one_lost`, `::test_close_ends_the_live_run_closed_and_load_then_starts_fresh`; `test_wire.py::test_shutdown_closes_a_live_run_within_1_4_seconds_and_exits_0`; `test_session.py::test_a_failed_drive_ends_the_run_and_the_next_prompt_says_so`, `::test_a_missing_key_fails_the_build_names_the_variable_and_leaves_no_notice` | Kill `dr-acp` mid-run, start a new one, `session/load`: the replayed tree (`testing.tree`) equals the live one, the killed run ends `lost`, the user's prompts replay, no child snapshot follows, and the next prompt is fresh with `FRESH_AFTER_RESTART`. Closing stdin mid-run, and separately SIGTERM, leave `run.end closed` in the run log within 1.4 s and exit 0, so a replay never says `lost` after a clean shutdown. A failed and a build-failed prompt each leave `run.end` with that reason and pick the right notice (or none). |
 | the prompt's text (v3, B1) | `test_agent.py::test_the_task_is_the_users_own_text_and_not_what_openhands_appends`, `::test_resource_links_join_the_users_text_on_lines_of_their_own`; `test_session.py::test_what_openhands_appends_to_a_prompt_never_reaches_the_task_and_is_logged`, `::test_a_path_is_a_task_and_a_resource_link_joins_it` | The bridge's own layout (the user's text, an image, two extensions, the system suffix): the task is the user's text, the rest is in `prompt.start.dropped`, and none of it reaches the model. |
-| units | `test_encoder.py`, `test_recorder.py`, `test_runlog.py`, `test_costs.py`, `test_catalog.py`, `test_client.py`, `test_tree.py`, `test_ids.py`, `test_route.py`, `test_texts.py`, `test_runner.py`, `test_fake_model.py` | The encoder from hand-written RunEvents, both modes; the recorder fed synthetic event dicts in each order of §6.1, including inferred and puppeteered cells and a fork's own nodes, and each row of §6.3's classification table (a re-driven target included); `Printer` lines, `subagents` lookups and `wait_until`, and `tree()` drawings, from hand-written update streams (`streams.py`) covering every row of §8.2's tables, two conversations on one connection and two runs in one conversation; prices; slugs and collisions; the environment scrub; every sentence with fields; `ConfigCatalog` over small configs of our own, and over deep_reasoner_beta's `docs/configs` read in place when `DR_BETA_CHECKOUT` points at a checkout (skipped otherwise; never copied here; CI fetches one at the pin). |
-| the live tier | `test_live.py`, three tests, §8.4 | E1, E3's branch Stop and the missing-key path on gpt-6-luna. |
+| units | `test_encoder.py`, `test_recorder.py`, `test_runlog.py`, `test_costs.py`, `test_catalog.py`, `test_client.py`, `test_tree.py`, `test_ids.py`, `test_route.py`, `test_texts.py`, `test_runner.py`, `test_fake_model.py` | The encoder from hand-written RunEvents, both modes; the recorder fed synthetic event dicts in each order of §6.1, including inferred and puppeteered cells and a fork's own nodes, and each row of §6.3's classification table (a re-driven target included), and each refused stop's node and reason in its `stop.accepted`; `Printer`'s `updates`, `subagents` and `commands`, `wait_until`, the outcome phrases, and `tree()`'s rebuild in both modes, from hand-written update streams (`streams.py`, against which the encoder's expected updates are also compared whole, v4) covering every row of §8.2's outcome table, two conversations on one connection, two runs in one conversation and a child driven twice; prices (v4: genai-prices' gpt-6-luna on both sides of 272K input tokens, the home's entries over it, a provider's cost first, an unknown model's unknown cost, no network and no thread); slugs and collisions; the environment scrub; every sentence with fields; `ConfigCatalog` over small configs of our own, and over deep_reasoner_beta's `docs/configs` read in place when `DR_BETA_CHECKOUT` points at a checkout (skipped otherwise; never copied here; CI fetches one at the pin). |
+| the Claude Code backbone (v4, §3.4 H3) | `test_claude_code.py::test_a_claude_code_root_on_sonnet_answers_and_each_snippet_it_runs_is_a_cell` (default suite); `::test_live_claude_code_on_sonnet_answers_through_acp_and_each_snippet_is_a_cell` (live) | A root on Claude Code with `model: sonnet` answers through ACP; the run log says `claude_code` and every `usage` is a `claude` call on `sonnet`; the rebuilt tree's agents are deep_reasoner's; the root's cells, the last calling `FinalAnswer`, are, in order, `dr repl exec` snippets in deep_reasoner's copy of the session's stream. The default-suite twin runs a fake `claude` CLI and checks it was given `--model sonnet`. §8.4. |
+| the live tier | `test_live.py`, three tests, and `test_claude_code.py`'s live test, §8.4 | E1, E3's branch Stop and the missing-key path on gpt-6-luna; a Claude Code root on Sonnet (v4). |
 
 ### 8.2 Fakes and helpers
 
@@ -2133,9 +2323,12 @@ JSON-RPC 2.0 (E2) or any message it sent is not valid ACP 1.24.1 (E4).
 - **`tests/acp/fakes/dean_stop.py`**: §6.3.
 - **`tests/acp/harness.py`**: `dr_acp()`, which spawns `dr-acp` and checks every message it sends
   (§8.1); `scenarios.py`, E1's scripted runs and deep_reasoner's own tree; `streams.py`,
-  hand-written update streams for the unit tests.
+  hand-written update streams in the wire's shape, for the client's, the tree's and (v4) the
+  encoder's unit tests.
 - **`testing.client`** and **`testing.tree`**, below: the client side every end-to-end test and the
-  live tier use to drive `dr-acp` and read what it sent.
+  live tier use to drive `dr-acp` and read what it sent. Since v4 they read and rebuild; they do
+  not display. Michael's ruling of 2026-10-03 deleted the display side, since nothing read it once
+  the live doc was gone (§3.4 H2).
 
 #### `testing.client`: `Caps`, `ShimConnection`, `Printer`
 
@@ -2173,18 +2366,15 @@ class ShimConnection(acp.client.connection.ClientSideConnection):
     ) -> acp.schema.InitializeResponse: ...
 ```
 
-**`Printer` records; it never prints by itself.** ACP Python runs each incoming notification in a
-task of its own (P1), and those tasks carry the context of whatever created the connection's
-receive loop, not of the code reading it (P8): in a Jupyter kernel a print from them lands in no
-cell, or in the cell that built the connection (verified 2026-10-02 under ipykernel 7.3). So
-`show()` prints, from the caller, the lines recorded since its previous call. Each callback records
-before its first `await`, so `updates` and `lines` are in arrival order.
+**`Printer` records; it does not print** (v4: no `show()` and no lines, §3.4 H2). ACP Python runs
+each incoming notification in a task of its own (P1), and a call can return before the
+notifications sent after its response are handled (P8). Each callback records before its first
+`await`, so `updates` are in arrival order, and `wait_until` is how a caller waits for an update.
 
 ```python
 @dataclass
 class Subagent:
     session_id: str  # "<run>-n<node>": what session/cancel takes
-    short: str  # "n<node>"
     parent_session_id: str  # the session it was announced on
     title: str  # the latest non-empty title
     state: Literal["running", "idle"]
@@ -2192,17 +2382,11 @@ class Subagent:
     field_meta: dict[str, Any]  # the latest subagent_update's _meta, as sent
 
 
-class SubagentMap(Mapping[str, Subagent]):
-    """Keyed by full session id. A short id ("n2") is also accepted when exactly one
-    recorded sub-agent has it; when several do (one per run), KeyError names them."""
-
-
 class Printer:
     """An acp Client that records every update on one connection."""
 
     updates: list[tuple[str, dict[str, Any]]]  # (sessionId, the update as JSON)
-    lines: list[str]  # one per update, in the format below
-    subagents: SubagentMap
+    subagents: dict[str, Subagent]  # by full session id (v4: no short-id lookup)
     commands: dict[str, list[acp.schema.AvailableCommand]]  # root session id -> latest
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
@@ -2211,14 +2395,20 @@ class Printer:
     async def unstable_update(self, session_id: str, update: dict[str, Any]) -> None:
         """subagent_update, session_message, session_message_chunk, raw (ShimConnection)."""
 
-    def show(self) -> None:
-        """Print the lines recorded since the previous show(); all of them the first time."""
-
     async def wait_until(
         self, predicate: Callable[[Printer], T | None], *, timeout: float = 120.0
     ) -> T:
         """Return predicate(self)'s first result that is neither None nor False, checked
         now and after every recorded update. TimeoutError after timeout seconds."""
+
+
+def outcome_phrase(meta: Mapping[str, Any] | None, node: int | None) -> str:
+    """The outcome phrase (below) from _meta.deep_reasoner of an idle update or a
+    closed flat card; node is the agent's own, to tell a target from its branch."""
+
+
+def first_text(content: Any) -> str:
+    """The first text of an update's content: a block, or a list of (tool) contents."""
 ```
 
 - **`updates`** holds wire-shaped dicts: a stable update is the library's model dumped with
@@ -2227,10 +2417,12 @@ class Printer:
   raw dict `ShimConnection` received.
 - **`subagents`** gains an entry at a child's first `subagent_update` and updates it at each later
   one; `field_meta` is replaced, not merged, so after an idle update it holds that update's `_meta`
-  (with `status`). `printer.subagents["n2"].session_id` is the id to cancel with.
+  (with `status`). The key, the child's full session id, is the id to cancel with. A test finds a
+  sub-agent by its `_meta`, as the `wait_until` example below does, or through `tree()`; a short
+  id such as `"n2"` is not a key (v4).
 - **`commands`** holds, per root session, the `availableCommands` of its latest
   `available_commands_update`; a session that has sent none is absent.
-- **`wait_until`** is how a cell waits for something that arrives as an update rather than with a
+- **`wait_until`** is how a test waits for something that arrives as an update rather than with a
   response: the menu after `session/new` (§5.4 rule 5),
   `await printer.wait_until(lambda p: p.commands.get(s.session_id))`; a sub-agent at depth 3, `await
   printer.wait_until(lambda p: next((a for a in p.subagents.values() if
@@ -2238,38 +2430,15 @@ class Printer:
   "not yet", so an empty command list counts as arrived.
 - **Scope.** A `Printer` records one connection: every root session on it and every run of each.
   `subagents`, `commands` and `tree()` stay exact across both, because they are keyed by full id or
-  split by session and run. Only `lines` cannot tell two root sessions apart (both are `root`), so
-  read lines with one conversation per connection, which is also how OpenHands runs `dr-acp`
-  (§1). Within one conversation a fresh run's lines reuse `n2` and `c1.1`, after its fresh-run
-  notice.
+  split by session and run.
 
-**A line** is `f"{who:<9}{kind:<17}  {body}"`: `who` is `ids.short(sessionId)`, `kind` is
-`sessionUpdate` without a trailing `_chunk`, so the body starts at column 28 unless the kind is
-longer than 17 characters. A *field* in the bodies below is shown on one line (a tool call's output
-as its last non-empty line, any other text with each run of whitespace turned into one space) and
-cut to 60 characters, the 60th being `…`. Only agent and user messages are shown whole.
-
-| `sessionUpdate` | body | example line |
-|---|---|---|
-| `agent_message_chunk`, `user_message_chunk` | the whole text; each of its lines wrapped at 72 characters, continuation lines indented to column 28; trailing blank lines dropped | `root     agent_message      Starting a fresh run: the previous one was stopped, so its variables and`, then `                            sub-agents are gone.` |
-| `agent_thought_chunk` | the text, as a field | `n2       agent_thought      First I identify the CS courses, then I'll ask a separate s…` |
-| `tool_call` | `{short(toolCallId)} {kind:<7}  {title}` | `root     tool_call          c1.1 execute  Run depts = sorted({c['dept'] for c in catalog.values()}) …`, a flat card: `root     tool_call          a2.1 other    #1 › #2 · Summarize the workload of the CS department for a…` |
-| `tool_call_update` | `{short(toolCallId)} {status}  {output}`, output being the first text content as a field, omitted when there is none | `n2       tool_call_update   c2.1 completed  ['CS101', 'CS102']`, a failed cell or card: `root     tool_call_update   a4.1 failed  Not finished: the run was stopped` |
-| `subagent_update`, running | `{short(sessionId)}  '{title}'  running` | `root     subagent_update    n2  'Summarize the workload of the CS department for a first-yea…'  running` |
-| `subagent_update`, idle | `{short(sessionId)}  idle[ {stopReason}][  ({outcome})]`, the outcome phrase (below) unless it is `done` or `exhausted` | `n2       subagent_update    n4  idle cancelled  (stopped by #2)`; `root     subagent_update    n2  idle end_turn  (failed: ValueError: boom)`; `root     subagent_update    n3  idle  (crashed)` |
-| `session_message` | `→ {short(recipientSessionId)}  '{text}'` | `root     session_message    → n2  'Summarize the workload of CS101 for a first-year student.'`; a child's answer: `n4       session_message    → n2  'CS101: 4 credits, about 10 hours a week, no prerequisites.'`; a failure: `n4       session_message    → n2  'Failed: ValueError: boom'` |
-| `usage_update` | `{amount:.4f} {currency}`, or `cost unknown` when `cost` is absent | `n2       usage_update       0.0037 USD`; `root     usage_update       cost unknown` |
-| `available_commands_update` | the command names as a Python list | `root     available_commands_update  ['compare-departments']` |
-| `config_option_update` | `{id} = {currentValue}` per option, joined by `, `, with ` (fixed)` after an option that offers only its current value | `root     config_option_update  namespace = advising (fixed)` |
-| any other | empty | |
-
-**Outcome phrases**, shared by idle lines and the tree, from `_meta.deep_reasoner` of a child's
-idle update or closed flat card:
+**Outcome phrases**, `outcome_phrase`'s, which the tree stores as `AgentNode.outcome`, from
+`_meta.deep_reasoner` of a child's idle update or closed flat card:
 
 | `status` | and | phrase |
 |---|---|---|
 | `done`, `exhausted` | — | `done`, `exhausted` |
-| `failed` | — | `failed: {detail}`, detail cut to 40 characters |
+| `failed` | — | `failed: {detail}`, the detail on one line (each run of whitespace one space), cut to 40 characters, the 40th being `…` |
 | `stopped` | `stopped_by` absent or the node itself | `stopped` |
 | `stopped` | `collateral` true | `stopped with #{stopped_by}` |
 | `stopped` | otherwise | `stopped by #{stopped_by}` |
@@ -2286,7 +2455,7 @@ class CellNode:
     title: str
     status: str  # the latest: "in_progress", "completed" or "failed"
     output: str  # the latest content text; "" before any
-    agents: list[AgentNode]  # the drives this cell started, in announcement order
+    agents: list[AgentNode] = field(default_factory=list)  # drives it started, in order
 
 
 @dataclass
@@ -2305,7 +2474,8 @@ class AgentNode:
     title: str  # the announcement's title; "" for the root
     outcome: str | None  # the outcome phrase; None for the root
     cost_usd: float | None  # the session's cost when this drive ended; None if unknown
-    items: list[CellNode | MessageNode]  # in arrival order; messages on the root only
+    # In arrival order; messages on the root only.
+    items: list[CellNode | MessageNode] = field(default_factory=list)
 
 
 @dataclass
@@ -2321,61 +2491,39 @@ class RunNode:
 class Tree:
     runs: list[RunNode]  # in order of each run's first update
 
-    def __str__(self) -> str: ...
 
-
-def tree(updates: Iterable[tuple[str, Mapping[str, Any]]]) -> Tree: ...
+def tree(updates: Iterable[tuple[str, Mapping[str, Any]]]) -> Tree:
+    """Any mix of root sessions and runs, as a Printer recorded them."""
 ```
+
+A `Tree` is data, read by tests; it has no `__str__` and is not drawn (v4, §3.4 H2). The short ids
+on its nodes (`ids.short`, §5.1) are for a reader of an assertion, never for addressing.
 
 **Rebuild.** `tree()` takes any mix of root sessions and runs (`printer.updates` as it is) and
 needs no mode argument (v2: v1's `mode` is gone; each run's mode is read from its updates).
 - A **root session** is a session id no `subagent_update` announced. Its updates are split by run:
-  a cell or a closing message carries `_meta.deep_reasoner.run`; a fresh-run notice and a
-  `usage_update` belong to the run whose updates surround them, by arrival order. Rejected-prompt
-  messages (`run` null) and user messages belong to no run and are not drawn.
-- **Native**: a child is drawn under the cell named by its announcement's
+  a cell or a closing message carries `_meta.deep_reasoner.run`; a `usage_update` belongs to the
+  session's latest run by arrival order. Fresh-run notices (no `_meta`), rejected-prompt messages
+  (`run` null) and user messages belong to no run and are not in the tree (v4: v3 said a notice
+  belongs to the run around it; `tree()` has always dropped it, §3.4 H11).
+- **Native**: a child is placed under the cell named by its announcement's
   `_meta.openhands.parentToolCallId`, once per drive (each `running` announcement); its cells are
   the `tool_call`s on its own session between that announcement and the next. Its outcome comes
   from the idle update that ends the drive; its cost from the last `usage_update` on its session
   before that idle update. This uses only ACP's own structure, which is what E1 tests.
-- **Flat**: a child is a card (`tool_call` of kind `other`, id `<run>-n<node>-a<drive>`), drawn
+- **Flat**: a child is a card (`tool_call` of kind `other`, id `<run>-n<node>-a<drive>`), placed
   under its `parentToolCallId`; its cells are the root's `tool_call`s whose
   `_meta.deep_reasoner.node` is its node, between that card and the node's next card. Its outcome
   comes from the card's closing `tool_call_update`. Flat sends no child costs, so a flat child
   has none.
 - The root's items are its own cells and its closing messages, in arrival order; a run with several
-  prompts shows each prompt's closing message after that prompt's cells.
+  prompts has each prompt's closing message after that prompt's cells.
+- A cost is the latest `usage_update`'s `cost.amount`, or None when that update had no `cost`
+  (§5.2) or there was none: the root's on `RunNode.cost_usd`, a native child's on its
+  `AgentNode.cost_usd`. A flat child has none.
 
-**Drawing** (`str(tree)`): one block per run, blocks separated by a blank line. Branches are drawn
-with `├─ `, `└─ `, `│  ` and three spaces. Fields as for lines, but titles and message texts cut
-to 60 characters and outputs to 40.
-
-| node | line |
-|---|---|
-| run | `root {root_session_id} · run {run} · {cost}` |
-| agent | `{short}[ (drive {d}, when d > 1)]  {title}  {outcome}[ · {cost}]` |
-| cell | `{short}  {title}  {status}[ → {output}]` |
-| closing message | `{outcome}  {text}` |
-
-`{cost}` is `{usd:.4f} USD`. The run line shows `cost unknown` when `cost_usd` is None; an agent
-whose `cost_usd` is None (flat, no `usage_update`, or one without `cost`) shows no cost. For a run
-of the advising config's `/compare-departments` (illustrative; the live tier asserts this tree
-against deep_reasoner's own rather than printing it):
-
-```text
-root s-7c1f9e0a2b4d6e8f · run 20261002-162835-3fa9c1 · 0.0089 USD
-├─ c1.1  Run depts = sorted({c['dept'] for c in catalog.values()}) …  completed → {'CS': 'CS runs 10 to 12 hours a week: …
-│  ├─ n2  Summarize the workload of the CS department for a first-yea…  done · 0.0037 USD
-│  │  ├─ c2.1  Run print([cid for cid, c in catalog.items() if c['dept'] =…  completed → ['CS101', 'CS102']
-│  │  ├─ c2.2  Run summaries = run_all({ …  completed → {'CS101': 'CS101: 4 credits, about 10 h…
-│  │  │  ├─ n4  Summarize the workload of CS101 for a first-year student.  done · 0.0007 USD
-│  │  │  │  ├─ c4.1  Run print(catalog['CS101'])  completed → {'title': 'Programming I', 'dept': 'CS'…
-│  │  │  │  └─ c4.2  Run FinalAnswer('CS101: 4 credits, about 10 hours a week, n…  completed → FinalAnswer: 'CS101: 4 credits, about 1…
-│  │  │  └─ n5  …
-│  │  └─ c2.3  …
-│  └─ n3  …
-└─ answered  STAT is lighter: its courses take 6 to 8 hours a week, CS's 10 to 12.
-```
+The live tier and E1 compare a `Tree` with deep_reasoner's own (`scenarios.py`'s
+`acp_tree` and `deep_reasoner_tree`, §8.1) instead of printing it.
 
 ### 8.3 Golden recordings
 
@@ -2393,10 +2541,14 @@ re-records, and the diff is reviewed.
 
 ### 8.4 Real-model runs: the live tier
 
-None in layers 1–2. The live tier (the spec's layer 5) is `tests/acp/test_live.py`, three tests
-marked `live`: deselected by default, skipped without `OPENAI_API_KEY`, run with
-`uv run pytest -m live`, and in CI only on demand, as `.github/workflows/live.yml` (§8.5). There
-is no notebook: the spec's amendment of 2026-10-02 made these tests Gate B's live evidence (v3).
+None in layers 1–2. The live tier (the spec's layer 5) is four tests marked `live`, deselected by
+default, run with `uv run pytest -m live`, and in CI only on demand, as `.github/workflows/live.yml`
+(§8.5): three on gpt-6-luna in `tests/acp/test_live.py`, skipped without `OPENAI_API_KEY`, and,
+since v4, one on Claude Code in `tests/acp/test_claude_code.py`, skipped without
+`CLAUDE_CODE_OAUTH_TOKEN` (below). There is no notebook: the spec's amendment of 2026-10-02 made
+these tests Gate B's live evidence (v3).
+
+#### On gpt-6-luna
 
 Each spawns `dr-acp` through the same harness as the deterministic suite (every line JSON-RPC,
 every message valid ACP) with `docs/configs/advising/main.yaml`: four courses in two departments,
@@ -2407,7 +2559,8 @@ first-year student, CS or STAT?`
 
 1. `test_live_the_stream_rebuilds_deep_reasoners_tree_and_the_root_pays_for_all`: the prompt is
    answered and names STAT; the tree rebuilt from the stream equals deep_reasoner's own (E1's
-   comparison), with at least three agents; every call has a price, the root's cost equals the
+   comparison), with at least three agents; every call has a price (genai-prices', since v4:
+   the harness's `$DR_HOME/prices.yaml` names only `fake-model`), the root's cost equals the
    sum of every call's in the run log, and each child's cost is above zero and below the root's.
 2. `test_live_stopping_a_department_stops_it_and_its_course_agents`: Stop on a department once one
    of its course agents is announced. The stop is accepted for that node; the department and its
@@ -2417,22 +2570,65 @@ first-year student, CS or STAT?`
 3. `test_live_without_the_key_the_run_fails_before_any_call_and_says_which`: `build_failed`, with
    `BUILD_FAILED` naming `OPENAI_API_KEY`, and no model call in the run log.
 
-A few cents per run; 39 s on 2026-10-02 (run 37053166300).
+A few cents per run; 39 s on 2026-10-02 (run 37053166300), about 38 s of the 48 s for all four
+on 2026-10-03 (run 37144608009).
+
+#### On Claude Code, with Sonnet (v4)
+
+Michael's request of 2026-10-03 (§3.4 H3): deep_reasoner's backbone is Claude Code on the latest
+Sonnet, run on his subscription. It spawns `dr-acp` through the same harness as the tests above.
+The config is the test's own, written to a temporary directory:
+`reasoner: {type: claude_code, model: sonnet, max_budget_usd: 0.5, timeout_s: 180}`, with no
+tools (`namespaces: {root: {tools: []}}`) and a one-line system prompt. A Claude session has no
+turn cap in deep_reasoner, so the budget and the timeout bound it. The question: `What is 17 times
+23?`
+
+4. `test_live_claude_code_on_sonnet_answers_through_acp_and_each_snippet_is_a_cell`: the real
+   `claude` CLI. It skips without `CLAUDE_CODE_OAUTH_TOKEN`, and fails at once if
+   `ANTHROPIC_API_KEY` is set, since Claude Code would then bill per token instead of the
+   subscription. It asserts that the prompt is answered through ACP, with 391; that the run log's
+   root `agent.start` names backbone `claude_code` and every `usage` is a `claude` call on
+   `sonnet`; that the tree rebuilt from the stream has deep_reasoner's agents (E1's comparison)
+   and as many root cells as the run log's `cell.end`s; and that the root's cells, the last
+   calling `FinalAnswer`, are, in order, `dr repl exec` snippets in deep_reasoner's copy of the
+   session's stream (the `transcript` named in `claude_calls.jsonl`).
+
+Its twin, `test_a_claude_code_root_on_sonnet_answers_and_each_snippet_it_runs_is_a_cell`, runs in
+the default suite. It uses the same config and assertions on a fake `claude` CLI that answers
+`auth status`, runs two snippets through `dr repl exec` and prints a stream-json result, and it
+checks that the CLI was given `--model sonnet`.
+
+Two deep_reasoner bugs at `d7334ae` are worked around in the test, not in `dr-acp`, and are logged
+for Dean (§9):
+- **The token cannot reach the CLI** (EXP-27). `claude_code.child_env` drops every `CLAUDE_CODE*`
+  variable from the CLI's environment (`claude_code.py:285–306`), `CLAUDE_CODE_OAUTH_TOKEN`
+  among them. So the test passes the token as `DR_ACP_LIVE_CLAUDE_TOKEN`, to a wrapper script
+  named by the config's `executable` that exports it as `CLAUDE_CODE_OAUTH_TOKEN` and `exec`s the
+  installed `claude`.
+- **A Claude-only config still needs a chat key** (EXP-28). `build_reasoner` builds a chat client
+  for every run and refuses to start without a key unless the client's `base_url` is loopback
+  (`config.py:259`). So the config's `client` is `{base_url: http://127.0.0.1:9/v1}`, which nothing
+  in the run calls.
+
+About 9 s on 2026-10-03 (run 37144608009), billed to the subscription and capped at $0.50 by
+`max_budget_usd`.
 
 ### 8.5 Repository wiring D1 adds
 
-As built at `21f4a8b` (v3, §3.2 B17).
+As it is at `2a15388` (v4: v3's §3.2 B17, then §3.4 H1 and H3).
 
 - `pyproject.toml`: `deep-reasoning` 0.1.0, `requires-python = ">=3.12,<3.13"` (deep_reasoner's
   range); dependencies `deep-reasoner @ git+https://github.com/DeanLight/deep_reasoner_beta@d7334ae6ea884617a377d9f1ce872530d898484c`,
-  `agent-client-protocol>=0.12.1,<0.13` (locked at 0.12.1, the SDK fork's lock), `pydantic>=2.7`,
+  `agent-client-protocol>=0.12.1,<0.13` (locked at 0.12.1, the SDK fork's lock),
+  `genai-prices>=0.1.9,<0.2` (locked at 0.1.9; v4, §4.7), `pydantic>=2.7`,
   `pyyaml`, `structlog` (§3.3 C1), and **`ipython`** (deep_reasoner imports `IPython.display` at
   module level in 12 modules but declares it only through its dev group; verified: blocking
   `IPython` makes `import deep_reasoner.v2.cli` fail; EXP-26); script
   `dr-acp = "deep_reasoning.acp.cli:main"`; dev group `pytest`, `jsonschema`, `referencing`, `ruff`
   (the Code Guide's linter, at its defaults, with `extend-exclude = ["docs"]`);
   `[tool.pytest.ini_options]` with `testpaths = ["tests"]`, a `live` marker and
-  `addopts = "-m 'not live'"`; sdist excludes `docs/`. A test asserts the installed
+  `addopts = "-m 'not live'"`; sdist excludes `docs/` and `as_built/`. The wheel holds only
+  `src/deep_reasoning`, with no data file since v4 (no `prices.yaml`). A test asserts the installed
   `agent-client-protocol` is the pinned 0.12.1. No `docs` group: there is no notebook to run.
 - `.github/workflows/ci.yml`, on every push and pull request: `uv sync --locked`; deep_reasoner_beta
   fetched at the pin into `DR_BETA_CHECKOUT`, so the catalog tests read its `docs/configs` in
@@ -2440,13 +2636,17 @@ As built at `21f4a8b` (v3, §3.2 B17).
   tier deselected).
 - `.github/workflows/acp-tripwire.yml`, Mondays at 06:17 UTC and by hand: the same environment with
   deep_reasoner at `main`, running `test_recorder.py` (the tripwire) and `test_agent.py` (E1).
-- `.github/workflows/live.yml`, by hand only (`workflow_dispatch`): `pytest -m live`, failing at
-  once if the `OPENAI_API_KEY` secret is missing. GitHub offers a `workflow_dispatch` workflow only
-  when a copy of it is on the default branch, so its trigger copy is on `main`; a run is started on
-  `v1-dr-acp` and uses that branch's copy and code.
+- `.github/workflows/live.yml`, by hand only (`workflow_dispatch`): it fails at once if either
+  the `OPENAI_API_KEY` or the `CLAUDE_CODE_OAUTH_TOKEN` secret is missing; then Python 3.12, Node
+  22 and the Claude Code CLI pinned at 2.1.285 (`npm install -g @anthropic-ai/claude-code@2.1.285`,
+  npm's stable tag on 2026-10-03; v4); then `uv run pytest -m live -v -rA`. It never sets
+  `ANTHROPIC_API_KEY`: Claude Code would bill it per token instead of the subscription. GitHub
+  offers a `workflow_dispatch` workflow only when a copy of it is on the default branch, so its
+  trigger copy is on `main`; a run is started on `v1-dr-acp` and uses that branch's copy and code.
 - Secrets: `DEEP_REASONER_TOKEN`, read access to the private deep_reasoner_beta, used by every
-  workflow (the same token Q8's cross-repo CI needs); `OPENAI_API_KEY`, used by `live.yml`. Both are
-  set: the runs in the Gate B section used them.
+  workflow (the same token Q8's cross-repo CI needs); `OPENAI_API_KEY`, used by `live.yml`;
+  `CLAUDE_CODE_OAUTH_TOKEN` (v4), Michael's Claude subscription token, used by `live.yml`. All
+  three are set: the runs in the header used them.
 
 ---
 
@@ -2463,6 +2663,13 @@ deep_reasoner runs its notebook tests whenever pytest is imported (`tests/confte
 with pytest hidden); EXP-25, a fork's think and cells log on nodes of kind `llm` and `repl` under
 it, not on its own node (§6.1's fork row); EXP-26, IPython is imported but not declared (§8.5).
 They are what we need Dean to change, not what we rely on, so they do not replace the rows below.
+
+**Written in v4: two more**, found while writing the Claude Code live test (§8.4), status Needed,
+linked to TASK-2: EXP-27, a Claude Code agent runs on the login the machine has, an OAuth token in
+the environment included (`claude_code.child_env` drops every `CLAUDE_CODE*` variable,
+`claude_code.py:285–306`); EXP-28, a config whose agents all run on Claude Code needs no chat
+client key (`build_reasoner` always builds a chat client, and it needs a key unless its
+`base_url` is loopback). D1's test works around both; D5's desktop app needs both fixed.
 
 **deep_reasoner (d7334ae)**
 
@@ -2485,6 +2692,7 @@ They are what we need Dean to change, not what we rely on, so they do not replac
 | R17 | A missing model key raises `ValueError` from `build_client` inside `build_reasoner`, before any model call | `config.py:256–266`, `v2/cli.py:342` | runner (`build_failed`), §5.1 |
 | R15 | A cell runs synchronously in its coroutine; a sub-agent runs on a `_run_sync` worker thread, so a signal can unwind the root's cell but not a sub-agent's (verified) | `repl_coro.py:311–315`, `coro_base.py:73–92` | `worker/runner.py`, §6.4 |
 | R16 | Importing deep_reasoner writes nothing to stdout (verified) | — | `catalog.py` in the front |
+| R18 | Test only (v4): a Claude Code agent is configured by `reasoner: {type: claude_code, model, executable, max_budget_usd, timeout_s}`; its CLI is checked with `auth status --json` and run with `--model` and `--max-budget-usd`; its stream is teed to the `transcript` that `claude_calls.jsonl` names; a loopback chat client needs no key | `claude_code.py:74–97, 113–154, 467–483, 587`, `logging_utils.py:326–327`, `config.py:259` | `tests/acp/test_claude_code.py` |
 
 **ACP Python 0.12.1**
 
@@ -2500,6 +2708,14 @@ They are what we need Dean to change, not what we rely on, so they do not replac
 | P8 | Client side: a notification is handled in a task of its own created by the receive loop, so it carries the receive loop's context, and a call can return before the notifications sent after its response are handled; a JSON-RPC error is raised as `RequestError(code, message, data)` | `connection.py:140–163, 240–251` | `testing/client.py` (`show`, `wait_until`), §5.5 |
 | P9 | `spawn_stdio_transport` passes only `DEFAULT_INHERITED_ENV_VARS` unless given `env=`; on exit it closes stdin, sends SIGTERM after `shutdown_timeout` (2.0 s) and SIGKILL 2.0 s later | `transports.py:13–45, 96–117` | §4.2 shutdown, §5.1 |
 
+**genai-prices 0.1.9 (v4)**
+
+| # | Behaviour relied on | Their code | Ours |
+|---|---|---|---|
+| GP1 | `DataSnapshot(providers=data.providers, from_auto_update=False).calc(usage, model_ref, None, None, None)` prices a call from the bundled data alone, finding the model among every provider and applying its tiers; `.model.context_window` is the window | `data_snapshot.py:39–73` | `costs.py` (`GENAI_PRICES`, `PriceTable._table`) |
+| GP2 | An unknown model raises `LookupError` | `data_snapshot.py:93–126, 189–194` | `costs.py` (no cost, never zero) |
+| GP3 | `calc_price` reads a process-wide snapshot, which `set_custom_snapshot` replaces, as `UpdatePrices` does with what it downloads on a thread of its own; a `DataSnapshot` of our own is never replaced, so no download reaches our prices | `__init__.py:58`, `data_snapshot.py:15–36`, `update_prices.py:187, 269` | `costs.py`; pinned by `test_costs.py::test_prices_come_from_genai_prices_bundled_data_even_after_a_download`, `::test_pricing_a_call_needs_no_network_and_starts_no_background_thread` |
+
 **The bridge (SDK fork, upstream behaviour S1 starts from):** it waits ≤ 2 s per turn for a root
 `usage_update` (`acp_agent.py:3643–3654`); it restarts the agent when a cancelled prompt does not
 answer within 2 s (`:169, 3472–3540`); any parsed update resets its 1,800 s prompt-idle watchdog
@@ -2514,12 +2730,17 @@ at shutdown it closes the connection, sends SIGTERM at once and kills after 5 s 
 
 ## 10 · Open items
 
-Items 3, 4 and 7 were resolved by the build (v3); they keep their numbers.
+Items 3, 4 and 7 were resolved by the build (v3), and item 1 by Michael's ruling (v4); they keep
+their numbers.
 
 1. **gpt-6-luna's price and context window** for `prices.yaml`: filled at build from secondary
    listings ($0.10 in, $0.50 out per million tokens, context window 1,050,000; OpenRouter and
    eesel.ai, 2026-10-02), not from OpenAI's page, which the build sandbox could not reach. Still
-   to check against <https://openai.com/api/pricing/> (v3, §3.2 B16).
+   to check against <https://openai.com/api/pricing/> (v3, §3.2 B16). *Resolved (v4, §3.4 H1):*
+   Michael ruled on 2026-10-03 to "stick to what genai-prices gives us". The shipped table is
+   gone, and genai-prices 0.1.9's bundled data prices gpt-6-luna (including the tier above 272K
+   input tokens, $0.20 in and $0.75 out, which the listings missed) and gives its context window,
+   1,050,000. Nothing was checked against OpenAI's page: the ruling makes genai-prices the source.
 2. **The live tier's config is our own** (`docs/configs/advising`): deep_reasoner_beta's
    `docs/configs/catalog` cannot be copied into this repo (no license), and the git dependency
    installs the package without its `docs/`. Tests that want Dean's configs read a checkout named
@@ -2536,3 +2757,11 @@ Items 3, 4 and 7 were resolved by the build (v3); they keep their numbers.
    offers only programs; nothing in D1 changes. Raised while writing v2; the Conductor decides
    whether it goes into D2's design or back to the spec.
 7. **An `OPENAI_API_KEY` secret for the live tier:** resolved; `live.yml` uses it (§8.5).
+8. **An interim stop can name a sibling that then ends `done` (v4, §3.4 H10).** When the
+   cancellation `run_all` delivers to a collateral sibling lands mid-response in an openai call,
+   the sibling can swallow it and run on. The tree reports it truthfully (`done`), but the
+   `StoppedByUser` sentence in the parent's cell output has already named it as stopped with the
+   target. D1 records this and does not work around it. The test pins the interim's behaviour
+   where a cancellation does land, and Dean's `stop(node_id)` (R1) cancels no sibling, so the
+   case goes when he ships. Until then the Conductor decides whether the sentence needs a caveat
+   (§5.6), or whether this stays a known limitation.
