@@ -77,9 +77,8 @@ class PriceTable:
         return self._prices[max(globs, key=len)] if globs else None
 
     def estimate(self, model: str | None, usage: Mapping[str, Any]) -> CostEstimate:
-        """usage["cost"] when the provider reports it (source provider); else the entry
-        whose key equals the model id, or the longest matching glob (source table);
-        else usd None."""
+        """The provider's reported cost when it gives one; else the table's price; else
+        usd None: an unknown cost, never zero."""
         tokens_in = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
         tokens_out = int(
             usage.get("completion_tokens") or usage.get("output_tokens") or 0

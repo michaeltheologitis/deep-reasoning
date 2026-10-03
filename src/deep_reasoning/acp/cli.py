@@ -45,10 +45,8 @@ def parse_options(argv: Sequence[str] | None) -> Options:
 
 
 def guard_stdout() -> int:
-    """os.dup(1) -> acp_fd; os.dup2(2, 1); sys.stdout = sys.stderr; return acp_fd.
-
-    Called before any other import of ours. acp_fd, the original fd 1, is the ACP writer's.
-    """
+    """Point fd 1 and sys.stdout at stderr; the returned dup of the original fd 1 is
+    the ACP writer's alone."""
     acp_fd = os.dup(1)
     os.dup2(2, 1)
     sys.stdout = sys.stderr

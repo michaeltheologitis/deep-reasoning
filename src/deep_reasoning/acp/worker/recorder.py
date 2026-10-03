@@ -180,7 +180,8 @@ class Recorder:
             return agent is not None and agent.ended_at is None
 
     def emit(self, kind: str, **fields: Any) -> None:
-        """The runner's own events (worker.ready, prompt.end), and the recorder's."""
+        """Send one RunEvent unless muted; under the lock, so lines from different
+        threads never interleave."""
         with self._lock:
             if not self._muted:
                 self._sink.emit({"kind": kind, **fields})

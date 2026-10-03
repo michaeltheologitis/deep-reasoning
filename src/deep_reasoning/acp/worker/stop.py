@@ -1,5 +1,5 @@
-"""Stopping one agent's branch: Dean's stop(node_id), or the interim until he ships it
-(§6.3)."""
+"""Stopping one agent's branch: deep_reasoner's stop(node_id) where there is one, else
+the interim (§6.3)."""
 
 import importlib
 from collections.abc import Callable
@@ -10,8 +10,8 @@ from deep_reasoning.acp import texts
 if TYPE_CHECKING:
     from deep_reasoning.acp.worker.recorder import Recorder
 
-# "module:attr" of Dean's stop(node_id), set when he ships it. DR_ACP_STOP_API overrides
-# it (the tests point it at the fake). None means the interim.
+# "module:attr" of deep_reasoner's stop(node_id); $DR_ACP_STOP_API overrides it. None
+# means the interim.
 DEAN_STOP_API: str | None = None
 
 

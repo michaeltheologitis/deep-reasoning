@@ -1,6 +1,6 @@
 """An OpenAI-compatible chat endpoint on 127.0.0.1 for scripted runs (§8.2).
 
-Real HTTP, so the worker runs unmodified and D5's key proxy can later sit in front of it.
+Real HTTP, so the worker runs unmodified.
 """
 
 import json

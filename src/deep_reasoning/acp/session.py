@@ -75,7 +75,7 @@ class PromptResult:
 
 @dataclass(frozen=True)
 class AgentContext:
-    """What every session of one connection shares, from DrAcpAgent."""
+    """What every session of one connection shares."""
 
     catalog: Catalog
     home: Home
@@ -239,7 +239,7 @@ class Session:
             await self.run.close(grace_s)
 
     def on_run_end(self, reason: RunEndReason) -> None:
-        """Called by the pump when it feeds run.end: take the run's cost and forget it."""
+        """The run has ended: keep its cost, and forget it."""
         self.cost = self.run.encoder.root_cost
         self.last_end = reason
         self.run = None
