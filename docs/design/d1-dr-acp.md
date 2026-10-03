@@ -8,12 +8,12 @@ D4's MCP note, §4, the 2026-10-02 amendment).
 (sha256 `6449a87a…09109e`) · SDK fork at `53a4bc5` (`acp_agent.py` line numbers; its
 `deep-reasoning` branch adds only the ASE commit) · Canvas fork at `1ff45c2` (likewise).
 
-**Matches the build at `21f4a8b`** (v3). Commits after it on this branch change only `docs/`.
+**Matches the build at `21f4a8b`** (v3). Commits after it on this branch change only `docs/`, `as_built/` and the sdist's exclude list.
 
 ## Gate B: what to read
 
 **About 35 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, the
-as-built document (the Cartographer's, on this branch, which also reports the experiments'
+as-built document (`as_built/d1-dr-acp.md`, the Cartographer's, which also reports the experiments'
 measured results) and the two runs below. Everything after §3 is kept whole as the reference that
 S1, C1, S2, D2 and D5 build against; Gate B does not need it.
 
@@ -24,7 +24,7 @@ S1, C1, S2, D2 and D5 build against; Gate B does not need it.
 | 3 | §3.1 | where the design departs from the approved spec (unchanged since v2) | 6 |
 | 4 | §3.2 and §3.3 | what the build changed, each with its reason, and three Code Guide decisions | 10 |
 | 5 | Open the two runs below | that they are green at `21f4a8b` | 3 |
-| 6 | The as-built document | what exists, measured, and any drift from this doc | its own |
+| 6 | `as_built/d1-dr-acp.md`, §1, §2 and §6 | what exists, its divergences from v2, and the experiments as measured | 15 |
 
 **The evidence.** Both runs are at `21f4a8b`, the branch's last commit that touches code.
 
@@ -409,6 +409,12 @@ how the tests prove it; B15 is the signatures; B16 is what is still unverified; 
   fetches its configs at the pin for the catalog tests. The live tier runs as
   `.github/workflows/live.yml`, by hand, with the `OPENAI_API_KEY` secret; its trigger copy is on
   `main`, since GitHub offers a `workflow_dispatch` workflow only from the default branch.
+- **B18. `close` does not wait for a prompt** (§4.2 `session.py`). Found by the Cartographer
+  (as-built D-5). `session/close`, shutdown and the close inside `session/load` do not take the
+  session lock (`session.py:143`, `agent.py:168, 183`), so a close during a prompt ends that
+  prompt with outcome `closed` instead of waiting for it. Reason: waiting would hold a close, and
+  OpenHands' shutdown, behind a prompt that may run for minutes; ending it is what the bridge
+  expects of a close. `prompt`, `set_config_option` and `load` still serialize on the lock.
 
 ### 3.3 Where the build followed the Code Guide over v2 (v3)
 
@@ -644,7 +650,7 @@ that sent a short id such as `n3` finds out from `dr-acp`'s stderr. A cancel rac
 does not rewrite its outcome.
 
 **`session.py`.** One per root session; holds the options, the commands and the runs; serializes
-`prompt`, `set_config_option`, `load` and `close` with an `asyncio.Lock` (`cancel` never takes it).
+`prompt`, `set_config_option` and `load` with an `asyncio.Lock`; `cancel` and `close` never take it (B18).
 
 ```python
 @dataclass(frozen=True)
