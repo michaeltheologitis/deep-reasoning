@@ -15,6 +15,7 @@ from deep_reasoning.mcp import shim
 from deep_reasoning.mcp.grants import shim_source
 from deep_reasoning.mcp.session import open_session
 from deep_reasoning.mcp.wire import McpServerSpec
+from tests.acp.harness import eventually, run
 from tests.processes import running_after
 
 SERVERS = Path(__file__).parent / "servers"
@@ -287,6 +288,27 @@ def test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_
     assert str(opening.value) == str(building.value)
     assert "Duplicate namespace name 'a'" in str(opening.value)
     assert list(run_dir.iterdir()) == []
+
+
+def test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_redacted(
+    tmp_path, run_dir, opened
+):
+    cfg = config(
+        tmp_path / "config",
+        {"root": {"tools": ["loud"]}},
+        {"loud": mcp_block("loud", connect_timeout_s=10)},
+    )
+    loud = spec("loud", "loud_server.py", LOUD_TOKEN="loud-secret-value")
+    [status] = open_session(cfg, [loud], run_dir=run_dir)
+    assert status.state == "bound"
+    said = ["one", "two", "three"]
+    assert [shim.SESSION["loud"].value.say(text) for text in said] == said
+    shim.SESSION["loud"].value._connection.abandon()
+    printed = "noise loud-secret-value " + "x" * 200 + "\n"
+    lines = 1024 * 1024 // len(printed) + len(said) * (256 * 1024 // len(printed))
+    log = run_dir / "mcp-loud.log"
+    expected = ("noise [redacted] " + "x" * 200 + "\n") * lines
+    assert run(eventually(lambda: log.read_text() == expected, timeout=10))
 
 
 def test_a_server_given_up_is_ended_within_three_seconds(tmp_path, run_dir, opened):
