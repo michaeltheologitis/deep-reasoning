@@ -1,0 +1,41 @@
+# A first-year advisor over a four-course catalog, on OpenAI's gpt-6-luna. Its one
+# decomposition, `compare departments`, is a program: dr-acp offers it as the slash
+# command /compare-departments. Run it with
+#   dr-acp --config docs/configs/advising/main.yaml
+_compose:
+  - prompt.yaml
+
+model: gpt-6-luna
+client:
+  base_url: https://api.openai.com/v1
+  api_key_env: OPENAI_API_KEY
+max_iter: 10
+max_depth: 3                 # the root, a department, a course: nothing deeper
+entry_namespace: advising
+
+namespaces:
+  advising:
+    vars:
+      catalog:
+        CS101:   {title: Programming I,              dept: CS,   credits: 4, hours_per_week: 10, prereqs: []}
+        CS102:   {title: Programming II,             dept: CS,   credits: 4, hours_per_week: 12, prereqs: [CS101]}
+        STAT101: {title: Introduction to Statistics, dept: STAT, credits: 3, hours_per_week: 6,  prereqs: []}
+        STAT102: {title: Probability,                dept: STAT, credits: 3, hours_per_week: 8,  prereqs: [STAT101]}
+    decompositions:
+      - name: compare departments
+        messages:
+          - role: user
+            content: Which department is lighter for a first-year student?
+          - role: assistant
+            content: |-
+              <think>Each department can be judged on its own, so I give each one to a sub-agent
+              and run them together. I read what they found before I answer.</think>
+              <repl>
+              depts = sorted({c['dept'] for c in catalog.values()})
+              found = run_all({d: anext(subagent().send(
+                  f'Summarize the workload of the {d} department for a first-year student. '
+                  f'Give each {d} course in `catalog` to its own sub-agent with run_all, '
+                  f'then combine what they find in two sentences.'))
+                  for d in depts})
+              print(found)
+              </repl>
