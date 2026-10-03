@@ -10,7 +10,6 @@ import structlog
 from deep_reasoning.acp import __version__, ids, texts
 from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot
 from deep_reasoning.acp.costs import PriceTable
-from deep_reasoning.acp.encoder import commands_update
 from deep_reasoning.acp.route import ModelRoute
 from deep_reasoning.acp.runlog import Home, SessionIndex, detail_of
 from deep_reasoning.acp.session import (
@@ -88,12 +87,7 @@ class DrAcpAgent:
             raise refusal(INTERNAL_ERROR, sentence, "CATALOG_ERROR") from exc
 
     def _offer_menu(self, session: Session) -> None:
-        commands = list(session.commands.values())
-        self._after_response(
-            self._ctx.outbox.update(
-                *commands_update(session.id, commands, session.namespace)
-            )
-        )
+        self._after_response(self._ctx.outbox.update(*session.menu()))
 
     async def initialize(
         self,
@@ -183,10 +177,7 @@ class DrAcpAgent:
             was_started = session.started
             options = session.set_namespace(value)
             if not was_started:
-                commands = list(session.commands.values())
-                await self._ctx.outbox.update(
-                    *commands_update(session.id, commands, session.namespace)
-                )
+                await self._ctx.outbox.update(*session.menu())
         return {"configOptions": options}
 
     async def prompt(

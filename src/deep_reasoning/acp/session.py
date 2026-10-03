@@ -15,6 +15,7 @@ from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot, CommandEntry
 from deep_reasoning.acp.costs import CostLedger, PriceTable
 from deep_reasoning.acp.encoder import (
     Encoder,
+    Update,
     closing_message,
     commands_update,
     config_update,
@@ -113,6 +114,10 @@ class Session:
         self.commands = {c.name: c for c in self.snapshot.commands.get(namespace, ())}
         self.advertised |= set(self.commands)
 
+    def menu(self) -> Update:
+        """The current menu as an update; empty once the conversation has started."""
+        return commands_update(self.id, list(self.commands.values()), self.namespace)
+
     def options(self) -> list[dict[str, Any]]:
         """The session's config options: the namespace option, narrowed once started."""
         return [namespace_option(self.snapshot, self.namespace, fixed=self.started)]
@@ -176,7 +181,7 @@ class Session:
         """The menu goes away and the namespace is fixed, before the run starts."""
         self.started = True
         self.commands = {}
-        await self.ctx.outbox.update(*commands_update(self.id, [], self.namespace))
+        await self.ctx.outbox.update(*self.menu())
         await self.ctx.outbox.update(*config_update(self.id, self.options()))
         self.save_index()
 
