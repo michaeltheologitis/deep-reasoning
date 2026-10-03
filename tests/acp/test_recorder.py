@@ -14,14 +14,12 @@ from deep_reasoner.v2 import cli as dr_cli
 from deep_reasoner.v2.decompositions import main_decomposition_turns
 from structlog.contextvars import bound_contextvars
 
-from deep_reasoning.acp.costs import Price, PriceTable
+from deep_reasoning.acp.costs import PriceTable
 from deep_reasoning.acp.worker.recorder import EventSink, Recorder
 from deep_reasoning.acp.worker.stop import StoppedByUser
 from tests.acp.scenarios import repl, scripted
 
-PRICES = PriceTable(
-    {"m": Price(input_per_mtok=1.0, output_per_mtok=2.0, context_window=100)}
-)
+PRICES = PriceTable({})
 DR_RUN = "20261002-000000-abcdef"
 FAN_OUT = repl(
     "r = run_all([anext(subagent().send(f'Summarize C{i}')) for i in (1, 2)])",
@@ -151,7 +149,7 @@ def test_puppeteered_turns_open_the_roots_first_cells_in_order(rec):
 
 def test_model_calls_are_priced_and_owned_by_the_agent_that_made_them(rec):
     usage = {"prompt_tokens": 30, "completion_tokens": 10}
-    rec.start(1).log("llm.call", 1, model="m", usage=usage)
+    rec.start(1).log("llm.call", 1, model="gpt-6-luna", usage=usage)
     rec.think(1, reply=repl("x = llm('hi')"))
     rec.log("llm.call", 3, 1, 3, kind="llm", model="unpriced", usage=usage)
     think, tool = rec.events("usage")
@@ -159,12 +157,12 @@ def test_model_calls_are_priced_and_owned_by_the_agent_that_made_them(rec):
         "kind": "usage",
         "node": 1,
         "call": "think",
-        "model": "m",
+        "model": "gpt-6-luna",
         "tokens_in": 30,
         "tokens_out": 10,
-        "cost_usd": pytest.approx(50e-6),
+        "cost_usd": pytest.approx(8e-6),
         "cost_source": "table",
-        "context_window": 100,
+        "context_window": 1_050_000,
     }
     assert pick(tool, "node", "call") == (1, "tool")
     assert pick(tool, "cost_usd", "cost_source") == (None, None)

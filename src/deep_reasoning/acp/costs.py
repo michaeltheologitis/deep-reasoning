@@ -3,16 +3,21 @@
 import fnmatch
 from collections.abc import Mapping
 from dataclasses import dataclass
-from importlib.resources import files
 from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
+from genai_prices import Usage
+from genai_prices.data import providers
+from genai_prices.data_snapshot import DataSnapshot
 
 if TYPE_CHECKING:
     from deep_reasoning.acp.runlog import Home
 
 CostSource = Literal["provider", "table", "claude"]
 MILLION = 1_000_000
+# genai-prices' bundled data, never a download: calc_price reads the process-wide
+# snapshot, which UpdatePrices replaces with what it fetches.
+GENAI_PRICES = DataSnapshot(providers=providers, from_auto_update=False)
 
 
 @dataclass(frozen=True)
@@ -54,18 +59,18 @@ def _prices(raw: Mapping[str, Any] | None) -> dict[str, Price]:
 
 
 class PriceTable:
+    """The home's own entries, laid over genai-prices."""
+
     def __init__(self, prices: Mapping[str, Price]) -> None:
         self._prices = dict(prices)
 
     @classmethod
     def load(cls, home: "Home") -> "PriceTable":
-        """The package's prices.yaml, with $DR_HOME/prices.yaml over it."""
-        shipped = files("deep_reasoning.acp").joinpath("prices.yaml").read_text()
-        prices = _prices(yaml.safe_load(shipped))
+        """$DR_HOME/prices.yaml: per model id or glob, input_per_mtok and
+        output_per_mtok in USD per million tokens, and context_window in tokens."""
         override = home.root / "prices.yaml"
-        if override.exists():
-            prices |= _prices(yaml.safe_load(override.read_text()))
-        return cls(prices)
+        raw = yaml.safe_load(override.read_text()) if override.exists() else None
+        return cls(_prices(raw))
 
     def price(self, model: str | None) -> Price | None:
         """The entry whose key is the model id, else the longest glob that matches it."""
@@ -83,15 +88,27 @@ class PriceTable:
         tokens_out = int(
             usage.get("completion_tokens") or usage.get("output_tokens") or 0
         )
-        price = self.price(model)
-        window = price.context_window if price else None
+        usd, window = self._table(model, tokens_in, tokens_out)
         if usage.get("cost") is not None:
             return CostEstimate(
                 float(usage["cost"]), "provider", tokens_in, tokens_out, window
             )
-        if price is None:
-            return CostEstimate(None, None, tokens_in, tokens_out, None)
-        usd = (
-            tokens_in * price.input_per_mtok + tokens_out * price.output_per_mtok
-        ) / MILLION
-        return CostEstimate(usd, "table", tokens_in, tokens_out, window)
+        source = "table" if usd is not None else None
+        return CostEstimate(usd, source, tokens_in, tokens_out, window)
+
+    def _table(
+        self, model: str | None, tokens_in: int, tokens_out: int
+    ) -> tuple[float | None, int | None]:
+        """USD and context window from the home's entry, else from genai-prices;
+        (None, None) for a model neither knows."""
+        if price := self.price(model):
+            usd = tokens_in * price.input_per_mtok + tokens_out * price.output_per_mtok
+            return usd / MILLION, price.context_window
+        if model is None:
+            return None, None
+        usage = Usage(input_tokens=tokens_in, output_tokens=tokens_out)
+        try:
+            priced = GENAI_PRICES.calc(usage, model, None, None, None)
+        except LookupError:
+            return None, None
+        return float(priced.total_price), priced.model.context_window
