@@ -30,7 +30,7 @@ SESSION_CLOSE_GRACE_S = 2.0
 AGENT_CAPABILITIES = {
     "loadSession": True,
     "promptCapabilities": {"image": False, "audio": False, "embeddedContext": False},
-    "mcpCapabilities": {"http": False, "sse": False},
+    "mcpCapabilities": {"http": True, "sse": True},
     "sessionCapabilities": {"close": {}},
 }
 

@@ -185,6 +185,42 @@ def test_a_run_starts_with_the_notice_its_predecessors_end_calls_for(after, noti
     assert updates == expected
 
 
+def mcp_server(tool, state, **fields):
+    return {"tool": tool, "server": tool, "transport": "stdio", "state": state} | fields
+
+
+@pytest.mark.parametrize("make", ["native", "flat", "replay"])
+def test_each_mcp_server_not_bound_is_a_notice_on_the_root(make):
+    encoder = {"native": native, "flat": flat, "replay": lambda: native(replay=True)}[
+        make
+    ]()
+    status = ev(
+        "mcp.status",
+        servers=[
+            mcp_server("github", "bound", count=12, told="- `github(…)`"),
+            mcp_server("postgres", "no_answer", seconds=10),
+            mcp_server("wiki", "failed", detail="McpError: Connection closed"),
+            mcp_server("slack", "not_enabled", granted=["router", "router.archive"]),
+            mcp_server("lonely", "skipped", detail="granted to no namespace"),
+        ],
+    )
+    notices = [
+        texts.mcp_no_answer("postgres", 10),
+        texts.mcp_failed("wiki", "McpError: Connection closed"),
+        texts.mcp_not_enabled("slack", ["router", "router.archive"]),
+    ]
+    assert encoder.feed(status) == [
+        (
+            ROOT,
+            {
+                "sessionUpdate": "agent_message_chunk",
+                "content": {"type": "text", "text": notice + "\n\n"},
+            },
+        )
+        for notice in notices
+    ]
+
+
 def test_a_child_is_announced_on_its_parent_under_the_spawning_cell_then_given_its_task():
     announce, task = with_child(native())
     assert announce == (

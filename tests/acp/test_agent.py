@@ -103,7 +103,7 @@ def test_each_stream_matches_its_golden_recording(scenario, native, tmp_path):
     assert as_tree(sent) == as_tree(golden)
 
 
-def test_initialize_advertises_load_close_and_no_mcp_transports(tmp_path, home):
+def test_initialize_advertises_load_close_and_http_and_sse_mcp(tmp_path, home):
     config = BY_NAME["linear"].write_config(
         tmp_path / "config", "http://127.0.0.1:9/v1"
     )
@@ -124,7 +124,7 @@ def test_initialize_advertises_load_close_and_no_mcp_transports(tmp_path, home):
                 "audio": False,
                 "embeddedContext": False,
             },
-            "mcpCapabilities": {"http": False, "sse": False},
+            "mcpCapabilities": {"http": True, "sse": True},
             "sessionCapabilities": {"close": {}},
         },
         "agentInfo": {"name": "dr-acp", "title": "deep_reasoner", "version": "0.1.0"},

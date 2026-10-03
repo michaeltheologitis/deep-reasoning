@@ -37,6 +37,7 @@ from deep_reasoning.acp.worker.stop import (
     StopAdapter,
     resolve_stop_adapter,
 )
+from deep_reasoning.mcp.session import open_session
 
 logger = structlog.get_logger(__name__)
 
@@ -147,6 +148,10 @@ class Worker:
             )
             self._recorder.set_puppeteer(turns)
         run_dir = Path(start.run_dir)
+        # D4 §4.4: the granted servers are connected, all at once, before any tool is built.
+        if statuses := open_session(cfg, start.mcp_servers, run_dir=run_dir):
+            servers = [status.model_dump(mode="json") for status in statuses]
+            self._recorder.emit("mcp.status", servers=servers)
         self._reasoner, alias = build_reasoner(
             cfg, run_dir=run_dir, main_decomposition=prompt.decomposition
         )
