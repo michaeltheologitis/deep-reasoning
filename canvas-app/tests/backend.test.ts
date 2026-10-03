@@ -150,6 +150,31 @@ describe("ensureBackend", () => {
     });
   });
 
+  it.each([
+    ["until it is ready", [status("starting"), status("ready")], { ok: true }],
+    [
+      "and says why it did not start",
+      [status("unhealthy", { detail: "Backend exited with code 1" })],
+      { ok: false, message: BACKEND_FAILED("Backend exited with code 1") },
+    ],
+  ])(
+    "polls the status when start gets no answer, %s",
+    async (_, after, expected) => {
+      const server = agentServer(
+        [status("stopped"), ...after],
+        new Error("Request timeout after 60000ms"),
+      );
+      const { result } = check(server);
+      await vi.advanceTimersByTimeAsync(BACKEND_POLL_MS);
+      expect(await result).toEqual(expected);
+      expect(server.calls.slice(0, 3)).toEqual([
+        { path: BACKEND_PATH },
+        { method: "POST", path: START, body: { revision: "r2" } },
+        { path: BACKEND_PATH },
+      ]);
+    },
+  );
+
   it.each(["missing", "unsupported"] as const)(
     "cannot run a %s backend",
     async (state) => {

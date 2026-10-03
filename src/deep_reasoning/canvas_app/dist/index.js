@@ -3,7 +3,7 @@ const A = ["browse", "create", "namespaces", "tools"], k = {
   create: "Create decomposition",
   namespaces: "Namespaces",
   tools: "Tools"
-}, v = [
+}, w = [
   "--oh-surface",
   "--oh-surface-raised",
   "--oh-surface-deep",
@@ -27,7 +27,7 @@ const A = ["browse", "create", "namespaces", "tools"], k = {
   "--oh-field-radius",
   "color-scheme",
   "font-family"
-], L = 200, f = "5", C = /^[#\w\s(),.%'"-]*$/;
+], L = 200, p = "5", C = /^[#\w\s(),.%'"-]*$/;
 function N(e) {
   return A.includes(e);
 }
@@ -36,7 +36,7 @@ function D(e) {
 }
 function P(e) {
   const t = {};
-  for (const n of v) {
+  for (const n of w) {
     const s = e[n];
     typeof s == "string" && s !== "" && D(s) && (t[n] = s);
   }
@@ -51,7 +51,7 @@ function O(e) {
   const t = e;
   return t.type === "dr-library/reload" ? Object.keys(t).length === 1 : t.type === "dr-library/select-tab" && N(t.tab) && (t.focus === null || typeof t.focus == "string");
 }
-const M = "Opening the Library…", T = "Starting the Library's backend…", l = (e) => `The Library's backend did not start: ${e}`, F = "The Library's backend is not approved for this version of the App. Restart the app: its setup approves the App it installed.", R = (e) => `This agent-server cannot run the Library's backend: ${e}`, B = "This version of Canvas cannot show an App's own pages. Update the app.", x = "Try again", U = "it was still starting after 45 seconds.", E = "/api/canvas-extensions/installed/dr-library/backend", $ = 500, H = 45e3;
+const M = "Opening the Library…", T = "Starting the Library's backend…", f = (e) => `The Library's backend did not start: ${e}`, F = "The Library's backend is not approved for this version of the App. Restart the app: its setup approves the App it installed.", R = (e) => `This agent-server cannot run the Library's backend: ${e}`, B = "This version of Canvas cannot show an App's own pages. Update the app.", x = "Try again", U = "it was still starting after 45 seconds.", E = "/api/canvas-extensions/installed/dr-library/backend", $ = 500, H = 45e3;
 async function K(e, t, n) {
   const s = Date.now() + H, o = () => e({ path: E });
   let r;
@@ -67,14 +67,14 @@ async function K(e, t, n) {
         };
       if (r.state === "starting") {
         if (n(T), Date.now() >= s)
-          return { ok: !1, message: l(U) };
-        await V($, t), r = await o();
+          return { ok: !1, message: f(U) };
+        await j($, t), r = await o();
         continue;
       }
       if (i)
         return {
           ok: !1,
-          message: l(r.detail ?? r.state)
+          message: f(r.detail ?? r.state)
         };
       if (r.revision === null || r.prepared_revision !== r.revision)
         return { ok: !1, message: F };
@@ -82,17 +82,23 @@ async function K(e, t, n) {
         method: "POST",
         path: `${E}/start`,
         body: { revision: r.revision }
+      }).catch((u) => {
+        if (G(u)) throw u;
+        return o();
       });
     }
   } catch (i) {
-    return t.throwIfAborted(), { ok: !1, message: l(G(i)) };
+    return t.throwIfAborted(), { ok: !1, message: f(V(i)) };
   }
 }
 function G(e) {
+  return typeof e?.status == "number";
+}
+function V(e) {
   const t = e?.response;
   return typeof t?.detail == "string" ? t.detail : e instanceof Error ? e.message : String(e);
 }
-function V(e, t) {
+function j(e, t) {
   return new Promise((n, s) => {
     const o = setTimeout(() => {
       t.removeEventListener("abort", r), n();
@@ -102,8 +108,8 @@ function V(e, t) {
     t.addEventListener("abort", r, { once: !0 });
   });
 }
-const j = "/api/agent-profiles/deep_reasoner", q = /^\d+(\.\d+)?$/;
-async function W(e, t) {
+const q = "/api/agent-profiles/deep_reasoner", W = /^\d+(\.\d+)?$/;
+async function J(e, t) {
   if (t === null) return null;
   const n = `/api/conversations/${encodeURIComponent(t)}/events/search?kind=ACPSessionControlsEvent&sort_order=TIMESTAMP_DESC&limit=1`;
   try {
@@ -118,78 +124,78 @@ async function W(e, t) {
     return null;
   }
 }
-async function J(e) {
+async function X(e) {
   try {
     const n = (await e({
-      path: j
+      path: q
     })).profile?.acp_args;
-    return X(
+    return Y(
       Array.isArray(n) ? n.filter((s) => typeof s == "string") : null
     );
   } catch {
-    return f;
+    return p;
   }
 }
-function X(e) {
-  if (!e) return f;
+function Y(e) {
+  if (!e) return p;
   if (e.includes("--no-key-proxy")) return "off";
   const t = e.indexOf("--spend-cap-usd"), n = t >= 0 ? e[t + 1] : e.find((s) => s.startsWith("--spend-cap-usd="))?.slice(16);
-  return n !== void 0 && q.test(n) ? n : f;
+  return n !== void 0 && W.test(n) ? n : p;
 }
-function Y(e) {
+function z(e) {
   const t = getComputedStyle(e);
   return P(
     Object.fromEntries(
-      v.map((n) => [
+      w.map((n) => [
         n,
         t.getPropertyValue(n).trim()
       ])
     )
   );
 }
-const p = /* @__PURE__ */ new Map();
-function z(e, t) {
-  p.set(e, t);
+const h = /* @__PURE__ */ new Map();
+function Q(e, t) {
+  h.set(e, t);
 }
-function Q(e) {
-  const t = p.get(e) ?? null;
-  return p.delete(e), t;
+function Z(e) {
+  const t = h.get(e) ?? null;
+  return h.delete(e), t;
 }
-function d(e, t, n = !1, s) {
+function l(e, t, n = !1, s) {
   const o = document.createElement("p");
   if (o.dataset.testid = n ? "dr-library-error" : "dr-library-loading", o.textContent = t, o.style.cssText = "margin: 0; padding: 12px 16px; color: var(--oh-muted, inherit);", e.replaceChildren(o), !s) return;
   const r = document.createElement("button");
   r.type = "button", r.dataset.testid = "dr-library-retry", r.textContent = x, r.style.cssText = "margin: 0 16px;", r.addEventListener("click", s), e.append(r);
 }
-function Z(e, t, n) {
-  const { container: s } = n, o = new AbortController(), r = Q(t);
-  let i = null, h = !1;
+function ee(e, t, n) {
+  const { container: s } = n, o = new AbortController(), r = Z(t);
+  let i = null, u = !1;
   const m = (a) => {
     const c = s.querySelector("iframe");
-    !c || a.source !== c.contentWindow || !O(a.data) || (a.data.type === "dr-library/reload" ? u() : n.surface.kind === "conversation-panel" && (z(a.data.tab, a.data.focus), n.surface.selectTab(a.data.tab)));
-  }, w = (a) => {
-    a.reason !== "not-ready" || h || (h = !0, u());
+    !c || a.source !== c.contentWindow || !O(a.data) || (a.data.type === "dr-library/reload" ? d() : n.surface.kind === "conversation-panel" && (Q(a.data.tab, a.data.focus), n.surface.selectTab(a.data.tab)));
+  }, v = (a) => {
+    a.reason !== "not-ready" || u || (u = !0, d());
   };
   function y() {
     window.removeEventListener("message", m), i?.(), i = null;
   }
-  async function u() {
-    y(), d(s, M);
+  async function d() {
+    y(), l(s, M);
     const a = e.agentServer.request, [c, g, b] = await Promise.all([
       K(
         a,
         o.signal,
-        (S) => d(s, S)
+        (S) => l(s, S)
       ),
-      W(a, n.conversationId),
-      J(a)
+      J(a, n.conversationId),
+      X(a)
     ]).catch(() => [null, null, null]);
     if (o.signal.aborted || c === null || b === null) return;
     if (!c.ok)
-      return d(s, c.message, !0, () => {
-        u();
+      return l(s, c.message, !0, () => {
+        d();
       });
-    if (!e.appBackend) return d(s, B, !0);
+    if (!e.appBackend) return l(s, B, !0);
     const _ = {
       tab: t,
       parent: window.location.origin,
@@ -197,24 +203,24 @@ function Z(e, t, n) {
       started: g?.started ?? !1,
       cap: b,
       focus: r,
-      theme: Y(s)
+      theme: z(s)
     };
     s.replaceChildren(), i = e.appBackend.mountFrame(s, {
       path: `/ui/${I(_)}`,
       title: k[t],
-      onError: w
+      onError: v
     }), window.addEventListener("message", m);
   }
-  return u(), () => {
+  return d(), () => {
     o.abort(), y(), s.replaceChildren();
   };
 }
-function ee(e) {
+function te(e) {
   const t = A.map(
-    (n) => e.registerPage(n, (s) => Z(e, n, s))
+    (n) => e.registerPage(n, (s) => ee(e, n, s))
   );
   return () => t.forEach((n) => n());
 }
 export {
-  ee as activate
+  te as activate
 };

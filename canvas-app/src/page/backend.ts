@@ -39,8 +39,9 @@ export type BackendCheck =
 
 /** §2.1's table over GET BACKEND_PATH and POST BACKEND_PATH/start {revision}; never prepare.
  * ready → ok; starting → poll every BACKEND_POLL_MS up to BACKEND_START_TIMEOUT_MS;
- * stopped or unhealthy and prepared for this revision → start once; not prepared →
- * NOT_APPROVED; missing or unsupported → BACKEND_UNSUPPORTED. An abort rejects at once. */
+ * stopped or unhealthy and prepared for this revision → start once, polling as for starting
+ * when start gets no answer; not prepared → NOT_APPROVED; missing or unsupported →
+ * BACKEND_UNSUPPORTED. An abort rejects at once. */
 export async function ensureBackend(
   request: AgentServerRequest,
   signal: AbortSignal,
@@ -86,12 +87,21 @@ export async function ensureBackend(
         method: "POST",
         path: `${BACKEND_PATH}/start`,
         body: { revision: status.revision },
+      }).catch((error: unknown) => {
+        // §11 item 6: start can outlast the client's timeout; the status then says how it went.
+        if (answered(error)) throw error;
+        return read();
       });
     }
   } catch (error) {
     signal.throwIfAborted();
     return { ok: false, message: BACKEND_FAILED(errorDetail(error)) };
   }
+}
+
+/** The agent-server answered: the client's HttpError carries the status it answered with. */
+function answered(error: unknown): boolean {
+  return typeof (error as { status?: unknown } | null)?.status === "number";
 }
 
 /** The agent-server's own words: an HttpError's {detail}, else the error's message. */
