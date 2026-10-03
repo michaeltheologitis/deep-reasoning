@@ -30,7 +30,6 @@ from deep_reasoning.library.records import (
     NamespaceRecord,
     Problem,
     ProfileRecord,
-    Saved,
     ToolRecord,
     ValidationResult,
 )
@@ -97,15 +96,14 @@ def _state(path: Path, rows: list[Row], rev: int) -> LibraryState:
     )
 
 
-def _record(state: LibraryState, kind: Kind, name: str) -> Saved | None:
-    if kind == "profile":
-        return state.profile
-    found = {
+def _records(state: LibraryState) -> dict[Kind, dict[str, Any]]:
+    """Every live head's record, by kind, then by name."""
+    return {
+        "profile": {PROFILE: state.profile},
         "namespace": state.namespaces,
         "decomposition": state.decompositions,
         "tool": state.tools,
     }
-    return found[kind].get(name)
 
 
 def _check_invariants(rows: list[Row]) -> None:
@@ -503,7 +501,8 @@ class Library:
     def _read_back(self, w: Writer, kind: Kind, name: str) -> Any:
         """The entity's record as this transaction sees it."""
         rows = w.heads()
-        return _record(_state(self.path, rows, max(r.rev for r in rows)), kind, name)
+        state = _state(self.path, rows, max(r.rev for r in rows))
+        return _records(state)[kind].get(name)
 
     def _base(
         self, w: Writer, kind: Kind, name: str, base_version: int | None
@@ -636,50 +635,21 @@ def _yaml_name(kind: Kind, text: str) -> str | None:
 
 def _stale(state: LibraryState) -> list[Problem]:
     """Every live head that no longer validates under the installed deep_reasoner."""
-    heads: list[tuple[Kind, str, int, Callable[[], shapes.Shaped]]] = [
-        (
-            "profile",
-            PROFILE,
-            state.profile.version,
-            lambda: shapes.validate_profile(state.profile.yaml),
-        ),
-        *[
-            (
-                "namespace",
-                n.name,
-                n.version,
-                lambda n=n: shapes.validate_namespace(n.yaml),
-            )
-            for n in state.namespaces.values()
-        ],
-        *[
-            (
-                "decomposition",
-                d.name,
-                d.version,
-                lambda d=d: shapes.validate_decomposition(d.yaml),
-            )
-            for d in state.decompositions.values()
-        ],
-        *[
-            (
-                "tool",
-                t.name,
-                t.version,
-                lambda t=t: shapes.validate_tool(t.name, t.yaml, t.source),
-            )
-            for t in state.tools.values()
-        ],
-    ]
     problems = []
-    for kind, name, version, validate in heads:
-        try:
-            validate()
-        except LibraryValidationError as exc:
-            message = texts.stale_head(
-                kind, name, version, shapes.deep_reasoner_build(), _first_error(exc)
-            )
-            problems.append(Problem(kind=kind, name=name, message=message))
+    for kind, records in _records(state).items():
+        for name, record in records.items():
+            source = record.source if kind == "tool" else None
+            try:
+                _validator(kind, name, source)(record.yaml)
+            except LibraryValidationError as exc:
+                message = texts.stale_head(
+                    kind,
+                    name,
+                    record.version,
+                    shapes.deep_reasoner_build(),
+                    _first_error(exc),
+                )
+                problems.append(Problem(kind=kind, name=name, message=message))
     return problems
 
 
