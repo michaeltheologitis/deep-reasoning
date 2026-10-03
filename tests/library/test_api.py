@@ -7,7 +7,7 @@ import pytest
 import yaml
 from starlette.testclient import TestClient
 
-from deep_reasoning.library import shapes
+from deep_reasoning.library import shapes, store
 from deep_reasoning.library.api import create_app, same_user_peer
 from tests.library.conftest import example, text
 
@@ -232,6 +232,27 @@ def test_errors_carry_code_message_and_details(client):
         assert (bad.status_code, bad.json()["error"]) == (400, "bad_request")
     stale = client.delete("/namespaces/router", params={"base_version": "x"})
     assert (stale.status_code, stale.json()["error"]) == (400, "bad_request")
+
+
+@pytest.mark.parametrize("path", ["/effective", "/namespaces/router/effective"])
+def test_a_stale_head_makes_the_effective_view_answer_422_naming_it(client, lib, path):
+    decline = lib.decomposition("decline")
+    # As an earlier deep_reasoner saved it: the installed one requires messages.
+    with store.write(lib.path, "put decomposition", "decline") as w:
+        w.add("decomposition", "decline", yaml="name: decline\n", slug=decline.slug)
+    sentence = (
+        "Decomposition 'decline' version 2 no longer validates under deep_reasoner "
+        f"{shapes.deep_reasoner_build()}: messages: Field required"
+    )
+    response = client.get(path)
+    assert (response.status_code, response.json()) == (
+        422,
+        {
+            "error": "invalid",
+            "message": sentence,
+            "errors": [{"loc": "", "msg": sentence}],
+        },
+    )
 
 
 def test_a_slug_with_spaces_in_the_name_round_trips(client):
