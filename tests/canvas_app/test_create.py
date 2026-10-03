@@ -99,6 +99,20 @@ def test_the_saved_line_says_the_started_conversation_does_not_change(
     expect(page.get_by_test_id("dr-show-in-decompositions")).to_be_visible()
 
 
+def test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing(
+    open_ui, library_server
+):
+    library = library_server.library()
+    rev = library.rev()
+    page = open_ui(tab="create")
+    write_new(page, "", TASK)
+    page.get_by_test_id("dr-save").click()
+    expect(page.get_by_test_id("dr-name-errors")).to_have_text(
+        "Give the decomposition a name."
+    )
+    assert library.rev() == rev
+
+
 def test_validation_errors_show_on_the_card_they_name(open_ui, library_server):
     page = open_ui(tab="create")
     page.get_by_test_id("dr-name").fill(" spaced")
