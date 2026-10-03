@@ -14,6 +14,15 @@ def text(t: str) -> dict[str, Any]:
     return {"type": "text", "text": t}
 
 
+def content(t: str) -> list[dict[str, Any]]:
+    """A tool call's content: one text."""
+    return [{"type": "content", "content": text(t)}]
+
+
+def thought(session: str, t: str) -> Update:
+    return session, {"sessionUpdate": "agent_thought_chunk", "content": text(t)}
+
+
 def cell(
     session: str, run: str, node: int, k: int, code: str, parent: int | None = None
 ) -> Update:
@@ -50,7 +59,7 @@ def done(
             "sessionUpdate": "tool_call_update",
             "toolCallId": f"{run}-n{node}-c{k}",
             "status": status,
-            "content": [{"type": "content", "content": text(output)}],
+            "content": content(output),
             "rawOutput": output,
         },
     )
@@ -80,13 +89,15 @@ def announce(
     title: str,
     drive: int = 1,
 ) -> Update:
+    """Only a child's first drive offers cancel."""
+    cancel = {"capabilities": {"cancel": {}}} if drive == 1 else {}
     return (
         parent_session,
         {
             "sessionUpdate": "subagent_update",
             "sessionId": f"{run}-n{node}",
             "title": title,
-            "capabilities": {"cancel": {}},
+            **cancel,
             "state": {"state": "running"},
             "_meta": {
                 "openhands": {"parentToolCallId": f"{run}-n{parent}-c{k}"},
@@ -201,7 +212,7 @@ def card_done(
             "sessionUpdate": "tool_call_update",
             "toolCallId": f"{run}-n{node}-a1",
             "status": call_status,
-            "content": [{"type": "content", "content": text(body)}],
+            "content": content(body),
             "_meta": {"deep_reasoner": {"run": run, "node": node, **outcome}},
         },
     )
