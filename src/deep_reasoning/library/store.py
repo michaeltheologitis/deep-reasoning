@@ -15,8 +15,6 @@ from deep_reasoning.library import texts
 from deep_reasoning.library.records import HistoryEntry, Kind, LibraryError
 from deep_reasoning.library.shapes import deep_reasoner_build
 
-__all__ = ["Kind"]
-
 SCHEMA_V1 = """
 CREATE TABLE revisions (
     rev INTEGER PRIMARY KEY,
