@@ -33,7 +33,7 @@ import {
   SET_HERE,
   UNDEFINED_TOOL,
 } from "../texts";
-import { type NamespaceNode, namespaceTree } from "../tree";
+import { type NamespaceNode, ROOT, ancestors, namespaceTree } from "../tree";
 import type {
   DecompositionRecord,
   Effective,
@@ -46,7 +46,6 @@ import { stringifyYaml } from "../yaml";
 import type { TabProps } from "./props";
 
 const RUN_SETTINGS = "run-settings";
-const ROOT = "root";
 const SETTINGS = [
   "model",
   "models",
@@ -331,10 +330,7 @@ function NamespaceDetail(props: {
     const result = await props.write(() =>
       deleteNamespace(name, namespace.version),
     );
-    if (result.ok)
-      props.onDeleted(
-        name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : ROOT,
-      );
+    if (result.ok) props.onDeleted(ancestors(name).at(-1) ?? ROOT);
   }
 
   const fieldProps = { here: name, document, editing, setEditing, set, reset };
