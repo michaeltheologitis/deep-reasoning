@@ -49,22 +49,29 @@ PLAN = {
 }
 BRANCH_TASKS = {"Survey D0.", *(f"Read {c}." for c in COURSES)}
 SIBLING_TASKS = {f"Survey {d}." for d in DEPARTMENTS[1:]}
+SIBLING_HOLD_S = 60
 
 
-def holding_the_siblings(respond):
-    """D0's siblings get their first answer only at the root's next turn, once run_all
-    has ended: each is still awaiting its model when D0's StoppedByUser ends run_all.
-    An openai call cancelled mid-response can swallow the cancellation and run on to an
-    answer (httpx 0.28, httpcore 1.0, anyio 4), and a sibling the message names would
-    then end done, not stopped with it."""
+def holding_the_siblings(respond, stalled):
+    """D0's siblings get no answer before the root's next turn, which comes only once
+    run_all has ended. So each is awaiting its model when D0's StoppedByUser ends
+    run_all, and run_all's cancellation lands there. A sibling with a call in flight
+    can swallow it and end done (design §10 item 8), or end failed with a ValueError
+    from anyio (httpx 0.28, httpcore 1.0, anyio 4), though D0's message names it. A
+    sibling still held after SIBLING_HOLD_S is answered 500, never with its plan, and
+    its task is added to stalled: its answer may then be in flight when run_all is
+    cancelled, so the run did not test the stop."""
     root_moved_on = threading.Event()
 
     def held(messages):
         task, turn = task_and_turn(messages)
         if task == "Compare departments." and turn > 0:
             root_moved_on.set()
-        elif task in SIBLING_TASKS:
-            root_moved_on.wait(timeout=60)
+        elif task in SIBLING_TASKS and not root_moved_on.wait(SIBLING_HOLD_S):
+            stalled.append(task)
+            raise TimeoutError(
+                f"{task!r} held {SIBLING_HOLD_S} s: the root never moved on"
+            )
         return respond(messages)
 
     return held
@@ -133,28 +140,23 @@ def root_cell_output(client, root):
 def test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took(
     tmp_path, home, work
 ):
-    respond = holding_the_siblings(scripted(PLAN))
+    stalled = []
+    respond = holding_the_siblings(scripted(PLAN), stalled)
     client, root, department, response, log, calls = run(
         stop_the_department(scripted_env(), respond, tmp_path, home, work)
     )
+    assert not stalled
     agents, d0 = evidence_common(client, root, department, response, log, calls)
-    output = root_cell_output(client, root)
-    assert "deep_reasoning.acp.worker.stop.StoppedByUser: stopped #" in output
-    collateral = sorted(
-        a.field_meta["deep_reasoner"]["node"]
-        for a in agents.values()
-        if a.field_meta["deep_reasoner"].get("collateral")
+    siblings = [agents[task].field_meta["deep_reasoner"] for task in SIBLING_TASKS]
+    taken = {(s["status"], s.get("stopped_by"), s.get("collateral")) for s in siblings}
+    assert taken == {("stopped", d0["node"], True)}
+    sentence = texts.stopped_by_user(
+        d0["node"],
+        tuple(sorted(course_nodes(agents))),
+        tuple(sorted(s["node"] for s in siblings)),
     )
-    for node in collateral:
-        assert (
-            agents_by_node(agents)[node].field_meta["deep_reasoner"]["stopped_by"]
-            == d0["node"]
-        )
-    assert output.rstrip().endswith(
-        texts.stopped_by_user(
-            d0["node"], tuple(sorted(course_nodes(agents))), tuple(collateral)
-        )
-    )
+    output = root_cell_output(client, root).rstrip()
+    assert output.endswith(f"deep_reasoning.acp.worker.stop.StoppedByUser: {sentence}")
     assert texts.stop_requested("interim", "chat") in department_thoughts(
         client, department
     )
@@ -181,10 +183,6 @@ def test_dean_stop_ends_the_branch_and_the_parent_keeps_every_siblings_result(
     assert texts.stop_requested("dean", "chat") in department_thoughts(
         client, department
     )
-
-
-def agents_by_node(agents):
-    return {a.field_meta["deep_reasoner"]["node"]: a for a in agents.values()}
 
 
 def course_nodes(agents):
