@@ -23,7 +23,7 @@ export interface PythonEditor {
   destroy(): void;
 }
 
-// Canvas's look, from the frame's tokens (theme.ts).
+// Canvas's look, from the frame's theme tokens (the --oh-* variables).
 const look = EditorView.theme({
   "&": {
     backgroundColor: "var(--oh-surface-deep)",
