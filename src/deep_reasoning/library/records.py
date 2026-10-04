@@ -2,9 +2,37 @@
 their HTTP status and JSON payload."""
 
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from datetime import datetime
+from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+
+Kind = Literal["profile", "namespace", "decomposition", "tool"]
+
+
+class Saved(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    version: int
+    rev: int  # the revision that wrote this version
+    saved_at: datetime
+
+
+class HistoryEntry(Saved):
+    """One stored version, with its revision's time and action; a tombstone is deleted
+    and has no yaml."""
+
+    kind: Kind
+    name: str
+    action: str  # the revision's action
+    deleted: bool
+    yaml: str | None
+    decompositions: list[str] | None  # profile, namespace
+    slug: str | None
+    use_when: str | None
+    hint: str | None
+    source: str | None
+    deep_reasoner: str
 
 
 class FieldError(BaseModel):

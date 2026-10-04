@@ -66,3 +66,10 @@ def tool_file(name: str, value: str) -> str:
 
 def tool_no_source(name: str) -> str:
     return f"Tool '{name}' names factory_from but no source was sent with it."
+
+
+def network_fs(path: str, fstype: str) -> str:
+    return (
+        f"{path} is on a network filesystem ({fstype}), where SQLite cannot keep the "
+        "library safe. Set DR_HOME to a folder on this computer's own disk."
+    )
