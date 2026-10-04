@@ -74,6 +74,39 @@ def test_the_turn_after_a_step_reads_observation_think_code(open_ui):
     )
 
 
+def test_a_turn_after_the_first_starts_with_its_observation(open_ui):
+    page = open_ui(tab="create")
+    page.get_by_test_id("dr-add-turn").click()
+    page.get_by_test_id("dr-add-turn").click()
+    page.get_by_test_id("dr-card-3-code").fill("turn 2")
+    page.get_by_test_id("dr-card-5-code").fill("turn 3")
+    expect_turns(
+        page,
+        [
+            ["think", "code"],
+            ["observation", "think", "code"],
+            ["observation", "think", "code"],
+        ],
+    )
+    page.get_by_role("button", name="Remove turn 2").click()
+    expect_turns(page, [["think", "code"], ["observation", "think", "code"]])
+    expect(page.get_by_test_id("dr-card-3-code")).to_have_value("turn 3")
+    expect(page.get_by_test_id("dr-card-0-task")).to_be_visible()
+
+
+def expect_turns(page, turns: list[list[str]]) -> None:
+    """The cards' labels, turn by turn; the task card is in no turn, and each turn's ✕ is
+    named for it."""
+    found = page.locator("[data-testid^='dr-turn-']")
+    expect(found).to_have_count(len(turns))
+    for number, (turn, labels) in enumerate(zip(found.all(), turns), start=1):
+        expect(turn).to_have_attribute("data-testid", f"dr-turn-{number}")
+        expect(turn.locator("label")).to_have_text(labels)
+        expect(turn.get_by_role("button")).to_have_accessible_name(
+            f"Remove turn {number}"
+        )
+
+
 def test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations(
     open_ui,
 ):

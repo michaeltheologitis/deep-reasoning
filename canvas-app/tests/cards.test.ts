@@ -8,6 +8,7 @@ import {
   type Card,
   type StepCard,
   addTurn,
+  cardGroups,
   cardIndexForLoc,
   cardsToMessages,
   messagesToCards,
@@ -219,62 +220,102 @@ describe("editing cards", () => {
     ]);
   });
 
-  it("adds the missing output before the new step", () => {
-    const cards = addTurn(newDecompositionCards());
-    expect(cards.map((c) => c.kind)).toEqual([
-      "task",
-      "step",
-      "output",
-      "step",
-    ]);
-    expect(cards[2]).toEqual({ kind: "output", text: "", end: "" });
-    expect(cards[3]).toEqual({
-      kind: "step",
-      think: "",
-      thinkLayout: "inline",
-      code: "",
-      end: "\n",
-    });
-    expect(addTurn(cards).map((c) => c.kind)).toEqual([
-      "task",
-      "step",
-      "output",
-      "step",
-      "output",
-      "step",
+  it("adds a turn: an empty observation, then an empty step", () => {
+    expect(addTurn(newDecompositionCards())).toEqual([
+      ...newDecompositionCards(),
+      { kind: "output", text: "", end: "" },
+      { kind: "step", think: "", thinkLayout: "inline", code: "", end: "\n" },
     ]);
   });
 
-  it("keeps an output the last step already has", () => {
-    const cards = addTurn(addTurn(newDecompositionCards()).slice(0, 3));
-    expect(cards.map((c) => c.kind)).toEqual([
-      "task",
-      "step",
-      "output",
-      "step",
+  it.each<[string, string, string]>([
+    ["after a step: an observation and a step", "t0 s1", "t0 s1 o s"],
+    [
+      "after a trailing observation: the step it lacks",
+      "t0 s1 o2",
+      "t0 s1 o2 s",
+    ],
+    ["after a task: a step", "t0", "t0 s"],
+    ["always at the end", "t0 s1 t2", "t0 s1 t2 s"],
+  ])("adds a turn %s", (_, before, after) => {
+    expect(tokens(addTurn(deck(before)))).toBe(after);
+  });
+
+  it("groups an observation with the step after it; every other card stands alone", () => {
+    expect(cardGroups(deck("r0 t1 s2 o3 s4 o5 t6 s7 s8"))).toEqual([
+      [0],
+      [1],
+      [2],
+      [3, 4],
+      [5],
+      [6],
+      [7],
+      [8],
     ]);
   });
 
-  it("removes a step with its output, and an output alone", () => {
-    const cards = addTurn(addTurn(newDecompositionCards()));
-    expect(removeTurn(cards, 1).map((c) => c.kind)).toEqual([
-      "task",
-      "step",
-      "output",
-      "step",
-    ]);
-    expect(removeTurn(cards, 2).map((c) => c.kind)).toEqual([
-      "task",
-      "step",
-      "step",
-      "output",
-      "step",
-    ]);
+  it.each<[string, string, (number | null)[]]>([
+    ["the task is no turn; the first step is turn 1", "t0 s1", [null, 1]],
+    [
+      "an observation has the number of the step after it",
+      "t0 s1 o2 s3 o4 s5",
+      [null, 1, 2, 2, 3, 3],
+    ],
+    ["a trailing observation is the last turn", "t0 s1 o2", [null, 1, 2]],
+    ["a step after a step is a turn", "t0 s1 s2", [null, 1, 2]],
+    [
+      "task and raw cards are no turn",
+      "r0 t1 s2 o3 s4 t5 s6",
+      [null, null, 1, 2, 2, null, 3],
+    ],
+  ])("numbers turns: %s", (_, cards, numbers) => {
+    expect(turnNumbers(deck(cards))).toEqual(numbers);
   });
 
-  it("numbers turns, an output sharing its step's number", () => {
-    const cards = addTurn(addTurn(newDecompositionCards()));
-    expect(turnNumbers(cards)).toEqual([1, 2, 2, 3, 3, 4]);
+  it.each<[string, string, number, string]>([
+    [
+      "turn 1 with the observation after it, so the next step is turn 1",
+      "t0 s1 o2 s3 o4 s5",
+      1,
+      "t0 s3 o4 s5",
+    ],
+    [
+      "a middle turn: its observation and its step",
+      "t0 s1 o2 s3 o4 s5",
+      2,
+      "t0 s1 o4 s5",
+    ],
+    ["a turn, from its step's index", "t0 s1 o2 s3 o4 s5", 3, "t0 s1 o4 s5"],
+    ["the last turn", "t0 s1 o2 s3 o4 s5", 4, "t0 s1 o2 s3"],
+    ["a trailing observation alone", "t0 s1 o2", 2, "t0 s1"],
+    ["turn 1 with a trailing observation", "t0 s1 o2", 1, "t0"],
+    [
+      "a step after a step, keeping the next observation",
+      "t0 s1 s2 o3 s4",
+      2,
+      "t0 s1 o3 s4",
+    ],
+    [
+      "the first turn after a later task",
+      "t0 s1 t2 s3 o4 s5",
+      3,
+      "t0 s1 t2 s5",
+    ],
+  ])("removes %s", (_, before, index, after) => {
+    expect(tokens(removeTurn(deck(before), index))).toBe(after);
+  });
+
+  it("never leaves an observation that follows no step", () => {
+    for (const cards of decks(6)) {
+      turnNumbers(cards).forEach((turn, index) => {
+        if (turn === null) return;
+        const left = removeTurn(cards, index);
+        const orphan = left.findIndex(
+          (card, i) => card.kind === "output" && left[i - 1]?.kind !== "step",
+        );
+        expect(orphan, `${tokens(cards)} without card ${index}`).toBe(-1);
+      });
+    }
   });
 
   it.each([
@@ -288,6 +329,57 @@ describe("editing cards", () => {
     expect(cardIndexForLoc(loc)).toBe(index);
   });
 });
+
+/** Cards from tokens such as "t0 s1 o2": the letter is the kind (task, step, observation, raw),
+ * the rest its text. */
+function deck(tokens: string): Card[] {
+  return tokens.split(" ").map((token): Card => {
+    const text = token.slice(1);
+    switch (token[0]) {
+      case "t":
+        return { kind: "task", text };
+      case "s":
+        return step({ think: "", code: text });
+      case "o":
+        return { kind: "output", text, end: "" };
+      default:
+        return { kind: "raw", role: "system", content: text };
+    }
+  });
+}
+
+/** deck's inverse: an empty card is its letter alone. */
+function tokens(cards: readonly Card[]): string {
+  return cards
+    .map((card) => {
+      switch (card.kind) {
+        case "task":
+          return `t${card.text}`;
+        case "step":
+          return `s${card.code}`;
+        case "output":
+          return `o${card.text}`;
+        case "raw":
+          return `r${card.content}`;
+      }
+    })
+    .join(" ");
+}
+
+/** Every deck of 1 to length cards the editor can hold: an observation always follows a step. */
+function decks(length: number): Card[][] {
+  let found: string[][] = [[]];
+  const all: Card[][] = [];
+  for (let n = 1; n <= length; n++) {
+    found = found.flatMap((prefix) =>
+      ["t", "s", "o", "r"]
+        .filter((kind) => kind !== "o" || prefix.at(-1)?.startsWith("s"))
+        .map((kind) => [...prefix, `${kind}${n}`]),
+    );
+    all.push(...found.map((prefix) => deck(prefix.join(" "))));
+  }
+  return all;
+}
 
 /** Every {name, messages: [{role, content}]} in the YAML files under folders, read in place. */
 function decompositionsIn(
