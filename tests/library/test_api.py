@@ -221,7 +221,13 @@ def test_errors_carry_code_message_and_details(client):
         bad = put(client, "/namespaces/a", **body)
         assert (bad.status_code, bad.json()["error"]) == (400, "bad_request")
     stale = client.delete("/namespaces/router", params={"base_version": "x"})
-    assert (stale.status_code, stale.json()["error"]) == (400, "bad_request")
+    assert (stale.status_code, stale.json()) == (
+        400,
+        {
+            "error": "bad_request",
+            "message": "base_version must be a whole number; got 'x'.",
+        },
+    )
 
 
 @pytest.mark.parametrize("path", ["/effective", "/namespaces/router/effective"])

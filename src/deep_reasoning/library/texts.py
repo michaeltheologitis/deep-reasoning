@@ -120,6 +120,10 @@ def conflict_stale(kind: str, name: str, head: int, base: int) -> str:
     )
 
 
+def bad_base_version(raw: str) -> str:
+    return f"base_version must be a whole number; got {raw!r}."
+
+
 def refuse_default(name: str) -> str:
     return f"'{name}' is the namespace new conversations start in; choose another one first."
 

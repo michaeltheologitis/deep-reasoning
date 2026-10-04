@@ -165,9 +165,7 @@ def _base_version(request: Request) -> int | None:
     try:
         return int(raw)
     except ValueError as exc:
-        raise LibraryBadRequest(
-            f"base_version must be a whole number; got {raw!r}."
-        ) from exc
+        raise LibraryBadRequest(texts.bad_base_version(raw)) from exc
 
 
 def _exists(read: Callable[[], Any]) -> bool:
