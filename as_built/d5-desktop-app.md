@@ -32,16 +32,16 @@ history or the runs.
 | # | Design says | Built | Where | Reason recorded |
 |---|---|---|---|---|
 | 1 | §1 item 1, §4.2.4 step 3, §5.8, §7.6: one universal `.dmg`; `build.py {linux\|mac\|mac-universal\|check}`; `ELECTRON_ARCH=universal` | **Apple silicon only.** Targets `linux` and `mac-arm64`; each refuses to run on any machine but Linux x86-64 or macOS arm64, because the fork packages uv and Node for the machine it builds on. `verify()` requires `deep-reasoning-<version>-arm64.dmg`, and `lipo -archs` = `arm64` for the `.app`'s Electron, uv and Node. `desktop-release.yml` has no Intel job; a tag's release needs `linux` and `macos`. [read; run: `test_build.py`; CI] | `desktop/build.py:50-67, 170-182, 405-453` | Michael, 2026-10-04: "lets drop the intel macs" (`bd6e170`). The Intel lock holds `2e883e7` and `a4a9336` are undone by `3500f87`: `uv.lock`, `runtime.lock.txt` and `pyproject.toml` equal `f32e152`'s [run: `git diff` is empty] |
-| 2 | No macOS version is named | **macOS 14 or later, unenforced.** onnxruntime 1.30.0 (chromadb's, through deep_reasoner) ships `macosx_14_0_arm64` wheels and none older; a wheels-only dry run of the lock fails for macOS 13.0 on that package and passes for 14.0 [run, §5.4]. Neither the wrapper config nor the fork's `mac` block sets `minimumSystemVersion` [read]; the release notes say "macOS 14 or later" [read]. On macOS 13 the app would open and setup would stop at `uv pip sync` with `install_failed`, exit 11 [inferred, not run] | `desktop/electron-builder.dr.mjs`; `tests/app/test_runtime.py:211-252` | onnxruntime's wheels; open item, §6 |
+| 2 | No macOS version is named | **macOS 14 or later, unenforced.** onnxruntime 1.30.0 (chromadb's, through deep_reasoner) ships `macosx_14_0_arm64` wheels and none older; a wheels-only dry run of the lock fails for macOS 13.0 on that package and passes for 14.0 [run, §5.4]. Neither the wrapper config nor the fork's `mac` block sets `minimumSystemVersion` [read]; the release notes say "macOS 14 or later" [read]. On macOS 13 the app would open and setup would stop at `uv pip sync` with `install_failed`, exit 11 [read: inferred, not run] | `desktop/electron-builder.dr.mjs`; `tests/app/test_runtime.py:211-252` | onnxruntime's wheels; open item, §6 |
 | 3 | §4.4.3: `uv venv --managed-python --python 3.12 runtime/<commit>.tmp-<pid>`, then rename | `uv venv --relocatable --managed-python …`. Without it uv writes entry points with an absolute shebang to the temporary path, and after the rename every runtime command was dead: `dr-library` exited 127 as the App backend [read; CI: E12] | `runtime.py:224-238` | `622976b`, found by E12's first launch |
 | 4 | §4.4.1: three rules for the data home | **A fourth.** `choose_home` and `dr-app home DIR` refuse, exit 13 with `home_too_long`, a home under which `runs/<run id>/children/<n>/repl.sock` (the home plus 52 bytes) would pass the Unix-socket limit: 107 bytes on Linux, 103 on macOS. The default homes fit (on macOS, user names up to 28 characters); a HOME under macOS's `$TMPDIR` is refused [read; run: `deepest_socket`, §5.4] | `layout.py:23-29, 111-155` | `b1e3df2`: deep_reasoner's Claude backbone serves its REPL socket under the run directory |
 | 5 | §4.7.3: "no usage reported: the reservation stands" | Usage reported, at any status: charged. No usage on a 2xx: the reservation is charged. **No usage on a non-2xx: 0**, the reservation released. Upstream unreachable: 0 [read; run: `test_provider_errors_release_their_reservations`, `test_a_call_costs_its_reported_usage_else_its_reservation_unless_refused`] | `proxy.py:527-541, 568-574` | Michael's ruling, 2026-10-04 (`f385025`): the OpenAI client's four retries of a 500 had left five reservations standing as spend |
 | 6 | §4.7.3's request path | Two additions. A body that is not a JSON object, or is over 32 MiB, is refused 400 `bad_body`, a sentence §6 lacks. `Accept-Encoding` is not forwarded and `Content-Encoding` not returned, so bodies pass uncompressed [read] | `proxy.py:54-77, 408-428` | none recorded |
 | 7 | §4.3.1, §6, decision B: the fetch-failure line says deep-reasoning "is private: ask Michael for read access…" | "✗ Could not fetch github.com/michaeltheologitis/deep-reasoning: check that this computer is online, then restart. Nothing was installed." [read; run: `test_bootstrap.py`] | `desktop/bootstrap.sh:14` | deep-reasoning is public (`3c923aa`) |
 | 8 | §3 item 2: users need read access to both repositories. §2.2: "Releases are assets of a private GitHub repository". §7.5: CI reads deep-reasoning through an `insteadOf` line | deep-reasoning is public [run: `gh api`]: only deep_reasoner_beta needs read access, release assets are public downloads, and no workflow adds an `insteadOf` for deep-reasoning (the one for DeanLight stays) [read] | `.github/workflows/` | Michael: "public downloads are fine" |
-| 9 | §1.3 (D5 owns "the README's install section"), §2.3, §3 item 12, §4.2.6 (`xattr -dr com.apple.quarantine …`), §4.8.3 (uninstall) | **No README exists** at `3c923aa`; the only one is `docs/research/…/README.md` [run: `git ls-tree`]. The macOS quarantine command, the uninstall steps, the `PATH` hint and §2.2 in short are written nowhere a user reads | — | none recorded; the implementer's report does not mention it |
+| 9 | §1.3 (D5 owns "the README's install section"), §2.3, §3 item 12, §4.2.6 (`xattr -dr com.apple.quarantine …`), §4.8.3 (uninstall) | **No README exists** at `3c923aa`; the only one is `docs/research/…/README.md` [run: `git ls-tree`]. The macOS quarantine command, the uninstall steps, the `PATH` hint and §2.2 in short are written nowhere a user reads | — | none recorded |
 | 10 | §7.5: four jobs, `pins`, `desktop-e2e`, `bridge-replay`, `canvas-replay` | **Six.** `has-d5` first: the others run only when `desktop/pins.toml` exists, so `main`'s copy skips instead of failing. `library-app` runs §7.2's `crossrepo` test of the staged App as a job of its own. D4's forwarding test runs inside `bridge-replay` (§8.7 said "beside"). `desktop-release.yml` also starts with `has-d5` [read; CI] | `.github/workflows/cross-repo.yml` | `57c019d` |
-| 11 | Decision M: `main` carries copies of the on-demand workflows | `main`'s copies (`f1ca641`) are older than `v1-desktop`'s. Its `desktop-release.yml` builds `mac-universal`, which `build.py` at `3c923aa` rejects, and adds the deep-reasoning `insteadOf`; its `cross-repo.yml` has only `has-d5`, `library-app` and `bridge-replay`. Dispatched runs, and the nightly (`--ref v1-desktop`), use `v1-desktop`'s files; a tag uses the tagged commit's [run: `git diff`; read] | `main`'s `.github/workflows/` | #34 and #35 placed them before the later commits. The implementer reported only `desktop-release.yml` |
+| 11 | Decision M: `main` carries copies of the on-demand workflows | `main`'s copies (`f1ca641`) are older than `v1-desktop`'s. Its `desktop-release.yml` builds `mac-universal`, which `build.py` at `3c923aa` rejects, and adds the deep-reasoning `insteadOf`; its `cross-repo.yml` has only `has-d5`, `library-app` and `bridge-replay`. No run uses them while `main` lacks D5's code: there `has-d5` skips every job. Dispatched runs, and the nightly (`--ref v1-desktop`), use `v1-desktop`'s files, and a tag the tagged commit's [run: `git diff`; read] | `main`'s `.github/workflows/` | #34 and #35 placed them before the later commits |
 | 12 | §7.5's seven steps and the final flow | **17 tests sharing one launch** (§5.2). Where they differ: the first conversation is onboarding's hello, not a dismissed onboarding; two tests the design does not list check that no consent dialog shows (a fixed 5 s wait) and that no consent is recorded and Settings has no analytics switch; the Library config is written by the test (there is no `e12/main.yaml`); Stop's plan spawns the done sibling first and holds the grandchild's model call until `dr-acp` logs `stop.accepted`; costs are compared with each sub-agent's cost in the run log at its end; the next conversation asks a plain question after the slash menu offers the command (the design asks for the offer and the recorded version, which hold); the cookie is read with `Storage.getCookies`; the MCP server is added through `POST /api/settings/mcp/echo` and the Tools tab reopened; the quit test asks that no process's command line names the fresh HOME [read; CI] | `tests/desktop/test_e12.py` | `c538fb3`, `1a90887`, `d39be70`, `8ce99b2`; Canvas `dr-3` (§1.2); TASK-38 |
 | 13 | §7.6: the macOS job launches the app once and waits for `backend ready` | One launch, two tests: `app_ready(…, "installed")` in the log, the backend `ready`, the app quits with 0; and, on macOS, `lipo -archs` of the launched executable and of the bundled uv is `arm64` [read; CI] | `tests/desktop/test_launch_smoke.py` | `bd6e170` |
 | 14 | §4.2.2's checks; §5.8 | Check 2 gives two sentences (the wired repository, the wired commit). Check 5 looks at `paths.stateDir` and `setup.command`, not all of `setup` (the fork sets `setup.phases`). Check 8 clones the fork's `deep-reasoning` branch bare and blobless and asks `git merge-base --is-ancestor <commit> refs/heads/deep-reasoning`, not `FETCH_HEAD` (see §1.3 #1). `build()` copies the artifacts to `<repo>/dist/` [read] | `build.py:222-288, 326-357, 522-527` | none recorded |
@@ -53,16 +53,18 @@ history or the runs.
 
 Moved by collaborators, or by D5's own progress [read, except where marked]:
 - **The header's "Expected", §1.2's skeleton and final split, §8.6, §9's rows W1, C1, C2 and D4, §11 items 1, 2, 13
-  and 17:** all of it landed, and both parts are built and run (§5). The Canvas pin moved `dr-1` `fc87687` (`2f55b18`)
-  → `dr-2` `9d050ab` (`5fc05eb`: C1, C2 and #27) → `dr-3` `4355a36` (`f32e152`: #28, #29). §4.2.1's placeholders are
-  filled: Canvas `4355a36` tagged `dr-3`; the `.deb` maintainer is Michael's git identity (his ruling).
-- **§8.4** cites C1 as Canvas PR #4 and C2 as PR #3. Both are closed unmerged; C1 merged as #13–#19 and C2 as #20–#26
-  [run: `gh api`, `git log`].
+  and 17:** all of it landed, and both parts are built and run (§5). The Canvas pin moved `dr-1` `fc87687`
+  (`2f55b18`) → `dr-2` `9d050ab` (`5fc05eb`: C1, C2 and #27) → `dr-3` `4355a36` (`f32e152`: #28, #29). §4.2.1's
+  placeholders are filled: Canvas `4355a36` tagged `dr-3`; the `.deb` maintainer is Michael's git identity (his
+  ruling).
+- **§8.4** cites C1 as Canvas PR #4 and C2 as PR #3. Both are closed unmerged; C1 merged as #13–#19 and C2 as
+  #20–#26 [run: `gh api`, `git log`].
 - **§11 item 10** (E12 dismisses onboarding's dialogs). `dr-3`'s #28 shows no consent dialog, no analytics switch, and
   records no consent in a build that cannot report (`isTelemetryAvailable()`: a PostHog key and no
   `VITE_DO_NOT_TRACK=1`). #29 makes onboarding's agent step offer the active profile first and chosen; keeping it
   writes nothing and skips the model setup. E12 goes through onboarding and pins both [CI].
-- **Decision F's reasoning** assumed nothing on first launch moves the default agent. Onboarding no longer does: E12
+- **Decision F** activates the profile once and never again. At `dr-2` onboarding preselected another agent on a
+  first launch (`c538fb3`'s message), which setup would not undo; with #29 onboarding keeps `deep_reasoner`, and E12
   asserts that the profiles and `active_agent_profile_id` are the same after onboarding [CI].
 - **Decision K's consequences** now include no consent prompt and no analytics switch (#28), besides no reports.
 - **§7.4**'s "dispatched again on `v1-desktop` with `sdk_ref` `dr-2`": done, run 37241495293 (§5.2).
@@ -96,9 +98,10 @@ one root `~/.deep-reasoning`, DR_HOME the root or `/var/tmp/deep-reasoning-<uid>
 idempotent cheap path; the profile's four owned fields and the `--home` pair, activated once; the Library App staged
 from three of D3's files and a generated one-script artifact, approved and started on every launch; the key proxy on
 its own thread in `dr-acp`'s front, on by default; telemetry off at build time; the wrapper electron-builder config;
-the ingress left to C3; texts as functions; `run_logged`. Every sentence in §6's two tables is the code's, verbatim
-[run: each compared with the code]; the bootstrap's and the new ones are §1.1 #7 and #15. The wrapper config is §4.2.4's
-byte for byte, and the bootstrap §4.3.1's but for its fetch line [run: `diff`].
+the ingress left to C3; texts as functions; `run_logged`. Every sentence in §6's two tables is the code's,
+verbatim [run: each compared with the code]; the bootstrap's and the new ones are §1.1 #7 and #15. The wrapper config
+is §4.2.4's byte for byte, and the bootstrap §4.3.1's but for its fetch line [run: `diff`]. Every test the design's
+§7 names exists, but for two of the bootstrap's, renamed with §1.1 #7 [run].
 
 ---
 
@@ -133,10 +136,16 @@ the app's launcher (C3), every launch
 
 `build.py` is standard library only. `check_pins` takes its readers as arguments (`ls_remote`, `read_sdk_file`,
 `is_on_branch`), so the tests run every check without a network; `build()` passes git-backed ones. Of the fork's
-files it changes only `config/defaults.json`, in a detached checkout under `--work`, and it commits to neither fork. The setup command
-it embeds is `["sh", "-c", <bootstrap.sh>, "dr-app-bootstrap", "git+…/deep-reasoning@<HEAD>#subdirectory=packages/
-dr-app", "https://github.com/michaeltheologitis/deep-reasoning", <HEAD>]`; the repository URL is a constant
-(`DEEP_REASONING`), the commit the checkout's `HEAD`. `pins.toml` holds the two forks' repositories, commits and tags
+files it changes only `config/defaults.json`, in a detached checkout under `--work`, and it commits to neither
+fork. The setup command it embeds is
+
+```text
+["sh", "-c", <bootstrap.sh>, "dr-app-bootstrap",
+ "git+https://github.com/michaeltheologitis/deep-reasoning@<HEAD>#subdirectory=packages/dr-app",
+ "https://github.com/michaeltheologitis/deep-reasoning", <HEAD>]
+```
+
+with the repository URL a constant (`DEEP_REASONING`) and the commit the checkout's `HEAD`. `pins.toml` holds the two forks' repositories, commits and tags
 and the `[app]` values; deep_reasoner's pin is a line of `runtime.lock.txt` [read].
 
 ### 2.2 Setup: `dr-app`
@@ -168,8 +177,8 @@ request.
 | `nightly.yml` (`main`) | `17 6 * * *` | `gh workflow run cross-repo.yml --ref v1-desktop` |
 | `fork-live.yml` (on `main` since `633a00d`, before this branch) | `workflow_dispatch` | S1's and S2's live files against `dr-acp` from the dispatched ref |
 
-Every job that installs the app reads deep_reasoner_beta through `DEEP_REASONER_TOKEN` in an `insteadOf` line; no job
-calls a model but `fork-live.yml` [read].
+Every job that installs deep_reasoner reads deep_reasoner_beta through `DEEP_REASONER_TOKEN` in an `insteadOf` line;
+no job calls a model but `fork-live.yml` [read].
 
 ### 2.5 Which tests carry what
 
@@ -273,7 +282,7 @@ E12 (`tests/desktop/test_e12.py`) is where most of D5's test lines are. Its modu
 once with a fresh HOME under `/tmp` (short enough for §1.1 #4), the runner's git config with an empty credential
 helper, and a DevTools port; Playwright attaches over CDP; `FakeOpenAI` runs in the test process with a scripted plan
 per question. The tests run in file order and depend on it: the Library imported by the onboarding test serves every
-later conversation. Two holds make timing deterministic: Stop's grandchild model call waits on an event set once the
+later conversation. Two waits are deliberate: Stop's grandchild model call waits on an event set once the
 run log shows `stop.accepted`, and the header-panel test waits out the bridge's five-minute session plus 20 s [read].
 `tests/desktop/app.py` holds the launch harness (fresh HOME, the user's environment without the runner's uv and venv
 variables, a log tail on a failed wait) and `e12/subagents.py` the Python copies of C1's two DOM reads.
@@ -301,7 +310,7 @@ No run here called a model. The live tier's model calls are the Implementer's ru
 **E10, keys and the cap** (`tests/acp/test_e10_keys.py`, default suite, Linux only; reproduce: `uv run pytest
 tests/acp/test_e10_keys.py`) [run; CI]. Four tests through a real `dr-acp` and `FakeOpenAI`:
 - **#1:** `OPENAI_API_KEY`, a copy under `MY_KEY_COPY`, `ANTHROPIC_API_KEY` and four agent-server secrets in
-  `dr-acp`'s environment; a cell prints `os.environ`, `/proc/self/environ` and `env`'s output. None of the seven
+  `dr-acp`'s environment; a cell prints `os.environ`, `/proc/self/environ` and `env`'s output. None of the secret
   values, nor their base64, is in the worker's `/proc/<pid>/environ`, the cell's output, the client's updates, or any
   file under the home (run log, `worker.log`, `dr-acp`'s stderr log). The worker's `OPENAI_API_KEY` is a token of at
   least 40 characters, which the cell did print. Every call the fake received, the main client's and the `rag`
@@ -407,8 +416,8 @@ S1's `test_live_agent_tree_is_well_formed` and `test_live_agent_stops_one_subage
 5. **TASK-40:** C1's replay spec reads the DOM once and fails about one nightly run in five; the fix is in the Canvas
    fork.
 6. **Check 8 on a reused `--work`** (§1.3 #1): local `build.py` runs can refuse a valid pin; CI cannot.
-7. **`main`'s workflow copies are behind `v1-desktop`'s** (§1.1 #11) until D5's stack merges; a tag pushed from
-   `main` before then would run the old `desktop-release.yml`, whose `mac-universal` target no longer exists.
+7. **`main`'s workflow copies are behind `v1-desktop`'s** (§1.1 #11). Nothing runs them while `main` lacks D5's code;
+   D5's PR stack replaces them.
 
 ## 7 · What I could not verify
 
