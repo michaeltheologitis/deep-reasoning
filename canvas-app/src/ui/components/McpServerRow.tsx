@@ -85,15 +85,11 @@ export function McpServerRow(props: McpServerRowProps) {
   /** A first tick sends Canvas's settings; later ones resend the stored snapshot. */
   async function grantTo(grantedIn: string[]) {
     setTicking(grantedIn);
-    const sent = await send(
-      row.grant
-        ? {
-            ...snapshotOf(row.server, row.grant),
-            granted_in: grantedIn,
-            base_version: row.grant.version,
-          }
-        : { ...snapshot, granted_in: grantedIn, base_version: 0 },
-    );
+    const sent = await send({
+      ...(row.grant ? snapshotOf(row.server, row.grant) : snapshot),
+      granted_in: grantedIn,
+      base_version: row.grant?.version ?? 0,
+    });
     if (!sent) setTicking(null);
   }
 
