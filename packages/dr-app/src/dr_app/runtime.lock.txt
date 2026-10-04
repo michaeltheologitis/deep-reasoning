@@ -27,7 +27,8 @@ colorama==0.4.6 ; (os_name == 'nt' and platform_machine != 'x86_64') or (os_name
 coloredlogs==15.0.1 ; platform_machine == 'x86_64' and sys_platform == 'darwin'
 conflit==0.1.4
 coolname==5.0.0
-cryptography==50.0.2
+cryptography==48.0.1 ; platform_machine == 'x86_64' and sys_platform == 'darwin'
+cryptography==50.0.2 ; platform_machine != 'x86_64' or sys_platform != 'darwin'
 cyclopts==5.1.1
 daytona-analytics-api-client==0.220.0
 daytona-analytics-api-client-async==0.220.0

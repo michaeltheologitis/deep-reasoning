@@ -35,10 +35,12 @@ dev = [
 ]
 
 [tool.uv]
-# onnxruntime (chromadb's, through deep_reasoner) ships no Intel macOS wheel after 1.23.2,
-# so the runtime an Intel Mac installs keeps that release (D5 §4.4.3, decision C).
+# The runtime an Intel Mac installs keeps the last releases with an Intel macOS wheel:
+# onnxruntime (chromadb's, through deep_reasoner) 1.23.2 and cryptography 48.0.1; the app
+# builds nothing on the user's machine (D5 §4.4.3, decision C).
 constraint-dependencies = [
     "onnxruntime<1.24; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "cryptography<49; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [tool.uv.workspace]

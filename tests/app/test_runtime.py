@@ -223,8 +223,9 @@ OLDEST_MACOS = "14.0"
 def test_the_runtime_lock_installs_on_every_platform_the_app_ships_for(
     tmp_path, platform
 ):
-    """A dry run of the lock's registry packages for the platform, which fails on a
-    package with neither a wheel nor a source there. It reads PyPI's metadata."""
+    """A dry run of the lock's registry packages for the platform, wheels only: the app
+    builds nothing on the user's machine, which has no compiler to build with (an Intel
+    Mac and cryptography 50, which needs Rust). It reads PyPI's metadata."""
     registry_only = tmp_path / "lock.txt"
     registry_only.write_text(
         "".join(
@@ -235,7 +236,15 @@ def test_the_runtime_lock_installs_on_every_platform_the_app_ships_for(
     )
     dry_run = subprocess.run(
         [
-            *("uv", "pip", "install", "--dry-run", "--no-deps"),
+            *(
+                "uv",
+                "pip",
+                "install",
+                "--dry-run",
+                "--no-deps",
+                "--only-binary",
+                ":all:",
+            ),
             *("--python-platform", platform, "--python-version", "3.12"),
             *("--target", str(tmp_path / "target"), "-r", str(registry_only)),
         ],
