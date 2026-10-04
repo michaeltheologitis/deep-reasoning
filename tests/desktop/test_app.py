@@ -8,7 +8,12 @@ import time
 
 import pytest
 
-from tests.desktop.app import LOG_TAIL_LINES, LaunchedApp
+from tests.desktop.app import (
+    LOG_TAIL_LINES,
+    LaunchedApp,
+    fresh_home,
+    user_environment,
+)
 
 STARTUP_FAILED = (
     "[desktop] Startup failed: SetupCommandError: setup before-start exited 11"
@@ -49,3 +54,26 @@ def test_a_failed_wait_says_why_with_the_logs_last_lines(tmp_path, last, exits, 
     assert message.endswith("\n".join(lines[-LOG_TAIL_LINES:]))
     assert "line 4\n" not in message
     assert time.monotonic() - started < 5
+
+
+def test_git_under_the_fresh_home_stores_no_credentials_whatever_the_systems_helper(
+    tmp_path,
+):
+    """The runner's system git config names a credential helper (osxkeychain on the
+    macOS runner); under a HOME with no keychain its store waits on a dialog no one
+    answers, so a fetch that authenticated never ends (run 37230513867)."""
+    stored = tmp_path / "stored"
+    system = tmp_path / "gitconfig"
+    system.write_text(f'[credential]\n\thelper = "!f() {{ cat > {stored}; }}; f"\n')
+    credential = "protocol=https\nhost=github.com\nusername=x\npassword=token\n\n"
+    with fresh_home() as home:
+        env = user_environment(home) | {"GIT_CONFIG_SYSTEM": str(system)}
+        subprocess.run(
+            ["git", "credential", "approve"],
+            input=credential,
+            env=env,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+    assert not stored.exists()

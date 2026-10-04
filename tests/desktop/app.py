@@ -34,6 +34,8 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
 LOG_TAIL_LINES = 40  # of the app's log, in a failed wait's message
+# An empty helper resets git's list of credential helpers, the system's included.
+NO_CREDENTIAL_HELPER = "\n[credential]\n\thelper =\n"
 # The test runner's own uv and venv settings, which a user's environment does not hold.
 RUNNER_ONLY = (
     "VIRTUAL_ENV",
@@ -59,13 +61,17 @@ def free_port() -> int:
 def fresh_home() -> Iterator[Path]:
     """An empty HOME, short enough for deep_reasoner's Claude sockets, holding the
     runner's git config: the insteadOf lines that let setup read the private
-    repositories, as a user's own credentials would."""
+    repositories, as a user's own credentials would. Its git keeps no credentials:
+    a system helper (the macOS runner's osxkeychain) has no keychain under this
+    HOME, and its store waits on a dialog no one answers."""
     with tempfile.TemporaryDirectory(prefix="e12-", dir="/tmp") as short:
         home = Path(short) / "home"
         home.mkdir()
         gitconfig = Path.home() / ".gitconfig"
         if gitconfig.exists():
             shutil.copy(gitconfig, home / ".gitconfig")
+        with (home / ".gitconfig").open("a") as config:
+            config.write(NO_CREDENTIAL_HELPER)
         yield home
 
 
