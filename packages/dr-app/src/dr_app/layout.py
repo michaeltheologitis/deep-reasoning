@@ -27,6 +27,7 @@ SOCKET_PATH_MAX: Final = {"Linux": 107, "Darwin": 103}
 # sub-agent it spawns serves from children/<n> below it; room for one such level.
 DEEPEST_SOCKET: Final = "runs/20261004-173501-a1b2c3/children/1000/repl.sock"
 EXIT_HOME: Final = 13
+EXIT_STATE: Final = 14  # setup.json from a newer app
 SETUP_STATE_VERSION: Final = 1
 
 
@@ -216,12 +217,15 @@ class SetupState:
 
     @classmethod
     def load(cls, path: Path) -> "SetupState":
-        """A fresh state when the file is absent; raises ValueError on v != 1."""
+        """A fresh state when the file is absent; raises SetupError(14,
+        texts.state_from_a_newer_app(...)) on v != 1."""
         if not path.exists():
             return cls(SETUP_STATE_VERSION, None, None, None, None)
         raw = json.loads(path.read_text())
         if raw.get("v") != SETUP_STATE_VERSION:
-            raise ValueError(f"{path}: unknown version {raw.get('v')!r}")
+            raise SetupError(
+                EXIT_STATE, texts.state_from_a_newer_app(str(path), str(raw.get("v")))
+            )
 
         def record[T](kind: type[T], key: str) -> T | None:
             return kind(**raw[key]) if raw.get(key) else None
