@@ -456,6 +456,12 @@ def row_titled(page: Page, title: str) -> Locator:
     )
 
 
+def expanded_rows(page: Page) -> int:
+    """How many sub-agent rows show, every block and row expanded."""
+    expand_all_subagents(page)
+    return page.get_by_test_id("subagent-row").count()
+
+
 def test_sub_agents_nest_under_the_cells_that_spawned_them_as_the_run_log_records(
     app, browser
 ):
@@ -476,23 +482,22 @@ def test_sub_agents_nest_under_the_cells_that_spawned_them_as_the_run_log_record
     expect(rows).to_have_count(3)
     for row in rows.all():
         expect(row).to_have_attribute("data-subagent-status", "done")
-        expect(row.get_by_test_id("subagent-status")).to_be_visible()
+        expect(row.get_by_test_id("subagent-status").first).to_have_text("done")
 
 
 def test_each_sub_agent_shows_its_latest_cost_once_the_setting_is_on(app, browser):
     page = window(browser)
     conversation = page.url
     _, costs = recorded_subagent_tree(app.data, run_asked(app, TREE_QUESTION))
-    expand_all_subagents(page)
-    expect(page.get_by_test_id("subagent-row")).to_have_count(3)
+    assert expanded_rows(page) == 3
     expect(page.get_by_test_id("subagent-cost")).to_have_count(0)
     page.goto(CANVAS_URL + "settings/app")
     switch = page.get_by_test_id("show-subagent-costs-switch")
     page.locator("label", has=switch).click()
     expect(switch).to_be_checked()
     page.goto(conversation)
-    expect(page.get_by_test_id("subagent-row")).to_have_count(3)
-    expand_all_subagents(page)
+    expect(page.get_by_test_id("subagent-block-toggle")).to_be_visible()
+    eventually(lambda: expanded_rows(page) == 3)
     for session, cost in costs.items():
         row = page.locator(
             f'[data-testid="subagent-row"][data-acp-session-id="{session}"]'
@@ -600,7 +605,7 @@ def test_the_next_conversation_in_the_namespace_offers_the_decomposition_and_use
     command = f"/{slug(CREATED)}"
     eventually(lambda: command in slash_commands(page))
     before, asked = run_ids(app), len(fake.calls)
-    start_conversation(page, f"{command} {NEXT_TASK}", NAMESPACE)
+    start_conversation(page, NEXT_TASK, NAMESPACE)
     expect(answer(page, NEXT_ANSWER)).to_be_visible()
     start = run_start(app, new_run(app, before))
     assert start.namespace == NAMESPACE
