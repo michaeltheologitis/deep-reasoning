@@ -371,3 +371,41 @@ fieldset.choices input,
 .add {
   margin: 6px 0;
 }
+
+/* D4: the Tools tab. */
+
+.tools h2 {
+  font-size: 15px;
+  margin: 4px 0;
+}
+
+.tools h3 {
+  font-size: 13px;
+  margin: 14px 0 4px;
+  color: var(--oh-text-secondary);
+}
+
+.field > .label {
+  display: block;
+  color: var(--oh-text-secondary);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.python-editor {
+  min-height: 8em;
+}
+
+.check pre,
+.seen pre {
+  background: var(--oh-surface-deep);
+  border-radius: var(--oh-field-radius);
+  padding: 4px 8px;
+  margin: 4px 0;
+}
+
+.help summary,
+.seen summary {
+  cursor: pointer;
+  color: var(--oh-text-secondary);
+}

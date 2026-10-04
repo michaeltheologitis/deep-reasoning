@@ -128,3 +128,6 @@ def test_the_committed_build_is_complete():
     for reference in referenced:
         assert reference.startswith("./assets/"), reference
         assert (UI_ROOT / reference).is_file(), reference
+    # D4: the tool editor's CodeMirror, loaded by app.js when the editor opens.
+    assert "./editor.js" in (UI_ROOT / "assets" / "app.js").read_text()
+    assert (UI_ROOT / "assets" / "editor.js").is_file()
