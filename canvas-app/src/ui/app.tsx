@@ -1,7 +1,6 @@
 // The frame's app: the safety notice, the tab (with its own tab row on the standalone page), the
 // Library's problems, the /health poll that refetches on a new revision, and the backend-loss footer.
 
-import type { FunctionComponent } from "preact";
 import { useEffect, useState } from "preact/hooks";
 
 import {
@@ -16,14 +15,16 @@ import { ProblemsBanner, SafetyNotice } from "./components/notices";
 import { acknowledgeSafety, safetyAcknowledged } from "./drafts";
 import { BrowseTab } from "./tabs/browse";
 import { CreateTab } from "./tabs/create";
+import { NamespacesTab } from "./tabs/namespaces";
 import type { TabProps } from "./tabs/props";
 import { ToolsTab } from "./tabs/tools";
 import { BACKEND_LOST, RELOAD, RESTART, SESSION_ENDED } from "./texts";
 import type { Health } from "./types";
 
-const TABS: Partial<Record<TabId, FunctionComponent<TabProps>>> = {
+const TABS = {
   browse: BrowseTab,
   create: CreateTab,
+  namespaces: NamespacesTab,
   tools: ToolsTab,
 };
 const SESSION_STATUS = 401;
@@ -122,7 +123,7 @@ export function App(props: { params: FrameParams }) {
       )}
       {health && <ProblemsBanner rev={health.rev} onBackendLost={setLost} />}
       <main>
-        {tabProps && Tab && <Tab key={`${tab}:${focus ?? ""}`} {...tabProps} />}
+        {tabProps && <Tab key={`${tab}:${focus ?? ""}`} {...tabProps} />}
       </main>
       {lost && <BackendLost status={lost.status} params={params} />}
     </div>

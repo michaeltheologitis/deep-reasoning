@@ -42,7 +42,20 @@ export const YAML_NOT_DECOMPOSITION =
   "To edit it as cards, the YAML must be a mapping with a name and a list of messages, each with a role and a content.";
 export const DELETE_CONFIRM = (name: string) =>
   `Delete '${name}'? It is removed from every namespace; its versions stay in the Library's history.`;
+export const DELETE_NAMESPACE_CONFIRM = (name: string) =>
+  `Delete namespace '${name}'? Its decompositions stay in the Library.`;
+export const INHERITED = (source: string) => `Inherited from ${source}`;
 export const INHERITED_ROW = (source: string) => `inherited from ${source}`;
+export const OVERRIDDEN = "Overridden here";
+export const SET_HERE = "Set here";
+export const GRANTED_HERE = "Granted here";
+export const ATTACHED_HERE = "Attached here";
+export const FROM_PROFILE = "From the run settings";
+export const NOT_SET = "Not set: deep_reasoner's default";
+export const ANY_NAMESPACE = "Any namespace";
+export const UNDEFINED_TOOL = "not a tool in the Library";
+export const DEFAULT_BADGE = "New conversations start here";
+export const MAKE_DEFAULT = "Start new conversations here";
 export const EFFECTIVE_FAILED = (message: string) =>
   `Inherited decompositions cannot be shown: ${message} Showing each decomposition where it is attached.`;
 export const PROBLEMS = (n: number) =>
@@ -74,6 +87,16 @@ export const LABELS = {
   delete: "Delete",
   attachedTo: "Attached to",
   alsoUsedIn: (namespace: string) => `also used in ${namespace} (inherited)`,
+  override: "Override",
+  edit: "Edit",
+  reset: "Reset",
+  addVariable: "Add variable",
+  addNamespace: "Add namespace",
+  deleteNamespace: "Delete namespace",
+  runSettings: "Run settings",
+  addSetting: "Add setting",
+  attach: "Attach…",
+  detach: "Detach",
   remove: "✕",
   removeTurn: (turn: number) => `Remove turn ${turn}`,
   back: "← Decompositions",
