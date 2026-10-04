@@ -152,13 +152,14 @@ class _ValidateBody(BaseModel):
     source: str | None = None
 
 
-def _parse[T: BaseModel](model: type[T], body: bytes) -> T:
+def _parse[T: BaseModel](
+    model: type[T], body: bytes, sentence: str = texts.BAD_REQUEST
+) -> T:
+    """The body as model; a body it cannot read is 400, sentence and pydantic's reason."""
     try:
         return model.model_validate_json(body)
     except ValidationError as exc:
-        raise LibraryBadRequest(
-            f"{texts.BAD_REQUEST} {exc.errors()[0]['msg']}"
-        ) from exc
+        raise LibraryBadRequest(f"{sentence} {exc.errors()[0]['msg']}") from exc
 
 
 def _base_version(request: Request) -> int | None:
@@ -200,7 +201,7 @@ def create_app(
     *,
     same_user: Callable[[tuple[str, int], tuple[str, int]], bool] | None = None,
 ) -> Starlette:
-    """The routes of §6, then the panel's /ui/ (D3 §4.5), then D4's tool routes
+    """The routes of §6, then the panel's /ui/ (D3 §4.5), then D4's tool and MCP routes
     (D4 §7.2); a tool's PUT passes D4's Check first (D4 §3.5). same_user(client, server) is
     asked for every request; a False is 403 FORBIDDEN_PEER. Default: same_user_peer on
     Linux, no check elsewhere."""

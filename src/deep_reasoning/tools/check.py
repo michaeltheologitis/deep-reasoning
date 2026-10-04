@@ -28,9 +28,13 @@ from deep_reasoning.library import shapes
 from deep_reasoning.library.library import Library
 from deep_reasoning.library.records import (
     FieldError,
+    LibraryBadRequest,
     LibraryError,
+    LibraryRefused,
     LibraryValidationError,
 )
+from deep_reasoning.mcp.grants import is_mcp_tool
+from deep_reasoning.mcp.wire import MCP_FACTORY
 from deep_reasoning.tools import texts
 
 Outcome = Literal[
@@ -132,6 +136,8 @@ def check_tool(
     if errors := tool_name_errors(name):
         return _report("invalid", errors[0].msg)
     factory = shaped.data.get("factory", name)
+    if factory == MCP_FACTORY:
+        return _report("invalid", texts.mcp_via_grant(name))
     if source is None:
         if factory == "llm" or factory in TOOL_BUILDERS:
             return _report("builtin", texts.builtin(factory))
@@ -343,14 +349,18 @@ def require_check(
     *,
     accept_failure: bool,
 ) -> None:
-    """§3.5: returns when the PUT may proceed; raises ToolCheckFailed. YAML D2 refuses
-    goes on to D2's own 422, and a change of grants alone (the head's block and source)
-    runs no Check."""
+    """§3.5: returns when the PUT may proceed; raises ToolCheckFailed, LibraryBadRequest
+    or LibraryRefused. YAML D2 refuses goes on to D2's own 422, and a change of grants
+    alone (the head's block and source) runs no Check."""
     try:
         shaped = shapes.validate_tool(name, yaml_text, source)
     except LibraryValidationError:
         return
+    if shaped.data.get("factory", name) == MCP_FACTORY:
+        raise LibraryBadRequest(texts.mcp_via_grant(name))
     head = library.state().tools.get(name)
+    if head is not None and is_mcp_tool(head):
+        raise LibraryRefused(texts.mcp_via_grant(name))
     if head is not None and (head.yaml, head.source) == (shaped.yaml, source):
         return
     report = check_tool(name, yaml_text, source)

@@ -285,6 +285,14 @@ def test_an_unknown_built_in_factory_is_refused_in_deep_reasoners_words(no_proce
     assert report.message == texts.unknown_factory("ragg", "notes", TOOL_BUILDERS)
 
 
+def test_an_mcp_grant_is_not_checked_as_a_tool_of_your_own(no_process):
+    report = check_tool("github", "factory: mcp_server\nserver: github\n", "# shim")
+    assert (report.outcome, report.message) == (
+        "invalid",
+        texts.mcp_via_grant("github"),
+    )
+
+
 def test_a_factory_raising_can_be_saved_anyway():
     report = check_tool("word_count", "factory: make", source("env_at_build"))
     assert (report.ok, report.outcome, report.can_save, report.can_save_anyway) == (

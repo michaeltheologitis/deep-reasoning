@@ -77,3 +77,24 @@ def builtin(factory: str) -> str:
 
 def check_failed(name: str) -> str:
     return f"'{name}' did not pass Check, so it was not saved."
+
+
+def mcp_via_grant(name: str) -> str:
+    return f"'{name}' is an MCP server's grant: change it in the MCP servers list."
+
+
+def mcp_server_taken(server: str, other: str) -> str:
+    return f"MCP server '{server}' is already granted as '{other}'."
+
+
+def mcp_name_taken(name: str) -> str:
+    """The frame's MCP_NAME_TAKEN (§9.3), for a grant over a tool of your own."""
+    return f"A tool named '{name}' exists: choose another name."
+
+
+MCP_NEEDS_COMMAND = "A stdio MCP server needs a command."
+MCP_NEEDS_URL = "An HTTP or SSE MCP server needs a URL."
+MCP_BAD_REQUEST = (
+    "The body must be a JSON object with 'server', 'transport', 'granted_in' and "
+    "'base_version', and may have 'command', 'args', 'url', 'env' and 'headers'."
+)
