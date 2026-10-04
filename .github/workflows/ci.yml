@@ -28,10 +28,13 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest
 
-  # D3's panel: the TypeScript checks and unit tests.
+  # D3's panel: the TypeScript checks and unit tests, then the browser tests against
+  # a real dr-library serve (about 4 minutes).
   canvas-app:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,6 +42,8 @@ jobs:
           node-version-file: canvas-app/.nvmrc
           cache: npm
           cache-dependency-path: canvas-app/package-lock.json
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: npm ci
         working-directory: canvas-app
       - run: npm run typecheck
@@ -47,3 +52,26 @@ jobs:
         working-directory: canvas-app
       - run: npm test
         working-directory: canvas-app
+      - run: npm run build
+        working-directory: canvas-app
+      - name: The committed build is what a fresh build gives
+        run: |
+          changed="$(git status --porcelain -- src/deep_reasoning/canvas_app)"
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            echo "::error::src/deep_reasoning/canvas_app differs from a fresh build: commit the build artifact's files"
+            exit 1
+          fi
+      - name: The fresh build, to commit
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canvas-app-build
+          path: |
+            src/deep_reasoning/canvas_app/ui
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - run: uv run playwright install --with-deps chromium
+      - run: uv run pytest -m browser tests/canvas_app -v -rA

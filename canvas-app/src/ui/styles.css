@@ -1,0 +1,143 @@
+/* The frame in Canvas's look: every colour, radius and font is one of Canvas's tokens (theme.ts). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--oh-surface);
+  color: var(--oh-foreground);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--oh-surface-raised);
+  border: 1px solid var(--oh-border);
+  border-radius: var(--oh-field-radius);
+  padding: 4px 10px;
+  margin: 2px 4px 2px 0;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--oh-interactive-hover);
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--oh-focus);
+  outline-offset: 1px;
+}
+
+button.primary {
+  background: var(--oh-accent);
+  border-color: var(--oh-accent);
+  color: var(--oh-accent-foreground);
+}
+
+.app {
+  padding: 8px 12px 16px;
+}
+
+.tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--oh-border-subtle);
+  margin-bottom: 8px;
+}
+
+.tab-row button {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--oh-muted);
+}
+
+.tab-row button[aria-selected="true"] {
+  color: var(--oh-foreground);
+  border-bottom: 2px solid var(--oh-accent);
+}
+
+.banner {
+  border: 1px solid var(--oh-border);
+  border-radius: var(--oh-radius);
+  padding: 6px 10px;
+  margin: 6px 0;
+  white-space: pre-wrap;
+}
+
+.banner.error {
+  border-color: var(--oh-danger);
+}
+
+.banner.warning {
+  border-color: var(--oh-warning);
+}
+
+.banner.success {
+  border-color: var(--oh-success);
+}
+
+.notice {
+  max-width: 560px;
+  margin: 24px auto;
+  padding: 16px;
+  border: 1px solid var(--oh-warning);
+  border-radius: var(--oh-radius);
+  background: var(--oh-surface-raised);
+}
+
+.lost {
+  position: sticky;
+  bottom: 0;
+  background: var(--oh-surface-raised);
+}
+
+.note,
+.source,
+.version,
+.slash,
+.use-when,
+.inherited {
+  color: var(--oh-muted);
+}
+
+.warning {
+  color: var(--oh-warning);
+}
+
+.rows,
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(8em, 1fr) auto minmax(8em, 1fr) minmax(8em, 2fr);
+  gap: 2px 10px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: var(--oh-radius);
+  background: none;
+  padding: 4px 6px;
+  margin: 0;
+}
