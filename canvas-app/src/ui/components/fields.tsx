@@ -1,10 +1,11 @@
 // Shared fields: code and text areas, value editors, D2's field errors, confirmations, banners.
 
 import type { ComponentChildren } from "preact";
-import { useId } from "preact/hooks";
+import { useId, useState } from "preact/hooks";
 
-import { CANCEL } from "../texts";
+import { CANCEL, LABELS, YAML_SYNTAX } from "../texts";
 import type { FieldError } from "../types";
+import { YAMLParseError, parseYaml, stringifyYaml } from "../yaml";
 
 export interface CodeFieldProps {
   label: string;
@@ -101,6 +102,71 @@ export function ConfirmRow(props: {
       <button
         type="button"
         data-testid="dr-confirm-no"
+        onClick={props.onCancel}
+      >
+        {CANCEL}
+      </button>
+    </div>
+  );
+}
+
+export interface ValueEditorProps {
+  label: string;
+  /** undefined starts empty. */
+  value: unknown;
+  mode: "yaml" | "text";
+  onSave: (value: unknown) => void;
+  onCancel: () => void;
+  testId?: string;
+}
+
+function initialText(value: unknown, mode: ValueEditorProps["mode"]): string {
+  if (value === undefined) return "";
+  if (mode === "text") return value === null ? "" : String(value);
+  return stringifyYaml(value);
+}
+
+/** A value as YAML 1.1 text (what the user types means what it would in a dr config), or plain text. */
+export function ValueEditor(props: ValueEditorProps) {
+  const [text, setText] = useState(() => initialText(props.value, props.mode));
+  const [error, setError] = useState<string | null>(null);
+  const save = () => {
+    if (props.mode === "text") return props.onSave(text);
+    try {
+      props.onSave(parseYaml(text));
+    } catch (failure) {
+      if (!(failure instanceof YAMLParseError)) throw failure;
+      setError(YAML_SYNTAX(failure.message));
+    }
+  };
+  return (
+    <div class="value-editor">
+      <CodeField
+        label={props.label}
+        value={text}
+        onChange={(next) => {
+          setText(next);
+          setError(null);
+        }}
+        language={props.mode === "yaml" ? "yaml" : "text"}
+        testId={props.testId}
+      />
+      {error && (
+        <p class="errors" role="alert" data-testid="dr-value-error">
+          {error}
+        </p>
+      )}
+      <button
+        type="button"
+        class="primary"
+        data-testid="dr-value-save"
+        onClick={save}
+      >
+        {LABELS.save}
+      </button>
+      <button
+        type="button"
+        data-testid="dr-value-cancel"
         onClick={props.onCancel}
       >
         {CANCEL}
