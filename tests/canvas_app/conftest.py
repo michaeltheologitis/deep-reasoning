@@ -152,10 +152,6 @@ def open_ui(
         context.close()
 
 
-def text(data: dict) -> str:
-    return json.dumps(data)
-
-
 def write_new(page: Page, name: str, task: str, code: str = "FinalAnswer(1)") -> None:
     """In Create decomposition: a name, the task card and the step's code."""
     page.get_by_test_id("dr-name").fill(name)
