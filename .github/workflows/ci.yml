@@ -27,3 +27,23 @@ jobs:
       - run: uv run ruff check src tests
       - run: uv run ruff format --check src tests
       - run: uv run pytest
+
+  # D3's panel: the TypeScript checks and unit tests.
+  canvas-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: canvas-app/.nvmrc
+          cache: npm
+          cache-dependency-path: canvas-app/package-lock.json
+      - run: npm ci
+        working-directory: canvas-app
+      - run: npm run typecheck
+        working-directory: canvas-app
+      - run: npm run format:check
+        working-directory: canvas-app
+      - run: npm test
+        working-directory: canvas-app
