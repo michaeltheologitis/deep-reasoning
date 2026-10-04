@@ -36,7 +36,7 @@ export const CANCEL = "Cancel";
 export const NAME_REQUIRED = "Give the decomposition a name.";
 export const OUTPUT_NOTE = "written by you, not run";
 export const RAW_NOTE =
-  "Shown as written: this message is not a task, a think-and-code step or an output.";
+  "Shown as written: this message is not a task, a think-and-code step or an observation.";
 export const YAML_SYNTAX = (message: string) =>
   `This is not valid YAML: ${message}`;
 export const YAML_NOT_DECOMPOSITION =
@@ -78,7 +78,7 @@ export const LABELS = {
   task: "task",
   think: "think",
   code: "code",
-  output: "output",
+  output: "observation",
   addTurn: "+ turn",
   viewYaml: "View YAML",
   editYaml: "Edit YAML",
