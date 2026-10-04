@@ -1,322 +1,351 @@
 # C2 · App header panels, agent commands and an option picker, as built
 
-**TASK-7** · Cartographer · the code at `64b5a8b`, head of `feat/agent-surfaces` in the Canvas fork
-[michaeltheologitis/OpenHands](https://github.com/michaeltheologitis/OpenHands) (draft PR #3 into `wiring/dr-1` at
-`9881d24`; C2 is `git diff 9881d24 64b5a8b`: nine commits of its own, the fork's `ba4d883` at its base, and two merges
-of `wiring/dr-1`) · checked against the design at `72aa49f` (`docs/design/c2-header-panels-and-menus.md` v1, still the
-head of `origin/design/c2` when I wrote this) · agent-server and TypeScript client from the SDK fork's tag `dr-1`
-(`cef3b24`) · Node 22.22 and npm 10.9 in this sandbox, Node 24.15 and npm 11.12 in CI · 2026-10-03.
+**TASK-7** · Cartographer · **r2, 2026-10-04: Gate C's map of the code at `f4c7ae5`**, head of `feat/agent-surfaces` in
+the Canvas fork [michaeltheologitis/OpenHands](https://github.com/michaeltheologitis/OpenHands) (draft PR #3 into
+`wiring/dr-1` at `9881d24`; C2 is `git diff 9881d24...f4c7ae5`) · checked against the design **v2 at `6e489ea`**
+(`docs/design/c2-header-panels-and-menus.md`, which describes `64b5a8b`) · agent-server and TypeScript client from the
+SDK fork's tag `dr-1` (`cef3b24`) · Node 22.22 and npm 10.9 in this sandbox, Node 24.15 and npm 11.12 in CI.
 
-**Where this file lives.** On deep-reasoning's branch `as-built/c2`, cut from `design/c2`. C2's code is in the
-Canvas fork, which carries only upstream-shaped code plus marked fork-only commits, so no document of ours goes
-there. This branch holds only documents (no `pyproject.toml`, no docs site, no test runner), so nothing builds or
-collects `as_built/` and there is nothing to wire. [run: `git ls-tree` of this branch]
+**Revisions** (newest first):
+- **r2 · 2026-10-04 · `f4c7ae5`.** Since r1's `64b5a8b`: three Gate B fixes (`3912c52`, `6fb7f05`, `61b9bdc`) and 13
+  refactor commits (`0e396b9` … `f4c7ae5`). The yardstick changed with them. r1 checked the build against v1. r2 checks
+  it against v2, which took in r1's D-1, D-2 and D-4 to D-11. D-12 to D-19 are new; D-3 and four small rows are still
+  open from r1 (§2.3). Stop trusting these parts of r1: D-1's consequence for D3 (D3 fixed its search in `436c513`);
+  D-2's helper names; §3's error helpers and exported names; §4.2's paragraph on refusals; §4.5's counts; §4.7's C1
+  file count; and every number in §6.
+- r1 · 2026-10-03 · `64b5a8b`, against v1 at `72aa49f`.
+
+**Where this file lives.** It is on deep-reasoning's branch `as-built/c2-r2`, cut from `design/c2` at `f925698`, and
+the Conductor merges it into `design/c2`. The branch holds only documents: no `pyproject.toml`, no docs site and no
+test runner. So nothing collects `as_built/`, and there is nothing to wire. [run: `git ls-tree` of this branch]
 
 **Evidence marks.** Every claim carries one.
-- **[run]**: executed in this sandbox, never in the fork's checkout: a `git archive` of `64b5a8b` (and of `9881d24`,
-  C2's base, for comparison) with its own `npm ci`. C2's 26 test files at head and base, the full suite, `npm run
-  lint`, `npm run build`, `npm run build:lib`, the translation check, and uncommitted probes (copies of C2's test
-  files with one probe test added; a Python probe of the agent-server's search filter in an export of `cef3b24`).
-- **[CI]**: read from GitHub's records through the GitHub MCP tools, with the full job logs downloaded: CI run
-  37153648487 and live run 37153648974 at `64b5a8b`, and the full mock-LLM runs 37153914745 (`64b5a8b`), 37149694708
-  (`ba4d883`) and 37152465164 (`86c00b5`).
-- **[read]**: read in the code, **not executed**. Weaker than [run]; §7 lists the read claims that matter.
+- **[run]** means executed in this sandbox. Every run used a detached worktree of `f4c7ae5` with its own `npm ci`.
+  Comparison worktrees at `61b9bdc`, `64b5a8b` and `9881d24` share that `node_modules`, because `package.json` and
+  `package-lock.json` are byte-identical at all four commits. What ran:
+  - C2's test files at all four commits;
+  - typecheck, `npm run build` and `npm run build:lib` at `f4c7ae5`;
+  - `git merge-tree` against C1;
+  - ten mutation probes (§6.3), each one edit, reverted, with `git status` empty after it.
+- **[CI]** means read from GitHub's records through the GitHub MCP tools, with the full job logs downloaded: CI run
+  37174140874 and live run 37174141226, both at `f4c7ae5`.
+- **[read]** means read in the code and **not executed**. It is weaker evidence; §8 lists the read claims that matter.
 
-Nothing here ran a paid model, the `claude` CLI or a live test. The live tier is reported from CI.
+Nothing here ran a paid model, the `claude` CLI or a live test. I made no commit in the Canvas clone.
 
-**Reading order.** §2 first (the divergences), then §1 and §3–§4 as the map, §4.6–§4.7 for who C2 relies on and who
-relies on C2 (D3 above all), §6 for the tests and runs, §7 for what I could not verify.
+**Reading order.** §2 first (the divergences), then §6.3 (what the refactor took out of the tests, with probes). Use
+§1, §3 and §4 as the map, and §4.6–§4.7 for who C2 relies on and who relies on C2.
 
 ---
 
 ## 1 · What exists
 
-C2 adds three generic surfaces to Agent Canvas, each behind an agent-server capability read from the local
-backend's cached `/server_info`. No added source line names deep_reasoner, dr-acp or `dr-library` or reads `_meta`
-(one comment says "namespace" generically; the pill tests use a `namespace` option as their example). [run: grep of
-the added lines]
+C2 adds three generic surfaces to Agent Canvas. Each sits behind an agent-server capability, read from the local
+backend's cached `/server_info`. No added source line names deep_reasoner, dr-acp or `dr-library`, or reads `_meta`.
+[run: grep of the added `src/` lines at `f4c7ae5`]
 
 1. **App header panels** (`canvas_conversation_panels_v1`). An App's `contributes.conversation_panels` gives each
-   panel a button after Show panel. It opens the drawer's column with the App's tab row, a ⋯ menu that opens and pins
-   tabs, and the selected tab's page, an App page registered under the tab's id and mounted with the conversation's
-   id. The store keeps at most one of drawer, App panel and overview open. A narrow window gets a page per panel.
+   panel a button after Show panel. The button opens the drawer's column with the App's tab row and a ⋯ menu. The body
+   is the selected tab's App page, mounted with the conversation's id. At most one of drawer, App panel and overview is
+   open. A narrow window gets a page per panel.
 2. **Agent commands and an option picker** (`acp_session_controls_v1`). An ACP agent's slash commands join the slash
-   menu; a row above the message input shows its select options, except `model`, as pills. On the home screen both
-   come from `POST /api/acp/preview`, and the accepted values go with the start as `acp_config_options`; in a
-   conversation they come from the newest `ACPSessionControlsEvent`, and a pick is set live.
+   menu. Its select options, except `model`, show as pills above the message input.
+   - On the home screen both come from `POST /api/acp/preview`. A refused pick is withdrawn, and the accepted values go
+     with the start.
+   - In a conversation both come from the newest `ACPSessionControlsEvent`. A pick is set live, and its failure is a
+     toast.
 3. **App backend frames** (`canvas_app_backend_bridge_v1`). `host.appBackend.mountFrame(container, {path, title,
-   onError})` shows the App's own backend in a sandboxed `<iframe>` on the agent-server's App ingress origin, with one
-   host-kept, refreshed session per App. The design proposed this unit for the Conductor's ruling (design §3 item 1,
-   §11 item 2); it is built as proposed.
+   onError})` shows the App's own backend in a sandboxed `<iframe>` on the agent-server's App ingress origin. The host
+   keeps one refreshed session per App.
 
 ```text
 App header panel
-  /server_info ─ canvas_conversation_panels_v1 ─┐
-  GET /api/canvas-extensions/installed ─ manifest.contributes.conversation_panels
-  runtime: activate(host) → host.registerPage(<tab id>, mount) → resolveDeclaredContribution → panel-tab | page | panels-unsupported
-           panels = toRegisteredPanels(enabled Apps, registered tabs)       (manifest order, tabs registered only)
-  header:  [Git] [Overview] [Show panel] [◇ per panel] ── click → store.openAppPanel("<app>/<panel>")  (narrow: navigate to the panel page)
-  column:  ConversationMain: isRightColumnOpen = drawer || registered panel; drawer kept mounted, `hidden`
-           ConversationAppPanel: tab row + ⋯ (useConversationAppPanelTabs ⇄ localStorage conversation-state-<id>.appPanelTabs)
-           ConversationAppPanelTabContent: useCanvasExtensionMount(mount, {path, navigate, conversationId, surface}, key=[conv, panel, tab])
+  manifest.contributes.conversation_panels → activate(host) → host.registerPage(<tab id>, mount)
+     → resolveDeclaredContribution → panel-tab | page | panels-unsupported
+  header [Git] [Overview] [Show panel] [◇ per panel] → store.openAppPanel("<app>/<panel>")   (narrow: the panel's page)
+  column: drawer kept mounted under `hidden`; ConversationAppPanel: tab row + ⋯ (tab state in conversation-state-<id>)
+          tab body: useCanvasExtensionMount(mount, {path, navigate, conversationId, surface}), key [conv, panel, tab]
 
 Agent controls
-  home:    useHomeAgentControls ─ launch key, picked values (session store) ─ useAcpSessionPreview
-             → previewAcpSession: buildLocalStartConversationRequest (the start's builder) + acp_config_options → POST /api/acp/preview
-           send → createConversation(..., acpConfigOptions = values the last answered preview accepted) → POST /api/conversations
-  convo:   useConversationAgentControls ─ useLatestAcpSessionControls:
-             newer by timestamp of (event store's newest controls event, one GET …/events/search?kind=<module-qualified>&sort_order=TIMESTAMP_DESC&limit=1)
-           pick → POST /api/conversations/{id}/acp/config-options; the next event replaces the controls
-  both:    CustomChatInput(agentControls) → useSlashCommand({agentCommands}) and ChatInputAgentOptions (the pill row)
+  home:  useHomeAgentControls ─ launch key, picks (session store) ─ useAcpSessionPreview (staleTime: fresh since mount)
+           → POST /api/acp/preview (the start's own body + acp_config_options)
+           422 → picks withdrawn to the last answered values; other failure → no controls
+         send → createConversation(..., acpConfigOptions = the last answered preview's accepted values)
+  convo: useConversationAgentControls ─ useLatestAcpSessionControls: newer of (event store's newest, one GET
+           …/events/search?kind=<module-qualified>&sort_order=TIMESTAMP_DESC&limit=1)
+         pick → useSetAcpConfigOption → POST …/acp/config-options; failure → toast from the mutation's own onError
+  both:  CustomChatInput(agentControls) → useSlashCommand({agentCommands}) and ChatInputAgentOptions
 
 App backend frame
-  host.appBackend.mountFrame → resolveTarget (/server_info: bridge capability + app_backend_ingress_url)
-    → acquireAppBackendSession (one session per backend + App: mint, refresh 60 s before expiry, revoke at the last release)
+  mountFrame → resolveTarget (bridge capability + app_backend_ingress_url) → acquireAppBackendSession
+    (one session per backend + App: mint, refresh 60 s before expiry, revoke at the last release)
     → <iframe src="{ingress}/app-backends/{name}/{path}" sandbox=<server's tokens> referrerpolicy=no-referrer>
 ```
 
-[read; each path run by the tests of §6.4, and the first two in the live tier, §6.3]
+[read; each path is run by the tests of §6.2, and the first two by the live tier, §6.4]
 
-| Unit | Commits | Code | Unit tests | End-to-end | Specs (`specs/*.md`) | Other |
-|---|---|---|---|---|---|---|
-| 1 · header panels | `20b90cb` registration, store, tab state · `1828cec` button, column, panel, narrow page, fixture · `a5436be` spec text, E2E | +1,224 −87 | +1,391 −8 | +275 spec, +15 mapping | +81 −1 | i18n +68; fixture +67; skill guide +1 −1 |
-| 2 · agent controls | `4caaecc` controls, preview, slash menu, pills · `82ff26a` spec text, mock agent flag, E2E | +957 −53 | +1,349 −3 | +199 spec, +142 −12 mock agent and mapping | +47 | i18n +51; skill guide +1 −1 |
-| 3 · backend frames | `baddd10` session keeper, frame, host API · `db3b4b9` spec text | +429 −1 | +478 | — | +38 | i18n +51 |
-| fixes | `70ce577` 5xx reasons from `exception` · `86c00b5` empty first report | +35 −10 | +68 −2 | — | — | — |
+| Commits | What | Code | Unit tests | Other |
+|---|---|---|---|---|
+| `20b90cb` `1828cec` `a5436be` | unit 1, header panels, with spec text and E2E | +1,224 −87 | +1,391 −8 | E2E +275, fixture +67, i18n +68, spec +81 −1 |
+| `4caaecc` `82ff26a` | unit 2, agent controls, with spec text, mock agent and E2E | +957 −53 | +1,349 −3 | E2E +199, harness +142 −12, i18n +51, spec +47 |
+| `baddd10` `db3b4b9` | unit 3, backend frames, with spec text | +429 −1 | +478 | i18n +51, spec +38 |
+| `70ce577` `86c00b5` | Gate B's fixes before r1 | +35 −10 | +68 −2 | — |
+| `3912c52` `6fb7f05` `61b9bdc` | the three Gate B fixes (§2.1 D-12, D-13, D-14) | +48 −12 | +146 −23 | spec +3 −1 |
+| `0e396b9` … `f4c7ae5` (13) | the refactor | +62 −107 | +177 −304 | — |
 
-In all (the net diff), **+6,955 −167 in 89 files**: code +2,635 −141 (50 files), unit tests +3,284 −11 (27 files,
-one a shared helper), end-to-end specs +474, mock agent and test mapping +157 −12, fixture +67, translations +170,
-upstream product specs +166 −1, skill guide +2 −2. The per-commit code figures sum to 10 lines more than the net,
-because `70ce577` rewrites lines `4caaecc` and `baddd10` added. [run: `git diff --numstat`, `git show --numstat`]
-
-Not counted as C2's: `ba4d883` (the fork's launcher-workflow registration, on `deep-reasoning` before C2 began; its
-file is byte-identical to C3's `22272d9` in the wiring, so it adds nothing to the net diff [run: `git diff 9881d24
-64b5a8b -- .github/workflows/launcher-live.yml` is empty]), and the merges `c08ded0` and `64b5a8b`, which bring in
-`wiring/dr-1`: C3's launcher, `config/defaults.json` `sources` naming the SDK fork at `cef3b24`, the client tarball
-pin, and the fork-only `specs` input of the mock-LLM workflow (`9881d24`). Neither merge carries a conflict
-resolution of its own. [run: `git show --cc` prints no combined hunks]
+These are per-commit figures [run: `git show --numstat`]. The first four rows are as committed, measured in r1. The net
+size at `f4c7ae5`, by kind, is in §7. Not C2's: `ba4d883` (fork-only, byte-identical to C3's file in the wiring) and the
+merges `c08ded0` and `64b5a8b`, which bring in `wiring/dr-1` with no hunk of their own (r1, [run]).
 
 ---
 
-## 2 · Divergences from the design (`72aa49f`)
+## 2 · Divergences from the design (v2, `6e489ea`)
 
-The changelog holds no entry for TASK-7, so no `drift:` line; every item below was found from the code. All nine
-of C2's commits were made after the design (`72aa49f`, 2026-10-02 19:00; C2's commits 2026-10-03 05:31–20:41).
-"Design §x" cites `72aa49f`. The brief named four known divergences, which D-1, D-2 and D-4 verify; the others, and
-D-1's consequence for D3, are new. [run: Notion query of the Changelog; `git log`]
+The changelog still holds no entry for TASK-7, so there is no `drift:` line. Every item was found from the code
+[run: Notion query of the Changelog]. All of `3912c52` … `f4c7ae5` were committed after v2 (2026-10-03 23:20 →
+2026-10-04 03:20). "v2 §x" cites `6e489ea`.
 
-### 2.1 Behaviour a user, an App or D3 sees
+### 2.1 Behaviour a user, an App or a collaborator sees
 
-**D-1 · The events search uses the module-qualified kind; the short kind the design gives, and D3 copied, finds
-nothing.** Design §5.3 and §7.2 search with `kind: "ACPSessionControlsEvent"`. Built,
-`useLatestAcpSessionControls` passes the client's `ACP_SESSION_CONTROLS_EVENT_KIND`
-(`src/hooks/query/use-latest-acp-session-controls.ts:50`), whose value in the dr-1 client is
-`openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent` [run: read from the installed tarball]. At dr-1
-the agent-server compares `kind` with `f"{module}.{class}"` (`event_service.py:548–551` at `cef3b24`): a probe of
-that filter returns `False` for the short kind and `True` for the qualified one, while the serialized event still
-says `"kind": "ACPSessionControlsEvent"` [run: probe in an export of `cef3b24`]. C2's type guard
-`isACPSessionControlsEvent` (`src/types/agent-server/type-guards.ts:315–318`) checks the serialized short kind,
-the kind a fetched event carries. Reason: S2's as-built D-1 and commit `4caaecc` ("one search by the
-module-qualified kind"). **Consequence outside C2:** design §7.2, the contract D3 built against, still prints the
-short kind as the way a panel page reads its conversation's namespace, and D3's `readConversationNamespace`
-(deep-reasoning `v1-decompositions-panel`, `canvas-app/src/page/context.ts`) searches with exactly that string. At
-dr-1 its search therefore returns no items, and D3's frame is always given `namespace = null`, `started = false`
-(§4.7). D3's as-built does not name this; its tests use a fake host. [run: the filter probe; read: D3's code]
+**D-12 · A failed live set toasts upstream's words, from the mutation itself (ruling 3(b)).**
+- v2 says: §5.3, §3.2 B3 and the Gate B section's ruling 3 describe option (a) as built, `displayErrorToast(
+  getSdkHttpErrorDetail(error) ?? message)` in `mutate`'s `onError`, with (b) recommended.
+- Built: the toast is `useSetAcpConfigOption`'s own `onError` (`src/hooks/mutation/use-set-acp-config-option.ts:37–42`).
+  - A 422 shows upstream's `getApiErrorMessage(error, error.message)`: the body's `message`, else a string `detail`,
+    else the error's text.
+  - Any other failure shows upstream's `retrieveAxiosErrorMessage(error)`:
+    - for the client's `HttpError` (a 4xx other than 422, or any 5xx), its own `HTTP request failed (<status>
+      <text>): <body as JSON>`;
+    - for a client timeout, "Disconnected (request timed out). …";
+    - for a lost connection, "Disconnected (check URL or network). …".
+  - `useConversationAgentControls` calls `mutate` with no callbacks (`src/hooks/chat/use-agent-controls.ts:138–139`),
+    so the toast still fires after the composer unmounts.
+- Reasons: `3912c52` (ruling 3(b)); `4ff261c` ("completes ruling 3(b) as approved": a 400 or 404 with a string
+  `detail` had toasted that `detail`); `3461e1c` ("React Query drops mutate-scoped callbacks once the calling component
+  unmounts").
+- Evidence: [run: `use-agent-controls.test.tsx › useConversationAgentControls › reports a failed pick that is not a
+  refusal as upstream does, for %s` (a 504, a 400, a 404, a client timeout, a lost connection), `› shows the agent's
+  own sentence when it refuses a pick` and `› still reports a failed pick when the composer unmounts before the agent
+  answers`; probes P6b and P7, §6.3]. Unit tests only: no live test sets an option in a conversation [read].
 
-**D-2 · A 5xx answer's reason is read from `exception`; `getSdkHttpErrorDetail` is null for every 5xx**
-(`70ce577`). Design §5.1 and A.7: `getSdkHttpErrorDetail` returns "the `detail` string of an SDK `HttpError`'s parsed
-body, else `null`", and §6.2 item 4 reads "a 503 whose detail says the backend is not ready". The agent-server's
-handler answers every 5xx `HTTPException` with `{"detail": "Internal Server Error", "exception": "<status>:
-<reason>"}` (`api.py`, `_http_exception_handler`, at `cef3b24`; S2's as-built D-11) [read]. Built:
-`getSdkHttpErrorDetail` returns `null` when the status is 500 or more (`src/api/agent-server-compatibility.ts:225–229`),
-and the new `getSdkHttpServerErrorReason` returns `exception` only for a 5xx (`:235–239`); the session keeper reads
-the latter (`src/extensions/app-backend-session-keeper.ts:76–84`). Consequences: a failed live set that is not a
-422 toasts the client's own message (`HTTP request failed (504)` in the test) rather than the agent-server's reason;
-before `70ce577`, a stopped App backend or a missing ingress was reported to the frame as `session-refused`. Reason:
-the commit message. [run: `getSdkHttpErrorDetail is null for a 5xx answer…`, `never shows a 5xx answer's
-placeholder detail as the agent's sentence`, and the frame's `not-ready` and `no-ingress` cases, which the commit
-message says failed against the old keeper]
+**D-13 · On the home screen a refused pick is withdrawn.**
+- v2 says, in §5.4: "a 422 keeps the last successful preview's controls, shows the agent's sentence … and the refused
+  value is not sent". §5.6 has a pick call `controls.setOption`; ASC-002 (§5.8) is one sentence. r1 §4.2 recorded the
+  old build: the refused value stayed in the store, and picking it again asked nothing.
+- Built (`use-agent-controls.ts:187–227`; `src/stores/home-agent-options-store.ts:15, 36`):
+  - On a 422, an effect (`:201–207`) replaces the stored picks. They become the values of the preview the agent last
+    answered for this launch key, or none if it has answered nothing. The key then returns to that answer, which is
+    cached, so nothing new is asked (D-14).
+  - The agent's sentence is kept in a ref. It shows while controls are shown (`:218–221`) and clears on the next pick
+    (`:223–226`) or on another launch key. With no earlier answer, it appears once the agent's default preview
+    answers.
+  - Picking the refused value again moves the key to the failed query, which has no data, so the agent is asked again.
+  - Choosing the value in effect still sends nothing (`chat-input-agent-options.tsx:169`).
+  - A failure that is not a 422 withdraws nothing. The pick stays in the store and the controls hide; the next preview
+    (after a workspace change, or a return to the home screen) carries the pick [read].
+- `specs/acp-session-controls.md:21–25`, ASC-002, gains: "A refused pick is withdrawn: the picker shows the agent's
+  value again, and picking the refused value again asks the agent again."
+- Reasons: `6fb7f05` lists four faults of the old behaviour; `61b9bdc` makes its test wait for the withdrawal, which
+  runs in an effect after the render that shows the sentence.
+- Evidence: [run: `use-acp-session-preview.test.tsx › useHomeAgentControls › returns the picks to the last accepted
+  values when the agent refuses one, without asking again, and says why`, `› returns refused picks to the agent's
+  defaults when the home screen has no answer yet`, `› asks the agent again when the value it refused is picked again`;
+  `chat-input-agent-options.test.tsx › ChatInputAgentOptions › sets nothing when the value in effect is chosen`; probe
+  P8]. Unit tests only: no live test reaches a refusal [read].
 
-**D-3 · The preview's body equals the start's less `initial_message`, `user_id` and `conversation_id`, and, with no
-workspace chosen, `working_dir` too.** Design §5.2 and decision I: the preview body equals the start body "less
-`initial_message` and `user_id`". Built, `previewAcpSession` calls the start's own builder,
-`buildLocalStartConversationRequest` (`src/api/conversation-service/agent-server-conversation-service.api.ts:456–510,
-662–676`), which mints a fresh conversation id per call (`:480`) and, when no workspace is chosen, derives the
-working directory from that id through `resolveNewConversationWorkspace`. So each preview and the start name
-different ids, and without a workspace different working directories (each `<workspace root>/<its own id>`); the
-parity test deletes `conversation_id` from both bodies and uses `workingDirOverride: "/repo"`. With a workspace the
-bodies match as designed. The agent-server's preview runs in an empty scratch workspace when the directory does not
-exist (S2's as-built §4.3). No reason recorded. [run: a probe copying the service tests, no workspace chosen: two
-previews and the start differ pairwise in `workspace` (three working directories, `/state/workspaces/<id hex>` under
-the tests' stub) and `conversation_id`, and the start also in `initial_message`; read: the builder]
+**D-14 · A preview's answer stays current until the home screen unmounts.**
+- v2 says: §5.4, and the options under A.10, give `staleTime: 0`.
+- Built (`src/hooks/query/use-acp-session-preview.ts:74, 95–96`):
+  - `staleTime` is `Infinity` for data fetched since this hook mounted, and `0` for older data.
+  - Going back to inputs the agent answered during the visit asks nothing. That covers D-13's withdrawal; it also
+    covers re-picking `fast` after `thorough` [read].
+  - A remount, such as a return to the home screen, asks again, as v2 says.
+- Reason: `6fb7f05`, "so that the withdrawal does not start the agent again for values it has just answered".
+- Evidence: [run: `› asks the agent again when the home screen returns`; probes P9a and P9b].
 
-**D-4 · The first controls report of a start or resume is shown as it is, even when it lists no commands**
-(`86c00b5`, the Conductor's ruling). Design §5.3 says no event means no commands and no picker, and treats the
-newest event as the agent's current state; it does not anticipate S2's as-built D-2, under which every ACP session
-start (and resume) persists one event right after `session/new`, which can list no commands before the agent's menu
-follows in a later event. Built, the conversation's controls are whatever the newest event says
-(`src/hooks/chat/use-agent-controls.ts:131–138`): for that interval the picker shows the first report's options and
-the slash menu lists no agent command; the next event replaces both. Reason: commit `86c00b5` ("the menu follows
-whichever report is newest") pins the sequence. [run: `shows no agent commands after an empty first report until
-the agent's menu arrives`]
+**D-15 · Upstream's error helpers replace C2's three.**
+- v2 says: §5.1, A.7, §3.2 B2 and decision M give `getSdkHttpErrorDetail` (null for a 5xx) and
+  `getSdkHttpServerErrorReason` in `agent-server-compatibility.ts`.
+- Built:
+  - Neither helper exists. C2's addition to that file is `AgentServerCapability` and `localAgentServerHasCapability`
+    only (`src/api/agent-server-compatibility.ts:159–175`).
+  - Both refusal sites read a 422 with upstream's `getApiErrorMessage` (`src/utils/api-error-message.ts:24–38`).
+  - The session keeper reads a 503's `exception` through upstream's `getApiErrorBody`
+    (`src/extensions/app-backend-session-keeper.ts:74–88`).
+- What this changes: "a 5xx's placeholder is never the agent's sentence" now rests on each site's 422 check, not on a
+  helper. On the live set that check is pinned (P6b). On the home screen nothing pins it, and has not since `6fb7f05`
+  (P6, §6.3).
+- Reason: `4ff261c`.
+- Evidence: [run: the frame tests' `not-ready` and `no-ingress` rows; read: upstream's helpers]. C1's as-built §2.1
+  D-1 cites `getSdkHttpServerErrorReason` at `:235` of this branch, a line that no longer exists (§4.7).
 
-**D-5 · App-backend failures are classified by the reason's words, not by status.** Design §6.2 item 4: `not-ready`
-for a 503 whose detail says not ready, `session-refused` for 401, 403, 409 and 421; §6.3: a failed refresh reports
-`session-refused`. Built, `toAppBackendError` (`src/extensions/app-backend-session-keeper.ts:72–86`): a 503 whose
-`exception` matches `/not ready/i` is `not-ready`; a 503 matching `/ingress/i` (the bridge's "ingress is not
-configured" or "misconfigured" at mint time, `bridge.py:231–244` at `cef3b24`) is `no-ingress`, which the design
-reaches only from `/server_info`; anything else (any status, a network error, the bridge's other 503s such as "Canvas
-App sessions require HTTPS or a loopback secure context") is `session-refused`. A failed refresh goes through the same
-mapping, so it can report `not-ready` or `no-ingress`. `unsupported-backend` shows the `no-ingress` sentence
-(`:58`). No reason recorded. [run: the frame tests for each reason; read: the bridge's sentences]
+**D-16 · The controls event guard is the client's, and C2 no longer touches `type-guards.ts`.**
+- v2 says: §5.2, A.8, §8 item 1's v2 note ("which Canvas declares in its own `type-guards.ts`") and §9's first row.
+- Built: `useLatestAcpSessionControls` imports the `dr-1` client's `isACPSessionControlsEvent`
+  (`src/hooks/query/use-latest-acp-session-controls.ts:4, 17`).
+  - It checks `event.kind === 'ACPSessionControlsEvent'`, as C2's guard did [read: the installed tarball's
+    `dist/events/types.js:60–62`].
+  - The call site keeps `"kind" in event`, because Canvas's event union holds a message event without `kind`.
+  - C2's diff leaves `src/types/agent-server/type-guards.ts` untouched. C1 and C2 now share 8 files, not 9 (§4.7).
+- Reason: `0e396b9`.
+- Evidence: [run: the latest-controls tests; `git merge-tree`].
 
-**D-6 · MSW mock mode does not serve the `demo-panel` fixture.** Design §4.8: the fixture is used "by the unit
-tests, the end-to-end spec and MSW mock mode (`canvas-extensions-handlers.ts` serves it beside `demo-page`)". Built,
-`src/mocks/canvas-extensions-handlers.ts` is unchanged and serves `demo-page` only (`:7–12`); the fixture is used by
-the unit tests and the panels end-to-end spec. The fixture also gains an `icon.svg` the design's manifest lacked,
-which the end-to-end spec asserts is fetched. No reason recorded. [read; run: grep for `demo-panel`]
+### 2.2 Signatures, tests and size
 
-### 2.2 Signatures and small behaviours
+**D-17 · Names no longer exported, or gone** (`258944e`, `01411cd`, `501f0c6`; their messages give the reasons: "read
+only in their own modules", "neither reader used it"). [read; run: typecheck and both builds pass]
 
-None of these changes what §2.1 describes. [read unless marked]
-
-| Design | Built |
+| v2 | Built |
 |---|---|
-| `ConversationAppPanelTabContent` shows `LoadingSpinner` while the App activates (§4.4) | no spinner in the column: a panel exists only once a tab is registered, i.e. after activation. The narrow-window page has the spinner and the unavailable state (`conversation-app-panel-mobile-page.tsx:81–89`) |
-| `ConversationAppPanelProps {conversationId, panel, variant?}` (A.6) | adds `leading?: ReactNode`; the narrow page puts its back button in the tab row through it |
-| `ConversationTabNav` gains an optional `icon` (A.6) | also gains `testId?: string` (the App tabs' `conversation-app-panel-tab-<id>`) |
-| the runtime's `notices` hold the notice text (§4.1) | they hold the i18n key; the Apps card translates it with `{name: display name}` (`canvas-extension-card.tsx:28–35`) [run: card test] |
-| `ConversationAppPanelToggles` renders nothing on a Cloud backend (§4.3) | no backend check of its own; the App list query is local-only (`use-canvas-extensions.ts:15`), so no panel exists on Cloud [run: `renders no button on a Cloud backend`] |
-| — | `CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS = 60_000` exported and documented in `specs/canvas-extensions.md` (the existing 60 s of `host.agentServer.request`, named) |
-| preview key `[…, launchKey, workingDir, workspaceMode, values]` (A.2) | `workspaceMode` is `null` when no workspace is chosen, as the start sends none (`use-acp-session-preview.ts:71`) |
-| the route page's mount effect "moves unchanged" into `useCanvasExtensionMount` (§4.1) | it remounts when `mount` or the route path changes; upstream's effect also re-ran when the `page` object or `navigate` changed (`routes/canvas-extension-page.tsx`) |
-| decision L: a later item repeating an earlier command is dropped | applied to the whole list, so two skills with the same slash trigger, both listed before C2, now list once (`use-slash-command.ts:47–55, 110, 126`) |
-| a fixed pill is "a select with one value" (§5.6) | `options.length < 2`, so also a select with none (`chat-input-agent-options.tsx:111`) |
-| choosing a value calls `controls.setOption` (§5.6) | only when it differs from the option's `current_value` (`:169`); see §4.2 for what that means after a refusal |
-| invariants `CX-001`–`CX-005`, `ASC-001`–`ASC-004` (§3 item 13) | adds `CX-006` and `ASC-005`, each a table of `data-testid`s declared a contract for end-to-end tests (`specs/canvas-extensions.md:380`, `specs/acp-session-controls.md:35`); new ids `conversation-right-column`, `slash-command-item` (with `data-command`), `agent-options`, `agent-option-rejection` |
-| mock agent: `initialize` advertises `sessionCapabilities.close` (Appendix C) | only with `--session-controls`, which also switches on ACP's unstable protocol (for `session/close`); the first menu is sent 50 ms after `session/new` answers (`mock-acp-server.py`) |
-| `CanvasExtensionsService.createAppBackendSession(…, signal?)` (A.2) | built with the signal parameter; the keeper never passes it and abandons a pending mint by racing it with the abort instead (`app-backend-session-keeper.ts:172–199`) |
+| A.10 `export const ACP_CONFIG_OPTION_REJECTED_CODE` | gone; the header map's entry is the literal `ACPConfigOptionRejected` (`src/utils/acp-error-codes.ts:12`), C2's only line in that file |
+| A.10 `export declare function toAgentSlashCommandItem` (and §5.5) | module-private (`src/hooks/chat/use-slash-command.ts:29`) |
+| A.9 `export interface LocalStartConversationRequest {payload, conversationId, resolvedWorkspaceMode}`; §5.2: the builder "returns the body, the new id and the resolved workspace mode" | module-private, `{payload, resolvedWorkspaceMode}` (`agent-server-conversation-service.api.ts:429–433`); the id travels in the body as `conversation_id` |
+| A.2 `export const CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS`; B8: "documented … in upstream's spec" | module-private (`src/api/canvas-extensions-service.ts:23`); `specs/canvas-extensions.md:124` still names it as the source of `host.agentServer.request`'s 60 s |
+| A.10 `useLatestAcpSessionControls(conversationId, enabled)`, no rule for disabled | `enabled` gates the event-store selector and the query (`:35`, `:57`) but not the return: while disabled it can return a search cached earlier under the same key. Its one caller returns `NO_AGENT_CONTROLS` first (`use-agent-controls.ts:130`) [read] |
+| A.10 `HomeAgentOptionsState {launchKey, values, setValue}` | adds `setValues(launchKey, values)` (`home-agent-options-store.ts:15, 36`), for D-13 |
 
-### 2.3 The pull request, the proof and size
+**D-18 · v2's test tables name seven tests that no longer exist, and miss three unpinned properties.**
+- v2 says: its Gate B tables, and §3.2 B17 with 109 vitest definitions (11 of them `it.each`) in 26 files.
+- Built: 108 definitions (11 `it.each`) in 25 files that carry C2 lines, plus two shared helpers
+  (`__tests__/helpers/canvas-extension-panels.tsx`, and the new `__tests__/helpers/query-wrapper.tsx`). That is 138
+  cases, all passing (§6.2) [run].
+- Gone from v2's tables:
+  - `getSdkHttpErrorDetail › …` (5 cases);
+  - `never shows a 5xx answer's placeholder detail as the agent's sentence`, now the 504 row of D-12's table;
+  - `keeps the last accepted controls and start values when the agent refuses a pick, and says why`, now D-13's first
+    test;
+  - `issues no search and reads nothing while disabled`;
+  - `maps a refused start-time option value to its own header`;
+  - `gives an App's agent-server requests a minute, more than an App backend start takes`;
+  - `keeps one session for two frames of the App and revokes it when the last one closes`.
+- New: D-12's and D-13's tests.
+- v2's "Not pinned by any test" paragraph lacks three properties that §6.3's probes leave unpinned:
+  - two frames of one App share one session through `mountAppBackendFrame` (CX-005 is now pinned only at the keeper);
+  - a home-screen preview failure that is not a 422 is never shown as the agent's sentence;
+  - a disabled latest-controls hook does not scan the event store.
 
-**D-7 · One draft PR into the wiring branch, not three upstream-shaped PRs.** Design §1.2 and §9: three PRs, each an
-upstream-shaped draft branch on the fork's `main`, with PR 2's first commit the client bump. Built: PR #3
-(`feat/agent-surfaces` → `wiring/dr-1`) carries all three units as code-then-spec commit pairs, then the two fixes;
-the client pin arrives with the wiring merge (`c08ded0`), not as a commit of PR 2. Units 1 and 2 share
-`agent-server-compatibility.ts` and its test, `query-keys.ts`, the e2e guide and `test-mapping.json`; units 1 and 3
-share the manifest types, `lib/index.ts`, the runtime and its test, `canvas-extensions-service.ts` and
-`specs/canvas-extensions.md`; all three share `translation.json`. I did not cherry-pick them apart (§7). [CI: the PR;
-run: `git log`, `git show --name-only` per commit]
+**D-19 · Size after the fixes and the refactor.**
+- v2 says: §3.2 B20 and ruling 1 give 6,955 lines added and 167 removed, in 89 files.
+- Built: 6,944 added and 167 removed, in 88 files (§7) [run].
 
-**D-8 · The full mock-LLM suite is red; the live tier is C2's two specs alone.** Design §10, layer 3: upstream's
-"full vitest and Playwright suites green on `feat/agent-surfaces`"; the live tier is "the two specs above, green in
-the fork's mock-LLM run at the branch's head". The vitest suite is green in CI; here two upstream files failed under
-load and pass alone (§6.1) [CI, run]. The full Playwright suite at
-`64b5a8b` fails **six** upstream tests (run 37153914745), the same six with the same first errors as at `ba4d883`, the
-fork's `deep-reasoning` before C2 (run 37149694708), §6.5. The live tier ran as a separate dispatch of the same
-workflow with the fork-only `specs` input (`9881d24`) set to C2's two spec files: 7 of 7 passed (run 37153648974);
-C2's seven also pass inside the full run. The brief, the task row and the PR body say five upstream failures: that
-count is the run at `86c00b5` (37152465164), in which `mock-llm-files-and-git.spec.ts` step 2 passed; in both runs
-the brief cites it fails. [CI: all four logs]
+### 2.3 Still open from r1: what v2 does not record
 
-**D-9 · No mutation testing ran.** Design §4.9 and §5.8: `npm run test:mutation:diff` (Stryker on the diff) "runs on
-the PR", and survivors "are listed in the as-built". No workflow in the fork runs Stryker (`.github/workflows/`), the
-PR body reports none, and I did not run it (§7). [read; run: grep of the workflows]
+- **r1's D-3 · The preview's body is not the start's less `initial_message` and `user_id`.**
+  - v2 §5.2, decision I and the parity test's name still say it is.
+  - Built: the builder mints a fresh `conversation_id` per call (`agent-server-conversation-service.api.ts:455–510`,
+    `uuidv4()` at `:479`). Without a workspace it also derives a different `working_dir` from that id.
+  - Evidence: [read at `f4c7ae5`: unchanged but for its return value; run in r1 at `64b5a8b`].
+- **Four of r1's small rows:**
+  - §4.1 says the route page's mount effect "moves unchanged" into `useCanvasExtensionMount`. Built, it remounts on
+    `mount` or path changes, not on a change of `page` or `navigate`.
+  - Decision L applies to the whole menu, so two skills with the same slash trigger, both listed before C2, now list
+    once (`use-slash-command.ts:47–55, 110, 126`).
+  - §5.6 calls a fixed pill "a select with one value". Built, the test is `options.length < 2`, so a select with none
+    is fixed too (`chat-input-agent-options.tsx:111`).
+  - A.2's `createAppBackendSession(…, signal?)` is never passed a signal. The keeper races the mint against the abort
+    instead (`app-backend-session-keeper.ts:189–201`).
+  - Evidence: [read].
 
-**D-10 · Size: about three times the estimate.** Design §3 item 2: ≈2.1k lines with tests (PR 1 ≈1.0k: slot ≈600,
-tests ≈400; PR 2 ≈0.85k: ≈500 and ≈350; PR 3 ≈0.27k). Built: +6,955 −167 (§1); without translations, the fixture and
-the spec texts, code +2,635 and tests +3,915 (unit 3,284, end-to-end 474, harness 157). Code is about twice the
-estimate, tests about five times. The largest code pieces: `canvas-extensions-runtime.tsx` +213 −19 (registration,
-panels, the host's frame mounter), `chat-input-agent-options.tsx` 221, `app-backend-session-keeper.ts` 217,
-`use-agent-controls.ts` 212, the conversation service +132 −42; the largest tests:
-`use-acp-session-preview.test.tsx` 357, `mount-app-backend-frame.test.ts` 264, `use-agent-controls.test.tsx` 253,
-the toggle and panel tests 221 and 219. [run: `git diff --numstat`]
+**Recorded in v2 since r1:**
 
-**D-11 · Every test the design names exists; a few more were added.** Each row of §4.9, §5.8 and §6.4 has a test
-under a name stating its property, or an `it.each` case (§6.4). Beyond them: the capability helper (5 cases), the
-icon fetch and the named timeout, the Apps card (3), the `appPanelTabs` write that keeps another panel's entry, a
-selected unpinned tab staying visible, the narrow page's unavailable state, the in-flight pill, a fixed option
-without a description, D-2's and D-4's tests, and the
-frame's notice beside a frame whose refresh failed. Design §11 item 5's first check, that the drawer's terminal
-survives being hidden, is pinned at the component level only: the test asserts the drawer's content component is not
-unmounted and is not visible, with that component mocked (§7). [run: the tests; read: the mapping]
+| r1 divergence | Where v2 records it |
+|---|---|
+| D-1 | B1; D3 itself now searches with the qualified kind, §4.7 |
+| D-2 | B2; its mechanism changed again, D-15 |
+| D-4 | B4 |
+| D-5 | B13 |
+| D-6 | B6 |
+| D-7 | the Gate B section, B16 |
+| D-8 | the Gate B section, B19 |
+| D-9 | B18 |
+| D-10 | B20 |
+| D-11 | B17 |
+| r1 §2.2's other rows | B7, B8, B10, B11, B12, B14 and B15 |
 
-**Not divergences.** Decisions A–N as written (one column, the store as the only writer, `hasRightPanelToggled`
-cleared on open; tabs registered through `registerPage`; the drawer kept mounted; per-conversation tab state,
-session-only open state; the narrow-window route; capability gates with a non-fatal refusal; controls computed by
-each composer's owner; newer-by-timestamp of the live and searched event; one start builder; local backends only; the
-picker row; menu order; refusals in the agent's words; the host-kept frame); design §3 items 3–12 (tooltip as the
-title, scrolling tab row, the selected tab closing the panel, the panel on an archived conversation, no overview peek
-while a panel is open, the hint in the menu row, booleans not rendered, no picker before the first message, the
-generic Apps notice); §4.2's action table and `CX-001`; §4.4's tab rules; §5.4's key, store and start values; §5.6's
-pills; §6.3's session keeping; and Appendix B's ten keys, each in all 15 languages. [run for every behaviour the tests
-of §6.4 name and the translation check; read for the rest]
+**Not divergences.** These hold as v2 describes them, unchanged since r1 [run for behaviours §6.2's tests name; read
+for the rest]:
+- decisions A–N;
+- §4's panel slot, store actions, tab rules and narrow page;
+- §5.5's menu;
+- §6's frame and keeper;
+- Appendix B's ten keys, each in 15 languages.
 
 ---
 
 ## 3 · The public surface, from the code
 
 **App manifest and host API** (`src/types/canvas-extension.ts`, re-exported from `src/lib/index.ts`; host API still
-version `"1"`). `contributes.conversation_panels: [{id, title, icon?, tabs: [{id, title, path}]}]`. Every mount
-context gains `conversationId: string | null` and `surface`: `{kind: "page"}` on a routed page, `{kind:
-"conversation-panel", panelId, tabId, selectTab(tabId)}` in a panel, where `path` is the tab's path without its
-leading `/` (`""` for `/`). `host.appBackend.mountFrame(container, {path?, title, onError?}) → dispose`, with
-`onError({reason: "no-ingress" | "not-ready" | "session-refused" | "unsupported-backend", message})` at most once;
-the frame is the `<iframe>` appended to the container and stays there, across refreshes, until disposed.
-`registerPage` of a panel's own id, an undeclared id or an id twice throws (failing activation); on an agent-server
-without `canvas_conversation_panels_v1` an undeclared id returns a no-op disposer and sets the App's notice instead.
+version `"1"`), unchanged since r1:
+- `contributes.conversation_panels: [{id, title, icon?, tabs: [{id, title, path}]}]`.
+- Every mount context gains `conversationId: string | null` and a `surface`:
+  - `{kind: "page"}` on a routed page;
+  - `{kind: "conversation-panel", panelId, tabId, selectTab(tabId)}` in a panel, whose `path` is the tab's path
+    without its leading `/` (`""` for `/`).
+- `host.appBackend.mountFrame(container, {path?, title, onError?}) → dispose`:
+  - `onError({reason: "no-ingress" | "not-ready" | "session-refused" | "unsupported-backend", message})` is called at
+    most once;
+  - the frame is the `<iframe>` appended to the container, and it stays there, across refreshes, until disposed.
+- `host.agentServer.request` takes up to 60 s (`canvas-extension.ts:162`).
+- `registerPage` throws, failing activation, for a panel's own id, an undeclared id or an id registered twice. On an
+  agent-server without `canvas_conversation_panels_v1`, an undeclared id returns a no-op disposer and sets the App's
+  notice instead.
+
 [run: runtime and frame tests]
 
-**Routes and state.** `/conversations/:conversationId/panel/:extensionName/:panelId` (a narrow-window page,
-`routes/conversation-app-panel.tsx` re-exporting the conversation route). `useConversationStore` gains
-`activeAppPanel: "<app>/<panel>" | null` (session-only), `openAppPanel(key)` (also closes drawer and overview and
-clears `hasRightPanelToggled`) and `closeAppPanel()`; `setIsRightPanelShown(true)` and `setIsOverviewPanelShown(true)`
-also clear `activeAppPanel` (`conversation-store.ts:169–189, 423–437`). The `conversation-state-<id>` localStorage blob
-gains `appPanelTabs: {"<app>/<panel>": {selectedTab, unpinnedTabs}}`, sanitized on every read. [run]
+**Routes and state**, unchanged since r1:
+- `/conversations/:conversationId/panel/:extensionName/:panelId` is the narrow-window page.
+- `useConversationStore` gains `activeAppPanel`, `openAppPanel(key)` and `closeAppPanel()`. `setIsRightPanelShown(true)`
+  and `setIsOverviewPanelShown(true)` also clear `activeAppPanel` (`conversation-store.ts:169–189, 423–437`).
+- `useHomeAgentOptionsStore` gains `setValues` (D-13).
+- The `conversation-state-<id>` blob gains `appPanelTabs`, which is sanitized on every read.
 
-**Services.** `CanvasExtensionsService.fetchPanelIcon(name, panelId, backend?) → Blob`, `createAppBackendSession(name,
-backend, ingressUrl, signal?)`, `revokeAppBackendSession(name, backend, ingressUrl)` (errors logged, never thrown).
-`AgentServerConversationService.previewAcpSession({workingDirOverride?, workspaceMode?, agentProfileId?,
-agentProfileKind?, acpConfigOptions}) → ACPSessionControls` (120 s timeout) and `setAcpConfigOption(conversationId,
-configId, value) → ACPConfigOptionSetResponse`, both refusing a Cloud backend; `createConversation` and
-`useCreateConversation` accept `acpConfigOptions`, sent only when non-empty. `EventSearchOptions.kind`, passed to
-the local search and to the Cloud query string. `agent-server-compatibility.ts`: `AgentServerCapability`,
-`localAgentServerHasCapability`, `getSdkHttpErrorDetail`, `getSdkHttpServerErrorReason`. [run]
+[run]
 
-**Hooks and components.** `useConversationAgentControls(conversationId)`, `useHomeAgentControls({workingDir,
-workspaceMode})` and `NO_AGENT_CONTROLS` (`hooks/chat/use-agent-controls.ts`); `useLatestAcpSessionControls`,
-`useAcpSessionPreview`, `resolveAcpLaunchProfile`, `useSetAcpConfigOption`, `useHomeAgentOptionsStore`;
-`useSlashCommand(ref, {agentCommands})` and `toAgentSlashCommandItem`; `ChatInputAgentOptions`; the panel components
-of design A.6 under `components/features/conversation/`, plus `ConversationAppPanelUnavailable`; the
-`useCanvasExtensionMount` hook shared by routed pages and panel tabs. [read]
+**Services:**
+- `CanvasExtensionsService`:
+  - `fetchPanelIcon(name, panelId, backend?) → Blob`;
+  - `createAppBackendSession(name, backend, ingressUrl, signal?)`;
+  - `revokeAppBackendSession(name, backend, ingressUrl)`, which logs errors and never throws.
+- `AgentServerConversationService`, both refusing a Cloud backend:
+  - `previewAcpSession({workingDirOverride?, workspaceMode?, agentProfileId?, agentProfileKind?, acpConfigOptions}) →
+    ACPSessionControls`, with a 120 s timeout;
+  - `setAcpConfigOption(conversationId, configId, value)`.
+- `createConversation` and `useCreateConversation` accept `acpConfigOptions`, sent only when non-empty.
+- `EventSearchOptions.kind`.
+- `agent-server-compatibility.ts` adds only `AgentServerCapability` and `localAgentServerHasCapability` (D-15).
 
-**What the user sees.** A header button per panel, tooltip and accessible name "Show <title>" or "Hide <title>",
-the manifest's icon (fetched with the session key, shown as a `data:` URL) or a panel glyph; the open panel as a
-region named after the panel, with text tabs and a ⋯ menu of "open" and pin rows. On the Apps page, a "Panels: N"
-pill, one pill per panel title, and under the description the App's activation error or "<name> has header panels
-this agent-server does not support. Update the agent-server to show them." Above the message input, one pill per
-select option, `<option name>: <value name>`, a spinner while a pick is in flight, a fixed pill (no caret, tooltip
-the option's description or "Fixed for this conversation") for a single value. In the slash menu, agent commands
-after the built-ins with their hint as `‹what to compare›`. On the home screen a refusal shows under the pills; in a
-conversation it is a toast; a start-time refusal heads the error banner "The agent refused an option" with the
-agent's sentence. A frame that cannot be shown leaves a one-line notice in its container. [run: component tests; CI:
-the live tier for the header, panel, pills and menu]
+[run]
 
-**Requests Canvas makes for C2.**
+**Hooks and components:**
+- `useConversationAgentControls(conversationId)`, `useHomeAgentControls({workingDir, workspaceMode})` and
+  `NO_AGENT_CONTROLS`;
+- `useLatestAcpSessionControls`, `useAcpSessionPreview`, `resolveAcpLaunchProfile`, `useSetAcpConfigOption` (which
+  owns its toast) and `useHomeAgentOptionsStore`;
+- `useSlashCommand(ref, {agentCommands})`;
+- `ChatInputAgentOptions`;
+- the panel components under `components/features/conversation/`;
+- `useCanvasExtensionMount`.
+
+The refactor un-exported `toAgentSlashCommandItem`, `LocalStartConversationRequest` and the timeout constant (D-17).
+[read; run: typecheck]
+
+**What the user sees**, as r1 described it, with two changes:
+- in a conversation, a failed pick toasts D-12's words;
+- on the home screen, a refusal returns the pill to the agent's last accepted value, with the sentence under the pills
+  until the next pick (D-13).
+
+[run: component and hook tests; CI: the live tier for header, panel, pills and menu]
+
+**Requests Canvas makes for C2**, unchanged since r1:
 
 | Request | When | Evidence |
 |---|---|---|
-| `GET /api/canvas-extensions/installed/{name}/panels/{panel_id}/icon` (session key, blob) | a panel declares an icon; cached per backend, org, App, resolved ref and panel | [CI: the icon's `data:image/svg+xml`] |
-| `POST /api/acp/preview` (the start body + `acp_config_options`) | home screen, ACP launch agent, capability present; again for each new pick or workspace; never on focus; no retry | [CI] |
-| `POST /api/conversations` + `acp_config_options` | a home start with accepted values | [CI: the request body] |
-| `GET /api/conversations/{id}/events/search?kind=<qualified>&sort_order=TIMESTAMP_DESC&limit=1` | once per backend and conversation (`staleTime: Infinity`), ACP conversation, capability present | [run: unit; CI: the reload pass, §6.3] |
+| `GET /api/canvas-extensions/installed/{name}/panels/{panel_id}/icon` (session key) | a panel declares an icon | [CI] |
+| `POST /api/acp/preview` | home screen, ACP launch agent, capability present; for each set of inputs not answered since the home screen mounted (D-14); never on focus; no retry | [CI; run] |
+| `POST /api/conversations` + `acp_config_options` | a home start with accepted values | [CI] |
+| `GET /api/conversations/{id}/events/search?kind=<qualified>&sort_order=TIMESTAMP_DESC&limit=1` | once per backend and conversation (`staleTime: Infinity`), ACP conversation, capability present | [run: unit; CI: the reload pass, §6.4] |
 | `POST /api/conversations/{id}/acp/config-options` | a pick in a conversation | [run: unit only] |
-| `POST` / `DELETE {ingress}/app-backends/{name}/session` (session key, credentials) | first frame of an App; refresh 60 s before expiry (not sooner than 10 s); last frame closed | [run: unit, client faked at its boundary] |
-
-**The mock ACP agent** (`tests/e2e/mock-llm/scripts/mock-acp-server.py`) gains `--session-controls`, off by default:
-one select option `profile` (`fast`, `thorough`), commands per value (`fast`: `summarize`; `thorough`: `summarize`,
-`compare` with hint `what to compare`), refusals as invalid params, and at the first prompt an empty menu and a
-one-value `profile`; replies then read `MOCK_ACP_E2E_REPLY_OK profile=<value>`. [CI: the live tier; read]
+| `POST` / `DELETE {ingress}/app-backends/{name}/session` | first frame of an App; refresh 60 s before expiry (not sooner than 10 s); last frame closed | [run: unit, the client faked at its boundary] |
 
 ---
 
@@ -324,169 +353,172 @@ one-value `profile`; replies then read `MOCK_ACP_E2E_REPLY_OK profile=<value>`. 
 
 ### 4.1 The panel slot (unit 1)
 
-**Registration** (`canvas-extensions-runtime.tsx`). `registerPage` first rejects a repeated id, then asks
-`resolveDeclaredContribution` (`:157–183`): a declared page (as before), a declared tab of a declared panel
-(re-validated: kebab-case App, panel and tab ids, a path of `/` or an absolute kebab-case path), a panel's own id
-(throws), or an id declared nowhere, which throws unless the **active local** agent-server's cached `/server_info`
-lacks `canvas_conversation_panels_v1`, in which case it is `panels-unsupported`: a no-op disposer and the App's notice.
-Tabs are kept per App during activation and published into state after `activate` returns; `panels` is derived in
-a `useMemo` from the enabled Apps (list order) and the registered tabs (manifest order), so a panel with no registered
-tab does not exist and a disable, a re-activation or a backend switch removes panels with their pages. The
-activation signature now includes `conversation_panels`. [run: runtime tests]
+The panel slot is unchanged since r1 except for the comments in `301f960` [run: `git diff 64b5a8b f4c7ae5` touches only
+comments in these files].
+- **Registration:** `resolveDeclaredContribution` (`canvas-extensions-runtime.tsx:157–183`). Tabs are published after
+  `activate` returns. `panels` is derived in a `useMemo` from the enabled Apps and their registered tabs, so a panel
+  with no registered tab does not exist.
+- **One column:** `isRightColumnOpen = isRightPanelShown || appPanel !== null` (`conversation-main.tsx:32–34`). The
+  drawer stays mounted under `hidden`. The store's four actions are the only writers of the three open-flags.
+- **Tab state:** `use-conversation-app-panel-tabs.ts`, written through `setAppPanelTabState`
+  (`conversation-local-storage.ts:487–494`). It re-reads the blob, so a write keeps other panels' entries.
+- **Mount lifecycle:** `useCanvasExtensionMount`, keyed `[conversationId, panel key, tab id]`. A change of key disposes
+  first, then empties the container and mounts. A mount that throws shows the unavailable state and keeps the
+  container.
 
-**One column** (`conversation-main.tsx:32–34, 135`). `isRightColumnOpen = isRightPanelShown || appPanel !== null`,
-where `appPanel` is the registered panel for `activeAppPanel`, so a key whose App is gone reads as closed and nothing
-clears it. The drawer's tabs and content stay mounted under the `hidden` attribute (Tailwind 4.3.3's preflight makes
-`[hidden]` `display: none !important`, over the element's `flex` class [read]). The column's width, resize handle and
-the chat's width are the drawer's. The store's four actions are the only writers of the three open-flags. [run:
-store table test, main tests; CI: the first panels test]
+[run: store, main, runtime, tab-hook and panel tests; CI: live tests 1–5]
 
-**Tab state** (`hooks/use-conversation-app-panel-tabs.ts`). The selected tab is resolved at read time (stored if
-registered, else the first pinned, else the first) and written only on a pick; unpinning the selected tab selects the
-next pinned one; `selectTab` of an unknown id is ignored with a console warning. Writes go through
-`setAppPanelTabState`, which re-reads the stored blob so a write for one panel keeps another panel's entry
-(`conversation-local-storage.ts:487–494`). [run]
+### 4.2 Agent controls (unit 2; most of the complexity sits here)
 
-**Mount lifecycle** (`conversation-app-panel-tab-content.tsx`, `use-canvas-extension-mount.ts`). The selected tab is
-mounted into an emptied container with the key `[conversationId, panel key, tab id]`; a change of key or of the
-`mount` function disposes first, then empties the container and mounts again; the context is read through a ref. A
-mount that throws or rejects shows the unavailable state, keeping the container for the next tab. Leaving the
-column (another opener, the conversation route, the breakpoint) unmounts the component, which disposes. [run: panel
-tests; CI: the demo App's lifecycle in the live tier]
+**The gate** (`use-agent-controls.ts:75–79`) requires an ACP context, a local backend, and the capability in the cached
+`/server_info`. The capability is read from a module-level cache at render time, and nothing subscribes to it. [read]
 
-### 4.2 Agent controls (unit 2; where most of the complexity sits)
+**In a conversation** (`:116–141`, `use-latest-acp-session-controls.ts`), there are two sources:
+- a selector that scans the event store from the end, only while enabled and while the store holds this conversation
+  (`:34–38`);
+- one REST search by the module-qualified kind (`:39–61`), cached for the session and not retried.
 
-**The gate** (`use-agent-controls.ts:76–80`): ACP context, a local backend, and the capability in the cached
-`/server_info`. The capability is read from a module-level cache when the hook renders; nothing subscribes to it.
-[read]
+The newer by ISO timestamp wins, and the live one wins a tie; nothing is merged (`:63–64`). The options shown are the
+selects except `model`. A pick calls `useSetAcpConfigOption`, which carries `meta: {disableToast: true}` and its own
+`onError` (D-12); the pill shows the value with a spinner while the set is pending. On success nothing happens: the
+next event replaces the controls. [run]
 
-**In a conversation** (`:117–148`, `use-latest-acp-session-controls.ts`). Two sources: a selector scanning the event
-store from the end for the newest controls event of this conversation (only when the store is loaded for it), and one
-REST search (D-1), cached for the session. The newer by ISO timestamp wins, the live one on a tie; nothing is merged.
-Options shown are the selects except `model`; a pick calls the set route through `useSetAcpConfigOption` (no global
-toast), shows the value with a spinner while pending, and on failure toasts `getSdkHttpErrorDetail(error) ??
-error.message` (D-2). Success does nothing: the next event replaces the controls. [run]
+**On the home screen** (`:156–229`, `use-acp-session-preview.ts`, `home-agent-options-store.ts`):
+- The launch agent is the active agent profile, else `agent_settings`. Its key is `<backend>:<org>:<profile or
+  "agent-settings">`.
+- Picks live in a session store under that key; picks under another key are ignored.
+- The preview query is keyed by launch key, workspace, workspace mode (only with a workspace) and picks. It keeps the
+  previous data while a new key loads, follows D-14's `staleTime`, never refetches on focus and never retries.
+- Two refs hold the last preview the agent answered for this launch key (`:172–185`) and the last refusal's sentence
+  (`:193–199`). Both are written during render.
+- What is shown:
+  - the last answered preview, unless the newest preview failed with anything but a 422, which shows nothing (`:210`);
+  - after a 422, the effect at `:205–207` withdraws the pick (D-13).
+- `startValues` are the shown preview's accepted values, restricted to ids it reported and, for a select, to values it
+  listed (`acceptedValues`, `:81–95`, ASC-002). `HomeChatLauncher` sends them only when non-empty
+  (`home-chat-launcher.tsx:151–152`).
 
-**On the home screen** (`:157–212`, `use-acp-session-preview.ts`, `stores/home-agent-options-store.ts`). The launch
-agent is the active agent profile, else `agent_settings` (`resolveAcpLaunchProfile`); its key is
-`<backend>:<org>:<profile or "agent-settings">`. Picked values live in a session store under the key they were picked
-with; values under another key are ignored. The preview query is keyed by launch key, workspace, workspace mode and
-values; it keeps the previous data while a new key loads, never refetches on focus and never retries. A ref keeps
-the last preview the agent answered for this launch key. Then:
-- a 422 shows the agent's sentence under the pills and keeps showing the last answered preview's commands and
-  options; any other failure shows no commands and no pills;
-- `startValues` are the last answered preview's values, restricted to option ids it reported and, for a select, to
-  values it listed (`ASC-002`); `HomeChatLauncher` sends them only when non-empty (`home-chat-launcher.tsx:151–152`).
-
-After a refusal the refused value stays in the store (a test pins it), while the pill shows the last accepted value.
-The store keeps it until a third value is picked, the launch agent changes or the app restarts: choosing the value
-the pill shows does nothing (`chat-input-agent-options.tsx:169`), and choosing the refused value again keeps the same
-query key, so no new preview is sent and the refusal stays (a return to the home screen does refetch it). A two-value
-option has no third value. A start still sends
-only the last accepted values (here none, so the agent's default). Every later preview carries the refused value
-with any other pick [read]. [run: two probes copying the preview and pill tests, `thorough` refused after `fast`:
-shown `fast`, store `{profile: "thorough"}`, `startValues` `{}`, no preview on re-picking, no `setOption` for the
-shown value]
-
-**The slash menu** (`use-slash-command.ts:102–127`): built-ins, then the agent's commands (not waiting for skills),
-then skills, with any repeated command dropped after its first appearance. Each agent command becomes a
-`SlashCommandItem` with a skill shim and its hint; selecting it inserts `/<name> `. **The pill row** renders in
-`ChatInputContainer` after the uploaded files, only when there are options or a refusal (`chat-input-container.tsx:89`).
 [run]
+
+**The slash menu** (`use-slash-command.ts:102–127`) lists the built-ins, then the agent's commands, then skills, and
+drops any repeated command after its first appearance. **The pill row** renders in `ChatInputContainer` only when there
+are options or a refusal (`chat-input-container.tsx:89`; `chat-input-agent-options.tsx:188`). [run]
 
 ### 4.3 The start body and the preview
 
-`buildLocalStartConversationRequest` is `createConversation`'s former local half, moved unchanged (settings and
-profiles, the title profile, a new id, the workspace, the encrypted-settings body); `createConversation` adds
-`acp_config_options` (only when non-empty) and `user_id`, and `previewAcpSession` adds `acp_config_options` and posts to
-the client's `previewAcpSession`. The start's body without values is byte-identical to the body before C2 (a test
-compares the JSON). [run; D-3 for what differs]
+`buildLocalStartConversationRequest` (`agent-server-conversation-service.api.ts:455–510`) builds the start body less
+`user_id` and `acp_config_options`, and returns `{payload, resolvedWorkspaceMode}`. Its callers are:
+- `createConversation` (`:608–618`), which adds `acp_config_options` when non-empty, then `user_id`;
+- `previewAcpSession` (`:661–676`), which adds `acp_config_options` and posts to the client's `previewAcpSession`.
+
+The start's body without values is byte-identical to the body before C2; a test compares the JSON. [run; §2.3 r1's D-3
+for what differs from the preview]
 
 ### 4.4 App backend frames (unit 3)
 
-`mountAppBackendFrame` (`src/extensions/mount-app-backend-frame.ts`) resolves the target from the App's owning
-backend: a non-local backend is `unsupported-backend`; no bridge capability or no `app_backend_ingress_url` in that
-backend's cached `/server_info` is `no-ingress`. It then acquires a lease and appends the frame (`src =
-lease.url + path` without its leading `/`, `sandbox` = the server's tokens, `referrerpolicy="no-referrer"`, `title`,
-full size, no border). A failure prepends a `<p role="status">` with the localized sentence and calls `onError` once;
-a lost session (a failed refresh) adds the notice beside the frame, which stays. The disposer aborts a pending
-acquisition and removes frame and notice, then releases the lease. [run: 10 frame tests]
+`mountAppBackendFrame` (`src/extensions/mount-app-backend-frame.ts`) is unchanged since r1.
+- A non-local backend is `unsupported-backend`. A missing bridge capability or `app_backend_ingress_url` is
+  `no-ingress`.
+- It acquires a lease, then appends the frame. A failure prepends a `<p role="status">` and calls `onError` once.
+- A lost session adds the notice beside the frame, which stays.
+- The disposer aborts, removes frame and notice, and releases.
 
-The keeper (`app-backend-session-keeper.ts`) holds one entry per `[backend id, App name]`: a holder count (leases plus
-waiting acquisitions), the mint promise, the refresh timer and the lost-listeners. The first acquisition mints; the
-entry is forgotten if the mint fails, so the next frame retries. A minted session schedules a refresh at `expires_at −
-60 s`, at least 10 s away; a refresh replaces the cookie for every frame of the App. The last release deletes the
-entry, clears the timer and revokes once the mint has settled (`:154–170`). After a failed refresh the entry stays,
-with no timer: a frame of the same App mounted while another still holds it gets the old session again and no
-further refresh [read]. [run: 7 keeper tests, fake timers, the client faked at its boundary]
+The keeper (`app-backend-session-keeper.ts`) holds one entry per `[backend id, App name]`:
+- The first acquisition mints, and a failed mint is forgotten so the next frame retries.
+- It refreshes at `expires_at − 60 s`, at least 10 s away (`:105–130`).
+- The last release deletes the entry and revokes once the mint has settled (`:156–172`).
+- `release` is idempotent per lease (`:208–213`).
+- `toAppBackendError` (`:70–88`) maps a 503 whose `exception` says "not ready" to `not-ready`, one naming the ingress to
+  `no-ingress`, and anything else to `session-refused`.
+
+[run: 7 keeper and 9 frame tests, fake timers, the client faked at its boundary]
 
 ### 4.5 Where the complexity sits
 
-In the home path of §4.2 (the launch key, the last-answered ref, refusal handling and start values: 56 lines, with
-13 tests of their own) and in the keeper's lease counting (§4.4). The panel slot is many small pieces across
-the store, the column, the runtime and the tab hook, each simple.
+- **The home path of §4.2:** 74 lines (`use-agent-controls.ts:156–229`) with 16 tests of their own. It has two refs
+  written during render and one effect. The withdrawal depends on D-14's `staleTime` rule not to ask again: probe P9b
+  makes both fail together.
+- **The keeper's lease counting** (§4.4).
+
+The panel slot is many small pieces, each simple.
 
 ### 4.6 What C2 relies on
 
-- **S2, through `dr-1`.** `cef3b24` is S2 at `6f97bf3` plus S1's five commits (`13f4571`…`0cfb6a2`) and the fork-only
-  `cef3b24` (publishing the TypeScript client); S2's later `13e5904` and `5e3317f` are not in it, and differ from
-  `6f97bf3` in the agent-server only by the icon route's OpenAPI declaration [run: `git merge-base`, `git diff --stat`
-  in the SDK fork]. From the dr-1 client tarball (version string 1.50.1): `ConversationClient.previewAcpSession` and
-  `setAcpConfigOption`, `ACP_SESSION_CONTROLS_EVENT_KIND`, the controls types, and
-  `CanvasExtensionsClient.createAppBackendSession` / `revokeAppBackendSession` with `appBackendIngressUrl` [run: `tsc`
-  through `npm run lint`]. From the agent-server directly: the three capability strings and `app_backend_ingress_url`
-  in `/server_info`; `contributes.conversation_panels` in the installed manifest; the icon route needing the session
-  key; the preview ignoring `conversation_id`, `worktree` and `initial_message`; `acp_config_options` on the start;
-  the set route's 422 carrying the agent's sentence in `detail`; the qualified-kind search (D-1); the
-  `ACPConfigOptionRejected` error code; the 5xx body shape (D-2); the bridge's session route and its 503 sentences
-  (D-5). S2's transient empty first report reaches C2 as D-4. [CI for what the live tier exercises, §6.3; read for
-  the bridge, never run against a server here]
-- **C3, through the wiring.** The mock-LLM stack and the desktop app start the agent-server through C3's launcher,
-  which installs it from `config/defaults.json` `sources` (`git+…software-agent-sdk@cef3b24`) [read]; the live tier's
-  `beforeAll` asserts both capabilities in that server's `/server_info` [CI]. C3's default
-  `OH_APP_BACKEND_PUBLIC_URL` (`49db305`) is what gives the npm and desktop launchers an App ingress, without which
-  every frame reports `no-ingress` [read].
+- **S2, through `dr-1`.** The annotated tag `dr-1` (`8de2887`) still names `cef3b24` [run: `git ls-remote`]. From the
+  `dr-1` client tarball (version string 1.50.1), C2 uses:
+  - `ConversationClient.previewAcpSession` and `setAcpConfigOption`;
+  - `ACP_SESSION_CONTROLS_EVENT_KIND` and, since D-16, `isACPSessionControlsEvent`;
+  - the controls types;
+  - `CanvasExtensionsClient` with `appBackendIngressUrl`;
+  - `HttpError`, in the tests.
+
+  From the agent-server, C2 relies on: the three capability strings and `app_backend_ingress_url` in `/server_info`;
+  `contributes.conversation_panels`; the icon route; the preview ignoring `conversation_id` and `initial_message`;
+  `acp_config_options` on the start; the set route's 422 sentence in `detail`; the qualified-kind search; the
+  `ACPConfigOptionRejected` error code; the 5xx `{detail, exception}` shape; and the bridge's session route with its
+  503 sentences.
+
+  S2 merged into the SDK fork's `deep-reasoning` on 2026-10-04 (changelog). `cef3b24` is not in that branch's history.
+  In the files C2's contract touches, the branch differs from `cef3b24` mostly by S1's absence (its events and cancel
+  route) and by formatting [read: `git diff --stat`, and the diffs of `acp_router.py` and `event_service.py` skimmed].
+  Nothing here ran C2 against it. [CI for what the live tier exercises; read for the bridge]
+- **C3, through the wiring.** `wiring/dr-1` (`9881d24`) carries C3 at `22272d9`. C3's branch is now at `61d9217`, 12
+  commits further, and those commits are not in the wiring. C2 uses two things from C3, and both are present at both
+  commits [read]:
+  - `config/defaults.json`'s `sources.agentServerGitRepo` and `agentServerGitRef` (`cef3b24`), from which the launcher
+    installs the agent-server for the stack the live tier runs;
+  - the default `OH_APP_BACKEND_PUBLIC_URL` (`49db305`, `scripts/dev-safe.mjs:885–886`), without which every frame
+    reports `no-ingress`.
+
+  The task row holds the PR split until C3 merges and `wiring/dr-1` follows it [read: TASK-7].
 
 ### 4.7 Who relies on C2, and on what
 
-- **D3, the Decompositions panel** (deep-reasoning `v1-decompositions-panel`, code at `d4e9cd3`; App `dr-library`,
-  panel `decompositions`, tabs `browse`, `create`, `namespaces`, `tools`, icon `panel.svg`). It relies on: the
-  manifest key and the button ("Show Decompositions"); `registerPage` for its four tab ids; the mount context's
-  `conversationId` and `surface.kind === "conversation-panel"` with `selectTab`, through which a frame message switches
-  tabs (C2 remounts the new tab, and D3 hands the next mount a focus through a module-level map); `host.agentServer.
-  request` within its 60 s for the backend's status and start, the `deep_reasoner` profile and the events search;
-  `host.appBackend.mountFrame(container, {path: "/ui/?…", title, onError})`, retrying once on `not-ready`, which C2
-  reports only since `70ce577` (D-2); and the frame being the `<iframe>` child of the container (D3 finds it with
-  `container.querySelector("iframe")` to match `message` events to its `contentWindow`), which C2 keeps across
-  refreshes. D3 types `appBackend` as optional and shows a sentence without it. **D3's namespace read uses the short
-  kind and finds nothing at dr-1 (D-1).** D3's as-built records that none of D3 has run inside Canvas; nothing in C2's
-  tests runs D3. [read: D3's `canvas-app/src/page/*.ts`; run: the filter probe]
-- **D1's dr-acp, through S2.** Its decomposition commands and its `namespace` select reach C2's menu and pills; C2
-  relies on the namespace being a `select` not named `model`, on a one-value select meaning "fixed", and on a new
-  report replacing the last (dr-acp clears its menu at the first prompt). With dr-acp, D-4's empty first report is
-  the expected sequence (S2's as-built D-2). [read]
-- **D5's layer 4 (E12)** drives the real desktop app through C2's surfaces with dr-acp; it has not run. [read: design
-  §10]
-- **S2's as-built §4.8** described C2 at `db3b4b9`; since then C2's own commits are `70ce577` and `86c00b5`, besides
-  the wiring merges. [run: `git log db3b4b9..64b5a8b`]
+- **D3, the Decompositions panel** (deep-reasoning `v1-decompositions-panel` at `897cb44`). D3 relies on:
+  - the manifest key and the button;
+  - `registerPage` for its four tab ids;
+  - `conversationId`, and `surface.selectTab`, which D3 calls on a frame message (`canvas-app/src/page/mount.ts:80–82`);
+  - `host.agentServer.request` within its 60 s, for the backend's status and start; the 60 s is still pinned (P1);
+  - `host.appBackend.mountFrame(container, {path: "/ui/…", title, onError})`, retrying once on `not-ready`
+    (`:86–90`);
+  - the frame being the container's `<iframe>` child (`:71`), which C2 keeps across refreshes. D3 empties the container
+    before each mount; C2 appends the frame and prepends any notice.
+
+  Since `436c513` (2026-10-03 22:57), D3's `readConversationNamespace` searches with the module-qualified kind
+  (`canvas-app/src/page/context.ts:20–32`), so r1's D-1 consequence for D3 no longer holds. Nothing in C2's tests runs
+  D3, and D3 has not run inside Canvas. [read: D3's `canvas-app/src/page/*.ts`]
+- **C1** (`feat/acp-subagent-sessions` at `9d75806`) shares 8 files with C2 over `wiring/dr-1`: `events/index.ts`,
+  `openhands-event.ts`, `translation.json`, `event-service.api.ts` and its test, `should-render-event.test.ts`,
+  `transcript-export/index.test.ts` and the e2e guide. `type-guards.ts` is no longer one of them (D-16).
+  - An in-memory merge of `9d75806` with `f4c7ae5` conflicts in one hunk: both branches' new export line at the top of
+    `events/index.ts` (`./acp-subagent-event` and `./acp-session-controls-event`). The other seven files merge cleanly.
+    [run: `git merge-tree`]
+  - **The shared 5xx-reason rule** that C1's as-built §2.1 D-1 names is now C2's in one place only: `toAppBackendError`
+    (`:74–88`), reading `exception` through upstream's `getApiErrorBody`. It matches the reason by regular expression
+    to classify a 503 and shows it to no user. C1's `refusalReason` strips the `NNN: ` prefix and shows the reason in
+    a toast. The two remain separate implementations. [read]
+- **D1's dr-acp, through S2.** Its commands and its `namespace` select reach C2's menu and pills. C2 relies on the
+  namespace being a `select` not named `model`, on a single value meaning "fixed", and on a new report replacing the
+  last. [read]
+- **D5's E12** drives the real desktop app through C2's surfaces. It has not run. [read]
 
 ---
 
-## 5 · Wiring
+## 5 · The pull request
 
-PR #3 is a draft, `feat/agent-surfaces` → `wiring/dr-1`, 12 commits, +6,955 −167 in 89 files, labelled `type: feat`,
-mergeable. Its checks at `64b5a8b`: CI's `test-and-build (ubuntu)` (lint, test, build, build:lib, package check) and
-`test-and-build (windows)` (app build only; lint and test skipped), `prepare-test-matrix`, `live-e2e` skipped,
-`pr-title` (both jobs) green; two `mock-llm-e2e` checks from the two dispatches, the specs-only run green and the full
-run red (§6.5). No desktop workflow ran on the PR. [CI] The PR body's "How to Test" reports the runs at `86c00b5`
-(CI 37152459103, mock-LLM 37152465164), not at the head. [CI: PR body]
+PR #3 is a draft, `feat/agent-surfaces` → `wiring/dr-1`, labelled `type: feat`, with mergeable state clean. It has 28
+commits: C2's 25, `ba4d883` and the two wiring merges. The diff is +6,944 −167 in 88 files.
 
-Fork-only and not C2's, but on its path: `ba4d883` at its base; through the wiring, `69d2a6a` (the `dr-1` agent-server
-source and client pin), `32bc76e` (the SDK version check reading a tarball pin) and `9881d24` (the `specs` input).
-Upstream's product specs gain the panel contract, App backend frames and `CX-001`–`CX-006`
-(`specs/canvas-extensions.md`, which also marks Slice 4's "extension tabs/panels" delivered) and a new
-`specs/acp-session-controls.md` (`ASC-001`–`ASC-005`); code and tests carry `// @spec` tags. The e2e skill guide and
-`test-mapping.json` name the two new specs. [read]
+Every check at `f4c7ae5` is green:
+- `test-and-build (ubuntu)`;
+- `test-and-build (windows)`, which builds the app only;
+- `prepare-test-matrix`;
+- both `pr-title` jobs;
+- one `mock-llm-e2e`, the specs-only dispatch;
+- `live-e2e`, skipped.
+
+No full mock-LLM run exists at this head. The description's "How to Test" still reports the runs at `86c00b5`, and its
+summary predates D-12 and D-13. [CI]
 
 ---
 
@@ -496,114 +528,140 @@ Upstream's product specs gain the panel contract, App backend frames and `CX-001
 
 | Run | Commit | Conditions | Result |
 |---|---|---|---|
-| CI [37153648487](https://github.com/michaeltheologitis/OpenHands/actions/runs/37153648487) | `64b5a8b` | `pull_request`; ubuntu-24.04 full checks; windows build only; Node 24.15.0, npm 11.12.1 | green. Lint 0 errors, 379 warnings; test **776 files passed, 1 skipped; 8,254 tests passed, 1 skipped, 7 todo** in 650 s; build, build:lib and the package check green. All 26 of C2's test files ran, with the counts of my run [CI] |
-| live tier [37153648974](https://github.com/michaeltheologitis/OpenHands/actions/runs/37153648974) | `64b5a8b` | `workflow_dispatch` of `mock-llm-e2e.yml` with `specs` = C2's two spec files; uv 0.12.23; the mock LLM; the mock ACP agent; agent-server from `cef3b24` [read] | **7 passed** (1.8 min), 1 worker [CI] |
-| full mock-LLM 37153914745 | `64b5a8b` | the same, `specs` empty: 79 tests | **6 failed**, all upstream specs (§6.5); C2's 7 pass within; teardown hung and was killed (exit 124) after the done marker [CI] |
-| full mock-LLM 37149694708 | `ba4d883` (fork `deep-reasoning`, without C2, C3 and the wiring; agent-server from PyPI at `versions.agentServer` [read]) | 72 tests | the **same 6 failed**, same first errors [CI] |
-| full mock-LLM 37152465164 | `86c00b5` | 79 tests | 5 failed: the same less `files-and-git` step 2 [CI] |
-| this sandbox, C2's 26 test files | `64b5a8b` and `9881d24` | Node 22.22, 4 CPUs, load average 20–30 | head **515 passed**; the same files at the base 377; **C2 adds 138 test cases, all passing** [run] |
-| this sandbox, full suite (`npm test`) | `64b5a8b` | the same, beside two other agents' suites; 46 min | **774 files passed, 2 failed, 1 skipped; 8,252 tests passed, 2 failed, 1 skipped, 7 todo** (the same 8,262 as CI). The two failures, `conversation-panel.test.tsx` ("pins the active backend…") and `automations-subpages-absent.test.tsx`, are upstream files C2 does not touch, each a `findBy` that did not find its element; rerun alone, both files pass (70 of 70), and both pass in CI [run] |
-| this sandbox, lint, builds, translations | `64b5a8b` | `npm run lint`, `npm run build`, `npm run build:lib`, `check-translation-completeness.cjs` | lint 0 errors, 379 warnings, Prettier clean, `tsc` clean; both builds succeed; every key in every language [run] |
+| CI [37174140874](https://github.com/michaeltheologitis/OpenHands/actions/runs/37174140874) | `f4c7ae5` | `pull_request`; ubuntu-24.04 full checks; windows build only; Node 24.15.0, npm 11.12.1 | green. Lint 0 errors, 379 warnings. Test: **776 files passed, 1 skipped; 8,254 tests passed, 1 skipped, 7 todo** in 366 s. Build, build:lib and the package check green. C2's 26 files ran, each with my count [CI] |
+| live tier [37174141226](https://github.com/michaeltheologitis/OpenHands/actions/runs/37174141226) | `f4c7ae5` | `workflow_dispatch` of `mock-llm-e2e.yml` with `specs` = C2's two spec files; the mock LLM; the mock ACP agent; uv 0.12.23 | **7 passed** (1.6 min; the job 2 min 54 s), 1 worker [CI] |
+| full mock-LLM suite | — | none at `f4c7ae5`. r1's record at `64b5a8b` (37153914745): 6 upstream failures, the same 6 as at `ba4d883` without C2 | not re-run [CI, r1] |
+| this sandbox, r1's 26 test files | `f4c7ae5`, `61b9bdc`, `64b5a8b`, `9881d24` | Node 22.22, 4 CPUs, load average 5–10 | **515**, 521, 515 passed; the 15 that exist at the base, 377. No failure at any commit [run] |
+| this sandbox, typecheck and builds | `f4c7ae5` | `npm run typecheck`, `npm run build`, `npm run build:lib` | all succeed (83 s, 26 s, 58 s). ESLint and Prettier were not run here; CI's lint is green [run; CI] |
 
-**Lint warnings in C2's lines:** 3 of the 379, all `shadcn/no-arbitrary-values`, in `chat-input-agent-options.tsx`
-(`:52` `text-[11px]`, `:163` `z-[60]` and `max-h-[60vh]`); the other warnings in files C2 touched are on upstream's
-lines. The `‹hint›` glyph passes lint without an exception (design §11 item 5's second check). [CI: lint log, `git
-blame`]
+**Lint warnings in C2's lines** are 3 of the 379, as in r1: `shadcn/no-arbitrary-values` in
+`chat-input-agent-options.tsx` (`:52`, and `:163` twice). The other seven warnings in files C2 touches fall on lines
+from before C2. [CI: lint log; run: `git blame`]
 
-### 6.2 E11, C2's part (design §10)
+### 6.2 The deterministic tests C2 adds
 
-| E11 claim | In C2, measured | Result |
+There are **138 cases in r1's 26 files, all passing** (515 at head, less the base's 377). They come from **108
+definitions**, 11 of them `it.each`. `acp-error-codes.test.ts` no longer carries a C2 line, so 25 files hold C2's
+tests. [run]
+- **Unit 1: 58.** Store (9: `CX-001`'s 7 sequences, start state, `hasRightPanelToggled`); local storage (8); runtime
+  (6); tab hook (5); toggle (8); panel (8); column (2); narrow page (3); Apps card (3); capability helper (5); icon
+  fetch (1).
+- **Unit 2: 63.** Service (6); event search `kind` (2); latest controls (6); conversation controls (13); home controls
+  (16); slash menu (5 hook, 1 menu); pills (9); home launcher (2); banner, rendering and transcript export of the event
+  (1 each).
+- **Unit 3: 17.** Keeper (7); frame (9); the host's frame mounter (1).
+
+Since r1, by name [run: test names diffed between `64b5a8b`, `61b9bdc` and `f4c7ae5`]:
+- The Gate B fixes replaced 2 tests and added 6, a net of +6:
+  - D-12's 504 row replaced `never shows a 5xx answer's placeholder detail…`, and the timeout and lost-connection rows
+    joined it;
+  - D-13's first test replaced `keeps the last accepted controls…`, and three home tests and the pills' `sets nothing
+    when the value in effect is chosen` joined it.
+- The refactor removed 9 (§6.3) and added 3: D-12's 400 and 404 rows and its unmount test.
+
+Two `it.each` tables print duplicate titles. Three sanitizer rows each read `sanitizes a stored { 'demo/panel':
+[Object] }`, and two `CX-001` sequences share `keeps one right-hand panel after open drawer then open panel A`. A report
+shows 135 distinct names for the 138 cases. [run]
+
+Every vitest file fakes services at their boundary (the client, `EventService`, `AgentServerConversationService`). The
+refactor's `8708eae` makes the tests throw the client's own `HttpError` class, so D-12's toast assertions read the
+client's real message format. [read]
+
+### 6.3 What the refactor removed from test coverage, with probes
+
+**Method.** Each probe makes one temporary replacement in the `f4c7ae5` copy and runs the named test files, or all 26.
+Then `git checkout` restores the file and `git status --porcelain` is empty. Probes P1–P6 test the nine cut tests;
+P6b–P9b test the fixes' own tests. [run]
+
+| Cut test (`9c49036`, `4ff261c`) | Where its property stands | Probe | Result |
+|---|---|---|---|
+| `getSdkHttpErrorDetail › reads the agent-server's detail sentence…` | the helper is gone; a 422's sentence is pinned at both refusal sites (D-12, D-13 tests) | — | — |
+| `› is null for a validation error list` | no test. `getApiErrorMessage` falls back to the error's text for a non-string `detail`, as the helper's fallback did [read] | — | — |
+| `› is null for a body without detail`, `› … not an SDK HTTP error` | the set's table pins non-HTTP failures (timeout, lost connection) | — | — |
+| `› is null for a 5xx answer…` | the live set: pinned by its 504 row | **P6b**: any HTTP status counts as a refusal in `useSetAcpConfigOption` | **killed** by the 504, 400 and 404 rows |
+| (same) | the home screen: **not pinned** | **P6**: the same edit in `useHomeAgentControls` (`:190`) | **survived** all 26 files. The same edit is **killed** at `64b5a8b` by the five `… when the preview answers %i` rows, and **survives** at `61b9bdc`. `6fb7f05`'s `rejection` shows only beside shown controls, and those rows have no earlier answer. With the edit, a 504 after an answered preview would show "Internal Server Error" as the agent's sentence and withdraw the pick |
+| `useLatestAcpSessionControls › issues no search and reads nothing while disabled`: the search half | pinned by `useConversationAgentControls › has no controls, and searches nothing, for %s` | **P3**: the query ignores `enabled` | **killed** in all 3 rows |
+| (same): the scan half | **not pinned**; not observable through the one caller | **P2**: the selector ignores `enabled` | **survived** all 26. The cost is a scan of the whole event store on every store update in every non-ACP conversation (`501f0c6`'s message) [read] |
+| `acp-error-codes › maps a refused start-time option value to its own header` | pinned by the banner test | **P4**: rename the map's key | **killed** by `heads a refused start-time option with its title…` |
+| `CanvasExtensionsService › gives an App's agent-server requests a minute…` | pinned by upstream's `fetches the bundle as authenticated text…`, which asserts `timeout: 60000` on the client builder `requestAgentServer` shares (`canvas-extensions-service.ts:75–87, 256`) | **P1**: the constant 60 000 → 5 000 | **killed** by that upstream test |
+| `mountAppBackendFrame › keeps one session for two frames of the App…` | **not pinned** through the frame; the keeper's tests pin sharing for direct leases | **P5**: `resolveTarget` gives each frame its own backend id | **survived** all 26. The same edit is **killed** at `61b9bdc` by the cut test |
+
+| Fix's own test | Probe | Result |
 |---|---|---|
-| The home screen's preview lists the namespace's commands | live test 6: with the mock agent as the active ACP profile, the home pill reads `Profile: fast` and `/` lists `/summarize`, not `/compare` [CI]; `useHomeAgentControls` tests [run] | passed with the mock agent; dr-acp's namespaces are not in C2's tests |
-| Changing the namespace changes them | live test 6: choosing `thorough` gives `Profile: thorough` and lists `/summarize`, `/compare ‹what to compare›` [CI] | passed |
-| The started run uses the chosen namespace | live test 6: the `POST /api/conversations` body has `acp_config_options: {profile: "thorough"}` and the agent's reply reads `MOCK_ACP_E2E_REPLY_OK profile=thorough` [CI]; the start-body tests [run] | passed |
-| Commands are gone after the first message | live test 7: in the conversation the pill is fixed at `thorough` and `/` lists neither agent command, before and after a reload [CI]; the replacement test [run] | passed |
-| The Decompositions panel mounts with the right conversation | live test 3 with the `demo-panel` App: switching conversation with the panel open remounts it with the other id, and going back shows the first [CI]; `CX-002` tests [run] | passed for the demo App; D3's panel never ran in Canvas |
-| It never shares the right side with the drawer | the store's action-sequence table (`CX-001`) [run]; live test 1: opening the drawer closes the panel, opening the panel hides the drawer and closes the overview, and the reverse [CI] | passed |
+| D-12, `3461e1c`'s unmount test | **P7**: the toast moves back to `mutate`'s callbacks | **killed** by `still reports a failed pick when the composer unmounts…` only |
+| D-13, the withdrawal | **P8**: the effect never withdraws | **killed** by D-13's three home tests |
+| D-14, `staleTime` | **P9a** `Infinity` / **P9b** `0` | **killed** by `asks the agent again when the home screen returns` / by D-13's first and third tests |
 
-### 6.3 The live tier
+The refactor also rewrote tests without cutting them [read]:
+- three shared helpers (`createQueryWrapper`, `demoPageShows`, `renderToggles`);
+- the toggle-order test reads every rendered button instead of buttons inside a wrapper;
+- the repeat-dropping slash test now names which copy survives (`f4c7ae5`).
 
-`mock-llm-canvas-extension-panels.spec.ts` (5 tests) needs `canvas_conversation_panels_v1` and installs `demo-panel`
-by absolute path through the API (skipped in the Docker config); `mock-llm-acp-session-controls.spec.ts` (2 tests)
-needs `acp_session_controls_v1` and saves and activates an ACP profile running the mock agent with
-`--session-controls`. In run 37153648974, in order [CI]:
+### 6.4 The live tier
 
-1. The App's button is the last of the header's top-right group, after Show panel, with the icon as an SVG `data:`
-   URL; it opens a region named "Demo panel" with `aria-pressed`, mounted as `conversation=<id> path= tab=overview`;
-   Show panel closes it; opening it again hides the drawer; the overview closes it and the panel closes the
-   overview; the page's `surface.selectTab("details")` remounts with `path=details tab=details`.
-2. Unpinning Details from ⋯ survives a reload while the panel itself comes back closed.
-3. Switching conversation with the panel open remounts it with the new id; back shows the first.
-4. At 800 px the button opens `/conversations/<id>/panel/demo-panel/demo` with the tab mounted; back returns.
-5. Disabling the App on the Apps page removes its button and closes its panel.
-6. The home screen previews, picks, sends and gets `profile=thorough` (§6.2).
-7. The conversation shows the pill fixed and no agent command, before and after a reload.
+The two spec files and the mock agent are unchanged since r1 [run: `git diff 64b5a8b f4c7ae5 -- tests/e2e` is empty].
+In run 37174141226 the seven tests ran in order [CI]:
+1. the button follows Show panel and opens one right-hand panel;
+2. an unpinned tab survives a reload while the panel starts closed;
+3. switching conversation remounts the panel;
+4. the narrow window's page;
+5. disabling the App;
+6. the home preview, a pick, and `profile=thorough` reaching the agent;
+7. the started conversation's fixed pill and no agent commands, after a reload too.
 
-The reload pass of test 7 does not isolate the REST search: the page also preloads the conversation's newest events,
-which here include the controls events. That path is unit-tested only (`useLatestAcpSessionControls`). [read]
-
-### 6.4 The deterministic tests C2 adds (138 cases, 26 files, all passing) [run]
-
-- **Unit 1, 59.** Store: the `CX-001` action table (7 sequences), no panel at start, `hasRightPanelToggled` cleared.
-  Local storage: round trip, six malformed shapes, a write keeping another panel's entry. Runtime: tab registration
-  in manifest order with paths without `/`, a panel id and an undeclared id fail activation, the refusal without the
-  capability keeps the App, disable removes, a manifest change re-activates. Tab hook (5), toggle (8: Cloud, no tab,
-  order, open and close with tooltip and `aria-pressed`, narrow window, icon, no icon, icon failure), panel (8: region
-  and order, mount context, dispose before remount, conversation change, selected tab closes, ⋯ menu, rejecting mount
-  and recovery, `selectTab`), column (2), narrow page (3), Apps card (3), capability helper (5), icon fetch and
-  timeout (2).
-- **Unit 2, 61, three of them from the fixes.** Service (6: values in the start and an otherwise identical body,
-  preview equals start for a profile and an `agent_settings` launch, 120 s timeout, live set, Cloud refused), event search `kind` local and Cloud (2),
-  `useLatestAcpSessionControls` (7), `useConversationAgentControls` (8, two of them `86c00b5`'s), `useHomeAgentControls`
-  (13, five of them the 400, 429, 501, 502 and 504 cases), slash menu (6), pills (8), home launcher (2), the banner,
-  the error code, rendering and transcript export of the event (1 each), `getSdkHttpErrorDetail` (5, one `70ce577`'s).
-- **Unit 3, 18.** Keeper (7: one session per App shared by leases, Apps apart, refresh a minute early and stops after
-  the last release, the 10 s floor, revoke only at the last release, a failed refresh reaching every lease, an
-  abandoned acquisition leaving nothing), frame (10: `src`, `sandbox`, `title`; each of four reasons once with its
-  notice, two `no-ingress` cases; a refresh keeping the frame and a failed one adding the notice; two frames sharing
-  one session; dispose during a mint; dispose), and the host's frame mounter bound to its App and backend.
-
-Plus the 7 live-tier tests of §6.3. [run: test names diffed between head and base, and the runs]
-
-### 6.5 The full mock-LLM suite: the six failures
-
-In runs 37153914745 (`64b5a8b`) and 37149694708 (`ba4d883`), each with this first error [CI]:
-
-1. `automations/mock-llm-automation.spec.ts:523` step 2: "Expected `<RUNTIME_SERVICES>` block in a system message",
-   in both attempts of the spec's own retry.
-2. `conversations/mock-llm-conversation.spec.ts:268` step 3: "No successful bash execution after 30000ms".
-3. `conversations/mock-llm-image-upload.spec.ts:76`: `toBeVisible()` after 30 s.
-4. `files/mock-llm-files-and-git.spec.ts:140` step 2: a 60 s predicate timeout. Passed at `86c00b5`.
-5. `onboarding/mock-llm-onboarding-happy-path.spec.ts:70`: a 30 s predicate timeout.
-6. `settings/mock-llm-profile-management.spec.ts:285`: `toBeVisible()` after 30 s.
-
-None is in a file C2 touches. The base run had neither C3's launcher nor the dr-1 agent-server, so the six fail with
-upstream's agent-server too. Why they fail I did not investigate. [CI; read: the file list]
+None of the seven reaches a refusal, the refusal line, a toast or a live set. The mock agent can refuse
+(`mock-acp-server.py:123–127`), but no spec picks a value it refuses. D-12, D-13 and D-14 are therefore proved by unit
+tests only, as the Refactorer's report corrects [read]. As r1 noted, test 7's reload does not isolate the REST search,
+because the preloaded history holds the controls events [read].
 
 ---
 
-## 7 · What I could not verify
+## 7 · Size, before and after
 
-1. **App backend frames against a real agent-server.** Every frame and keeper test fakes the client at its HTTP
-   boundary; no test, and nothing I ran, mints a session on a real ingress, loads a frame, refreshes a cookie or
-   exercises `SameSite=None; Partitioned` cookies in Chromium or Electron. The bridge's sentences that D-5 depends on
-   are read from `cef3b24`.
-2. **A live set in a conversation** (`POST …/acp/config-options`): unit-tested only; the live tier's agent fixes its
-   option at the first prompt, so it never sets one live.
-3. **The REST search path end to end** (§6.3) and the history preload's limit: read.
-4. **The drawer's terminal surviving behind an App panel** (design §11 item 5): the test keeps a mocked content
-   component mounted; no real terminal session was observed.
-5. **Unit isolation** (D-7): I did not cherry-pick the units onto the fork's `main` or run any unit alone.
-6. **Mutation testing** (D-9): not run here; Stryker over C2's ~45 changed source files with `related` vitest runs
-   would take hours on this machine, and the design gives no time budget for it.
-7. **The full mock-LLM suite locally**: not run; the six failures are CI's record, and why they fail is not
-   investigated.
-8. **D3's consequence of D-1** is read from D3's code and the filter probe; no D3 panel ran against a real
-   agent-server.
-9. **Electron and Windows**: C2 adds no Electron code; CI builds the app on Windows without running tests.
-10. **The capability gate's timing** (§4.2): read only; no test renders before `/server_info` is cached and checks
-    that the controls appear afterwards.
+`git diff --numstat 9881d24...<ref>`, by kind [run; the totals match the figures the Refactorer reported from its own
+script]:
 
-If this document resists shortening, the part that resists is §2: the code follows the design closely, and what
-differs is spread across the contract D3 reads (D-1, D-2, D-5), the preview's parity (D-3, D-4) and the proof (D-7 to
-D-11).
+| Kind | r1, `64b5a8b` | after the Gate B fixes, `61b9bdc` | after the refactor, `f4c7ae5` |
+|---|---|---|---|
+| Code (`src/`, not tests, fixtures or translations) | +2,635 −141 (50 files) | +2,671 −141 (50) | **+2,626 −141 (49)** |
+| Unit tests (incl. helpers) | +3,284 −11 (27) | +3,407 −11 (27) | **+3,280 −11 (27)** |
+| Playwright specs | +474 (2) | +474 | +474 |
+| Mock agent and test mapping | +157 −12 (2) | +157 −12 | +157 −12 |
+| Translations, fixture, upstream `specs/`, skill guide | +405 −3 (8) | +407 −3 | +407 −3 |
+| **All** | **+6,955 −167 (89); 6,297 non-blank** | **+7,116 −167 (89); 6,443** | **+6,944 −167 (88); 6,287** |
+
+- The refactor took out 172 lines (2.4 %): code 45 (1.7 %) and unit tests 127 (3.7 %).
+- Most of the code went from `agent-server-compatibility.ts` (−37), `use-agent-controls.ts` (−11) and
+  `type-guards.ts` (−6, now untouched). `use-set-acp-config-option.ts` grew by 14.
+- Most of the test lines went from the helper tests and duplicates of §6.3, and from four copies of one wrapper, which
+  became `query-wrapper.tsx` (+21).
+- At ≈300 lines an hour, Gate C reads the whole diff in about 23 h, and the code with its unit tests (5,906 lines) in
+  about 20 h.
+- The largest pieces are now:
+  - code: `use-agent-controls.ts` 229, `chat-input-agent-options.tsx` 221, `app-backend-session-keeper.ts` 219,
+    `canvas-extensions-runtime.tsx` +213 −19, the conversation service +131 −42;
+  - tests: `use-acp-session-preview.test.tsx` 410, `use-agent-controls.test.tsx` 305, `mount-app-backend-frame.test.ts`
+    246.
+
+---
+
+## 8 · What I could not verify
+
+1. **App backend frames against a real agent-server.** Every frame and keeper test fakes the client at its boundary.
+   No test, and nothing I ran, mints a session on a real ingress or loads a frame in Chromium or Electron.
+2. **D-12, D-13 and D-14 end to end.** A live set, its toast, a home refusal and its withdrawal run in unit tests only;
+   no live test reaches them (§6.4).
+3. **The REST search end to end**, and the history preload's limit: read only.
+4. **The drawer's terminal behind an App panel**: the test keeps a mocked stand-in mounted.
+5. **Unit isolation and the PR split**: nothing was cherry-picked or run alone.
+6. **Mutation testing over the diff** (v2 B18): Stryker has still not run. §6.3's probes are ten hand edits aimed at the
+   cut tests and the fixes.
+7. **The full mock-LLM suite at `f4c7ae5`**: nobody has run it; §6.1 cites r1's record at `64b5a8b`.
+8. **The full vitest suite locally**: not run, per the brief; CI's run is green.
+9. **D3 inside Canvas**, and **C2 against the SDK fork's merged `deep-reasoning`**: both read only.
+10. **The capability gate's timing**, and `useLatestAcpSessionControls` returning a cached search while disabled
+    (D-17): both read only.
+
+What resists shortening is §2 and §6.3. The code follows v2 closely in shape. What moved is concentrated in the
+refusal paths (D-12 to D-15) and in what the tests now pin (D-18, §6.3). Of the three unpinned properties, one lost its
+pin in Gate B fix 2 (`6fb7f05`) and two with the refactor's cut tests (`9c49036`).
