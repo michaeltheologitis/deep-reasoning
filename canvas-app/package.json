@@ -16,7 +16,8 @@
     "dev": "vite"
   },
   "dependencies": {
-    "preact": "10.29.8"
+    "preact": "10.29.8",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
