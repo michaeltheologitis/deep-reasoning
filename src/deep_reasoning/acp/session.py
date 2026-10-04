@@ -11,7 +11,7 @@ import structlog
 from acp import RequestError
 
 from deep_reasoning.acp import ids, texts
-from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot, CommandEntry
+from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot, CommandEntry, RunSource
 from deep_reasoning.acp.costs import CostLedger, PriceTable
 from deep_reasoning.acp.encoder import (
     Encoder,
@@ -34,6 +34,7 @@ from deep_reasoning.acp.runlog import (
 )
 from deep_reasoning.acp.supervisor import RunHandle
 from deep_reasoning.acp.wire import ClientMode, Outbox
+from deep_reasoning.mcp.wire import McpServerSpec, specs_for_run
 
 logger = structlog.get_logger(__name__)
 
@@ -100,7 +101,7 @@ class Session:
     runs: list[str] = field(default_factory=list)  # run ids, oldest first
     cost: CostLedger = field(default_factory=CostLedger)  # all finished runs
     last_end: RunEndReason | None = None  # picks the next run's fresh-run notice
-    mcp_servers: list[dict[str, Any]] = field(default_factory=list)  # kept for D4
+    mcp_servers: list[dict[str, Any]] = field(default_factory=list)  # as forwarded (D4)
     run: RunHandle | None = None  # the live run, if any
     source: dict[str, Any] = field(default_factory=dict)  # the index's: what runs load
     created: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -190,9 +191,7 @@ class Session:
         run_id = ids.new_run_id()
         run_dir = self.ctx.home.run_dir(run_id)
         try:
-            source = await asyncio.to_thread(
-                self.ctx.catalog.materialize, self.namespace, run_dir=run_dir
-            )
+            source, mcp_servers = await asyncio.to_thread(self._materialize, run_dir)
         except Exception as exc:
             logger.exception("dr_acp.materialize_failed", session=self.id)
             return await self._reply(texts.build_failed(detail_of(exc)), "build_failed")
@@ -213,11 +212,17 @@ class Session:
             outbox=self.ctx.outbox,
             mode=self.ctx.client.mode,
             heartbeat_s=self.ctx.heartbeat_s,
+            mcp_servers=mcp_servers,
         )
         self.runs.append(run_id)
         self.prompts_in_run = 0
         self.save_index()
         return None
+
+    def _materialize(self, run_dir: Path) -> tuple[RunSource, list[McpServerSpec]]:
+        """The run's config, and the forwarded MCP servers its blocks name (D4 §4.1)."""
+        source = self.ctx.catalog.materialize(self.namespace, run_dir=run_dir)
+        return source, specs_for_run(self.mcp_servers, source.config_path)
 
     async def _reply(self, text: str, outcome: PromptOutcome) -> PromptResult:
         """Answered without a run: nothing in any run log, so it does not replay."""
