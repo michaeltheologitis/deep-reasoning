@@ -12,6 +12,7 @@ import copy
 import json
 import os
 import platform
+import plistlib
 import re
 import shutil
 import subprocess
@@ -59,6 +60,9 @@ BUILD_MACHINES: Final = {
     "mac-arm64": ("Darwin", "arm64"),
 }
 MAC_ARCH: Final = "arm64"
+# The oldest macOS the runtime's locked arm64 wheels install on (onnxruntime's are
+# macosx_14_0); the wrapper config declares it, so macOS refuses to open the app before.
+MAC_MINIMUM: Final = "14.0"
 # What the .app carries that must run on Apple silicon: Electron, uv and Node.
 MAC_BINARIES: Final = (
     "MacOS/{product}",
@@ -180,6 +184,13 @@ def wrong_machine(target: Target, system: str, machine: str) -> str | None:
 
 def not_arm64(binary: str, archs: str) -> str:
     return f"✗ {binary} is {archs}, not {MAC_ARCH} only: Macs are Apple silicon only."
+
+
+def opens_too_early(declared: str | None) -> str:
+    return (
+        f"✗ The app's Info.plist declares LSMinimumSystemVersion {declared}, not "
+        f"{MAC_MINIMUM}: desktop/electron-builder.dr.mjs's mac block sets it."
+    )
 
 
 def load_pins(path: Path) -> Pins:
@@ -420,7 +431,7 @@ def verify(
 ) -> list[Path]:
     """Exactly the expected artifacts, named deep-reasoning-<version>-<arch>.<ext> (the
     .dmg's arch arm64), no deep_reasoner inside any, and for the Mac the .app's Electron,
-    uv and Node arm64 only."""
+    uv and Node arm64 only, and its Info.plist's minimum macOS MAC_MINIMUM."""
     output = canvas / "dist-electron"
     arch = MAC_ARCH if target == "mac-arm64" else "[A-Za-z0-9_]+"
     name = re.compile(
@@ -452,6 +463,10 @@ def verify(
             archs = archs_of(app / relative)
             if archs != MAC_ARCH:
                 raise SystemExit(not_arm64(relative, archs))
+        info = plistlib.loads((app / "Info.plist").read_bytes())
+        declared = info.get("LSMinimumSystemVersion")
+        if declared != MAC_MINIMUM:
+            raise SystemExit(opens_too_early(declared))
     return artifacts
 
 
