@@ -35,12 +35,6 @@ describe("the requests", () => {
     ["getProblems", () => api.getProblems(), "GET", "../problems"],
     ["getProfile", () => api.getProfile(), "GET", "../profile"],
     ["getNamespaces", () => api.getNamespaces(), "GET", "../namespaces"],
-    [
-      "getNamespace",
-      () => api.getNamespace("router.archive"),
-      "GET",
-      "../namespaces/router.archive",
-    ],
     ["getEffective", () => api.getEffective(), "GET", "../effective"],
     [
       "getNamespaceEffective",
@@ -54,20 +48,7 @@ describe("the requests", () => {
       "GET",
       "../decompositions",
     ],
-    [
-      "getDecomposition",
-      () => api.getDecomposition("a b"),
-      "GET",
-      "../decompositions/a%20b",
-    ],
     ["getTools", () => api.getTools(), "GET", "../tools"],
-    ["getTool", () => api.getTool("word_count"), "GET", "../tools/word_count"],
-    [
-      "toolVersions",
-      () => api.toolVersions("word_count"),
-      "GET",
-      "../tools/word_count/versions",
-    ],
     [
       "deleteNamespace",
       () => api.deleteNamespace("router.archive", 2),
@@ -76,9 +57,9 @@ describe("the requests", () => {
     ],
     [
       "deleteDecomposition",
-      () => api.deleteDecomposition("catalog-lookup", 3),
+      () => api.deleteDecomposition("a b", 3),
       "DELETE",
-      "../decompositions/catalog-lookup?base_version=3",
+      "../decompositions/a%20b?base_version=3",
     ],
     [
       "deleteTool",

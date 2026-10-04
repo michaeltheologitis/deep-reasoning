@@ -1,6 +1,5 @@
 // The page ↔ frame contract (§4.3): the frame's URL parameters and the frame's two messages.
 
-export const APP_NAME = "dr-library";
 export const TAB_IDS = ["browse", "create", "namespaces", "tools"] as const;
 export type TabId = (typeof TAB_IDS)[number];
 
