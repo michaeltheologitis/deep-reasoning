@@ -254,7 +254,9 @@ def test_a_server_cannot_be_granted_under_two_names(client, lib):
     ],
     ids=["stdio", "http", "sse"],
 )
-def test_put_mcp_refuses_a_stdio_grant_without_a_command(client, lib, fields, sentence):
+def test_put_mcp_refuses_a_grant_without_its_command_or_url(
+    client, lib, fields, sentence
+):
     response = grant(client, **fields)
     assert (response.status_code, response.json()["message"]) == (400, sentence)
     assert "github" not in lib.state().tools
