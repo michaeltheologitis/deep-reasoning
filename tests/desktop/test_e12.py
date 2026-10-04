@@ -77,8 +77,8 @@ ENVIRONMENT_CELL = repl(
 # C1: a fan-out whose first child spawns one of its own.
 TREE_QUESTION = "How do the e12 courses compare?"
 TREE_ANSWER = secret("e12-tree-")
-# C1's Stop: one child waits on a grandchild whose model call is held until E12 presses
-# Stop on the child, so both are running then; the other child is done by then.
+# C1's Stop: the first child answers; the second waits on a grandchild whose model
+# call is held until E12 has pressed Stop on it, so both are running then.
 STOP_QUESTION = "Read the e12 courses."
 SLOW, DEEPER, QUICK = "Read slowly.", "Read deeper.", "Read quickly."
 STOP_ANSWER = secret("e12-stop-")
@@ -112,10 +112,7 @@ PLAN = {
     "Survey B.": [repl("FinalAnswer('B surveyed')")],
     "Read A1.": [repl("FinalAnswer('A1 is light')")],
     STOP_QUESTION: [
-        repl(
-            f"r = run_all({{t: anext(subagent().send(t)) for t in {[SLOW, QUICK]!r}}})",
-            "print(r)",
-        ),
+        repl(f"quick = subagent({QUICK!r})", f"slow = subagent({SLOW!r})"),
         repl(f"FinalAnswer({STOP_ANSWER!r})"),
     ],
     SLOW: [
@@ -632,6 +629,7 @@ def test_an_mcp_server_granted_in_the_tools_tab_is_called_by_the_next_conversati
     server = {"command": str(app.runtime_bin / "python"), "args": [str(ECHO_SERVER)]}
     app.request("POST", "/api/settings/mcp/echo", server)
     open_panel(page)
+    panel_tab(page, "browse")  # the Tools tab reads Canvas's MCP settings as it opens
     tools = panel_tab(page, "tools")
     tools.get_by_test_id(f"dr-mcp-grant-echo-{NAMESPACE}").check()
     expect(tools.get_by_test_id("dr-mcp-seen-echo")).to_be_visible()
