@@ -36,7 +36,12 @@ document's revision 3 by section. What changed since Gate B, each change with it
 B21–B32; the tests that carry each property are the Gate B section's table "Which tests carry which property",
 current at `ca1dd71` in its v3 marks, and §4.9, §5.8 and §6.4 map every test file. The old draft PR #3
 (`feat/agent-surfaces` against `wiring/dr-1`) stays open until Michael decides; its diff now includes the
-`dr-2` wiring, so it is no longer C2 alone.
+`dr-2` wiring, so it is no longer C2 alone. **Pending, test-only:** three commits are about to land on the stack and
+be merged upward, so the heads, `ca1dd71` among them, will move: a test that pins the as-built's probe P2 (a disabled
+`useLatestAcpSessionControls` scans nothing), at the level that owns that hook, expected #24 (§11 item 9); and two
+ESLint fixes on C2's own test lines, `__tests__/helpers/canvas-extension-panels.tsx:71` (#20) and
+`conversation-app-panel.test.tsx:171` (#21) (§11 item 12). v3 is written against `ca1dd71`; none of the three
+changes the code it describes, only which tests pin it and the size by a few test lines.
 
 *(v2's paragraph, as Gate B read it:)* **Matches the build at `64b5a8b`** (v2): `feat/agent-surfaces` in the draft pull request
 [michaeltheologitis/OpenHands#3](https://github.com/michaeltheologitis/OpenHands/pull/3) against the fork's branch
@@ -52,13 +57,22 @@ code are at `64b5a8b`; v1's are upstream's, as before.
 
 ## Gate B: what to read
 
-*(v3: this section is kept as Gate B read it, with v2 and the as-built r1 at `64b5a8b`, but for marked v3 notes. Its
-third ruling was decided (b), built as §3.2 B21. No decision on its first two is recorded in the commits, the task row
-or the Gate C ledger: Gate B passed with both as asked, and the task moved on to the refactor and the split,
-so this design treats the size and the mock-LLM live tier as accepted for Gate B and asks neither again. Its property
-table, "Which tests carry which property", is current at `ca1dd71`: a test the build has since cut is struck, and the
-v3 marks name the tests that replace it or were added, §3.2 B27. Its evidence paragraph is Gate B's, at `64b5a8b`; the
-evidence at the top is in "Stacked for Gate C", above.)*
+*(v3:)* This section is kept as Gate B read it, with v2 and the as-built r1 at `64b5a8b`, but for marked v3 notes. Its
+rulings are decided. Michael, 2026-10-03 at 23:00: "C2 approved, go with your recommendations on 1-5". His five
+numbered items are this section's three rulings, §3.2 B18's mutation testing, and the home screen's refused-value
+fault; each was decided as recommended:
+
+1. **Size:** the 6,955 lines are accepted, and the cleanup after Gate B shrinks them (§3.2 B30).
+2. **The live tier:** the scripted fake agent through the real stack, not a real model, is accepted as C2's; the
+   full app on a real model is D5's end-to-end test (§10, §3.2 B28).
+3. **What a failed live option set says:** (b), the model picker's words, built in `3912c52` (§3.2 B21).
+4. **Mutation testing:** skipped for C2 (§3.2 B18). The as-built's probes P1–P9, r2's and r3's, ran anyway, as
+   as-built evidence.
+5. **The refused-value fault on the home screen:** fixed test-first, before the cleanup (§3.2 B22).
+
+*(v3:)* Its property table, "Which tests carry which property", is current at `ca1dd71`: a test the build has since
+cut is struck, and the v3 marks name the tests that replace it or were added, §3.2 B27. Its evidence paragraph is
+Gate B's, at `64b5a8b`; the evidence at the top is in "Stacked for Gate C", above.
 
 **About 50 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, C2's as-built document
 (`as_built/c2-header-panels-and-menus.md` on deep-reasoning's branch `as-built/c2`, the Cartographer's) and the runs
@@ -86,7 +100,7 @@ compression); Gate B does not need it, except §7 and §10.
    PR 3 996, `70ce577` 50. At ≈300 lines an hour Gate C reads it in about 23 h, four times v1's estimate and six and
    a half times the spec's: code 3.8 times the spec's ≈700, tests ten times its ≈400. §3.2 B20 has the table. The
    build recorded no reason for the growth; the reading there is this design's. The Scout and the Refactorer, after
-   Gate B, are where it shrinks. *(v3, B30: at `ca1dd71`, **6,974 added and 167 removed** in 88 files (6,313 non-blank),
+   Gate B, are where it shrinks. *(v3: accepted, Michael, 2026-10-03, the preface above.)* *(v3, B30: at `ca1dd71`, **6,974 added and 167 removed** in 88 files (6,313 non-blank),
    about 23 h at Gate C. The fixes and the refactor took out 11 lines net, and the two test commits after it put 30
    back.)*
 2. **The live tier is not a real task against a real model.** The workspace defines the live tier as a real task
@@ -99,6 +113,7 @@ compression); Gate B does not need it, except §7 and §10.
    Canvas's real-model end to end. Ruling asked: accept §10's live tier as C2's, knowing it departs from the
    workspace's definition, or ask for a C2 run with dr-acp and a real model before D5. *(v3, B28: re-run at
    `30068b8` against the `dr-2` agent-server, 7 of 7, run 37215721829; still the mock LLM and the mock ACP agent.)*
+   *(v3: accepted, Michael, 2026-10-03; Canvas on a real model is D5's end-to-end test.)*
 3. **What a failed live option set says** (§3.2 B3). A 422 shows the agent's own sentence, as designed. Any other
    failure now toasts the client's raw error text: for the agent-server's 504 (the agent did not answer in 30 s) or
    500 (an agent's internal error), `HTTP request failed (504 Gateway Timeout): {"detail":"Internal Server
@@ -108,7 +123,7 @@ compression); Gate B does not need it, except §7 and §10.
    sentences for a client timeout or a lost connection; one line; (c) one generic sentence of ours for every non-422
    failure: a new key in 15 languages and a test. **Recommended: (b)**: the two pickers in one composer then fail
    alike, at the cost of one line; the raw text names the status, and a 5xx on a set means an agent that hung or
-   crashed. Nothing changes in code until Michael rules. *(v3: Michael decided (b), and it is built: §3.2 B21,
+   crashed. Nothing changes in code until Michael rules. *(v3: Michael decided (b) on 2026-10-03, and it is built: §3.2 B21,
    `3912c52`, completed by `4ff261c` for a 4xx with a string `detail`, and moved into the mutation by `3461e1c` so
    the toast survives the composer unmounting.)*
 
@@ -212,23 +227,27 @@ item 7) and an App panel on an archived conversation (§3.1 item 6), both read; 
 narrow-window page (§3.2 B9, read); the empty first controls event end to end (the end-to-end start sends a value,
 which the mock agent answers with a single event, S2's §3.2 B4; the unit test above crosses it); any browser run of an
 App backend frame (§6.4: D3's and D5's); and ~~`getSdkHttpServerErrorReason` on its own (the frame tests reach it
-through `not-ready` and `no-ingress`)~~ *(v3: gone, B24)*. Mutation testing on the diff did not run (§3.2 B18).
+through `not-ready` and `no-ingress`)~~ *(v3: gone, B24)*. Mutation testing on the diff did not run (§3.2 B18)
+*(v3: skipped for C2, ruling 4)*.
 §4.9, §5.8 and §6.4 map every test file. *(v3, B27: also not pinned at `ca1dd71`: that a disabled
 `useLatestAcpSessionControls` does not scan the event store (as-built §6.3 P2; its one caller returns no controls
-first, so a scan costs time, not behaviour). The two other properties the refactor had left unpinned are pinned again:
+first, so a scan costs time, not behaviour; pending, test-only: a test that pins it, expected at #24). The two
+other properties the refactor had left unpinned are pinned again:
 two frames of one App share one session through `mountAppBackendFrame` (`667ec86`), and on the home screen only a 422
 withdraws a pick or speaks for the agent (`a1ec3d1`).)*
 
 **Revisions** (newest first; the Gate B reader approved the previous version, so each line says which sentences to
 stop trusting):
 - 2026-10-04 · v3 · brought in line with the code at `ca1dd71`, the top of the Gate C stack #20–#26, whose tree equals
-  `feat/agent-surfaces` at `30068b8`. Since v2: ruling 3, decided (b) at Gate B (B21); the other two Gate B fixes
+  `feat/agent-surfaces` at `30068b8`. Since v2: Gate B's five rulings, decided as recommended on 2026-10-03 (the Gate
+  B section's preface), ruling 3's (b) built as B21; the other two Gate B fixes
   (B22, B23); the refactor (B24–B27); `667ec86` and `a1ec3d1`, which re-pin two properties the refactor had left
   unpinned (B27); the merge of `deep-reasoning` at `fc87687`, which carries the `dr-2` wiring in place of
   `wiring/dr-1` (B28); and the split (B29). It answers the as-built r2's D-12 to D-19 and its §2.3, and the Conductor's
   open items on `staleTime`, §5.3, §5.4, §5.6 and ASC-002. B-numbers are §3.2's. Stop trusting: the "Matches the
   build" line (now v2's, kept beneath v3's); the Gate B section's third ruling, "nothing changes in code until Michael
-  rules" (ruled (b), B21), and the struck tests of its property table (B27); decision M's "one small helper", §5.1's,
+  rules" (ruled (b), B21), and the struck tests of its property table (B27); "for the Conductor to have it run …
+  or to waive it" in B18 and §11 item 7 (skipped, ruling 4); decision M's "one small helper", §5.1's,
   §6.2 step 4's and A.7's `getSdkHttpErrorDetail` and `getSdkHttpServerErrorReason`, and B2's and B3's account of
   them (all gone, B24); §5.3's failure toast (B21); §5.4's `staleTime: 0` and "a return to the home screen refetches"
   for inputs answered in the same visit (B23), and its "a 422 keeps the last successful preview's controls … the
@@ -438,10 +457,12 @@ was approved, it goes back to Michael. *(v2: items 3 to 12 hold as built; items 
     spec's §4 layer 5 gives C2's live evidence as its Playwright end-to-end tests, and v1's §10 runs them with the
     mock LLM and the scripted mock ACP agent. That follows the spec's words; it departs from the workspace's
     definition of a live tier (a real task against real services, its outcome asserted), so it goes to Michael at
-    Gate B (ruling 2). Canvas's real-model end to end, with dr-acp, is D5's E12.
+    Gate B (ruling 2). Canvas's real-model end to end, with dr-acp, is D5's E12. *(v3: accepted, ruling 2,
+    2026-10-03.)*
 15. *(v2)* **Mutation testing on the diff did not run** (§3.2 B18). The spec's layer 3 names `npm run
-    test:mutation:diff` for C2; no run is recorded. *(v3: still none at `ca1dd71`; the as-built's ten hand probes,
-    its §6.3, are aimed at the cut tests and the fixes, not the diff.)*
+    test:mutation:diff` for C2; no run is recorded. *(v3: skipped for C2, Gate B ruling 4, 2026-10-03. The
+    as-built's hand probes, its §6.3 P1–P9, ran instead as evidence; they are aimed at the cut tests and the fixes,
+    not the diff.)*
 
 ### 3.2 Changed by the build (v2–v3)
 
@@ -449,7 +470,8 @@ Each was checked against the code at `64b5a8b` and folded into the sections name
 as built; B6 to B9 are PR 1's, B10 to B12 PR 2's, B13 and B14 PR 3's; B15 and B16 the branch and the PR split; B17
 to B19 the tests and the live tier; B20 the size. Where the build recorded no reason (in
 a commit message, a code comment or PR #3's description), the reason given is marked as this design's reading.
-*(v3: B21 is the ruling made at Gate B; B22–B30 are what changed after it; B31 and B32 are where v1 and v2 described
+*(v3: B21 is ruling 3, decided at Gate B with the other four (the Gate B section's preface); B22–B30 are what changed
+after it, B22 being ruling 5; B31 and B32 are where v1 and v2 described
 the build wrongly and the build stands. Each was checked against the code at `ca1dd71`; v3 notes in B2, B3, B8, B12
 and B16–B20 say which of their sentences moved. B21–B27 and B30 answer the as-built r2's D-12 to D-19, B31 and B32
 its §2.3; B28 and B29 are the r3's D-20 and D-21. "As-built §x" and "as-built D-n" below cite r3, on `as-built/c2-r3`,
@@ -666,8 +688,8 @@ which keeps r2's numbers.)*
 - **B18. Mutation testing on the diff did not run** (§3.1 item 15, §4.9, §5.8; the spec's §4 layer 3). v1: `npm run
   test:mutation:diff` (Stryker) runs on each PR, and the as-built lists the survivors. No workflow in the fork runs
   it, and neither PR #3's description nor the task's notes record a run. Nothing in the code changes; layer 3's
-  evidence lacks it, for the Conductor to have it run on `9881d24..64b5a8b` or to waive it. *(v3: still not run; on
-  the stack the range is `fc87687..ca1dd71`, §11 item 7.)*
+  evidence lacks it, for the Conductor to have it run on `9881d24..64b5a8b` or to waive it. *(v3: waived: skipped
+  for C2, Gate B ruling 4, 2026-10-03; the as-built's probes P1–P9 ran as evidence instead.)*
 - **B19. The live tier, as run** (§10; §3.1 item 14; the Gate B section's ruling 2). v1: the two specs green in the
   fork's mock-LLM run at the branch's head, dispatched on the task branch. Built: the fork's wiring adds a `specs`
   input to `mock-llm-e2e.yml` (`9881d24`, fork-only, merged as `64b5a8b`), so one dispatch runs C2's two specs alone;
@@ -709,7 +731,7 @@ which keeps r2's numbers.)*
 **Decided at Gate B (v3)**
 
 - **B21. A failed live set that is not a refusal says what the model picker says** (§5.3, decision M, B3; the Gate B
-  section's ruling 3, which Michael decided as (b); as-built D-12; `3912c52`, `4ff261c`, `3461e1c`). Built: the
+  section's ruling 3, which Michael decided as (b) on 2026-10-03; as-built D-12; `3912c52`, `4ff261c`, `3461e1c`). Built: the
   toast belongs to `useSetAcpConfigOption` itself (`use-set-acp-config-option.ts:37–42`), which keeps
   `meta: {disableToast: true}`.
   - A 422 shows upstream's `getApiErrorMessage(error, error.message)`: the body's `message`, else a string `detail`,
@@ -736,7 +758,8 @@ B24–B26 are the refactor's changes to helpers and names, which change nothing 
 `4ff261c` also fixed, counted under B21; B27 is the tests; B28 the
 base the code now stands on; B29 the split; B30 the size.
 
-- **B22. On the home screen a refused pick is withdrawn** (§5.4, §5.6, A.10, ASC-002; as-built D-13; `6fb7f05`,
+- **B22. On the home screen a refused pick is withdrawn** (§5.4, §5.6, A.10, ASC-002; as-built D-13; Gate B ruling
+  5, fixed test-first before the cleanup; `6fb7f05`,
   `61b9bdc`; the Conductor's items on §5.4, §5.6 and ASC-002). v2's §5.4: "a 422 keeps the last successful preview's
   controls, shows the agent's sentence … and the refused value is not sent". The refused value stayed in the store,
   so picking it again asked nothing, every later preview carried it, and a home screen mounted with it showed the
@@ -826,6 +849,7 @@ base the code now stands on; B29 the split; B30 the size.
     client's real message format; one React Query wrapper (`334bba8`); each repeated panel test step written once
     (`e483dc3`); the repeat-dropping slash test names which copy survives (`f4c7ae5`).
   - Not pinned: that a disabled `useLatestAcpSessionControls` does not scan the event store (P2; §11 item 9).
+    *Pending, test-only:* a test that pins it, expected at #24.
 
   The Gate B section's property table is current at `ca1dd71` in its v3 marks. *Why (recorded in each commit):* a
   cut test went with its helper or repeated another test's property; each re-pin names the cut that left its
@@ -887,6 +911,7 @@ base the code now stands on; B29 the split; B30 the size.
   +1,027 −65, #21 +1,128 −28, #22 +935 −2, #23 +456 −43, #24 +1,237 −11, #25 +1,189 −16, #26 +1,003 −3. Their sum,
   +6,975 −168, is one more on each side than the whole: one line a level adds and a later one changes. At ≈300 lines
   an hour, Gate C reads the whole diff in about 23 h, and the code with its unit tests (5,936 lines) in about 20 h.
+  The three pending, test-only commits (§11 items 9 and 12) will move these by a few test lines.
 
 **Where v1 and v2 described the build wrongly (v3)**
 
@@ -1199,7 +1224,7 @@ and `CX-006` land at #20, ahead of #21 and #22, whose code makes `CX-001`–`CX-
 | `tests/e2e/mock-llm/canvas-extensions/mock-llm-canvas-extension-panels.spec.ts` (new) | against the real stack with our agent-server: install `demo-panel` by absolute path, enable it, create a conversation; the App's button is the last of the top-right group; it opens the panel showing `conversation=<id>`; Show panel closes it and opening it closes the drawer and the overview; ⋯ unpins Details, which survives a reload; switching conversation with the panel open shows the other id; at 800 px wide the button opens the panel page; disabling the App removes the button and closes the panel |
 
 `npm run test:mutation:diff` (Stryker on the diff, the spec's layer 3) runs on the PR; survivors are listed in the
-as-built. *(v2, §3.2 B18: not run.)* *(v3: still not run.)*
+as-built. *(v2, §3.2 B18: not run.)* *(v3: skipped for C2, Gate B ruling 4.)*
 
 ---
 
@@ -1417,7 +1442,8 @@ whole of `specs/acp-session-controls.md` lands at #23, ahead of #24 and #25.)*
 | `__tests__/components/features/chat/error-message-banner…` (additions where the banner is tested) | `ACPConfigOptionRejected` shows its header and the agent's sentence |
 | `tests/e2e/mock-llm/conversations/mock-llm-acp-session-controls.spec.ts` (new) | with the mock ACP agent in controls mode (Appendix C) as the active agent: the home row shows `Profile: fast` and `/` lists `/summarize`; choosing `thorough` lists `/summarize` and `/compare ‹what to compare›`; sending `/compare a b` opens the conversation whose reply contains `profile=thorough` (the value reached the agent before its first prompt); there the pill is fixed at `thorough` and `/` lists no agent command; after a reload the same (the REST path) |
 
-`npm run test:mutation:diff` runs on this PR too. *(v2, §3.2 B18: not run.)* *(v3: still not run.)*
+`npm run test:mutation:diff` runs on this PR too. *(v2, §3.2 B18: not run.)* *(v3: skipped for C2, Gate B ruling
+4.)*
 
 ---
 
@@ -1677,7 +1703,8 @@ workflow does not run on pull requests (`.github/workflows/mock-llm-e2e.yml:3–
 desktop app with dr-acp, in deep-reasoning's CI) is D5's E12: it picks a namespace, opens Show decompositions and
 uses the slash menu through C2. *(v2: CI's `npm run lint`, `npm test`, `npm run build` and `npm run build:lib` are
 green at `64b5a8b`; upstream's full Playwright suite is not: six of its mock-LLM tests fail on this branch and on the
-fork's base alike, none of them C2's (the Gate B section). Mutation testing did not run, §3.2 B18.)*
+fork's base alike, none of them C2's (the Gate B section). Mutation testing did not run, §3.2 B18.)* *(v3: skipped
+for C2, Gate B ruling 4.)*
 
 **The live tier (Gate B's evidence).** The spec's §4 layer 5 makes C2's evidence its end-to-end tests, "Playwright
 written as tests that assert behaviour": the two specs above, green in the fork's mock-LLM run at the branch's head.
@@ -1724,16 +1751,18 @@ backend frame.
    unmounted (the drawer is hidden with the `hidden` attribute), so nothing exercises the real terminal's session
    behind an App panel, §3.2 B17.)*
 6. *(v2)* **Rule for Michael at Gate B:** size (§3.2 B20), the live tier (§3.1 item 14) and what a failed live
-   option set says (§3.2 B3). *(v3: the third ruled (b), §3.2 B21; Gate B passed, and no decision on the first two
-   is recorded, the Gate B section's v3 preface.)*
+   option set says (§3.2 B3). *(v3: decided, 2026-10-03, all as recommended: size and the live tier accepted, the
+   third (b), §3.2 B21; the Gate B section's v3 preface.)*
 7. *(v2)* **Mutation testing on the diff** (§3.2 B18): have it run on `9881d24..64b5a8b`, so the as-built can list
-   the survivors, or waive it. *(v3: still open; the range is now `fc87687..ca1dd71`.)*
+   the survivors, or waive it. *(v3: decided: skipped for C2, Gate B ruling 4, 2026-10-03.)*
 8. *(v2)* **The PR split** puts the client pin before PR 2's commits (§3.2 B16). *(v3: done; the pin is below the
    stack, §3.2 B29.)*
 9. *(v3)* **One property is unpinned at Gate C:** that a disabled `useLatestAcpSessionControls` does not scan the
    event store (§3.2 B27; as-built §6.3 P2). A test of the hook alone, disabled, with controls events in the store,
    would pin it; its cost when broken is a scan of the whole event store on every store update in a conversation
-   without agent controls. For the Conductor to have it added in Gate C's round, or to accept it as is.
+   without agent controls. For the Conductor to have it added in Gate C's round, or to accept it as is. *(v3:
+   pending, test-only: the Conductor has a test that pins it landing at the level that owns the hook, expected
+   #24.)*
 10. *(v3)* **Upstream's spec names a module-private constant.** `specs/canvas-extensions.md:124` (#26) gives
     `CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS` as the source of `host.agentServer.request`'s 60 s, but the
     name is not exported since `258944e` (§3.2 B26). Either the sentence keeps only the 60 s, or the constant is
@@ -1746,7 +1775,8 @@ backend frame.
     `no-param-reassign`, at #21) among 839 errors that are nearly all upstream's; over `specs/*.md`, Prettier fails
     C2's invariant blocks in `canvas-extensions.md` and `acp-session-controls.md` (a blank line after each heading, a
     deeper continuation indent), as it already fails three of upstream's five spec files. No design change; for the
-    Conductor to fix in Gate C's round or leave, as upstream leaves its own.
+    Conductor to fix in Gate C's round or leave, as upstream leaves its own. *(v3: pending, test-only: ESLint fixes
+    for C2's two lines, at #20 and #21. The Prettier gaps in the two spec files are not among them.)*
 
 ---
 
