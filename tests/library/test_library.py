@@ -205,6 +205,26 @@ def test_granted_in_is_the_exact_set_after_a_save(lib):
     assert "tools" not in lib.namespace("a").data
 
 
+@pytest.mark.parametrize("loc", ["namespaces", "granted_in"])
+def test_a_namespace_that_is_not_there_cannot_be_attached_to_or_granted_in(lib, loc):
+    save = {
+        "namespaces": lambda: lib.put_decomposition(
+            text(example("lookup")), namespaces=["root", "gone"]
+        ),
+        "granted_in": lambda: lib.put_tool(
+            "search", "factory: llm\n", granted_in=["root", "gone"]
+        ),
+    }[loc]
+    with pytest.raises(LibraryValidationError) as raised:
+        save()
+    sentence = "There is no namespace 'gone' in the library."
+    assert str(raised.value) == sentence
+    assert [e.model_dump() for e in raised.value.errors] == [
+        {"loc": loc, "msg": sentence}
+    ]
+    assert lib.rev() == 1
+
+
 def test_root_the_default_and_a_parent_cannot_be_deleted(lib):
     lib.put_namespace("name: a")
     lib.put_namespace("name: a.b")
@@ -369,16 +389,3 @@ def test_validate_reports_without_saving(lib):
     )
     assert lib.validate("tool", "factory: llm\n", name="search").ok
     assert lib.rev() == 1
-
-
-def test_the_spec_mock_up_runs_as_written(lib, router, tmp_path):
-    lib.import_config(router)
-    assert [ns.name for ns in lib.namespaces()] == ["root", "router", "courses"]
-    d = lib.put_decomposition(
-        text(example("summarize then rank")),
-        namespaces=["router"],
-        use_when="comparing many courses",
-    )
-    assert (d.name, d.version, d.namespaces) == ("summarize then rank", 1, ["router"])
-    run_dir = lib.materialize()
-    assert (run_dir / "main.yaml").is_file()

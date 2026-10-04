@@ -304,8 +304,12 @@ class Encoder:
     def _cell_session(self, node: int) -> str:
         return self._root if self._mode == "flat" else self._session(node)
 
-    def _dr(self, agent: _Agent) -> dict[str, Any]:
-        return {
+    def _meta(self, agent: _Agent) -> dict[str, Any]:
+        meta: dict[str, Any] = {}
+        if agent.parent is not None and agent.parent_cell is not None:
+            spawning = ids.cell_id(self._run, agent.parent, agent.parent_cell)
+            meta["openhands"] = {"parentToolCallId": spawning}
+        meta["deep_reasoner"] = {
             "run": self._run,
             "node": agent.node,
             "parent": agent.parent,
@@ -314,13 +318,6 @@ class Encoder:
             "backbone": agent.backbone,
             "drive": agent.drive,
         }
-
-    def _meta(self, agent: _Agent) -> dict[str, Any]:
-        meta: dict[str, Any] = {}
-        if agent.parent is not None and agent.parent_cell is not None:
-            spawning = ids.cell_id(self._run, agent.parent, agent.parent_cell)
-            meta["openhands"] = {"parentToolCallId": spawning}
-        meta["deep_reasoner"] = self._dr(agent)
         return meta
 
     def _path(self, agent: _Agent) -> str:
@@ -525,7 +522,9 @@ class Encoder:
         if ev.status == "failed":
             message = texts.child_failed(ev.detail or "")
         if self._mode == "flat":
-            return [*updates, self._closed_card(agent, ev, message, outcome)]
+            status = "completed" if ev.status in ("done", "exhausted") else "failed"
+            text = message if message is not None else (ev.detail or "")
+            return [*updates, self._card_update(agent, status, text, outcome)]
         if message is not None:
             answer = {
                 "sessionUpdate": "session_message",
@@ -553,13 +552,6 @@ class Encoder:
             "_meta": meta,
         }
         return self._session(agent.parent), idle
-
-    def _closed_card(
-        self, agent: _Agent, ev: AgentEnd, message: str | None, outcome: dict[str, Any]
-    ) -> Update:
-        status = "completed" if ev.status in ("done", "exhausted") else "failed"
-        text = message if message is not None else (ev.detail or "")
-        return self._card_update(agent, status, text, outcome)
 
     def _card_update(
         self, agent: _Agent, status: str, text: str, outcome: dict[str, Any]

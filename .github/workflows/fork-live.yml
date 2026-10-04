@@ -1,0 +1,70 @@
+# S1's and S2's live tiers: the SDK fork's agent-server bridge driving a real dr-acp on
+# gpt-6-luna (D5 §7.4). On demand only. dr-acp comes from the branch this run is
+# dispatched on; the SDK fork's code from the sdk_ref input.
+name: fork-live
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_ref:
+        description: "SDK fork ref to test: a feature branch, a dr-N tag or a commit"
+        required: true
+        default: deep-reasoning
+      suites:
+        description: "Which live files to run"
+        type: choice
+        options: [both, s1, s2]
+        default: both
+      sdk_repo:
+        description: "The SDK fork"
+        default: michaeltheologitis/software-agent-sdk
+      live_config:
+        description: "The dr config dr-acp runs, relative to deep-reasoning"
+        default: docs/configs/advising/main.yaml
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DR: ${{ github.workspace }}/deep-reasoning
+    steps:
+      - name: The model key is a repository secret
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::the OPENAI_API_KEY repository secret is not set"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          path: deep-reasoning
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.sdk_repo }}
+          ref: ${{ inputs.sdk_ref }}
+          path: sdk
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+        working-directory: deep-reasoning
+      - run: uv sync --frozen --group dev
+        working-directory: sdk
+      - name: S1, sub-agent sessions through the bridge
+        if: inputs.suites != 's2'
+        working-directory: sdk
+        env:
+          OPENHANDS_ACP_LIVE_AGENT_COMMAND: ${{ env.DR }}/.venv/bin/dr-acp --config ${{ env.DR }}/${{ inputs.live_config }} --home ${{ runner.temp }}/dr-home-s1
+          OPENHANDS_ACP_LIVE_SUBAGENTS_PROMPT: "/compare-departments Which department is lighter for a first-year student, CS or STAT?"
+        run: uv run pytest -m acp_live tests/sdk/agent/test_acp_subagents_live.py -v -rA
+      - name: S2, commands, options and the preview
+        if: inputs.suites != 's1'
+        working-directory: sdk
+        env:
+          OPENHANDS_ACP_LIVE_AGENT_COMMAND: ${{ env.DR }}/.venv/bin/dr-acp --config ${{ env.DR }}/${{ inputs.live_config }} --home ${{ runner.temp }}/dr-home-s2
+          OPENHANDS_ACP_LIVE_CONFIG_OPTIONS: '{"namespace": "root"}'
+          OPENHANDS_ACP_LIVE_EXPECT_COMMANDS_CLEARED: "1"
+        run: uv run pytest -m acp_live tests/sdk/agent/test_acp_session_controls_live.py -v -rA

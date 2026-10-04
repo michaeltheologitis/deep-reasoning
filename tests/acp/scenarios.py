@@ -6,6 +6,7 @@ the reply at each turn of its drive. The model is FakeOpenAI, over real HTTP.
 
 import json
 import re
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,7 @@ from deep_reasoning.acp.testing.tree import AgentNode, CellNode, Tree
 Plan = Mapping[str, list[str]]  # task substring -> the reply at each turn
 NodeTree = dict[int, tuple[int | None, int]]  # agent node -> (parent agent, cells)
 CELL_ID = re.compile(r"-n(\d+)-[ca]\d+$")
+EVIDENCE_CHARS = 300  # of each end of a long text in a failure message
 
 
 def repl(*lines: str, think: str = "") -> str:
@@ -39,23 +41,30 @@ def task_and_turn(messages: list[dict[str, Any]]) -> tuple[str, int]:
     return "", 0
 
 
-def scripted(plan: Plan, failing: frozenset[tuple[str, int]] = frozenset()):
-    """A FakeOpenAI responder that follows the plan; (key, turn) in failing answers 500."""
+def scripted(
+    plan: Plan,
+    failing: frozenset[tuple[str, int]] = frozenset(),
+    held: frozenset[str] = frozenset(),
+):
+    """A FakeOpenAI responder that follows the plan; (key, turn) in failing answers 500.
+    A key in held is answered only once some agent asks for its second turn, so it is
+    still waiting for its model when a sibling's failure ends their run_all."""
+    moved_on = threading.Event()
 
     def respond(messages: list[dict[str, Any]]) -> str:
         task, turn = task_and_turn(messages)
+        if turn > 0:
+            moved_on.set()
         for key, replies in plan.items():
             if key in task:
                 if (key, turn) in failing:
                     raise RuntimeError(f"the model is unavailable for {key!r}")
+                if key in held:
+                    moved_on.wait(timeout=60)
                 return replies[min(turn, len(replies) - 1)]
         raise AssertionError(f"no plan for task {task!r}")
 
     return respond
-
-
-def attributed_task(messages: list[dict[str, Any]]) -> str:
-    return task_and_turn(messages)[0]
 
 
 BASE_CONFIG: dict[str, Any] = {
@@ -76,6 +85,7 @@ class Scenario:
     outcomes: tuple[str, ...]  # each prompt's PromptResult.outcome
     config: Mapping[str, Any] = field(default_factory=dict)  # over BASE_CONFIG
     failing: frozenset[tuple[str, int]] = frozenset()
+    held: frozenset[str] = frozenset()
     claude: bool = False  # the root runs on the Claude backbone, with a fake claude CLI
 
     def write_config(self, directory: Path, base_url: str) -> Path:
@@ -90,7 +100,7 @@ class Scenario:
         return path
 
     def responder(self):
-        return scripted(self.plan, self.failing)
+        return scripted(self.plan, self.failing, self.held)
 
 
 COURSES = [f"C{i}" for i in range(20)]
@@ -237,6 +247,24 @@ SCENARIOS = [
         outcomes=("answered",),
     ),
     Scenario(
+        name="unanswered",
+        prompts=("Compare two departments.",),
+        plan={
+            "Compare two departments.": [
+                repl(
+                    "r = run_all({d: anext(subagent().send(f'Survey {d}.')) for d in ['CS', 'STAT']})",
+                    "print(r)",
+                ),
+                repl("FinalAnswer('compared without them')"),
+            ],
+            "Survey CS.": [repl("FinalAnswer('CS')")],
+            "Survey STAT.": [repl("FinalAnswer('STAT')")],
+        },
+        failing=frozenset({("Survey CS.", 0)}),
+        held=frozenset({"Survey STAT."}),
+        outcomes=("answered",),
+    ),
+    Scenario(
         name="claude",
         prompts=("Ask Claude.",),
         plan={},
@@ -255,6 +283,12 @@ def deep_reasoner_tree(run_dir: Path) -> NodeTree:
     the agent a Claude session runs for (claude_calls.jsonl). Its cells are the turns
     with a <repl> block in its conversation (the node YAML holds every turn); a fork's,
     those after its own task, since its conversation starts with its origin's.
+
+    deep_reasoner writes those files only when a model call returns, so an agent whose
+    drive ended before any reply (its first call refused, or cancelled when a sibling's
+    failure ended their run_all) is in none of them. Such an agent comes from its
+    agent.start in the run log, and only if the run log has no model call for it either;
+    its cells are the run log's (none, for a child that never got a reply).
     """
     agents: dict[int, tuple[tuple[int, ...], int]] = {}
     for row in _jsonl(run_dir / "llm_calls.jsonl"):
@@ -270,6 +304,14 @@ def deep_reasoner_tree(run_dir: Path) -> NodeTree:
     for row in _jsonl(run_dir / "claude_calls.jsonl"):
         ancestry = tuple(row["ancestry"])
         agents.setdefault(ancestry[-2], (ancestry[:-1], 0))
+    log = _jsonl(run_dir / "events.jsonl")
+    called = {e["node"] for e in log if e["kind"] == "usage"}
+    for start in log:
+        if start["kind"] == "agent.start" and start["node"] not in called:
+            ran = sum(
+                e["kind"] == "cell.end" and e["node"] == start["node"] for e in log
+            )
+            agents.setdefault(start["node"], (tuple(start["ancestry"]), ran))
     tree: NodeTree = {}
     for node, (ancestry, cells) in agents.items():
         parents = [a for a in ancestry[:-1] if a in agents]
@@ -326,3 +368,28 @@ def acp_tree(tree: Tree) -> NodeTree:
         run.root.node = run.root.node or 1
         visit(run.root, None)
     return {node: (parent, cells) for node, (parent, cells) in result.items()}
+
+
+def tree_evidence(agents: NodeTree, own: NodeTree, run_dir: Path) -> str:
+    """What a failed comparison of the two trees prints: both, and the run-log events of
+    each agent they disagree on, so that a CI log alone says what became of it."""
+    log = _jsonl(run_dir / "events.jsonl")
+    disputed = sorted(
+        n for n in agents.keys() | own.keys() if agents.get(n) != own.get(n)
+    )
+    lines = [f"the stream's tree:    {agents}", f"deep_reasoner's tree: {own}"]
+    for node in disputed:
+        lines.append(f"node {node} in the run log:")
+        lines += [f"  {_one_line(e)}" for e in log if e.get("node") == node]
+    return "\n".join(lines)
+
+
+def _one_line(event: dict[str, Any]) -> str:
+    """A run-log event as JSON, each long text cut to its head and its tail."""
+    cut = {
+        key: f"{value[:EVIDENCE_CHARS]} … {value[-EVIDENCE_CHARS:]}"
+        if isinstance(value, str) and len(value) > 2 * EVIDENCE_CHARS
+        else value
+        for key, value in event.items()
+    }
+    return json.dumps(cut, ensure_ascii=False)

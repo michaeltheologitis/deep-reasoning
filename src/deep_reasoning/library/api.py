@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic_core import to_jsonable_python
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -165,17 +166,7 @@ def _base_version(request: Request) -> int | None:
     try:
         return int(raw)
     except ValueError as exc:
-        raise LibraryBadRequest(
-            f"base_version must be a whole number; got {raw!r}."
-        ) from exc
-
-
-def _dump(result: Any) -> Any:
-    if isinstance(result, BaseModel):
-        return result.model_dump(mode="json")
-    if isinstance(result, list):
-        return [_dump(item) for item in result]
-    return result
+        raise LibraryBadRequest(texts.bad_base_version(raw)) from exc
 
 
 def _exists(read: Callable[[], Any]) -> bool:
@@ -320,7 +311,7 @@ def create_app(
             if isinstance(result, Response):
                 return result
             payload, status = result if isinstance(result, tuple) else (result, 200)
-            return JSONResponse(_dump(payload), status_code=status)
+            return JSONResponse(to_jsonable_python(payload), status_code=status)
 
         return Route(path, endpoint, methods=[method])
 

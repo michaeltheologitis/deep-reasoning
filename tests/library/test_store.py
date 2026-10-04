@@ -43,6 +43,19 @@ def test_versions_and_revisions_cannot_be_updated_or_deleted(db, statement):
         conn.execute(statement)
 
 
+def test_a_migration_that_fails_halfway_leaves_the_file_unmigrated(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "library.sqlite"
+    twice = "CREATE TABLE a (x);\nCREATE TABLE a (x);\n"
+    monkeypatch.setattr(store, "MIGRATIONS", (twice,))
+    with pytest.raises(sqlite3.OperationalError, match="already exists"):
+        store.connect(path)
+    conn = sqlite3.connect(path)
+    assert conn.execute("PRAGMA user_version").fetchone() == (0,)
+    assert conn.execute("SELECT name FROM sqlite_master").fetchall() == []
+
+
 def test_a_save_that_changes_nothing_makes_no_revision(db):
     with store.write(db, "put namespace", "root") as w:
         assert w.head("namespace", "root").version == 1

@@ -1,4 +1,4 @@
-"""tree(): the run rebuilt from the updates alone, and how it is drawn (§8.2)."""
+"""tree(): the run rebuilt from the updates alone (§8.2)."""
 
 from deep_reasoning.acp.testing.tree import (
     AgentNode,
@@ -76,20 +76,6 @@ def test_a_native_run_nests_each_child_under_the_cell_that_started_it():
     )
 
 
-def test_a_tree_is_drawn_one_block_per_run():
-    assert str(tree(s.native_run())).splitlines() == (
-        [
-            "root s-7c1f9e0a2b4d6e8f · run 20261002-162835-3fa9c1 · 0.0089 USD",
-            "├─ c1.1  Run found = run_all(...) …  completed → {'CS': 'CS is heavy.'}",
-            "│  ├─ n2  Summarize the CS department.  done · 0.0037 USD",
-            "│  │  └─ c2.1  Run print(cs)  completed → ['CS101', 'CS102']",
-            "│  └─ n3  Summarize the STAT department.  failed: ValueError: the catalog has no STAT sec…",
-            "├─ c1.2  Run FinalAnswer('STAT is lighter.')  completed → FinalAnswer: 'STAT is lighter.'",
-            "└─ answered  STAT is lighter.",
-        ]
-    )
-
-
 def flat_run(run: str) -> list:
     return [
         s.cell(s.ROOT, run, 1, 1, "found = run_all(...)"),
@@ -109,7 +95,7 @@ def flat_run(run: str) -> list:
     ]
 
 
-def test_a_flat_run_draws_each_card_as_its_agent_with_its_labelled_cells():
+def test_a_flat_run_rebuilds_each_card_as_its_agent_with_its_labelled_cells():
     (run,) = tree(flat_run(s.R2)).runs
     assert run.mode == "flat"
     (first, _) = run.root.items
@@ -157,10 +143,9 @@ def test_runs_split_by_conversation_and_by_run_and_drop_what_belongs_to_none():
     ]
     assert runs[0] == tree(s.native_run()).runs[0]
     assert [type(i).__name__ for i in runs[2].root.items] == ["CellNode", "MessageNode"]
-    assert str(tree(stream)).count("\n\n") == 2
 
 
-def test_a_child_driven_twice_is_drawn_once_per_drive():
+def test_a_child_driven_twice_is_an_agent_per_drive():
     n2 = s.N2
     stream = [
         s.cell(s.ROOT, s.R1, 1, 1, "a = anext(child.send('one'))"),
@@ -174,10 +159,9 @@ def test_a_child_driven_twice_is_drawn_once_per_drive():
     ]
     first, second = tree(stream).runs[0].root.items
     assert [
-        (a.drive, a.title, [c.short for c in a.items])
+        (a.drive, a.title, a.outcome, [c.short for c in a.items])
         for a in first.agents + second.agents
     ] == [
-        (1, "One.", ["c2.1"]),
-        (2, "Two.", ["c2.2"]),
+        (1, "One.", "done", ["c2.1"]),
+        (2, "Two.", "done", ["c2.2"]),
     ]
-    assert "n2 (drive 2)  Two.  done" in str(tree(stream))

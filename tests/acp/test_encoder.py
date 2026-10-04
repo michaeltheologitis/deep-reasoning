@@ -1,4 +1,7 @@
-"""The encoder, from hand-written RunEvents: §5.2 (native), §5.3 (flat), §5.7 (replay)."""
+"""The encoder, from hand-written RunEvents: §5.2 (native), §5.3 (flat), §5.7 (replay).
+
+The updates it must send are spelled in tests/acp/streams.py, once for every test that
+reads the wire."""
 
 import pytest
 
@@ -8,29 +11,20 @@ from deep_reasoning.acp.costs import NO_COST, CostLedger
 from deep_reasoning.acp.encoder import (
     ChildRef,
     Encoder,
-    closing_message,
     commands_update,
     config_update,
     idle_root_usage,
     namespace_option,
 )
 from deep_reasoning.acp.runlog import RUN_EVENT
+from tests.acp import streams as s
 
-R = "20261002-142233-4f1a2b"
-ROOT = "s-7c1f9e0a2b4d6e8f"
-DR2 = {
-    "run": R,
-    "node": 2,
-    "parent": 1,
-    "depth": 2,
-    "namespace": "router",
-    "backbone": "chat",
-    "drive": 1,
-}
+R, ROOT = s.R1, s.ROOT
+TASK = "Summarize the workload of the CS department."
 
 
 def S(node):
-    return f"{R}-n{node}"
+    return s.child_session(R, node)
 
 
 def C(node, k):
@@ -49,21 +43,20 @@ def run_start(after=None):
         index=1,
         after=after,
         cwd="/w",
-        namespace="router",
+        namespace="advising",
         mode="native",
         decomposition=None,
         source={},
     )
 
 
-def agent_start(
-    node,
-    parent=None,
-    *,
-    drive=1,
-    parent_cell=None,
-    task="Summarize the workload of the CS department.",
-):
+def prompt_start(text="q", task="q", decomposition=None):
+    return ev(
+        "prompt.start", prompt=1, text=text, task=task, decomposition=decomposition
+    )
+
+
+def agent_start(node, parent=None, *, drive=1, parent_cell=None, task=TASK):
     ancestry = (
         [1] if parent is None else ([1, node] if parent == 1 else [1, parent, node])
     )
@@ -74,7 +67,7 @@ def agent_start(
         ancestry=ancestry,
         depth=len(ancestry),
         task=task,
-        namespace="router",
+        namespace="advising",
         backbone="chat",
         max_iter=10,
         drive=drive,
@@ -128,6 +121,25 @@ def agent_end(
     )
 
 
+def prompt_end(outcome, answer=None, detail=None):
+    return ev("prompt.end", prompt=1, outcome=outcome, answer=answer, detail=detail)
+
+
+def run_end(reason, exit_code=None, detail=None):
+    return ev("run.end", reason=reason, exit_code=exit_code, detail=detail)
+
+
+DONE = agent_end(2)
+EXHAUSTED = agent_end(2, "exhausted", answer="Agent failed.")
+FAILED = agent_end(2, "failed", answer=None, detail="ValueError: boom")
+STOPPED = agent_end(
+    2, "stopped", answer=None, detail="StoppedByUser: stopped #2.", stopped_by=2
+)
+COLLATERAL = agent_end(
+    2, "stopped", answer=None, detail="CancelledError: ", stopped_by=3, collateral=True
+)
+
+
 def feed(encoder, *events):
     out = []
     for event in events:
@@ -145,13 +157,7 @@ def flat():
 
 def with_child(encoder):
     """A prompt in flight, the root in its first cell, child n2 announced in it."""
-    feed(
-        encoder,
-        run_start(),
-        ev("prompt.start", prompt=1, text="q", task="q", decomposition=None),
-        agent_start(1),
-        cell_start(1, 1),
-    )
+    feed(encoder, run_start(), prompt_start(), agent_start(1), cell_start(1, 1))
     return feed(encoder, agent_start(2, 1, parent_cell=1))
 
 
@@ -169,47 +175,14 @@ def with_child(encoder):
 )
 def test_a_run_starts_with_the_notice_its_predecessors_end_calls_for(after, notice):
     updates = native().feed(run_start(after))
-    expected = (
-        []
-        if notice is None
-        else [
-            (
-                ROOT,
-                {
-                    "sessionUpdate": "agent_message_chunk",
-                    "content": {"type": "text", "text": notice + "\n\n"},
-                },
-            )
-        ]
-    )
+    expected = [] if notice is None else [s.notice(ROOT, notice)]
     assert updates == expected
 
 
 def test_a_child_is_announced_on_its_parent_under_the_spawning_cell_then_given_its_task():
     announce, task = with_child(native())
-    assert announce == (
-        ROOT,
-        {
-            "sessionUpdate": "subagent_update",
-            "sessionId": S(2),
-            "title": "Summarize the workload of the CS department.",
-            "capabilities": {"cancel": {}},
-            "state": {"state": "running"},
-            "_meta": {"openhands": {"parentToolCallId": C(1, 1)}, "deep_reasoner": DR2},
-        },
-    )
-    assert task == (
-        ROOT,
-        {
-            "sessionUpdate": "session_message",
-            "messageId": f"{S(2)}-t1",
-            "senderSessionId": ROOT,
-            "recipientSessionId": S(2),
-            "content": [
-                {"type": "text", "text": "Summarize the workload of the CS department."}
-            ],
-        },
-    )
+    assert announce == s.announce(ROOT, R, 2, 1, 1, TASK)
+    assert task == s.message(ROOT, S(2), f"{S(2)}-t1", TASK)
 
 
 def test_a_long_task_is_cut_in_the_title_and_sent_whole_as_description():
@@ -229,24 +202,12 @@ def test_a_replayed_announcement_offers_no_cancel():
 def test_a_child_driven_again_is_re_announced_running_with_its_drive():
     encoder = native()
     with_child(encoder)
-    feed(encoder, agent_end(2), cell_end(1, 1), cell_start(1, 2))
-    announce, task = encoder.feed(
-        agent_start(2, 1, drive=2, parent_cell=2, task="Again.")
-    )
-    assert announce == (
-        ROOT,
-        {
-            "sessionUpdate": "subagent_update",
-            "sessionId": S(2),
-            "title": "Again.",
-            "state": {"state": "running"},
-            "_meta": {
-                "openhands": {"parentToolCallId": C(1, 2)},
-                "deep_reasoner": {**DR2, "drive": 2},
-            },
-        },
-    )
-    assert task[1]["messageId"] == f"{S(2)}-t2"
+    feed(encoder, DONE, cell_end(1, 1), cell_start(1, 2))
+    again = agent_start(2, 1, drive=2, parent_cell=2, task="Again.")
+    assert encoder.feed(again) == [
+        s.announce(ROOT, R, 2, 1, 2, "Again.", drive=2),
+        s.message(ROOT, S(2), f"{S(2)}-t2", "Again."),
+    ]
 
 
 def test_thoughts_go_to_their_agents_session_and_in_flat_only_the_roots():
@@ -254,67 +215,21 @@ def test_thoughts_go_to_their_agents_session_and_in_flat_only_the_roots():
     with_child(encoder)
     with_child(flat_encoder)
     thought = ev("thought", node=2, text="Look first.")
-    assert encoder.feed(thought) == [
-        (
-            S(2),
-            {
-                "sessionUpdate": "agent_thought_chunk",
-                "content": {"type": "text", "text": "Look first."},
-            },
-        )
-    ]
+    assert encoder.feed(thought) == [s.thought(S(2), "Look first.")]
     assert flat_encoder.feed(thought) == []
-    assert flat_encoder.feed(ev("thought", node=1, text="Root.")) == [
-        (
-            ROOT,
-            {
-                "sessionUpdate": "agent_thought_chunk",
-                "content": {"type": "text", "text": "Root."},
-            },
-        )
-    ]
+    root_thought = ev("thought", node=1, text="Root.")
+    assert flat_encoder.feed(root_thought) == [s.thought(ROOT, "Root.")]
 
 
 def test_a_cell_is_a_tool_call_titled_by_its_first_line_and_completed_by_its_output():
     encoder = native()
     with_child(encoder)
-    ((session, call),) = encoder.feed(cell_start(2, 1, code="xs = [1]\nprint(xs)"))
-    assert (session, call) == (
-        S(2),
-        {
-            "sessionUpdate": "tool_call",
-            "toolCallId": C(2, 1),
-            "title": "Run xs = [1] …",
-            "kind": "execute",
-            "status": "in_progress",
-            "rawInput": {"command": "xs = [1]\nprint(xs)"},
-            "_meta": {
-                "deep_reasoner": {
-                    "run": R,
-                    "node": 2,
-                    "parent": 1,
-                    "depth": 2,
-                    "cell": 1,
-                    "origin": "think",
-                }
-            },
-        },
-    )
-    ((session, done),) = encoder.feed(
-        cell_end(2, 1, code="xs = [1]\nprint(xs)", output="[1]")
-    )
-    assert (session, done) == (
-        S(2),
-        {
-            "sessionUpdate": "tool_call_update",
-            "toolCallId": C(2, 1),
-            "status": "completed",
-            "content": [
-                {"type": "content", "content": {"type": "text", "text": "[1]"}}
-            ],
-            "rawOutput": "[1]",
-        },
-    )
+    code = "xs = [1]\nprint(xs)"
+    started = encoder.feed(cell_start(2, 1, code=code))
+    assert started == [s.cell(S(2), R, 2, 1, code, parent=1)]
+    assert started[0][1]["title"] == "Run xs = [1] …"
+    ended = encoder.feed(cell_end(2, 1, code=code, output="[1]"))
+    assert ended == [s.done(S(2), R, 2, 1, "[1]")]
 
 
 def test_an_inferred_cell_gets_its_title_and_code_when_it_ends():
@@ -332,40 +247,25 @@ def test_an_inferred_cell_gets_its_title_and_code_when_it_ends():
 def test_an_interrupted_cell_fails_and_says_the_agent_stopped():
     encoder = native()
     feed(encoder, run_start(), agent_start(1), cell_start(1, 1))
-    ((_, done),) = encoder.feed(cell_end(1, 1, output="", interrupted=True))
-    assert done["status"] == "failed"
-    assert done["content"] == [
-        {
-            "type": "content",
-            "content": {
-                "type": "text",
-                "text": texts.cell_interrupted("the agent stopped"),
+    assert encoder.feed(cell_end(1, 1, output="", interrupted=True)) == [
+        (
+            ROOT,
+            {
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": C(1, 1),
+                "status": "failed",
+                "content": s.content(texts.cell_interrupted("the agent stopped")),
             },
-        }
+        )
     ]
 
 
 def test_flat_cells_and_cards_are_on_the_root_labelled_by_their_path():
     encoder = flat()
-    ((session, card),) = with_child(encoder)
-    assert (session, card) == (
-        ROOT,
-        {
-            "sessionUpdate": "tool_call",
-            "toolCallId": f"{S(2)}-a1",
-            "title": "#1 › #2 · Summarize the workload of the CS department.",
-            "kind": "other",
-            "status": "in_progress",
-            "rawInput": {"task": "Summarize the workload of the CS department."},
-            "_meta": {"openhands": {"parentToolCallId": C(1, 1)}, "deep_reasoner": DR2},
-        },
-    )
+    assert with_child(encoder) == [s.card(R, 2, 1, 1, TASK, "#1 › #2")]
     ((session, call),) = encoder.feed(cell_start(2, 1))
-    assert (session, call["title"], call["toolCallId"]) == (
-        ROOT,
-        "#1 › #2 › Run x = 1",
-        C(2, 1),
-    )
+    assert session == ROOT
+    assert (call["title"], call["toolCallId"]) == ("#1 › #2 › Run x = 1", C(2, 1))
 
 
 def test_usage_rolls_up_to_every_ancestor_and_flushes_once_per_change():
@@ -413,33 +313,11 @@ def test_flat_sends_usage_only_on_the_root():
 def test_an_accepted_stop_is_acknowledged_on_the_childs_own_session():
     encoder = native()
     with_child(encoder)
-    accepted = ev(
-        "stop.accepted",
-        node=2,
-        mode="interim",
-        accepted=True,
-        reason=None,
-        backbone="chat",
-    )
-    refused = ev(
-        "stop.accepted",
-        node=2,
-        mode="interim",
-        accepted=False,
-        reason="ended",
-        backbone="chat",
-    )
+    stop = {"node": 2, "mode": "interim", "backbone": "chat"}
+    accepted = ev("stop.accepted", **stop, accepted=True, reason=None)
+    refused = ev("stop.accepted", **stop, accepted=False, reason="ended")
     assert encoder.feed(accepted) == [
-        (
-            S(2),
-            {
-                "sessionUpdate": "agent_thought_chunk",
-                "content": {
-                    "type": "text",
-                    "text": texts.stop_requested("interim", "chat"),
-                },
-            },
-        )
+        s.thought(S(2), texts.stop_requested("interim", "chat"))
     ]
     assert encoder.feed(refused) == []
 
@@ -447,27 +325,16 @@ def test_an_accepted_stop_is_acknowledged_on_the_childs_own_session():
 @pytest.mark.parametrize(
     ("end", "message", "reason", "outcome"),
     [
-        (agent_end(2), "CS is heavy.", "end_turn", {"status": "done"}),
+        (DONE, "CS is heavy.", "end_turn", {"status": "done"}),
+        (EXHAUSTED, "Agent failed.", "max_turn_requests", {"status": "exhausted"}),
         (
-            agent_end(2, "exhausted", answer="Agent failed."),
-            "Agent failed.",
-            "max_turn_requests",
-            {"status": "exhausted"},
-        ),
-        (
-            agent_end(2, "failed", answer=None, detail="ValueError: boom"),
+            FAILED,
             "Failed: ValueError: boom",
             "end_turn",
             {"status": "failed", "detail": "ValueError: boom"},
         ),
         (
-            agent_end(
-                2,
-                "stopped",
-                answer=None,
-                detail="StoppedByUser: stopped #2.",
-                stopped_by=2,
-            ),
+            STOPPED,
             None,
             "cancelled",
             {
@@ -477,14 +344,7 @@ def test_an_accepted_stop_is_acknowledged_on_the_childs_own_session():
             },
         ),
         (
-            agent_end(
-                2,
-                "stopped",
-                answer=None,
-                detail="CancelledError: ",
-                stopped_by=3,
-                collateral=True,
-            ),
+            COLLATERAL,
             None,
             "cancelled",
             {
@@ -504,54 +364,19 @@ def test_a_child_ends_with_its_answer_its_cost_then_idle_on_its_parent(
     encoder.feed(usage(2))
     updates = encoder.feed(end)
     if message is not None:
-        sent = updates.pop(0)
-        assert sent == (
-            S(2),
-            {
-                "sessionUpdate": "session_message",
-                "messageId": f"{S(2)}-r1",
-                "senderSessionId": S(2),
-                "recipientSessionId": ROOT,
-                "content": [{"type": "text", "text": message}],
-            },
-        )
-    (cost_session, cost), (session, idle) = updates
+        assert updates.pop(0) == s.message(S(2), ROOT, f"{S(2)}-r1", message)
+    (cost_session, cost), idle = updates
     assert (cost_session, cost["sessionUpdate"]) == (S(2), "usage_update")
-    assert (session, idle) == (
-        ROOT,
-        {
-            "sessionUpdate": "subagent_update",
-            "sessionId": S(2),
-            "state": {"state": "idle", "stopReason": reason},
-            "_meta": {
-                "openhands": {"parentToolCallId": C(1, 1)},
-                "deep_reasoner": {**DR2, **outcome},
-            },
-        },
-    )
+    assert idle == s.idle(ROOT, R, 2, 1, 1, reason, **outcome)
     assert encoder.child(S(2)) == ChildRef(node=2, running=False)
 
 
 @pytest.mark.parametrize(
     ("end", "status", "text"),
     [
-        (agent_end(2), "completed", "CS is heavy."),
-        (
-            agent_end(2, "failed", answer=None, detail="ValueError: boom"),
-            "failed",
-            "Failed: ValueError: boom",
-        ),
-        (
-            agent_end(
-                2,
-                "stopped",
-                answer=None,
-                detail="StoppedByUser: stopped #2.",
-                stopped_by=2,
-            ),
-            "failed",
-            "StoppedByUser: stopped #2.",
-        ),
+        (DONE, "completed", "CS is heavy."),
+        (FAILED, "failed", "Failed: ValueError: boom"),
+        (STOPPED, "failed", "StoppedByUser: stopped #2."),
     ],
 )
 def test_a_flat_childs_card_closes_with_its_outcome(end, status, text):
@@ -560,65 +385,30 @@ def test_a_flat_childs_card_closes_with_its_outcome(end, status, text):
     ((session, card),) = encoder.feed(end)
     assert session == ROOT
     assert (card["toolCallId"], card["status"]) == (f"{S(2)}-a1", status)
-    assert card["content"] == [
-        {"type": "content", "content": {"type": "text", "text": text}}
-    ]
+    assert card["content"] == s.content(text)
     assert card["_meta"]["deep_reasoner"]["status"] == end.status
 
 
 @pytest.mark.parametrize(
-    ("end", "text", "outcome"),
+    ("end", "text"),
     [
+        (prompt_end("answered", answer="42"), "42"),
+        (prompt_end("exhausted", answer="Agent failed."), "Agent failed."),
         (
-            ev("prompt.end", prompt=1, outcome="answered", answer="42", detail=None),
-            "42",
-            "answered",
-        ),
-        (
-            ev(
-                "prompt.end",
-                prompt=1,
-                outcome="exhausted",
-                answer="Agent failed.",
-                detail=None,
-            ),
-            "Agent failed.",
-            "exhausted",
-        ),
-        (
-            ev(
-                "prompt.end",
-                prompt=1,
-                outcome="failed",
-                answer=None,
-                detail="ValueError: x",
-            ),
+            prompt_end("failed", detail="ValueError: x"),
             texts.root_failed("ValueError: x"),
-            "failed",
         ),
         (
-            ev(
-                "prompt.end",
-                prompt=1,
-                outcome="build_failed",
-                answer=None,
-                detail="ValueError: k",
-            ),
+            prompt_end("build_failed", detail="ValueError: k"),
             texts.build_failed("ValueError: k"),
-            "build_failed",
         ),
     ],
 )
-def test_a_prompt_ends_with_the_closing_message_and_the_roots_usage(end, text, outcome):
+def test_a_prompt_ends_with_the_closing_message_and_the_roots_usage(end, text):
     encoder = native()
-    feed(
-        encoder,
-        run_start(),
-        ev("prompt.start", prompt=1, text="q", task="q", decomposition=None),
-        agent_start(1),
-    )
+    feed(encoder, run_start(), prompt_start(), agent_start(1))
     message, (session, cost) = encoder.feed(end)
-    assert message == closing_message(ROOT, text, run=R, prompt=1, outcome=outcome)
+    assert message == s.closing(ROOT, R, 1, end.outcome, text)
     assert (session, cost["sessionUpdate"]) == (ROOT, "usage_update")
     assert encoder.prompt_in_flight is False
 
@@ -632,8 +422,7 @@ def test_a_run_stopped_in_flight_ends_every_running_agent_deepest_first():
         agent_start(4, 2, parent_cell=1),
         agent_start(5, 2, parent_cell=1),
     )
-    updates = encoder.feed(ev("run.end", reason="stopped", exit_code=-15, detail=None))
-    stopped = texts.cell_interrupted("the run was stopped")
+    updates = encoder.feed(run_end("stopped", exit_code=-15))
     shape = [
         (
             sid,
@@ -653,35 +442,27 @@ def test_a_run_stopped_in_flight_ends_every_running_agent_deepest_first():
         (ROOT, "agent_message_chunk", None, None),
         (ROOT, "usage_update", None, None),
     ]
-    assert updates[2][1]["content"][0]["content"]["text"] == stopped
+    stopped = texts.cell_interrupted("the run was stopped")
+    assert updates[2][1]["content"] == s.content(stopped)
     assert updates[0][1]["_meta"]["deep_reasoner"]["status"] == "stopped"
-    assert updates[5] == closing_message(
-        ROOT, texts.ROOT_STOPPED, run=R, prompt=1, outcome="stopped"
-    )
+    assert updates[5] == s.closing(ROOT, R, 1, "stopped", texts.ROOT_STOPPED)
 
 
 def test_a_crashed_run_leaves_children_idle_without_a_reason():
     encoder = native()
     with_child(encoder)
-    updates = encoder.feed(
-        ev("run.end", reason="crashed", exit_code=1, detail="/h/runs/r/worker.log")
-    )
+    updates = encoder.feed(run_end("crashed", exit_code=1, detail="/h/w.log"))
     idle = next(u for _, u in updates if u["sessionUpdate"] == "subagent_update")
     assert idle["state"] == {"state": "idle"}
     assert idle["_meta"]["deep_reasoner"]["status"] == "crashed"
-    assert updates[-2] == closing_message(
-        ROOT,
-        texts.crashed(1, "/h/runs/r/worker.log"),
-        run=R,
-        prompt=1,
-        outcome="crashed",
-    )
+    crashed = texts.crashed(1, "/h/w.log")
+    assert updates[-2] == s.closing(ROOT, R, 1, "crashed", crashed)
 
 
 def test_a_flat_run_stopped_in_flight_fails_cards_and_cells():
     encoder = flat()
     with_child(encoder)
-    updates = encoder.feed(ev("run.end", reason="stopped", exit_code=-15, detail=None))
+    updates = encoder.feed(run_end("stopped", exit_code=-15))
     ids = [
         (u["sessionUpdate"], u.get("toolCallId"), u.get("status")) for _, u in updates
     ]
@@ -697,33 +478,28 @@ def test_a_run_ending_between_prompts_sends_nothing(reason):
     feed(
         encoder,
         run_start(),
-        ev("prompt.start", prompt=1, text="q", task="q", decomposition=None),
+        prompt_start(),
         agent_start(1),
-        ev("prompt.end", prompt=1, outcome="answered", answer="a", detail=None),
+        prompt_end("answered", answer="a"),
     )
-    assert encoder.feed(ev("run.end", reason=reason, exit_code=0, detail=None)) == []
+    assert encoder.feed(run_end(reason, exit_code=0)) == []
 
 
 def test_a_lost_run_replays_with_a_closing_message_and_nothing_for_its_children():
     encoder = native(replay=True)
     with_child(encoder)
-    assert encoder.feed(ev("run.end", reason="lost", exit_code=None, detail=None)) == [
-        closing_message(ROOT, texts.REPLAY_LOST, run=R, prompt=1, outcome="lost")
+    assert encoder.feed(run_end("lost")) == [
+        s.closing(ROOT, R, 1, "lost", texts.REPLAY_LOST)
     ]
 
 
 def test_a_replay_shows_what_the_user_typed():
-    prompt = ev(
-        "prompt.start", prompt=1, text="/triage go", task="go", decomposition="triage"
-    )
+    prompt = prompt_start(text="/triage go", task="go", decomposition="triage")
     assert native().feed(prompt) == []
     assert native(replay=True).feed(prompt) == [
         (
             ROOT,
-            {
-                "sessionUpdate": "user_message_chunk",
-                "content": {"type": "text", "text": "/triage go"},
-            },
+            {"sessionUpdate": "user_message_chunk", "content": s.text("/triage go")},
         )
     ]
 

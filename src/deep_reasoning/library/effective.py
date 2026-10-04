@@ -70,6 +70,11 @@ def resolved(state: LibraryState, namespace: str) -> Any:
         registry.close()
 
 
+def defined_tools(state: LibraryState) -> set[str]:
+    """The tools a grant can name: the Library's, and llm while the profile has a model."""
+    return set(state.tools) | ({"llm"} if state.profile.data.get("model") else set())
+
+
 def _last(levels: list[tuple[str, dict[str, Any]]], key: str) -> str | None:
     setting = [name for name, data in levels if data.get(key) is not None]
     return setting[-1] if setting else None
@@ -81,7 +86,7 @@ def effective(state: LibraryState, namespace: str) -> Effective:
     attached = [
         (name, state.namespaces[name].decompositions) for name in chain(namespace)
     ]
-    defined = set(state.tools) | ({"llm"} if state.profile.data.get("model") else set())
+    defined = defined_tools(state)
     return Effective(
         namespace=namespace,
         chain=[name for name, _ in levels],

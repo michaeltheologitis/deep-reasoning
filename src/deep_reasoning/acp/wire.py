@@ -58,15 +58,6 @@ class Outbox:
         except (ConnectionError, OSError):
             logger.debug("dr_acp.update_dropped", session=session_id)
 
-    def observe(self, fn: Callable[[dict[str, Any]], None]) -> None:
-        """fn sees every outgoing JSON-RPC message (tests, golden recording)."""
-
-        def outgoing(event: StreamEvent) -> None:
-            if event.direction is StreamDirection.OUTGOING:
-                fn(event.message)
-
-        self._conn.add_observer(outgoing)
-
     @property
     def seconds_since_last_send(self) -> float:
         return time.monotonic() - self._last_send
@@ -96,12 +87,7 @@ async def serve(
     shutdown_grace_s: float = 0.3,
 ) -> None:
     """Serve one ACP connection until the client closes stdin or SIGTERM arrives, then
-    close every live run (shutdown_grace_s each, concurrently).
-
-    Builds asyncio streams on (stdin_fd, acp_out_fd) with a 64 MiB reader limit, then
-    Connection(handler, writer, reader), where handler is the initialize tap in front of
-    build_agent_router(agent, use_unstable_protocol=True).
-    """
+    close every live run (shutdown_grace_s each, concurrently)."""
     reader, writer = await _stdio_streams(stdin_fd, acp_out_fd)
     client = ClientMode(flat=flat)
     router = None

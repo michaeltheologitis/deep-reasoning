@@ -15,6 +15,7 @@ from deep_reasoning.acp.catalog import Catalog, CatalogSnapshot, CommandEntry
 from deep_reasoning.acp.costs import CostLedger, PriceTable
 from deep_reasoning.acp.encoder import (
     Encoder,
+    Update,
     closing_message,
     commands_update,
     config_update,
@@ -29,6 +30,7 @@ from deep_reasoning.acp.runlog import (
     RunEndReason,
     RunLog,
     SessionIndex,
+    detail_of,
 )
 from deep_reasoning.acp.supervisor import RunHandle
 from deep_reasoning.acp.wire import ClientMode, Outbox
@@ -58,16 +60,11 @@ STOP_REASONS: dict[str, Literal["end_turn", "max_turn_requests", "cancelled"]] =
 INVALID_PARAMS = -32602
 INVALID_REQUEST = -32600
 INTERNAL_ERROR = -32603
-DETAIL_CAP = 2000
 
 
 def refusal(code: int, sentence: str, name: str) -> RequestError:
     """A JSON-RPC error whose message is the §5.6 sentence, verbatim (§5.5)."""
     return RequestError(code, sentence, {"deep_reasoner": {"error": name}})
-
-
-def detail_of(exc: BaseException) -> str:
-    return f"{type(exc).__name__}: {exc}"[:DETAIL_CAP]
 
 
 @dataclass(frozen=True)
@@ -79,7 +76,7 @@ class PromptResult:
 
 @dataclass(frozen=True)
 class AgentContext:
-    """What every session of one connection shares, from DrAcpAgent."""
+    """What every session of one connection shares."""
 
     catalog: Catalog
     home: Home
@@ -116,6 +113,10 @@ class Session:
         self.namespace = namespace
         self.commands = {c.name: c for c in self.snapshot.commands.get(namespace, ())}
         self.advertised |= set(self.commands)
+
+    def menu(self) -> Update:
+        """The current menu as an update; empty once the conversation has started."""
+        return commands_update(self.id, list(self.commands.values()), self.namespace)
 
     def options(self) -> list[dict[str, Any]]:
         """The session's config options: the namespace option, narrowed once started."""
@@ -180,7 +181,7 @@ class Session:
         """The menu goes away and the namespace is fixed, before the run starts."""
         self.started = True
         self.commands = {}
-        await self.ctx.outbox.update(*commands_update(self.id, [], self.namespace))
+        await self.ctx.outbox.update(*self.menu())
         await self.ctx.outbox.update(*config_update(self.id, self.options()))
         self.save_index()
 
@@ -235,17 +236,20 @@ class Session:
         if self.run is not None and self.run.encoder.prompt_in_flight:
             await self.run.kill("stopped")
 
-    def stop_child(self, child_session_id: str) -> None:
-        ref = self.run.child(child_session_id) if self.run else None
-        if ref is not None and ref.running:
-            self.run.stop_node(ref.node)
+    def stop_child(self, child_session_id: str) -> bool:
+        """Stops the child's branch if it is running; False if the live run has no
+        child of that id."""
+        child = self.run.encoder.child(child_session_id) if self.run else None
+        if child is not None and child.running:
+            self.run.stop_node(child.node)
+        return child is not None
 
     async def close(self, grace_s: float = 2.0) -> None:
         if self.run is not None:
             await self.run.close(grace_s)
 
     def on_run_end(self, reason: RunEndReason) -> None:
-        """Called by the pump when it feeds run.end: take the run's cost and forget it."""
+        """The run has ended: keep its cost, and forget it."""
         self.cost = self.run.encoder.root_cost
         self.last_end = reason
         self.run = None

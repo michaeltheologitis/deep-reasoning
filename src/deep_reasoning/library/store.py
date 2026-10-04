@@ -1,4 +1,11 @@
-"""The SQLite file: schema and migrations, connections, the writer, heads and history (§4.2)."""
+"""The SQLite file: schema and migrations, connections, the writer, heads and history (§4.2).
+
+Nothing stored is updated or deleted, and triggers refuse both: a save appends versions
+under one new revision, a delete appends a tombstone, and an entity's head as of a
+revision is its highest version at or before it. Several processes share the file, each
+opening a connection per operation: a write is BEGIN IMMEDIATE, so writers queue, and
+WAL lets reads go on beside it.
+"""
 
 import contextlib
 import json
@@ -8,15 +15,12 @@ import secrets
 import sqlite3
 import sys
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from deep_reasoning.library import texts
-from deep_reasoning.library.records import Kind, LibraryError
+from deep_reasoning.library.records import HistoryEntry, Kind, LibraryError
 from deep_reasoning.library.shapes import deep_reasoner_build
-
-__all__ = ["Kind"]
 
 SCHEMA_V1 = """
 CREATE TABLE revisions (
@@ -69,64 +73,31 @@ NETWORK_FILESYSTEMS: frozenset[str] = frozenset(
 MOUNTS = Path("/proc/self/mounts")
 BUSY_TIMEOUT_MS = 5000
 
-# Every version with its revision's time and action, and the revision of its version 1
-# (creation order is the rowid of that first version).
+# One version as it is read back: the version joined to its revision's time and action.
+Row = HistoryEntry
+
 _ROWS = """
-SELECT v.*, r.at, r.action,
-       (SELECT w.rev FROM versions AS w
-         WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1) AS created_rev,
-       (SELECT w.rowid FROM versions AS w
-         WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1) AS created
+SELECT v.kind, v.name, v.version, v.rev, r.at AS saved_at, r.action, v.deleted, v.yaml,
+       v.attached AS decompositions, v.slug, v.use_when, v.hint, v.source, v.deep_reasoner
   FROM versions AS v JOIN revisions AS r USING (rev)
 """
+# Creation order is the rowid of an entity's version 1.
 _HEADS = (
     _ROWS
     + """
  WHERE v.version = (SELECT MAX(w.version) FROM versions AS w
                      WHERE w.kind = v.kind AND w.name = v.name AND w.rev <= :rev)
    AND v.deleted = 0
- ORDER BY created
+ ORDER BY (SELECT w.rowid FROM versions AS w
+            WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1)
 """
 )
 
 
-@dataclass(frozen=True)
-class Row:
-    kind: Kind
-    name: str
-    version: int
-    rev: int
-    at: datetime  # the revision's time, UTC
-    action: str  # the revision's action
-    created_rev: int  # the revision of version 1: creation order
-    deleted: bool
-    yaml: str | None
-    attached: list[str] | None
-    slug: str | None
-    use_when: str | None
-    hint: str | None
-    source: str | None
-    deep_reasoner: str
-
-
 def _row(record: sqlite3.Row) -> Row:
-    attached = record["attached"]
-    return Row(
-        kind=record["kind"],
-        name=record["name"],
-        version=record["version"],
-        rev=record["rev"],
-        at=datetime.fromisoformat(record["at"]),
-        action=record["action"],
-        created_rev=record["created_rev"],
-        deleted=bool(record["deleted"]),
-        yaml=record["yaml"],
-        attached=json.loads(attached) if attached is not None else None,
-        slug=record["slug"],
-        use_when=record["use_when"],
-        hint=record["hint"],
-        source=record["source"],
-        deep_reasoner=record["deep_reasoner"],
+    attached = record["decompositions"]
+    return Row.model_validate(
+        {**record, "decompositions": attached and json.loads(attached)}
     )
 
 
@@ -159,7 +130,7 @@ def refuse_network_filesystem(path: Path, *, mounts: Path = MOUNTS) -> None:
 def connect(path: Path, *, mounts: Path = MOUNTS) -> sqlite3.Connection:
     """Refuses a network filesystem (Linux); migrates an older schema."""
     refuse_network_filesystem(path, mounts=mounts)
-    conn = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+    conn = sqlite3.connect(path, autocommit=True, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
@@ -169,29 +140,20 @@ def connect(path: Path, *, mounts: Path = MOUNTS) -> sqlite3.Connection:
 
 
 def migrate(conn: sqlite3.Connection) -> None:
+    """Apply MIGRATIONS[user_version:], each in its own BEGIN IMMEDIATE: two processes
+    migrating at once apply a step once, and a step that fails leaves the file as it
+    was. In autocommit mode executescript commits nothing of its own."""
     (version,) = conn.execute("PRAGMA user_version").fetchone()
     for target, script in enumerate(MIGRATIONS[version:], start=version + 1):
         conn.execute("BEGIN IMMEDIATE")
         try:
             (current,) = conn.execute("PRAGMA user_version").fetchone()
             if current < target:
-                for statement in _statements(script):
-                    conn.execute(statement)
-                conn.execute(f"PRAGMA user_version = {target}")
+                conn.executescript(f"{script}\nPRAGMA user_version = {target};")
             conn.execute("COMMIT")
         except BaseException:
             conn.execute("ROLLBACK")
             raise
-
-
-def _statements(script: str) -> Iterator[str]:
-    """The script's statements one by one (executescript would commit our transaction)."""
-    statement = ""
-    for line in script.splitlines(keepends=True):
-        statement += line
-        if sqlite3.complete_statement(statement):
-            yield statement
-            statement = ""
 
 
 def create(path: Path, seed: Callable[[Path], None]) -> bool:
