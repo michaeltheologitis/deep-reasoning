@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import platform
+import sys
 import tarfile
 from pathlib import Path
 
@@ -21,7 +22,8 @@ from dr_app.canvas_app import (
 )
 from dr_app.cli import after_ready
 from dr_app.layout import CanvasAppRecord, SetupState
-from tests.app.conftest import D3_APP
+from tests.app.conftest import COMMIT, D3_APP, DEV_BIN
+from tests.crossrepo.agent_server import OPENER, agent_server, sdk_checkout
 
 SYSTEM = platform.system()
 HOME = Path("/Users/Jane Doe/.deep-reasoning")
@@ -204,3 +206,29 @@ def test_an_agent_server_refusal_warns_and_setup_succeeds(
     assert state.canvas_app is None, (
         "nothing installed is recorded: the next launch retries"
     )
+
+
+@pytest.mark.crossrepo
+def test_the_staged_app_passes_prepare_and_its_backend_answers_health(tmp_path, layout):
+    """Against a real agent-server from the SDK fork's pinned commit, with a runtime that
+    is this environment: its python finds D3's files, its dr-library is D2's."""
+    bin_ = layout.runtime_dir / COMMIT / "bin"
+    bin_.mkdir(parents=True)
+    (bin_ / "python").write_text(f'#!/bin/sh\nexec {sys.executable} "$@"\n')
+    (bin_ / "python").chmod(0o755)
+    (bin_ / "dr-library").symlink_to(DEV_BIN / "dr-library")
+    layout.current_runtime.symlink_to(COMMIT)
+    home = tmp_path / "dr-home"
+    staged = stage_canvas_app(layout, home=home, system=SYSTEM)
+    with agent_server(sdk_checkout(), tmp_path / "agent-server") as running:
+        server = AgentServer(running.url, running.session_key)
+        said: list[str] = []
+        ensure_canvas_app(server, staged, FRESH, log=said.append)
+        status = server.request("GET", f"{INSTALLED}/backend")
+        with OPENER.open(f"http://127.0.0.1:{status['port']}/health") as answer:
+            health = json.loads(answer.read())
+        server.request("POST", f"{INSTALLED}/backend/stop")
+    assert said == [texts.app_ready("0.1.0", "installed")]
+    assert status["state"] == "ready"
+    assert status["prepared_revision"] == status["revision"]
+    assert (health["ok"], health["path"]) == (True, str(home / "library.sqlite"))

@@ -1,0 +1,82 @@
+# D5's cross-repo checks (§7.5): the forks' code at their pins in desktop/pins.toml,
+# against this branch's. No job calls a real model. Dispatched by hand and nightly (through
+# main's nightly.yml), and on every pull request that moves a pin or the app.
+name: cross-repo
+
+on:
+  pull_request:
+    paths:
+      - desktop/**
+      - packages/dr-app/**
+      - pyproject.toml
+      - uv.lock
+      - src/deep_reasoning/acp/proxy.py
+      - .github/workflows/cross-repo.yml
+  workflow_dispatch:
+
+jobs:
+  # The staged Library App in a real agent-server from the SDK fork's pin: it installs,
+  # its artifact passes prepare and its backend answers /health (D5 §7.2).
+  canvas-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DR_SDK_CHECKOUT: ${{ github.workspace }}/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: The SDK fork's pin
+        id: pin
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import tomllib
+          pin = tomllib.load(open("desktop/pins.toml", "rb"))["sdk_fork"]
+          print("repo=" + pin["repo"].removeprefix("https://github.com/"))
+          print("commit=" + pin["commit"])
+          EOF
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: sdk
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+      - run: uv sync --frozen
+        working-directory: sdk
+      - run: uv run pytest -m crossrepo tests/app/test_canvas_app.py -v -rA
+
+  # E5's second half: each of D1's native recordings, played by S1's scripted agent into
+  # the SDK fork's agent-server, is stored as the tree it records (D5 §7.5).
+  bridge-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DR_SDK_CHECKOUT: ${{ github.workspace }}/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: The SDK fork's pin
+        id: pin
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import tomllib
+          pin = tomllib.load(open("desktop/pins.toml", "rb"))["sdk_fork"]
+          print("repo=" + pin["repo"].removeprefix("https://github.com/"))
+          print("commit=" + pin["commit"])
+          EOF
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pin.outputs.repo }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: sdk
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+      - run: uv sync --frozen
+        working-directory: sdk
+      - run: uv run pytest -m crossrepo tests/crossrepo -v -rA
