@@ -148,7 +148,7 @@ def test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_too
     assert not stalled
     agents, d0 = evidence_common(client, root, department, response, log, calls)
     siblings = [agents[task].field_meta["deep_reasoner"] for task in SIBLING_TASKS]
-    taken = {(s["status"], s["stopped_by"], s.get("collateral")) for s in siblings}
+    taken = {(s["status"], s.get("stopped_by"), s.get("collateral")) for s in siblings}
     assert taken == {("stopped", d0["node"], True)}
     sentence = texts.stopped_by_user(
         d0["node"],
