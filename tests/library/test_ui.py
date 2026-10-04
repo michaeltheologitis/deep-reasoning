@@ -4,7 +4,7 @@ from starlette.testclient import TestClient
 
 from deep_reasoning.library import texts
 from deep_reasoning.library.api import create_app
-from deep_reasoning.library.ui import UI_HEADERS, ui_routes
+from deep_reasoning.library.ui import UI_HEADERS, UI_ROOT, ui_routes
 
 PORT = 8123
 ORIGIN = f"http://127.0.0.1:{PORT}"
@@ -30,6 +30,17 @@ def serving(root):
 @pytest.fixture
 def library_app(lib):
     return TestClient(create_app(lib, same_user=lambda c, s: True), base_url=ORIGIN)
+
+
+def test_ui_serves_the_index_and_the_built_assets(library_app):
+    index = library_app.get("/ui/?tab=create&namespace=router")
+    script = library_app.get("/ui/assets/app.js")
+    assert index.status_code == 200
+    assert index.headers["content-type"].startswith("text/html")
+    assert index.content == (UI_ROOT / "index.html").read_bytes()
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith("text/javascript")
+    assert script.content == (UI_ROOT / "assets" / "app.js").read_bytes()
 
 
 def test_a_file_not_in_the_build_is_404(built):

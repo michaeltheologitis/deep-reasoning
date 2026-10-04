@@ -1,0 +1,71 @@
+# The Library the panel's browser tests start from: a small config of our own.
+model: fake-model
+client:
+  base_url: http://127.0.0.1:9/v1
+  api_key_env: DR_ACP_TEST_KEY
+  max_retries: 0
+system_prompt: You are a scripted test agent.
+max_iter: 6
+max_depth: 4
+entry_namespace: router
+decompositions:
+  - name: triage nightly
+    messages:
+      - role: user
+        content: Triage last night's failures.
+      - role: assistant
+        content: |
+          <repl>
+          FinalAnswer("triaged")
+          </repl>
+tools:
+  word_count:
+    factory: make
+    factory_from: tools/word_count.py
+namespaces:
+  root:
+    tools: [llm]
+    vars:
+      school: Northwind
+    system_suffix: Answer briefly.
+    decompositions:
+      - name: catalog lookup
+        messages:
+          - role: user
+            content: What does CS201 need?
+          - role: assistant
+            content: |
+              <think>Look the course up in the catalog.</think>
+              <repl>
+              print(catalog["CS201"]["prereqs"])
+              </repl>
+          - role: user
+            content: |-
+              <observation>
+              ['CS101']
+              </observation>
+          - role: assistant
+            content: |
+              <repl>
+              FinalAnswer(["CS101"])
+              </repl>
+  router:
+    spawn: [course_advisor]
+    vars:
+      max_courses: 3
+    decompositions:
+      - name: summarize then rank
+        messages:
+          - role: user
+            content: Summarize each course, then rank them by workload.
+          - role: assistant
+            content: |
+              <think>
+              Summaries first, then one ranking.
+              </think>
+              <repl>
+              FinalAnswer(sorted(courses))
+              </repl>
+  router.archive: {}
+  course_advisor:
+    tools: [word_count]
