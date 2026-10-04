@@ -394,6 +394,16 @@ def test_printing_cannot_corrupt_the_report():
     assert len(report.printed) == check.SHOWN_LIMIT
 
 
+def test_a_report_line_of_a_phase_not_awaited_is_skipped():
+    read_fd, write_fd = os.pipe()
+    with os.fdopen(write_fd, "w") as child:
+        for phase in ("ready", "loaded", "built", "done"):
+            print(json.dumps({"phase": phase}), file=child)
+    reports = check._Reports(read_fd)
+    assert reports.get({"built", "failed"}, 5) == {"phase": "built"}
+    assert reports.get({"example"}, 5) is None
+
+
 def test_an_example_that_raises_is_reported_and_the_build_stays_ok():
     report = check_tool(
         "word_count", "factory: make", source("word_count"), example="word_count(3)"
