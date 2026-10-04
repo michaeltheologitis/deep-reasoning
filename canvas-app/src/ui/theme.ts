@@ -2,8 +2,6 @@
 
 import { DEFAULT_THEME } from "../shared/protocol";
 
-export const POLL_MS = 3_000;
-
 export function applyTheme(
   theme: Readonly<Record<string, string>>,
   root: HTMLElement,
