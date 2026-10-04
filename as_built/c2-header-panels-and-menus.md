@@ -492,7 +492,8 @@ The panel slot is many small pieces, each simple.
   `transcript-export/index.test.ts` and the e2e guide. `type-guards.ts` is no longer one of them (D-16).
   - An in-memory merge of `9d75806` with `f4c7ae5` conflicts in one hunk: both branches' new export line at the top of
     `events/index.ts` (`./acp-subagent-event` and `./acp-session-controls-event`). The other seven files merge cleanly.
-    [run: `git merge-tree`]
+    C1 moved to `b4f6354` while I wrote this; the same merge from there gives the same 8 files and the same one
+    conflict. [run: `git merge-tree`, at both C1 commits]
   - **The shared 5xx-reason rule** that C1's as-built §2.1 D-1 names is now C2's in one place only: `toAppBackendError`
     (`:74–88`), reading `exception` through upstream's `getApiErrorBody`. It matches the reason by regular expression
     to classify a 503 and shows it to no user. C1's `refusalReason` strips the `NNN: ` prefix and shows the reason in
