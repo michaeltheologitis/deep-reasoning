@@ -1,38 +1,38 @@
-const _ = ["browse", "create", "namespaces", "tools"], C = {
+const _ = ["browse", "create", "namespaces", "tools"], k = {
   browse: "Decompositions",
   create: "Create decomposition",
   namespaces: "Namespaces",
   tools: "Tools"
-}, w = [
-  "--oh-surface",
-  "--oh-surface-raised",
-  "--oh-surface-deep",
-  "--oh-foreground",
-  "--oh-muted",
-  "--oh-text-secondary",
-  "--oh-text-dim",
-  "--oh-border",
-  "--oh-border-subtle",
-  "--oh-border-input",
-  "--oh-color-primary",
-  "--oh-accent",
-  "--oh-accent-foreground",
-  "--oh-danger",
-  "--oh-success",
-  "--oh-warning",
-  "--oh-interactive-hover",
-  "--oh-interactive-active",
-  "--oh-focus",
-  "--oh-radius",
-  "--oh-field-radius",
-  "color-scheme",
-  "font-family"
-], L = 200, p = "5", N = /^[#\w\s(),.%'"-]*$/;
-function D(e) {
+}, L = {
+  "--oh-surface": "#21252F",
+  "--oh-surface-raised": "#2C313F",
+  "--oh-surface-deep": "#05070A",
+  "--oh-foreground": "#EEF2F7",
+  "--oh-muted": "#A3B0C4",
+  "--oh-text-secondary": "#C3CDDC",
+  "--oh-text-dim": "#7E8A9E",
+  "--oh-border": "#4B5468",
+  "--oh-border-subtle": "#383F50",
+  "--oh-border-input": "#4B5468",
+  "--oh-color-primary": "#c9b974",
+  "--oh-accent": "#c9b974",
+  "--oh-accent-foreground": "#0B0E14",
+  "--oh-danger": "#e76a5e",
+  "--oh-success": "#a5e75e",
+  "--oh-warning": "#c9b974",
+  "--oh-interactive-hover": "#4B5468",
+  "--oh-interactive-active": "#383F50",
+  "--oh-focus": "#ffffff",
+  "--oh-radius": "8px",
+  "--oh-field-radius": "8px",
+  "color-scheme": "dark",
+  "font-family": '-apple-system, "SF Pro", BlinkMacSystemFont, "Segoe UI", "Roboto", "Ubuntu", sans-serif'
+}, w = Object.keys(L), D = 200, p = "5", N = /^[#\w\s(),.%'"-]*$/;
+function F(e) {
   return _.includes(e);
 }
 function O(e) {
-  return e.length <= L && N.test(e) && !/url\(/i.test(e);
+  return e.length <= D && N.test(e) && !/url\(/i.test(e);
 }
 function I(e) {
   const t = {};
@@ -46,15 +46,15 @@ function P(e) {
   const t = new URLSearchParams({ tab: e.tab });
   return e.parent && t.set("parent", e.parent), e.namespace && t.set("namespace", e.namespace), e.started && t.set("started", "1"), t.set("cap", e.cap), e.focus && t.set("focus", e.focus), Object.keys(e.theme).length > 0 && t.set("theme", JSON.stringify(e.theme)), `?${t.toString()}`;
 }
-function M(e) {
+function B(e) {
   if (!e || typeof e != "object") return !1;
   const t = e;
-  return t.type === "dr-library/reload" ? Object.keys(t).length === 1 : t.type === "dr-library/select-tab" && D(t.tab) && (t.focus === null || typeof t.focus == "string");
+  return t.type === "dr-library/reload" ? Object.keys(t).length === 1 : t.type === "dr-library/select-tab" && F(t.tab) && (t.focus === null || typeof t.focus == "string");
 }
-const R = "Opening the Library…", T = "Starting the Library's backend…", f = (e) => `The Library's backend did not start: ${e}`, F = "The Library's backend is not approved for this version of the App. Restart the app: its setup approves the App it installed.", B = (e) => `This agent-server cannot run the Library's backend: ${e}`, x = "This version of Canvas cannot show an App's own pages. Update the app.", U = "Try again", $ = "it was still starting after 45 seconds.", E = "/api/canvas-extensions/installed/dr-library/backend", K = 500, A = 45e3;
-async function H(e, t, n) {
+const M = "Opening the Library…", g = "Starting the Library's backend…", f = (e) => `The Library's backend did not start: ${e}`, R = "The Library's backend is not approved for this version of the App. Restart the app: its setup approves the App it installed.", x = (e) => `This agent-server cannot run the Library's backend: ${e}`, U = "This version of Canvas cannot show an App's own pages. Update the app.", $ = "Try again", H = "it was still starting after 45 seconds.", T = "/api/canvas-extensions/installed/dr-library/backend", K = 500, A = 45e3;
+async function V(e, t, n) {
   let r = Date.now() + A;
-  const o = () => e({ path: E });
+  const o = () => e({ path: T });
   let s;
   try {
     s = await o();
@@ -64,12 +64,12 @@ async function H(e, t, n) {
       if (s.state === "missing" || s.state === "unsupported")
         return {
           ok: !1,
-          message: B(s.detail ?? s.state)
+          message: x(s.detail ?? s.state)
         };
       if (s.state === "starting") {
-        if (n(T), Date.now() >= r)
-          return { ok: !1, message: f($) };
-        await j(K, t), s = await o();
+        if (n(g), Date.now() >= r)
+          return { ok: !1, message: f(H) };
+        await q(K, t), s = await o();
         continue;
       }
       if (i)
@@ -78,13 +78,13 @@ async function H(e, t, n) {
           message: f(s.detail ?? s.state)
         };
       if (s.revision === null || s.prepared_revision !== s.revision)
-        return { ok: !1, message: F };
-      n(T), i = !0, s = await e({
+        return { ok: !1, message: R };
+      n(g), i = !0, s = await e({
         method: "POST",
-        path: `${E}/start`,
+        path: `${T}/start`,
         body: { revision: s.revision }
       }).catch((u) => {
-        if (V(u)) throw u;
+        if (j(u)) throw u;
         return r = Date.now() + A, o();
       });
     }
@@ -92,14 +92,14 @@ async function H(e, t, n) {
     return t.throwIfAborted(), { ok: !1, message: f(G(i)) };
   }
 }
-function V(e) {
+function j(e) {
   return typeof e?.status == "number";
 }
 function G(e) {
   const t = e?.response;
   return typeof t?.detail == "string" ? t.detail : e instanceof Error ? e.message : String(e);
 }
-function j(e, t) {
+function q(e, t) {
   return new Promise((n, r) => {
     const o = setTimeout(() => {
       t.removeEventListener("abort", s), n();
@@ -109,10 +109,10 @@ function j(e, t) {
     t.addEventListener("abort", s, { once: !0 });
   });
 }
-const q = "/api/agent-profiles/deep_reasoner", W = /^\d+(\.\d+)?$/, J = "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent";
-async function X(e, t) {
+const W = "/api/agent-profiles/deep_reasoner", J = /^\d+(\.\d+)?$/, X = "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent";
+async function Y(e, t) {
   if (t === null) return null;
-  const n = `/api/conversations/${encodeURIComponent(t)}/events/search?kind=${J}&sort_order=TIMESTAMP_DESC&limit=1`;
+  const n = `/api/conversations/${encodeURIComponent(t)}/events/search?kind=${X}&sort_order=TIMESTAMP_DESC&limit=1`;
   try {
     const o = (await e({ path: n })).items?.[0]?.config_options?.find(
       (s) => s.id === "namespace"
@@ -125,25 +125,25 @@ async function X(e, t) {
     return null;
   }
 }
-async function Y(e) {
+async function z(e) {
   try {
     const n = (await e({
-      path: q
+      path: W
     })).profile?.acp_args;
-    return z(
+    return Q(
       Array.isArray(n) ? n.filter((r) => typeof r == "string") : null
     );
   } catch {
     return p;
   }
 }
-function z(e) {
+function Q(e) {
   if (!e) return p;
   if (e.includes("--no-key-proxy")) return "off";
   const t = e.indexOf("--spend-cap-usd"), n = t >= 0 ? e[t + 1] : e.find((r) => r.startsWith("--spend-cap-usd="))?.slice(16);
-  return n !== void 0 && W.test(n) ? n : p;
+  return n !== void 0 && J.test(n) ? n : p;
 }
-function Q(e) {
+function Z(e) {
   const t = getComputedStyle(e);
   return I(
     Object.fromEntries(
@@ -155,10 +155,10 @@ function Q(e) {
   );
 }
 const h = /* @__PURE__ */ new Map();
-function Z(e, t) {
+function ee(e, t) {
   h.set(e, t);
 }
-function ee(e) {
+function te(e) {
   const t = h.get(e) ?? null;
   return h.delete(e), t;
 }
@@ -166,62 +166,62 @@ function l(e, t, n = !1, r) {
   const o = document.createElement("p");
   if (o.dataset.testid = n ? "dr-library-error" : "dr-library-loading", o.textContent = t, o.style.cssText = "margin: 0; padding: 12px 16px; color: var(--oh-muted, inherit);", e.replaceChildren(o), !r) return;
   const s = document.createElement("button");
-  s.type = "button", s.dataset.testid = "dr-library-retry", s.textContent = U, s.style.cssText = "margin: 0 16px;", s.addEventListener("click", r), e.append(s);
+  s.type = "button", s.dataset.testid = "dr-library-retry", s.textContent = $, s.style.cssText = "margin: 0 16px;", s.addEventListener("click", r), e.append(s);
 }
-function te(e, t, n) {
-  const { container: r } = n, o = new AbortController(), s = ee(t);
+function ne(e, t, n) {
+  const { container: r } = n, o = new AbortController(), s = te(t);
   let i = null, u = !1;
   const m = (a) => {
     const c = r.querySelector("iframe");
-    !c || a.source !== c.contentWindow || !M(a.data) || (a.data.type === "dr-library/reload" ? d() : n.surface.kind === "conversation-panel" && (Z(a.data.tab, a.data.focus), n.surface.selectTab(a.data.tab)));
-  }, v = (a) => {
+    !c || a.source !== c.contentWindow || !B(a.data) || (a.data.type === "dr-library/reload" ? d() : n.surface.kind === "conversation-panel" && (ee(a.data.tab, a.data.focus), n.surface.selectTab(a.data.tab)));
+  }, S = (a) => {
     a.reason !== "not-ready" || u || (u = !0, d());
   };
   function y() {
     window.removeEventListener("message", m), i?.(), i = null;
   }
   async function d() {
-    y(), l(r, R);
-    const a = e.agentServer.request, [c, g, b] = await Promise.all([
-      H(
+    y(), l(r, M);
+    const a = e.agentServer.request, [c, b, E] = await Promise.all([
+      V(
         a,
         o.signal,
-        (k) => l(r, k)
+        (C) => l(r, C)
       ),
-      X(a, n.conversationId),
-      Y(a)
+      Y(a, n.conversationId),
+      z(a)
     ]).catch(() => [null, null, null]);
-    if (o.signal.aborted || c === null || b === null) return;
+    if (o.signal.aborted || c === null || E === null) return;
     if (!c.ok)
       return l(r, c.message, !0, () => {
         d();
       });
-    if (!e.appBackend) return l(r, x, !0);
-    const S = {
+    if (!e.appBackend) return l(r, U, !0);
+    const v = {
       tab: t,
       parent: window.location.origin,
-      namespace: g?.namespace ?? null,
-      started: g?.started ?? !1,
-      cap: b,
+      namespace: b?.namespace ?? null,
+      started: b?.started ?? !1,
+      cap: E,
       focus: s,
-      theme: Q(r)
+      theme: Z(r)
     };
     r.replaceChildren(), i = e.appBackend.mountFrame(r, {
-      path: `/ui/${P(S)}`,
-      title: C[t],
-      onError: v
+      path: `/ui/${P(v)}`,
+      title: k[t],
+      onError: S
     }), window.addEventListener("message", m);
   }
   return d(), () => {
     o.abort(), y(), r.replaceChildren();
   };
 }
-function ne(e) {
+function re(e) {
   const t = _.map(
-    (n) => e.registerPage(n, (r) => te(e, n, r))
+    (n) => e.registerPage(n, (r) => ne(e, n, r))
   );
   return () => t.forEach((n) => n());
 }
 export {
-  ne as activate
+  re as activate
 };
