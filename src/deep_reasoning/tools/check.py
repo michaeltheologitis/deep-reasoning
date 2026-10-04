@@ -7,7 +7,6 @@ import json
 import os
 import pwd
 import queue
-import shutil
 import signal
 import subprocess
 import sys
@@ -271,8 +270,10 @@ def _build_in_a_child(
     limits: CheckLimits,
 ) -> CheckReport:
     """§3.3: a one-tool config in a 0700 folder, built by check_child in its own group."""
-    folder = Path(tempfile.mkdtemp(prefix="dr-check-"))
-    try:
+    with tempfile.TemporaryDirectory(
+        prefix="dr-check-", ignore_cleanup_errors=True
+    ) as tmp:
+        folder = Path(tmp)
         config = folder / "config"
         (config / shapes.TOOL_DIR).mkdir(parents=True)
         (config / shapes.tool_file(name)).write_bytes(source.encode())
@@ -303,8 +304,6 @@ def _build_in_a_child(
                 os.close(write_fd)
         fields = _follow(name, _Reports(read_fd), child, example, limits)
         return _report(**fields, printed=_tail(printed))
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
 
 
 def check_tool(
