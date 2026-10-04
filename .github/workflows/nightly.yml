@@ -1,0 +1,20 @@
+# Nightly: dispatches D5's cross-repo checks (§7.5, decision M). GitHub runs a scheduled
+# workflow only from the default branch, so this file lives on main; the run it starts
+# uses cross-repo.yml as v1-desktop holds it (on main once D5 has merged). No model calls.
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch-cross-repo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: gh workflow run cross-repo.yml --repo "$GITHUB_REPOSITORY" --ref v1-desktop
+        env:
+          GH_TOKEN: ${{ github.token }}
