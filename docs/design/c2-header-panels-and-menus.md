@@ -730,7 +730,8 @@ and B16–B20 say which of their sentences moved. B21–B30 answer the as-built 
 **After Gate B (v3)**
 
 Each landed after Gate B and was checked against the code at `ca1dd71`. B22 and B23 are the other two Gate B fixes;
-B24–B26 are the refactor's changes to helpers and names, which change nothing a user sees; B27 is the tests; B28 the
+B24–B26 are the refactor's changes to helpers and names, which change nothing a user sees but the 4xx toast that
+`4ff261c` also fixed, counted under B21; B27 is the tests; B28 the
 base the code now stands on; B29 the split; B30 the size.
 
 - **B22. On the home screen a refused pick is withdrawn** (§5.4, §5.6, A.10, ASC-002; as-built r2 D-13; `6fb7f05`,
@@ -825,7 +826,8 @@ base the code now stands on; B29 the split; B30 the size.
   - Not pinned: that a disabled `useLatestAcpSessionControls` does not scan the event store (P2; §11 item 9).
 
   The Gate B section's property table is current at `ca1dd71` in its v3 marks. *Why (recorded in each commit):* a
-  test cut repeated another's property; the two re-pins name the probe each answers. *Pinned by:* every level's CI.
+  cut test went with its helper or repeated another test's property; each re-pin names the cut that left its
+  property bare. *Pinned by:* every level's CI.
 - **B28. The code on the SDK fork's `dr-2`, through `deep-reasoning` at `fc87687`** (the header, §8, §9, §10, B16,
   B19; `fc87687` with `988dce8`, `383771c` and `9035f9e`; the merge `30068b8`). `wiring/dr-1` (`9881d24`: the `dr-1`
   agent-server `cef3b24` and its client, on C3's launcher at `22272d9`) is replaced by the fork's `deep-reasoning` at
