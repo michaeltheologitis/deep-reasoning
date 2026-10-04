@@ -10,12 +10,12 @@ from deep_reasoning.library import Library
 from deep_reasoning.library.api import create_app
 from deep_reasoning.mcp.grants import shim_source
 from deep_reasoning.mcp.wire import McpServerStatus, remember_seen
-from deep_reasoning.tools import check, texts
+from deep_reasoning.tools import texts
 from tests.library.conftest import ROUTER, write_config
+from tests.tools.conftest import source
 
 PORT = 8123
 ORIGIN = f"http://127.0.0.1:{PORT}"
-FIXTURES = Path(__file__).parent / "fixtures"
 GITHUB = {
     "server": "github",
     "transport": "stdio",
@@ -38,10 +38,6 @@ factory_from: tools/github.py
 """
 
 
-def source(fixture: str) -> str:
-    return (FIXTURES / f"{fixture}.py").read_text()
-
-
 @pytest.fixture
 def lib(tmp_path: Path) -> Library:
     """A Library holding our router config: root, router and courses."""
@@ -53,16 +49,6 @@ def lib(tmp_path: Path) -> Library:
 @pytest.fixture
 def client(lib: Library) -> TestClient:
     return TestClient(create_app(lib, same_user=lambda c, s: True), base_url=ORIGIN)
-
-
-@pytest.fixture
-def no_check(monkeypatch):
-    """Any attempt to start Check's process fails the test."""
-
-    def refuse(*args, **kwargs):
-        raise AssertionError("Check started a process")
-
-    monkeypatch.setattr(check.subprocess, "Popen", refuse)
 
 
 def put_tool(client, name, fixture="word_count", **fields):
@@ -167,7 +153,7 @@ def test_save_anyway_stores_a_raising_tool_only_when_asked(client, lib):
     assert lib.tool("word_count").source == source("env_at_build")
 
 
-def test_a_grant_only_change_runs_no_check(client, lib, no_check):
+def test_a_grant_only_change_runs_no_check(client, lib, no_process):
     lib.put_tool("word_count", "factory: make", source=source("not_func"))
     response = put_tool(
         client, "word_count", "not_func", granted_in=["router"], base_version=1
@@ -179,7 +165,7 @@ def test_a_grant_only_change_runs_no_check(client, lib, no_check):
     )
 
 
-def test_an_mcp_block_through_put_tools_is_refused(client, no_check):
+def test_an_mcp_block_through_put_tools_is_refused(client, no_process):
     response = client.put(
         "/tools/github",
         json={
@@ -193,7 +179,9 @@ def test_an_mcp_block_through_put_tools_is_refused(client, no_check):
 
 
 @pytest.mark.parametrize("base_version", [0, 1], ids=["new", "the head's"])
-def test_a_grant_cannot_replace_a_tool_of_your_own(client, lib, no_check, base_version):
+def test_a_grant_cannot_replace_a_tool_of_your_own(
+    client, lib, no_process, base_version
+):
     lib.put_tool("word_count", "factory: make", source=source("word_count"))
     response = grant(client, "word_count", base_version=base_version)
     assert (response.status_code, response.json()["error"]) == (409, "refused")
@@ -203,7 +191,9 @@ def test_a_grant_cannot_replace_a_tool_of_your_own(client, lib, no_check, base_v
 
 
 @pytest.mark.parametrize("base_version", [0, 1], ids=["new", "the head's"])
-def test_a_tool_of_your_own_cannot_replace_a_grant(client, lib, no_check, base_version):
+def test_a_tool_of_your_own_cannot_replace_a_grant(
+    client, lib, no_process, base_version
+):
     grant(client)
     response = put_tool(client, "github", base_version=base_version)
     assert (response.status_code, response.json()["error"]) == (409, "refused")
@@ -212,7 +202,7 @@ def test_a_tool_of_your_own_cannot_replace_a_grant(client, lib, no_check, base_v
     assert (record.version, record.source) == (1, shim_source())
 
 
-def test_put_mcp_writes_the_block_and_the_shim_and_grants(client, lib, no_check):
+def test_put_mcp_writes_the_block_and_the_shim_and_grants(client, lib, no_process):
     response = grant(client)
     assert response.status_code == 201
     assert response.json() == {
@@ -326,7 +316,7 @@ def test_get_mcp_says_when_a_grant_has_an_old_shim(client, lib):
     assert (listed["version"], listed["shim_current"]) == (2, False)
 
 
-def test_mcp_routes_answer_only_their_own_host(lib, no_check):
+def test_mcp_routes_answer_only_their_own_host(lib, no_process):
     foreign = TestClient(
         create_app(lib, same_user=lambda c, s: True),
         base_url=f"http://evil.example:{PORT}",

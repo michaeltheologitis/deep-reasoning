@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
-from deep_reasoning.library import Library, library_path, shapes
-from deep_reasoning.mcp.grants import McpGrantBody, mcp_block, shim_source
+from deep_reasoning.library import Library, library_path
 from tests.acp.scenarios import repl, scripted
 from tests.library.conftest import ROUTER, run_dr, write_config
+from tests.mcp.conftest import put_grant
 
 ECHO = Path(__file__).parent / "servers" / "echo_server.py"
 DR_LIBRARY = Path(sys.executable).parent / "dr-library"
@@ -20,20 +20,13 @@ def export_with_a_grant(home: Path, base_url: str, tmp: Path) -> Path:
     lib = Library.open(library_path(home), starter=False)
     config = {**ROUTER, "client": {**ROUTER["client"], "base_url": base_url}}
     lib.import_config(write_config(tmp / "router", config))
-    body = McpGrantBody(
-        server="echo",
-        transport="stdio",
+    put_grant(
+        lib,
+        "echo",
+        ["router"],
         command=sys.executable,
         args=[str(ECHO)],
         env=["ECHO_TOKEN"],
-        granted_in=["router"],
-        base_version=0,
-    )
-    lib.put_tool(
-        "echo",
-        shapes.canonical_yaml(mcp_block("echo", body)),
-        source=shim_source(),
-        granted_in=["router"],
     )
     export = tmp / "export"
     subprocess.run(

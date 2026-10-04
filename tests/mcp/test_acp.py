@@ -12,20 +12,19 @@ from starlette.testclient import TestClient
 
 from deep_reasoning.acp import texts
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
-from deep_reasoning.library import Library, library_path, shapes
+from deep_reasoning.library import Library, library_path
 from deep_reasoning.library.api import create_app
 from deep_reasoning.mcp import shim
-from deep_reasoning.mcp.grants import McpGrantBody, mcp_block, shim_source
 from deep_reasoning.mcp.wire import read_seen
 from tests.acp.harness import dr_acp, eventually, run, run_ids
 from tests.acp.scenarios import BASE_CONFIG, repl, scripted
 from tests.acp.test_agent import responses
 from tests.library.conftest import write_config
+from tests.mcp.conftest import put_grant
 from tests.processes import running_after
+from tests.tools.conftest import source
 
 SERVERS = Path(__file__).parent / "servers"
-TOOL_FIXTURES = Path(__file__).parents[1] / "tools" / "fixtures"
-START_S = 30
 CONFIG = {
     **BASE_CONFIG,
     "entry_namespace": "router",
@@ -46,23 +45,6 @@ def library(home: Path, base_url: str, tmp: Path) -> Library:
     config = {**CONFIG, "client": {**CONFIG["client"], "base_url": base_url}}
     lib.import_config(write_config(tmp / "config", config))
     return lib
-
-
-def grant(
-    lib: Library, alias: str, granted_in: list[str], server: str | None = None, **extra
-) -> None:
-    """An MCP grant as PUT /mcp writes it, with the block's optional fields a test sets."""
-    body = McpGrantBody(
-        server=server or alias,
-        transport="stdio",
-        command="npx",
-        granted_in=granted_in,
-        base_version=0,
-    )
-    block = mcp_block(alias, body) | extra
-    lib.put_tool(
-        alias, shapes.canonical_yaml(block), source=shim_source(), granted_in=granted_in
-    )
 
 
 def forwarded(
@@ -142,7 +124,7 @@ def test_a_granted_server_is_bound_and_a_cell_calls_it(home, work, tmp_path):
             tmp_path,
             plan,
             ["Say hi through echo."],
-            setup=lambda lib: grant(lib, "echo", ["router"]),
+            setup=lambda lib: put_grant(lib, "echo", ["router"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
         )
     )
@@ -186,7 +168,7 @@ def crashing(home, work, tmp_path):
             tmp_path,
             plan,
             ["Carry on without it."],
-            setup=lambda lib: grant(lib, "wiki", ["router"]),
+            setup=lambda lib: put_grant(lib, "wiki", ["router"]),
             servers=[forwarded("wiki", "crash_server.py", CRASH_TOKEN=CRASH_SECRET)],
         )
     )
@@ -239,7 +221,7 @@ def test_the_seen_cache_is_written_for_bound_servers(home, work, tmp_path):
             tmp_path,
             plan,
             ["Look around."],
-            setup=lambda lib: grant(lib, "echo", ["router"]),
+            setup=lambda lib: put_grant(lib, "echo", ["router"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
         )
     )
@@ -257,7 +239,7 @@ def test_no_stdio_server_outlives_a_root_stop(home, work, tmp_path):
         plan = {"Spin": [repl("while True: pass")]}
         async with FakeOpenAI(scripted(plan)) as model:
             lib = library(home, model.base_url, tmp_path)
-            grant(lib, "echo", ["router"])
+            put_grant(lib, "echo", ["router"])
             async with dr_acp(None, home) as client:
                 server = forwarded("echo", ECHO_MARKER_DIR=str(markers), ECHO_TOKEN="t")
                 session = await client.open_session(work, [server])
@@ -287,7 +269,7 @@ def test_no_stdio_server_outlives_a_closed_session(home, work, tmp_path):
         plan = {"Answer": [repl("FinalAnswer('answered')")]}
         async with FakeOpenAI(scripted(plan)) as model:
             lib = library(home, model.base_url, tmp_path)
-            grant(lib, "echo", ["router"])
+            put_grant(lib, "echo", ["router"])
             async with dr_acp(None, home) as client:
                 server = forwarded("echo", ECHO_MARKER_DIR=str(markers), ECHO_TOKEN="t")
                 session = await client.open_session(work, [server])
@@ -312,7 +294,7 @@ def test_a_tool_saved_through_the_api_is_built_and_called_in_the_next_conversati
             "/tools/word_count",
             json={
                 "yaml": "factory: make",
-                "source": (TOOL_FIXTURES / "word_count.py").read_text(),
+                "source": source("word_count"),
                 "granted_in": ["router"],
                 "base_version": 0,
             },
@@ -354,7 +336,7 @@ def test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on(
             tmp_path,
             plan,
             ["Break it.", "And then?"],
-            setup=lambda lib: grant(lib, "echo", ["router"]),
+            setup=lambda lib: put_grant(lib, "echo", ["router"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
         )
     )
@@ -381,7 +363,7 @@ def test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadli
         plan = {"Quick": [repl("FinalAnswer('quick')")]}
         async with FakeOpenAI(scripted(plan)) as model:
             lib = library(home, model.base_url, tmp_path)
-            grant(lib, "silent", ["router"], connect_timeout_s=2)
+            put_grant(lib, "silent", ["router"], block={"connect_timeout_s": 2})
             async with dr_acp(None, home) as client:
                 server = forwarded(
                     "silent", "hang_server.py", ECHO_MARKER_DIR=str(markers)
@@ -413,7 +395,7 @@ def test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt(
             tmp_path,
             plan,
             ["Look for echo."],
-            setup=lambda lib: grant(lib, "echo", ["course_advisor"]),
+            setup=lambda lib: put_grant(lib, "echo", ["course_advisor"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
         )
     )
@@ -437,7 +419,7 @@ def test_a_sub_agent_spawned_into_a_granted_namespace_gets_it(home, work, tmp_pa
             tmp_path,
             plan,
             ["Delegate to the advisor."],
-            setup=lambda lib: grant(lib, "echo", ["course_advisor"]),
+            setup=lambda lib: put_grant(lib, "echo", ["course_advisor"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
         )
     )
@@ -454,7 +436,7 @@ def test_a_grant_reaches_a_child_namespace(home, work, tmp_path):
             tmp_path,
             plan,
             ["Echo from the archive."],
-            setup=lambda lib: grant(lib, "echo", ["router"]),
+            setup=lambda lib: put_grant(lib, "echo", ["router"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
             namespace="router.archive",
         )
@@ -479,7 +461,7 @@ def test_handing_a_server_to_an_ungranted_namespace_is_refused(home, work, tmp_p
             tmp_path,
             plan,
             ["Hand echo over."],
-            setup=lambda lib: grant(lib, "echo", ["router"]),
+            setup=lambda lib: put_grant(lib, "echo", ["router"]),
             servers=[forwarded("echo", ECHO_TOKEN="t")],
         )
     )

@@ -16,6 +16,7 @@ from deep_reasoning.mcp.grants import (
     shim_source,
 )
 from deep_reasoning.tools import texts
+from tests.mcp.conftest import put_grant
 
 
 def body(**fields) -> McpGrantBody:
@@ -157,13 +158,7 @@ def test_grant_record_reads_the_block():
 
 def test_an_exported_and_reimported_grant_is_still_a_grant(tmp_path):
     first = Library.open(tmp_path / "a.sqlite", starter=False)
-    block = mcp_block("github", body(command="npx"))
-    first.put_tool(
-        "github",
-        shapes.canonical_yaml(block),
-        source=shim_source(),
-        granted_in=["root"],
-    )
+    put_grant(first, "github", ["root"])
     exported = first.materialize(tmp_path / "export")
     second = Library.open(tmp_path / "b.sqlite", starter=False)
     second.import_config(exported)

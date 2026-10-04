@@ -1,15 +1,15 @@
 import json
 import time
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from deep_reasoning.library import shapes
-from deep_reasoning.mcp.grants import McpGrantBody, is_mcp_tool, mcp_block, shim_source
+from deep_reasoning.mcp.grants import is_mcp_tool
 from deep_reasoning.mcp.wire import McpServerStatus, remember_seen
 from tests.canvas_app.test_notice import SAFETY_5
+from tests.mcp.conftest import put_grant
+from tests.tools.conftest import source
 
 # D4's sentences, as the frame shows them (D4 §9.3).
 TOOLS_RISK = (
@@ -67,7 +67,6 @@ def test_the_tools_tab_lists_tools_with_their_grants(open_ui, library_server):
 
 # ── D4: your own tools and MCP servers (D4 §2, §10.4) ─────────────────────────────
 
-TOOL_FIXTURES = Path(__file__).parents[1] / "tools" / "fixtures"
 SHOUT = '''from deep_reasoner import Func
 
 
@@ -90,10 +89,6 @@ GITHUB = {
     "why_not": None,
 }
 CHECK_S = 30_000  # a Check starts deep_reasoner in a process of its own
-
-
-def fixture_source(name: str) -> str:
-    return (TOOL_FIXTURES / f"{name}.py").read_text()
 
 
 def mcp_param(*servers: dict) -> str:
@@ -120,26 +115,6 @@ def stored_when(read, done, timeout_s: float = 10):
     while not done(found := read()) and time.monotonic() < deadline:
         time.sleep(0.1)
     return found
-
-
-def grant(library, name: str, granted_in: list[str], **fields) -> None:
-    """An MCP grant as PUT /mcp writes it."""
-    body = McpGrantBody(
-        **{
-            "server": name,
-            "transport": "stdio",
-            "command": "npx",
-            "granted_in": granted_in,
-            "base_version": 0,
-        }
-        | fields
-    )
-    library.put_tool(
-        name,
-        shapes.canonical_yaml(mcp_block(name, body)),
-        source=shim_source(),
-        granted_in=granted_in,
-    )
 
 
 def test_the_risk_line_is_under_the_safety_banner(open_ui):
@@ -203,7 +178,7 @@ def test_a_tool_that_cannot_build_shows_why_and_cannot_be_saved(
     open_ui, library_server, fixture, block, said
 ):
     page = open_ui(tab="tools")
-    new_tool(page, "broken", fixture_source(fixture), block)
+    new_tool(page, "broken", source(fixture), block)
     page.get_by_test_id("dr-tool-save").click()
     result = page.get_by_test_id("dr-check-result")
     expect(result).to_contain_text(said, timeout=CHECK_S)
@@ -214,7 +189,7 @@ def test_a_tool_that_cannot_build_shows_why_and_cannot_be_saved(
 
 def test_a_hanging_factory_shows_the_limit(open_ui):
     page = open_ui(tab="tools")
-    new_tool(page, "slow", fixture_source("hang"))
+    new_tool(page, "slow", source("hang"))
     page.get_by_test_id("dr-check").click()
     expect(page.get_by_test_id("dr-check-status")).to_have_text(
         "Checking… (building your tool in a separate process)"
@@ -229,7 +204,7 @@ def test_a_hanging_factory_shows_the_limit(open_ui):
 
 def test_a_raising_factory_offers_save_anyway(open_ui, library_server):
     page = open_ui(tab="tools")
-    new_tool(page, "token", fixture_source("env_at_build"))
+    new_tool(page, "token", source("env_at_build"))
     page.get_by_test_id("dr-tool-save").click()
     result = page.get_by_test_id("dr-check-result")
     expect(result).to_contain_text(
@@ -241,9 +216,7 @@ def test_a_raising_factory_offers_save_anyway(open_ui, library_server):
     expect(page.get_by_test_id("dr-tool-result")).to_contain_text(
         "✓ Saved 'token' v1.", timeout=CHECK_S
     )
-    assert library_server.library().tool("token").source == fixture_source(
-        "env_at_build"
-    )
+    assert library_server.library().tool("token").source == source("env_at_build")
 
 
 def test_a_grant_tick_on_a_saved_tool_saves_without_unsaved_code(
@@ -331,7 +304,7 @@ def test_a_disabled_server_says_so_and_can_still_be_granted(open_ui, library_ser
 
 
 def test_a_grant_gone_from_canvas_offers_remove(open_ui, library_server):
-    grant(library_server.library(), "old_wiki", ["router"], server="old-wiki")
+    put_grant(library_server.library(), "old_wiki", ["router"], server="old-wiki")
     page = open_ui(tab="tools", mcp=mcp_param(GITHUB))
     expect(page.get_by_test_id("dr-mcp-state-old-wiki")).to_contain_text(MCP_GONE)
     page.get_by_test_id("dr-mcp-remove-old-wiki").click()
@@ -340,7 +313,7 @@ def test_a_grant_gone_from_canvas_offers_remove(open_ui, library_server):
 
 
 def test_a_changed_server_offers_update(open_ui, library_server):
-    grant(library_server.library(), "github", ["router"], env=["OLD_TOKEN"])
+    put_grant(library_server.library(), "github", ["router"], env=["OLD_TOKEN"])
     page = open_ui(tab="tools", mcp=mcp_param(GITHUB))
     expect(page.get_by_test_id("dr-mcp-state-github")).to_contain_text(MCP_CHANGED)
     page.get_by_test_id("dr-mcp-update-github").click()
@@ -354,7 +327,7 @@ def test_a_changed_server_offers_update(open_ui, library_server):
 
 
 def test_the_last_seen_tools_are_shown(open_ui, library_server):
-    grant(library_server.library(), "github", ["router"])
+    put_grant(library_server.library(), "github", ["router"])
     told = "- `github(tool, /, **arguments)`\n  MCP server 'github' (stdio): …"
     bound = McpServerStatus(
         tool="github",
@@ -373,7 +346,7 @@ def test_the_last_seen_tools_are_shown(open_ui, library_server):
 
 
 def test_without_canvas_settings_only_grants_are_shown(open_ui, library_server):
-    grant(library_server.library(), "github", ["router"])
+    put_grant(library_server.library(), "github", ["router"])
     page = open_ui(tab="tools")
     expect(page.get_by_test_id("dr-mcp-unknown")).to_have_text(MCP_SETTINGS_UNKNOWN)
     expect(page.get_by_test_id("dr-mcp-github")).to_contain_text("as github")

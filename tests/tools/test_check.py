@@ -32,8 +32,8 @@ from deep_reasoning.tools.check import (
     check_tool,
 )
 from tests.processes import running_after
+from tests.tools.conftest import source
 
-FIXTURES = Path(__file__).parent / "fixtures"
 QUICK = CheckLimits(build_s=3, example_s=3)
 SYNTAX_ERROR = "def make(\n"
 MAKE_TOOLS = """
@@ -49,10 +49,6 @@ else:
     print(json.dumps({"ok": True}))
 """
 MAKE_TOOLS_LIMIT_S = 10
-
-
-def source(fixture: str) -> str:
-    return (FIXTURES / f"{fixture}.py").read_text()
 
 
 def materialized(tmp_path: Path, name: str, block: str, source_text: str) -> Path:
@@ -89,16 +85,6 @@ def make_tools_in_a_subprocess(config: Path) -> dict:
         return {"ok": False, "message": None}
     lines = out.strip().splitlines()
     return json.loads(lines[-1]) if lines else {"ok": False, "message": None}
-
-
-@pytest.fixture
-def no_process(monkeypatch):
-    """Any attempt to start Check's process fails the test."""
-
-    def refuse(*args, **kwargs):
-        raise AssertionError("Check started a process")
-
-    monkeypatch.setattr(check.subprocess, "Popen", refuse)
 
 
 def test_a_working_tool_builds_and_says_what_the_agent_is_told():
