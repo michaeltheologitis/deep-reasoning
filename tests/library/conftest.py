@@ -34,6 +34,11 @@ def text(data: dict[str, Any]) -> str:
     return yaml.safe_dump(data, sort_keys=False)
 
 
+def user_texts(messages: list[dict[str, Any]]) -> list[str]:
+    """What a model request's user turns say."""
+    return [m["content"] for m in messages if m["role"] == "user"]
+
+
 def write_config(directory: Path, main: dict[str, Any], **files: Any) -> Path:
     """main.yaml in directory, plus files by relative path (dicts are dumped as YAML)."""
     directory.mkdir(parents=True, exist_ok=True)

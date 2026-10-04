@@ -196,7 +196,12 @@ class Session:
         except Exception as exc:
             logger.exception("dr_acp.materialize_failed", session=self.id)
             return await self._reply(texts.build_failed(detail_of(exc)), "build_failed")
-        self.source = {"kind": "config", "config_path": str(source.config_path)}
+        library = source.versions.get("library")
+        self.source = (
+            {"kind": "library", "library": library}
+            if library
+            else {"kind": "config", "config_path": str(source.config_path)}
+        )
         self.run = await RunHandle.start(
             run_id=run_id,
             session=self,
