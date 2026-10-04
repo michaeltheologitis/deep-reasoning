@@ -5,7 +5,7 @@
 `deep-reasoning`, `1f2b52d`; S2 is `git diff 1f2b52d..d938c90`: 38 commits and two merges of `deep-reasoning`; the
 literate refactor is `5e3317f..7f03b56`, then two test-only commits, `76533fc` and `d938c90`. `d938c90`'s source is
 `7f03b56`'s: only three test files differ [run: `git diff --stat 7f03b56 d938c90`] · D-1 to D-18 checked against the
-design v2.3 (`09e1462`); D-19 against v2.4 (`1ef4f70`, now `docs/design/s2-agent-surfaces.md` on this branch), read
+design v2.3 (`09e1462`); D-19 against v2.4 (`1ef4f70`; v2.5, `008dd4b`, is now on this branch and takes D-19 in), read
 only for its test names, counts and untested list · agent-client-protocol 0.12.1 and websockets 15.0.1 (the fork's
 lock, unchanged since `1f2b52d`) · uv 0.12.23 and Python 3.13.14 in this sandbox.
 
@@ -193,6 +193,8 @@ more", "Not pinned by any test", the property tables), §4.5's v2.4 note and §4
 - They list as unasserted `ACPAgent.set_acp_config_option`'s refusals, the route's `min_length=1`, and, as gone, the
   `panel-title`, `no-tabs` and `tab-title` cases and the tab's default path. Each is asserted at `d938c90` (§5).
   `LocalConversation`'s refusal of `""` is still unasserted, as v2.4 says.
+- *(Conductor, on cherry-picking r5 onto `design/s2`: v2.5 (`008dd4b`) takes each point in; its case ids now
+  name the two cases by value.)*
 
 [read: v2.4 at `1ef4f70`; run: collection and probes at `d938c90`] Reason: `76533fc` and `d938c90` came after v2.4.
 
