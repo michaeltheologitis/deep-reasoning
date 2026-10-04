@@ -1,423 +1,380 @@
 # C3 · Desktop launcher: the agent-server's source and a first-launch setup, as built
 
-**TASK-11** · Cartographer · the code at `22272d9`, head of `feat/launcher-agent-server-source` in the Canvas
-fork [michaeltheologitis/OpenHands](https://github.com/michaeltheologitis/OpenHands) (draft PR #1 into the fork's
-`deep-reasoning`; C3 is `02b7ac7..22272d9`) · checked against the design at `dca8b48`
-(`docs/design/c3-launcher.md` v1, unchanged on this branch) · uv 0.8.17 and Node 22.22 in this sandbox, uv 0.12.22
-in the live run · 2026-10-03.
+**TASK-11** · Cartographer · **r2, 2026-10-04**: the code at `61d9217`, head of `feat/launcher-agent-server-source` in
+the Canvas fork [michaeltheologitis/OpenHands](https://github.com/michaeltheologitis/OpenHands) (draft PR #1 into the
+fork's `deep-reasoning` at `ba4d883`; C3 is `02b7ac7..61d9217`, 20 commits) · checked against the design at `d0ccacb`
+(`docs/design/c3-launcher.md` v2, which describes `22272d9`) · Node 22.22, uv 0.8.17 here; uv 0.12.23 in the live run.
 
-**Where this file lives.** On deep-reasoning's branch `as-built/c3`, cut from `design/c3`: C3's code is in the
-fork and the fork carries only upstream-shaped code plus marked fork-only commits, so no document of ours goes
-there. This branch has no `pyproject.toml`, no docs site and no test runner, so nothing builds an sdist or collects
-`as_built/`. Every deep-reasoning branch that has a `pyproject.toml` already excludes `as_built/` from its sdist
-beside `docs/` (`[tool.hatch.build.targets.sdist] exclude`), except `wip/d2-on-d1`. [run: `git show
-<branch>:pyproject.toml` on every local branch]
+**Revisions.** r2 (this) describes `61d9217`: r1's `22272d9` plus six fixes to how a setup phase is stopped
+(`79de56c`, `9bd50ea`, `63d6b10`, `32fc051`, `a75ad64`, `6cfb9b7`) and the literate refactor (`f462e2f`, `5ef127f`,
+`c9478a1`, `78a94e5`, `a641a0b`, `61d9217`). r1 (2026-10-03) described `22272d9` against design v1 `dca8b48`; its
+D-1 to D-8 are all absorbed into design v2 (B1, B2, B3, B3, B4, B10, B8, and the Gate B section), so §2 starts at
+D-9. Stop trusting from r1: every line reference in `dev-with-automation.mjs`, `dev-safe.mjs` and
+`launcher-defaults.mjs`; §3's export list; §4.3's account of the timeout and of `stopServices`; §6.4's test list;
+the sizes.
 
-**Evidence marks.** Every claim carries one.
-- **[run]**: executed in this sandbox at `22272d9`, in a copy of the tree (`git archive` plus the checkout's
-  `node_modules`), never in the checkout: the four C3 test files (`npx vitest run` on
-  `__tests__/scripts/{launcher-defaults,dev-safe,dev-with-automation,agent-server-relaunch.live}.test.ts`: 191
-  passed, 1 skipped, 11.4 s), the full suite (§6.1), uncommitted probe scripts that import the modules or run
-  the launcher from a packaged-layout copy with a stub `uvx`, and a local rerun of the live test (§6.3).
-- **[CI]**: read from GitHub's records of CI run 37085250155 and live run 37109360172, both at `22272d9`, through
-  the GitHub MCP tools (job steps and log tails; full log downloads are blocked here, §7).
-- **[read]**: read in the code, **not executed**. Weaker than [run]; §7 lists the read claims that matter.
+**Where this file lives.** deep-reasoning's branch `as-built/c3-r2`, cut from `design/c3`; nothing on this branch
+builds or collects `as_built/` (no `pyproject.toml`, docs site or test runner). No document of ours goes into the fork.
 
-C3 calls no model, and nothing in this document ran a paid model or the `claude` CLI.
+**Evidence marks.** **[run]**: executed here at `61d9217` (or at the commit named) in a detached worktree of the
+fork or in copies of its `scripts/`, `config/`, `tools/`; never in anyone else's worktree. **[CI]**: read from
+GitHub's records through the MCP tools, full job logs included. **[read]**: read in the code, **not executed**; §7
+lists the read claims that matter. Nothing here ran a paid model, the `claude` CLI or a live workflow.
 
-**Reading order.** §2 first (the divergences), then §1 and §3–§5 as the map, §4.5 for what D5 gets, §6 for the
-measurements and tests, §7 for what I could not verify.
+**Reading order.** §2 (divergences), §4.4 (the stop and quit design, where the build changed most), §6.4 (what the
+refactor stopped testing), §5 (what others rely on), then the rest as a map.
 
 ---
 
 ## 1 · What exists
 
-C3 lets a build of Agent Canvas name, in `config/defaults.json`, where the agent-server comes from (any git
-repository, at a ref), where its state lives, and a command to run as the user before the stack starts and again
-once the agent-server answers. A full 40-hex commit is installed without `--reinstall`, so a relaunch of that
-commit runs uv's cached build with no network. The file's values are environment fallbacks applied once at each
-launcher's entry; everything downstream still reads only the environment. [read; each part run in §6]
+A build of Agent Canvas can name in `config/defaults.json` where the agent-server comes from (any https or ssh git
+repository, at a ref), where its state lives, and a command run as the user before the stack starts and again once
+the agent-server answers. A full 40-hex commit is installed without `--reinstall`, so a relaunch runs uv's cached
+build offline. The file's values are environment fallbacks applied once at each launcher's entry. [run, §6]
 
 ```text
-config/defaults.json ─ sources, paths.stateDir ─▶ launcher-defaults.applyLauncherDefaults ─▶ process.env (unset names only)
-                     └ setup ──────────────────▶ launcher-defaults.readSetupConfig ──┐
-dev-with-automation.main (desktop app, npm run dev, agent-canvas bin):              ▼
-  parseArgs → fill env, log [defaults] → read setup → prereqs, ports, state dirs → runSetupCommand("before-start")
-  → startAgentServer: dev-safe.buildAgentServerCommand(process.env) → uvx [--reinstall unless 40-hex] --from git+<repo>@<ref>…
-  → waitForService(/server_info, proc): throws at once if proc exits → seed automation secret
-  → runSetupCommand("after-ready", + AGENT_SERVER_URL, SESSION_API_KEY); on failure stopServices(), throw
-  → automation, frontend, ingress
+config/defaults.json ─ sources, paths.stateDir ─▶ applyLauncherDefaults(process.env, SHARED_DEFAULTS) ─▶ unset names only
+                     └ setup ──────────────────▶ readSetupConfig ──┐
+dev-with-automation.main (desktop app, npm run dev, agent-canvas bin):  ▼
+  parseArgs → fill, log [defaults] → read setup → prereqs, ports, dirs → runSetupCommand("before-start")
+  → startAgentServer → waitForService(/server_info, proc): throws at once if proc closes → seed secret
+  → runSetupCommand("after-ready", + AGENT_SERVER_URL, SESSION_API_KEY); on failure stopServices(), rethrow
+  → automation, frontend, ingress           quit (SIGINT/TERM/HUP) at any point → shutdown → stopServices → exit 0
 dev-safe.main (dev:minimal), dev-static.main, dev-extra-backend.main: the fill only
 ```
 
-| Part | Lines at `22272d9` | Where |
+| Part | Lines added/removed at `61d9217` | Where |
 |---|---|---|
-| launcher code | +668 −35 | `scripts/launcher-defaults.mjs` (new, 220), `scripts/dev-with-automation.mjs` (+365 −21), `scripts/dev-safe.mjs` (+52 −9), `electron/main.mjs` (+13 −3), `config/defaults.json` (+14 −2), `scripts/dev-static.mjs`, `scripts/dev-extra-backend.mjs` (+2 each) |
-| tests | +1,444 −2 | `__tests__/scripts/launcher-defaults.test.ts` (new, 320), `dev-with-automation.test.ts` (+797), `dev-safe.test.ts` (+128), `agent-server-relaunch.live.test.ts` (new, 199) |
+| launcher code | +722 −35 | `scripts/launcher-defaults.mjs` (new, 191), `scripts/dev-with-automation.mjs` (+433 −19), `scripts/dev-safe.mjs` (+51 −10), `scripts/dev-process-utils.mjs` (+15 −2), `electron/main.mjs` (+13 −3), `config/defaults.json` (+13 −1), `scripts/dev-static.mjs`, `scripts/dev-extra-backend.mjs` (+3 each) |
+| tests | +1,406 −3 | `__tests__/scripts/launcher-defaults.test.ts` (new, 251), `dev-with-automation.test.ts` (+849 −3), `dev-safe.test.ts` (+107), `agent-server-relaunch.live.test.ts` (new, 199) |
 | docs | +71 | `docs/DEVELOPMENT.md` (+68), `.agents/skills/local-stack-runtime/references/guide.md` (+3) |
 | workflow | +94 | `.github/workflows/launcher-live.yml` (fork only) |
 
-Eight commits, oldest first: `b90bfa3` (fail at once when the agent-server exits early), `0c77c6d` (repository
-variable, no reinstall for a commit), `b652a20` (`defaults.json` fallbacks), `a45d619` (setup command, Electron
-lines), `6a6a16b` (skill guide), `49db305` (App-backend ingress default), `9e36e07` (DEVELOPMENT.md), and the
-fork-only `22272d9` (live test and its workflow). [run: `git log 02b7ac7..22272d9`]
+[run: `git diff --numstat 02b7ac7 61d9217`] Commit order, oldest first: the seven upstream-shaped commits of r1, the
+fork-only `22272d9` (live test and workflow), then the twelve upstream-shaped commits of the fixes and the refactor.
+[run: `git log`]
 
 ---
 
-## 2 · Divergences from the design (`dca8b48`)
+## 2 · Divergences from the design (`d0ccacb`, v2)
 
-The changelog has no `drift:` line for TASK-11, so every item below was found from the code. All eight commits
-were made after `dca8b48`. "Design §x" cites `dca8b48`. [run: Notion query of the Changelog; `git log`]
+The changelog has no `drift:` line for TASK-11. All twelve commits after `22272d9` postdate v2. [run: Notion query;
+`git log`] Each item names what v2 says, what is built, and the reason the commits give.
 
-### 2.1 Behaviour a user or D5 sees
+**D-9 · A setup phase lasts until the command's output closes, and its stop reaches the process group even after the
+command has exited** (`63d6b10`, `32fc051`). v2 §4.2 and §6.2: at the limit "the command's process tree" gets SIGTERM
+and SIGKILL, and the promise "rejects once it has exited"; a quit stops "the command's process tree". Built: the
+command is a service that ends on `close`, not `exit`, so a background child that keeps its stdout or stderr keeps
+the phase open (`sh -c "sleep 2 & exit 0"` resolves after 2.0 s, `… exit 2` rejects with exit 2 after 2.0 s); while
+it is open, the timeout and a quit signal its process group whether or not its leader is alive. A child whose
+output is redirected is not waited for, and after the phase has ended nothing signals its group. Reason (commits):
+the limit did not stop a command that had exited leaving such a child (the phase ended only when the child did),
+and quitting left the child running. [run: timeout and quit probes, §6.3]
 
-**D-1 · The launcher fails at once when the agent-server exits before it is ready** (`b90bfa3`). Design §5.8
-lists the readiness wait among the things deliberately left unchanged ("an upstream weakness this change neither
-causes nor needs, worth its own small PR"). Built: `startAgentServer` returns its process and `waitForService`
-takes it (`dev-with-automation.mjs:808`, `1936–1943`); `watchServiceExit` (`:762–783`) keeps the process's last
-10 output lines, and if it closes before `/server_info` answers the wait throws
-`agent-server exited before startup completed (code=N, signal=S). Last output:` plus those lines, or
-`agent-server could not be started (<message>).` Consequences: `npm run dev` now exits 1 instead of running on
-without an agent-server after 60 s; the desktop app shows its failure state at once instead of after 10 minutes,
-and its summary carries the ports hint, since this is not a `SetupCommandError` (`electron/main.mjs:739–742`).
-Reason (commit message): a `uvx` that fails at once (no network, a bad ref) left the launcher polling until its
-timeout and then reported a timeout instead of the failure. [run: `fails at once, with the exit code and last
-output, when the agent-server exits before answering`, 0.75 s against a 60 s timeout; the ports hint read]
+**D-10 · The stop gives up 1 s after SIGKILL on a child no signal reaches** (`a75ad64`, `6cfb9b7`). v2 has no such
+bound: the phase and `stopServices` wait until everything has exited. Built: `OUTPUT_CLOSE_WAIT_MS` (1 s) after the
+SIGKILL, an output-tracked service is dropped with `Output still open after SIGKILL; not waiting` (terminal only, not
+the service-log listener). So a phase at its limit with a `setsid` child rejects as a timeout after limit + 4.0 s,
+and a quit during such a phase exits 0 after 4.0 s; in both cases the child survives the launcher. Reason (commits):
+without it the splash waited until the child exited, and a quit fell to the desktop app's 6 s safety net. [run]
 
-**D-2 · Canvas App backends get a default ingress origin** (`49db305`). Not in the design. `buildAgentServerEnv`
-sets `OH_APP_BACKEND_PUBLIC_URL` to `http://127.0.0.1:<agent-server port>` unless the environment sets it
-(`dev-safe.mjs:885–886`), so all four launchers that use it pass it to the agent-server (`dev-safe.mjs:1071`,
-`dev-with-automation.mjs:1041`, `dev-static.mjs:343`, `dev-extra-backend.mjs:185`); Docker builds its own
-environment and is unchanged. Reason (commit message): the agent-server's App-backend bridge answers 503 ("Canvas
-App backend ingress is not configured") until that origin is set, and it must differ from the origin Canvas is
-served on, so in the desktop app and `npm run dev` every App backend was unreachable. Documented in
-`DEVELOPMENT.md`. [run: two unit tests on the value. read: the bridge's 503 in the SDK fork at `ea51b3f`,
-`canvas_extensions/bridge.py:230–243`. No App backend was reached through it here, §7]
+**D-11 · One escalation, `stopService`, for the timeout and for quitting; services are records, not processes**
+(`5ef127f`). v2 §5.4, §6.2: `stopServices()` sends SIGTERM to every tree and SIGKILL 3 s later; `runSetupCommand`
+has its own timeout and kill. Built: §4.4. `spawnService` (upstream's, exported) gains an `untilOutputCloses` option
+and stores `{proc, untilOutputCloses, ended, whenEnded, end}` in `processes`; new internal helpers `isServiceRunning`,
+`signalService`, `stopService`, `abandonService`. During a quit a setup phase never settles (`runSetupCommand`
+returns a promise that never resolves), so nothing after it starts. Reason (commit): the same escalation was
+written twice. Behaviour is unchanged by `5ef127f`: §6.3. [run, read]
 
-**D-3 · The live test is fork-only, not part of the upstream-shaped PR.** Design §7.5: the test file is in the
-PR, and only the workflow is a fork-only commit on `deep-reasoning`. Built: test and workflow are one commit,
-`22272d9`, marked `[fork only]` at the head of the PR branch; a byte-identical copy of the workflow is `ba4d883` on
-the fork's `deep-reasoning`, because GitHub starts a `workflow_dispatch` run only when the file also exists on
-the default branch. The seven upstream-shaped commits carry no live test. Reason: the commit messages of
-`22272d9` and `ba4d883`. [run: `git diff ba4d883 22272d9 -- .github/workflows/launcher-live.yml` is empty]
+**D-12 · `dev-process-utils.mjs` changes** (`63d6b10`). Not in v2 §5's module list. `signalProcessTree(proc, signal,
+{evenIfLeaderExited = false} = {})` (`:92–99`) signals the group of an exited leader when asked; ignored on Windows,
+where `taskkill /t` walks from the leader. Only `signalService` passes it, and only for the setup command. [read; the
+POSIX path run through §6.3]
 
-**D-4 · The live run measured upstream's commit, not the SDK fork's.** Design §7.5 runs the file "with the fork's
-source". The workflow takes its inputs, else `config/defaults.json` `sources`; at `22272d9` both are empty (no
-wiring commit yet), so run 37109360172 installed upstream's `software-agent-sdk` at `1e1390a` (v1.50.1), with uv
-0.12.22. [CI: the "Resolve the agent-server source" step prints `repo 'upstream'; ref 'upstream v1.50.1'`] The
-SDK fork's commit was run here instead, §6.3.
+**D-13 · `defaults.json` is read by `dev-safe.mjs` and passed in; `loadSharedDefaults` is gone** (`f462e2f`). v2 §6.1:
+`loadSharedDefaults()` exported, `applyLauncherDefaults(env?, defaults?)`, imports `node:fs`, `os`, `path`, `url`,
+`process`. Built: `dev-safe.mjs` exports `SHARED_DEFAULTS` (`:37`); `applyLauncherDefaults(env, defaults)` takes both;
+`launcher-defaults.mjs` imports `node:os` and `node:path` only and reads no file. `dev-with-automation.mjs` passes its
+own `SHARED_DEFAULTS` (upstream's second parse of the same file, `:92`). Reason (commit): a third read of one file.
+[read; each launcher run with a relative `paths.stateDir` refuses with its message, §6.4 P10]
 
-**D-5 · A malformed `setup.phases` fails every full-stack launch even when `setup.command` is null.**
-`readSetupConfig` checks `phases` before it looks at `command` (`launcher-defaults.mjs:192–206`); design §6.1
-returns `null` "when setup.command is null or absent". Upstream's file carries a valid `phases`, so this matters
-only for a build that edits it. No reason recorded. [run: `{command: null, phases: ["x"]}` throws the
-`setup.phases` message]
+**D-14 · Fewer exports** (`c9478a1`). v2 §6.1–6.2 exports `SETUP_PHASES`, `expandHomePath` (home optional),
+`SETUP_COMMAND_TIMEOUT_MS`, `buildSetupEnv` and a re-export of `SETUP_PHASES`. Built: all internal; `expandHomePath`
+requires `home`. Reason (commit): nothing imports them. [run: export lists]
 
-### 2.2 Signatures and small behaviours
+**D-15 · The fork-only commit is no longer last.** v2 B3 and §7.5: `22272d9` is "the branch's last commit", left out
+when the branch goes upstream. Built: twelve upstream-shaped commits follow it, so leaving it out means dropping a
+middle commit. No reason recorded. [run: `git log`]
 
-None of these changes what §2.1 describes. [run unless marked]
+**D-16 · Tests: same count, different set** (`78a94e5`, `a641a0b`, `61d9217`, and the fixes' tests). v2 B8 and the
+Gate B property table: 29 + 14 + 19 + 1. Built: 26 + 13 + 23 + 1 (§6.2). Nine of the names v2's table cites no
+longer exist (mapped in §6.2), and two properties that tests in v2's falsifier-1 row pinned are no longer pinned
+(§6.4, P1 and P2).
 
-| Design | Built |
-|---|---|
-| `launcher-defaults.mjs` imports `node:fs`, `os`, `path`, `url` only (§5.2) | also `node:process` (`:29`) [read] |
-| "unset" environment variables (§2.1) | unset **or empty**: `""` counts as unset in the fill and in `buildAgentServerCommand`, as upstream's source checks already did (`if (localPath)`) |
-| `sources.agentServerGitRef`: a non-empty string (§4.1) | also not whitespace only (`ref.trim() === ""`, `:131`) |
-| `validateGitRepoUrl`: an `https://` or `ssh://` URL (§6.1) | as designed, through WHATWG `new URL`, which also accepts `https:///o/r` (it reads `o` as the host) |
-| `waitForService(name, url, timeoutMs)`; `startAgentServer` returns nothing | `waitForService(name, url, timeoutMs, proc = null)`; `startAgentServer` returns the process (D-1) [read] |
-| `shutdown()` "keeps its own flow … and may call" `stopServices()` (§6.2) | `shutdown()` is now `stopServices().then(hooks, exit 0)` (`:1389–1401`): it exits as soon as every child has exited, where upstream waited a fixed 3 s [read] |
-| the `[defaults]` line lists repo, ref, state dir, keys (§3.3's example) | names sorted, as §6.1 specifies: `OH_AGENT_SERVER_GIT_REF, OH_AGENT_SERVER_GIT_REPO, OH_CANVAS_SAFE_STATE_DIR, OH_SECRET_KEY_PATH, OH_SESSION_API_KEY_PATH` (the design is inconsistent with itself here) |
+**D-17 · Three of v2 B4's "pinned by the tests" details are not pinned**, before or after the refactor: a
+whitespace-only ref, a bare `~`, and the `was stopped after 15 minutes` wording. [run: probes P12–P14, §6.4]
 
-### 2.3 Tests, proof and size
+**D-18 · Size**: +2,293 −38 against v2 §8's 2,277 at `22272d9`; the fixes took it to 2,604 and the refactor back
+down (§6.5).
 
-**D-6 · Size: about four times the estimate.** Design §8: ≈0.58 k lines (code ≈243, docs 35, tests 300). Built:
-+2,277 −37 (code +668, tests +1,444 with the 199-line live test, docs +71, workflow +94; §1). The excess is in
-the tests (of `dev-with-automation.test.ts`'s +797: the setup unit tests ≈205 lines, the packaged-layout
-harness and its stubs ≈215, its seven launches ≈280) and in `dev-with-automation.mjs` (+365 against 100: the
-setup command, its messages and `stopServices` +270, D-1's +67, the fill and its log line +22). [run: `git diff --numstat`]
-
-**D-7 · Tests beyond §7.** Added: `a command killed by a signal rejects naming the signal`, the CLI early-exit
-test (D-1), two `OH_APP_BACKEND_PUBLIC_URL` tests (D-2; placed under `describe("buildAgentServerTelemetryEnv")`),
-and `a SHA one digit short` among the refs that still reinstall. Every test §7.1–7.5 names exists under its name or
-as an `it.each` case. [run]
-
-**D-8 · CI on Windows runs no tests.** Design §7.4 has upstream's full suite run on the PR. It does, on Ubuntu
-only: the `test-and-build (windows)` job skips Lint and Test (`full_checks: false`, `ci.yml:37, 65–70`) and only
-builds the app. The three desktop jobs build and check the package files; none launches the app. [CI: job steps]
-
-Not divergences: everything else in design §2–§7 is built as written, including the exact message texts of
-§3.3, the fill rules of §2.1, the precedence of §3.1, the launch order of §3.2, the two Electron lines of §2.6,
-and §1.4's exclusions (no change to `docker/`, `electron-builder.config.mjs`, `scripts/logger.mjs` or the CLI
-flags). [run for the messages, rules and order, except the `was stopped after 15 minutes` wording, read from
-`formatTimeout`; read for the rest]
+Small, behaviour-neutral: `validateGitRepoUrl` uses `URL.parse` (Node ≥ 22.1) instead of `new URL` in a try/catch,
+and accepts exactly what it did (18 inputs, including `https:///o/r` and `https://user:pw@host/r`) [run];
+`SetupCommandError` assigns its details with `Object.assign` [read]. Everything else in v2 §2–§7 holds as r1 found
+it at `22272d9`, and the code it rests on is unchanged since (`git diff 22272d9 61d9217` touches only the files of
+D-9 to D-14 and the tests). [run: the diff; the tests in §6.2]
 
 ---
 
 ## 3 · The public surface, from the code
 
-**`config/defaults.json`** at `22272d9` (upstream's values, each with a `_comment`): `sources.agentServerGitRepo:
-null`, `sources.agentServerGitRef: null`, `paths.stateDir: null`, `setup.command: null`, `setup.phases:
-["before-start", "after-ready"]`. With these, `launcherDefaultsEnv` returns `{}` and `readSetupConfig` returns
+**`config/defaults.json`**: `sources.agentServerGitRepo`, `sources.agentServerGitRef`, `paths.stateDir`,
+`setup.command` all `null`, `setup.phases: ["before-start", "after-ready"]`, each block with a `_comment`; the
+top-level `_comment` is upstream's again (`f462e2f`). With these the fill adds nothing and `readSetupConfig` returns
 `null`. [run]
 
-**Environment variables.** New: `OH_AGENT_SERVER_GIT_REPO` (used only with `OH_AGENT_SERVER_GIT_REF`; an
-`https://` or `ssh://` URL; default `https://github.com/OpenHands/software-agent-sdk`). New default:
-`OH_APP_BACKEND_PUBLIC_URL` (D-2). Filled from the file when unset: `OH_AGENT_SERVER_GIT_REPO`,
-`OH_AGENT_SERVER_GIT_REF`, `OH_CANVAS_SAFE_STATE_DIR`, `OH_SECRET_KEY_PATH`, `OH_SESSION_API_KEY_PATH`. Given to the
-setup command: §4.3. [run]
+**Environment.** New: `OH_AGENT_SERVER_GIT_REPO` (https or ssh URL; used only with a git ref). New default:
+`OH_APP_BACKEND_PUBLIC_URL = http://127.0.0.1:<agent-server port>` unless set (`dev-safe.mjs:883`). Filled from the
+file where unset or empty: `OH_AGENT_SERVER_GIT_REPO`, `OH_AGENT_SERVER_GIT_REF` (only if none of
+`OH_AGENT_SERVER_LOCAL_PATH`, `_GIT_REF`, `_VERSION` is set), `OH_CANVAS_SAFE_STATE_DIR`, and the two key paths when
+the state directory came from the file. Setup environment: §4.3. [run]
 
-**Precedence of the agent-server's source** (E = environment, D = `defaults.json`), first that applies: E
-`OH_AGENT_SERVER_LOCAL_PATH`; E `OH_AGENT_SERVER_GIT_REF`; E `OH_AGENT_SERVER_VERSION`; D `agentServerGitRef`; PyPI
-at `versions.agentServer` (1.50.1). A git source takes its repository from E `OH_AGENT_SERVER_GIT_REPO`, else D
-`agentServerGitRepo`, else upstream; a repository without a ref is ignored. [run: §6.4's precedence tests and the
-packaged launches]
+**JavaScript**, all ES modules:
 
-**JavaScript.** `scripts/launcher-defaults.mjs` exports `SETUP_PHASES`, `loadSharedDefaults`,
-`expandHomePath(value, name, home?)`, `validateGitRepoUrl(value, name)`, `launcherDefaultsEnv(env, defaults,
-home?)` (pure), `applyLauncherDefaults(env?, defaults?) → string[]` (sorted names) and `readSetupConfig(defaults)
-→ {command, phases} | null`. `dev-safe.mjs` adds `DEFAULT_AGENT_SERVER_GIT_REPO`. `dev-with-automation.mjs` adds
-`SETUP_COMMAND_TIMEOUT_MS` (900,000), `SetupCommandError` (`name`, `phase`, `command`, `reason` ∈ exit | signal |
-spawn | timeout, `exitCode`, `signal`), `buildSetupEnv(config, phase)`, `runSetupCommand({command, phase, cwd, env,
-timeoutMs?}) → {durationMs}`, re-exports `SETUP_PHASES`, and `main()` takes `setup` (undefined reads the file,
-`null` disables, an object is validated like the file). [run: imported and called]
+| Module | Exports C3 adds | Where |
+|---|---|---|
+| `launcher-defaults.mjs` | `launcherDefaultsEnv(env, defaults, home = homedir())` (pure), `applyLauncherDefaults(env, defaults) → string[]` (sorted names), `validateGitRepoUrl(value, name)`, `readSetupConfig(defaults) → {command, phases} \| null` | `:51`, `:103`, `:138`, `:163` |
+| `dev-safe.mjs` | `SHARED_DEFAULTS`, `DEFAULT_AGENT_SERVER_GIT_REPO` | `:37`, `:54` |
+| `dev-with-automation.mjs` | `SetupCommandError` (`name`, `phase`, `command`, `reason` ∈ exit\|signal\|spawn\|timeout, `exitCode`, `signal`), `runSetupCommand({command, phase, cwd, env, timeoutMs?}) → {durationMs}`; `main()` takes `setup` (undefined reads the file, `null` none, an object validated like the file); `spawnService` takes `untilOutputCloses` | `:1263`, `:1362`, `:1864`, `:687` |
+| `dev-process-utils.mjs` | `signalProcessTree`'s third argument (D-12) | `:92` |
 
-**What the user sees.** `[defaults] From config/defaults.json: <names>`; `[agent-server] Using git
-(<owner/repo>@<ref>)` for a non-default repository (`https://github.com/` and `.git` dropped; an `ssh://` URL keeps
-its scheme), `Using git (<ref>)` for upstream's; `[setup <phase>] Running <argv joined by spaces>`, the command's own
-lines, `Done in <S>s` or `Done in <M>m <S>s`; `[setup after-ready] Skipping setup after-ready: agent-server not ready`.
-The failure messages are design §3.3's to the letter, for example
+[run: imported and listed; `main` and `spawnService` read]
 
-```text
-Setup command `example-app setup` failed (exit 2) after the agent-server started; the stack was stopped. Its output is in the startup log.
-Setup command `example-app-not-installed setup` could not be started (spawn example-app-not-installed ENOENT) before the stack started.
-```
-
-The CLI prints `Fatal error: <message>` and the stack, and exits 1. `--help` lists `OH_AGENT_SERVER_GIT_REPO` and a
-`SETUP:` paragraph, and exits 0 before `defaults.json` is checked. [run: tests, the probe launches, and `--help`
-against a broken `defaults.json`]
+**What the user sees** is r1's, unchanged: `[defaults] From config/defaults.json: <sorted names>`; `[agent-server]
+Using git (<owner/repo>@<ref>)`; `[setup <phase>] Running …`, the command's lines, `Done in …`; the failure messages
+of v2 §3.3; `Fatal error: …` and exit 1 from the CLI. New at quit or timeout, terminal only: `Output still open after
+SIGKILL; not waiting`. [run: tests and probes]
 
 ---
 
 ## 4 · Structure and seams
 
-### 4.1 The fill: `launcher-defaults.mjs`
+### 4.1 The fill and the source (`launcher-defaults.mjs`, `dev-safe.mjs`)
 
-`launcherDefaultsEnv` validates all three launcher keys first, whichever wins, then fills: the repository when
-`OH_AGENT_SERVER_GIT_REPO` is unset; the ref only when none of `OH_AGENT_SERVER_LOCAL_PATH`, `_GIT_REF`, `_VERSION`
-is set; the state directory (`~` and `~/…` expanded, else absolute) when `OH_CANVAS_SAFE_STATE_DIR` is unset, and
-then each key file inside it unless its own variable is set. A state directory from the environment never moves
-the key files. `applyLauncherDefaults` assigns the result into `process.env`. [run: 29 tests, and the probe]
+`launcherDefaultsEnv` (`:51–95`) validates every launcher key first, whichever wins, then fills by v2 §2.1's rules.
+Each launcher calls `applyLauncherDefaults(process.env, SHARED_DEFAULTS)` first in `main()`: `dev-safe.mjs:996`,
+`dev-static.mjs:584` (after `parseArgs`), `dev-extra-backend.mjs:127`, `dev-with-automation.mjs:1850` (after
+`parseArgs`, so `--help` never reads the file). No other function reads the file's launcher keys.
+`buildAgentServerCommand(env)` (`dev-safe.mjs:438`) validates `OH_AGENT_SERVER_GIT_REPO` where it uses it (`:486`),
+pushes `--reinstall` unless the ref matches `FULL_COMMIT_SHA` (`:56`, `:492`), and labels the source with
+`gitRepoLabel` (`:559`). [run: the tests and a 77-case old/new differential, §6.3]
 
-Callers: `dev-with-automation.mjs:1779` (after `parseArgs`, so `--help` never reads the file), `dev-safe.mjs:998`,
-`dev-static.mjs:583`, `dev-extra-backend.mjs:126`, each first in `main()`. Only the first logs what it filled. No
-other function reads the file's launcher keys; `buildAgentServerCommand(env)` and `buildSafeDevConfig(cwd, env)`
-see only their `env`, so upstream's tests calling `buildAgentServerCommand({})` stay independent of the file.
-[read]
+### 4.2 The launch (`dev-with-automation.mjs` `main()`, `:1790`)
 
-### 4.2 The source: `buildAgentServerCommand` (`dev-safe.mjs:440–558`)
+The order is v2 §3.2's. Phases run only when `config.launchAgentServer` (`:1956`). `before-start` (`:1969`) runs
+after `ensureDirectories` and `extraPrereqs`. The agent-server's process goes to `waitForService` (`:2007–2013`),
+whose `watchServiceExit` (`:831`) throws at once when the process closes before `/server_info` answers, quoting its
+last 10 lines. `after-ready` (`:2036`) runs after the secret seeding; its failure awaits `stopServices()` (`:2038`)
+and rethrows; after a readiness timeout it is skipped with a log line (`:2044`). [run: the packaged launches]
 
-In the git branch only: the repository is validated where it is used (`:487–492`), `--reinstall` is pushed unless
-the ref matches `/^[0-9a-f]{40}$/i` (`:58`, `:494–496`), and the source label is built by `gitRepoLabel`
-(`:561–563`). The four packages always come from the same `git+<repo>@<ref>`. The local-path and PyPI branches are
-unchanged. [run]
+### 4.3 The setup command (`:1245–1436`)
 
-### 4.3 The launch: `dev-with-automation.mjs` `main()` (where the complexity sits)
+`runSetupCommand` spawns the argv through `spawnService` (no shell, stdin ignored, its own process group on POSIX)
+under the name `setup <phase>` with `untilOutputCloses`, then awaits the first of the service's end or a spawn error
+(an `error` with no pid). If the launcher is shutting down by then, it never settles. Otherwise the outcome is read
+from the process: spawn, timeout (if its timer fired), signal, or exit; anything but exit 0 throws a
+`SetupCommandError` from `setupFailureMessage` (`:1316`). A timeout's error carries the leader's own exit code,
+which may be 0. `buildSetupEnv` (`:1287`) gives `OH_CANVAS_SETUP_PHASE`, the absolute state directory, its parent as
+`OH_PERSISTENCE_DIR`, and in after-ready `AGENT_SERVER_URL` and `SESSION_API_KEY`; the working directory is the state
+directory. [run]
 
-The order is design §3.2's. Three pieces carry the length:
+### 4.4 Stopping and quitting: one design (`:687–820`, `:1442–1472`)
 
-- **`runSetupCommand`** (`:1296–1355`) runs the argv through `spawnService` (no shell, `stdin` ignored, a new
-  process group on POSIX, `where.exe` resolution on Windows), under the service name `setup <phase>`, so its lines
-  reach the terminal, the file log and the `onServiceLog` listener. It settles on `close` (every line logged),
-  or on `error` when the process never got a pid. At the timeout the group gets SIGTERM, SIGKILL 3 s later, and
-  the result is `timeout` once it has exited. Anything but exit 0 becomes a `SetupCommandError` built by
-  `setupFailureMessage` (`:1255–1276`). [run: 9 unit tests; a TERM-trapping command at a 300 ms timeout is
-  SIGKILLed and rejects after 3.31 s]
-- **`stopServices`** (`:1368–1387`), extracted from `shutdown()`: SIGTERM to every running process group, SIGKILL
-  to stragglers after 3 s, resolved when all have exited. `main()` awaits it before rethrowing an after-ready
-  failure; `shutdown()` (SIGINT, SIGTERM, SIGHUP, and Electron's quit) awaits it, runs its hooks and exits 0. The
-  setup command is a tracked service, so quitting during a phase stops its whole group. [run: SIGTERM to the
-  launcher during a `before-start` that had backgrounded a `sleep 60`: both processes gone, launcher exit 0, no
-  agent-server started]
-- **The early-exit watch** of D-1 (`:754–836`).
+A **service** is what `spawnService` records: a process, and whether it ends at `exit` (every service but the setup
+command) or at output `close` (the setup command). `end()` marks it ended, removes it from `processes` and
+resolves `whenEnded`; it runs on that event, or when the launcher gives up.
 
-Phases run only when `config.launchAgentServer` (`:1885`; not with `--frontend-only`) [read].
-`before-start` runs after `ensureDirectories` and `extraPrereqs`; `after-ready` after `/server_info` answered and
-the automation secret was seeded, before automation starts; if the agent-server timed out, after-ready is skipped
-with its log line and `main()` goes on to return `agentServerReady: false`, which the desktop app turns into its
-failure. [run: the ordered timestamps of `runs before-start before the agent-server and after-ready once it
-answers`; the skip by a probe with a 3 s readiness timeout]
+`stopService(name, service, {quiet})` (`:796–814`) is the one escalation: SIGTERM to the process tree now, SIGKILL
+`FORCE_STOP_DELAY_MS` (3 s) later if it has not ended, and for an output-tracked service `false` after another
+`OUTPUT_CLOSE_WAIT_MS` (1 s); `true` as soon as it ends. The tree is signalled with `signalProcessTree`; for the
+setup command, the group even after its leader has exited (D-12). A plain service is waited for until it exits.
 
-`buildSetupEnv` (`:1226–1241`) adds `OH_CANVAS_SETUP_PHASE`, the absolute state directory, `OH_PERSISTENCE_DIR`
-(its parent), and in after-ready `AGENT_SERVER_URL` (`http://127.0.0.1:<port>`, from `getAgentServerBaseUrl`,
-`:858`) and `SESSION_API_KEY` (`config.sessionApiKey`, the value the agent-server gets as
-`OH_SESSION_API_KEYS_0`). The working directory is the state directory. [run]
+Two callers:
 
-### 4.4 The desktop app (`electron/main.mjs`)
+| | Setup timeout (`runSetupCommand`, `:1382–1388`) | Quit (`shutdown` → `stopServices`, `:1449–1472`) |
+|---|---|---|
+| when | `timeoutMs` (15 min) after the phase starts | SIGINT, SIGTERM, SIGHUP; Electron's quit sends SIGTERM |
+| which | the setup service, `quiet` | every service still running |
+| gave up (`false`) | `abandonService` (log, `end()`), unless a quit has begun | `abandonService` |
+| then | the phase rejects as `timeout` | hooks run, `process.exit(0)` |
 
-`handleServiceLog` also puts any service whose name starts with `setup ` on the splash's one-line status
-(`:629–636`); the startup-failure summary omits the ports hint when `err.name === "SetupCommandError"`
-(`:736–742`). Everything else reaches Electron through `main()`, which `startStack` calls with no `setup` option,
-so the packaged app reads its own `config/defaults.json`. [read; Electron was not run, §7]
+A failed after-ready awaits `stopServices()` too, without exiting. Measured on Linux, at a 300 ms injected limit or
+by SIGTERM to the launcher, identical before and after the refactor [run, §6.3]:
 
-### 4.5 What C3 offers D5, and what stays D5's
+| Case | Timeout: settles after | Quit: exits after | Child afterwards |
+|---|---|---|---|
+| command still running, obeys SIGTERM | 0.3 s (`signal=SIGTERM`) | at once | gone |
+| command still running, ignores SIGTERM | 3.3 s (`signal=SIGKILL`) | not run | gone |
+| command exited, child in its group obeys / ignores SIGTERM | 0.3 s / 3.3 s | at once / 3.0 s | gone |
+| command exited, child left the group (`setsid`) | 4.3 s, with the "Output still open" line | 4.0 s | **alive** |
+| child with output redirected, after the phase ended | (phase already done) | at once | **alive** (not signalled) |
+| no setup, stack up (agent-server and automation stubs) | — | at once | — |
+| spawn error | at once (`reason=spawn`) | (launch already failed) | — |
 
-D5 starts the agent-server from a pinned SDK-fork commit and runs dr-acp's setup through this launcher. As built,
-D5 can rely on:
+### 4.5 The desktop app (`electron/main.mjs`, unchanged since r1)
 
-- **The source.** With `sources.agentServerGitRepo` and a 40-hex `sources.agentServerGitRef`, and no
-  `OH_AGENT_SERVER_*` in the app's environment, all four SDK packages come from that commit, without
-  `--reinstall`. [run: packaged launch test] A relaunch of the agent-server process from uv's cache needs no
-  network [CI on upstream's commit, uv 0.12.22; run on the SDK fork's commit, uv 0.8.17, §6.3]. A branch or tag
-  refetches and rebuilds every launch.
-- **The state.** `paths.stateDir = <P>/<name>` puts conversations, workspaces and both key files under
-  `<P>/<name>`, and the agent-server's persistence root (settings, secrets, profiles, installed Apps) at `<P>`
-  [run: with `~/.example-app/agent-canvas`, a probe launch created `api-key.txt`, `secret-key.txt`,
-  `dev_conversations/`, `workspaces/`, `bash_events/` and `storage/` there and nothing else in `$HOME`; the packaged
-  launch test's stub agent-server saw `OH_PERSISTENCE_DIR=$HOME/.example-app` and the session key from that
-  `api-key.txt`]; the automation database at `<P>/automation/automations.db` [read].
-- **The setup command.** Design §4.2's contract holds as written: argv without a shell, `argv[0]` on the
-  launcher's `PATH` (in the packaged app, the bundled uv and Node directories first, `electron/main.mjs:140, 251`
-  [read]), `stdin` closed, cwd the state directory, the environment of §4.3, both phases on every launch that
-  starts the agent-server, 15 minutes per phase, a failure stopping the launch with nothing left running, quitting
-  during a phase stopping its group. [run, except the 15-minute value, run only as a constant and at 300 ms]
-- **Two things the design did not promise**: App backends are reachable through the agent-server's own origin
-  (D-2), and a first launch whose `uvx` fails (no network, no access to a private repository) fails at once with
-  the last output lines instead of after 10 minutes (D-1).
-
-D5's, not C3's: the wiring commit (the SDK fork's repository and the `dr-N` commit in the fork's `defaults.json`,
-design §4.5, not made at `22272d9`); the state directory's name with a parent of its own; the setup command itself,
-including that it brings its own entry point (`uvx --from git+…@<commit> dr-app setup`), dispatches on
-`OH_CANVAS_SETUP_PHASE`, is fast and offline-safe when it has nothing to do, keeps `SESSION_API_KEY` and secrets
-out of its output, and sets `GIT_TERMINAL_PROMPT=0` for a private fetch; the product name that separates Electron's
-`userData`; and the offline relaunch of the **whole** app, which C3 does not test: the live test starts only the
-agent-server, and the automation backend (PyPI) and D5's own setup command have network needs C3 does not control.
-[read: design §4.4–4.6 against the code]
-
-### 4.6 What it relies on
-
-uv: that a `git+…@<40-hex>` requirement without `--reinstall` is served from its cache without network, and is not
-replaced by a cached PyPI wheel of the same version (design §2.3's measurement at 0.8.17; the live run re-checks the
-first half at 0.12.22). The SDK's agent-server: `/server_info`, `OH_SESSION_API_KEYS_0`, `OH_PERSISTENCE_DIR`, and
-the App-backend bridge reading `OH_APP_BACKEND_PUBLIC_URL`. Electron: `startStack` calling `main()` and the
-`before-quit` → SIGTERM path into `shutdown()` (`electron/main.mjs:649–679, 786–803`). [read]
+`setup …` lines reach the splash's status line (`:629–636`); a `SetupCommandError` summary omits the ports hint
+(`:736–742`). `startStack` calls `main()` with no `setup` (`:663`), so the packaged app reads its own
+`defaults.json`. Quit: `before-quit` sends SIGTERM (Windows: `process.emit("SIGTERM")`) with a 6 s force-exit
+(`:786–808`); every stop above ends within 4 s. [read; Electron not run]
 
 ---
 
-## 5 · Wiring
+## 5 · What others rely on, and what C3 relies on
 
-`config/defaults.json` ships the three blocks as `null`; the packaged app and the npm package already ship
-`scripts/*.mjs` and `config/` (the CI package listing includes `scripts/launcher-defaults.mjs`). [CI: `npm pack
---dry-run` output] Docs: `docs/DEVELOPMENT.md` gains the two variables, the commit rule and a "Building from a fork:
-`config/defaults.json`" section (keys, fill rules, persistence-root table, setup contract); the local-stack skill
-guide gains three lines. [read]
+All three Canvas branches below are cut from `22272d9` and merge onto `61d9217` without conflict, and nothing they
+use from C3 changed after `22272d9` [run: `git merge-tree --write-tree`; `git diff 22272d9 61d9217`]:
 
-PR #1 is a draft into the fork's `deep-reasoning` (base `ba4d883`), 8 commits, +2,277 −37 in 14 files. CI on the
-PR: `CI` (`test-and-build` ubuntu: lint, `npm test`, app and library builds, package check; windows: app build
-only), `Desktop (Linux)`, `Desktop (macOS)` x64 and arm64 (universal skipped), `Desktop (Windows)`, `Check SDK
-version consistency`, `pr-title`: all green. `Validate PR description` fails with four errors, all upstream's
-contributor policy: no human note under `HUMAN:`, no screenshot or video (frontend code, and "Bug fix" ticked), no
-linked `ready-for-dev` issue. [CI] `.github/workflows/launcher-live.yml`: `workflow_dispatch` with optional
-repository, commit and uv-version inputs; installs uv with `scripts/download-uv.mjs` (latest unless pinned), sets
-`kernel.apparmor_restrict_unprivileged_userns=0`, runs the live file with `OH_AGENT_SERVER_LIVE=1`, and fails
-unless exactly one test passed. [read]
+- **wiring/dr-1** (`9881d24`, 3 fork-only commits): sets `sources.agentServerGitRepo` to the SDK fork and
+  `sources.agentServerGitRef` to `cef3b24…` (dr-1) with `_agentServerGitRefComment`. Relies on the fill and the
+  commit rule (§4.1). [run: its diff]
+- **C1** (`feat/acp-subagent-sessions`, `9d75806`): carries the wiring change; its `mock-llm-e2e.yml` reads
+  `sources.agentServerGitRepo` and `…GitRef` with `node -p` to fetch the SDK fork's ACP fixtures, falling back to
+  upstream's release tag when either is null. Relies on the two key names and null meaning unset. [read]
+- **C2** (`feat/agent-surfaces`, `f4c7ae5`): carries the wiring change; its frontend mints App-backend sessions at
+  `app_backend_ingress_url` from the agent-server's `/server_info`, which the agent-server fills from
+  `app_backend_public_url`, i.e. `OH_APP_BACKEND_PUBLIC_URL` (SDK `server_details_router.py:148`). Relies at runtime
+  on `buildAgentServerEnv`'s default (§3). [read]
+- **D5** (design `8086afb` on `design/d5`, no code yet): relies on v2 §4 "as written" plus the ingress default (its
+  §8.5, now built): `paths.stateDir = ~/.deep-reasoning/canvas/agent-canvas`, `setup.command = ["sh", "-c",
+  <bootstrap>, …]` in both phases, `OH_CANVAS_SETUP_PHASE`, `AGENT_SERVER_URL`, `SESSION_API_KEY`, stdin closed, the
+  15-minute limit. D-9 and D-10 apply to its command as to any: a phase ends only when every process holding the
+  command's stdout or stderr has exited; a process the command leaves in its group with output redirected outlives
+  the phase and is not stopped at quit; one that leaves the group (`setsid`) survives even a quit or timeout during
+  the phase. [read: D5's design; the behaviour run, §4.4]
+
+C3 relies on: uv serving a `git+…@<40-hex>` requirement from its cache without network and not substituting a cached
+PyPI wheel (v2 §2.3; the live run re-checks the first half); the agent-server's `/server_info`,
+`OH_SESSION_API_KEYS_0`, `OH_PERSISTENCE_DIR` and `OH_APP_BACKEND_PUBLIC_URL`; Electron's `startStack` and
+`before-quit` path; POSIX process groups for the setup command's stop. [read]
 
 ---
 
-## 6 · Measurements and tests, as measured
+## 6 · Proof, tests and size, as measured
 
-### 6.1 The runs
+### 6.1 The runs at `61d9217`
 
-| Run | Commit | Conditions | Result |
+| Run | Conditions | Result |
+|---|---|---|
+| CI `CI` [37171405880](https://github.com/michaeltheologitis/OpenHands/actions/runs/37171405880) | `pull_request`; ubuntu: lint (`tsc`, then eslint and prettier over `src/`), `npm test`, both builds, package check; windows: build only | green; **765 files passed, 1 skipped; 8,113 tests passed, 1 skipped, 7 todo** in 601.7 s; C3's files: `dev-safe` 74, `dev-with-automation` 91, `launcher-defaults` 26, the live file skipped [CI: full log] |
+| desktop builds and checks on PR #1 | Linux packages, macOS x64 and arm64 DMG (universal skipped), Windows installer, SDK version consistency, PR title | all green, 13 check runs [CI]; none launches the app |
+| live `Launcher live` [37171406704](https://github.com/michaeltheologitis/OpenHands/actions/runs/37171406704) | ubuntu-24.04, **uv 0.12.23** (latest), upstream `software-agent-sdk` v1.50.1 (inputs and `sources` empty) | **1 passed**, 31.4 s for both launches; the job requires exactly one pass [CI: full log] |
+| here, `__tests__/scripts/` | Node 22.22, 4 CPUs, load 9.7 | **443 passed, 1 skipped**, 38.8 s [run] |
+| here, C3's four test files at four commits | the same | `02b7ac7` (two files) 129; `22272d9` 191 + 1 skipped; `6cfb9b7` 200 + 1; `61d9217` 191 + 1 [run] |
+
+The PR body still reports CI at `6cfb9b7` (8,122 passed); 8,122 − 9 = 8,113, the nine tests the refactor removed.
+[read: PR body] The live test and the code it exercises (`buildAgentServerCommand`'s git branch,
+`buildAgentServerEnv`) are unchanged since `22272d9`, so r1's local rerun against the SDK fork's commit (passed, 10.3
+s offline relaunch) still applies to them. [run: `git diff 22272d9 61d9217`]
+
+### 6.2 C3's tests, counted
+
+| File | `22272d9` (r1) | `6cfb9b7` (fixes) | `61d9217` |
 |---|---|---|---|
-| CI `CI` [37085250155](https://github.com/michaeltheologitis/OpenHands/actions/runs/37085250155) | `22272d9` | `pull_request`; ubuntu-24.04 full checks; windows-latest build only | green; ubuntu Test step 10 m 26 s [CI]; the pass count is not readable from the log tail (§7) |
-| desktop builds 37085250118, 37085250100, 37085250132 | `22272d9` | Linux (AppImage, deb), macOS x64 and arm64 DMG, Windows installer | green; build and file checks only [CI] |
-| live [37109360172](https://github.com/michaeltheologitis/OpenHands/actions/runs/37109360172) | `22272d9` | ubuntu-24.04, uv 0.12.22, upstream `software-agent-sdk` `1e1390a` (v1.50.1), fresh `UV_CACHE_DIR` | **1 passed**, 0 skipped, 23.6 s for both launches [CI] |
-| live 37081094623 | `04c5024`, an earlier version of the fork-only commit | same workflow | passed [CI]; its tree differs from `22272d9`'s only by the 68 lines of `DEVELOPMENT.md` [run: `git diff --stat`] |
-| this sandbox, C3's four test files | `22272d9` | Linux, Node 22.22, 4 CPUs | **191 passed, 1 skipped** (the live file), 11.4 s [run] |
-| this sandbox, full suite (`npx vitest run`) | `22272d9` | the same | **765 files passed, 1 skipped** (the live file); **8,113 tests passed**, 1 skipped, 7 todo; 18 m 17 s [run] |
-| this sandbox, live file (local variant, §6.3) | `22272d9` | uv 0.8.17; upstream `1e1390a`, SDK fork `ea51b3f`, and a `--reinstall` control | **passed, passed**; the control fails offline as it should [run] |
+| `launcher-defaults.test.ts` | 29 | 29 | 26 |
+| `dev-safe.test.ts` (added to upstream's 61) | 14 | 14 | 13 |
+| `dev-with-automation.test.ts` (added to upstream's 68) | 19 | 28 | 23 |
+| `agent-server-relaunch.live.test.ts` | 1 | 1 | 1 |
+| **C3's** | **63** | **72** | **63** (62 deterministic) |
 
-The Implementer's figure in the PR body, "8,113 tests passed, lint and typecheck green", matches the test count
-above [run]. Upstream's suite had 764 files at `02b7ac7` (design §7.4); C3 adds two. [read]
+[run: names diffed against `02b7ac7`; no upstream test lost or renamed] Of the 23 in `dev-with-automation.test.ts`,
+18 skip on Windows (the 12 packaged launches, the signal test, the 5 timeout tests); CI runs no tests there anyway.
 
-### 6.2 Design §2.3's measurements (the System Designer's)
+Names v2 cites that changed: `dev-with-automation CLI › fails at once …` is now under `a packaged build's launch`;
+`buildSetupEnv` ×2 are gone (asserted by `runs before-start before the agent-server and after-ready once it
+answers`); `runs argv without a shell`, `closes stdin …` and `runs in the given working directory …` are one, `runs
+argv without a shell, stdin closed, in the given working directory with the given variables`; `a command still
+running at its timeout is stopped and rejects` is `… is stopped, with its background children, and rejects`; `streams
+each output line …` gains `, between Running and Done`; `applyLauncherDefaults › … names` gains `, sorted`; gone:
+`validates the defaults even when the environment wins`, `a local path still wins over a git repository and ref`,
+`loads config/defaults.json from beside the scripts directory`, and the `(OH_AGENT_SERVER_GIT_REF)` case. New since
+v2: four timeout tests (SIGKILL 3 s later; a background child that obeys or ignores SIGTERM after the command
+exited; a child that left the group holds the phase at most 1 s past the SIGKILL) and four quit tests (during
+before-start and after-ready; after a phase, nothing signalled; a child that left the group, exit within 6 s). [run]
 
-Measured with uv 0.8.17 and `unshare -n`, reported in design §2.3 and not repeated by me except the row §6.3
-reruns: a tag or branch cannot run with the network cut, with or without `--offline`; a commit runs offline without
-`--reinstall` and fails with it; the real agent-server at SDK-fork `91430aa` relaunched offline in 6.4 s (first
-install online 25 s); without `--reinstall`, a cache holding PyPI's `openhands-*==1.50.1` still yields the git build
-(`direct_url.json` names the commit). The code's comment cites the same measurement (`dev-safe.mjs:482–486`). [read]
+### 6.3 Behaviour unchanged by the refactor
 
-### 6.3 The live test: relaunch with the network cut
+Old (`6cfb9b7`) and new (`61d9217`) copies, each run in its own process, outputs diffed: [run]
 
-`agent-server-relaunch.live.test.ts` (skipped unless `OH_AGENT_SERVER_LIVE=1` on Linux) builds the command with
-the real `buildAgentServerCommand` for `OH_AGENT_SERVER_GIT_REPO`/`_GIT_REF` (default upstream `1e1390a`), asserts
-it has no `--reinstall`, starts it with `buildAgentServerEnv`'s environment and a fresh `UV_CACHE_DIR` through a
-Node probe until `/server_info` answers (10 min limit), stops it, then runs the same probe inside a network
-namespace with only loopback (`unshare -n`, or `--map-root-user -n`, then `ip link set lo up`) and asserts that
-`https://pypi.org/simple/` is unreachable from inside and that `/server_info` answers (3 min limit). If no
-namespace can be created it skips, which the workflow turns into a failure. [read; CI and run below]
+- **Timeout**, `runSetupCommand` at 300 ms: obeys SIGTERM, ignores SIGTERM, exited leader with a child that obeys or
+  ignores it, `setsid` child, spawn error, and exit 0 / exit 2 with a child holding output (10 s limit). Same lines,
+  outcome, `exitCode`, `signal` and elapsed time to 0.1 s in all eight.
+- **Quit**, the launcher from a packaged copy with a stub `uvx`, SIGTERM during before-start (child ignoring
+  SIGTERM; `setsid` child; command still running), during after-ready (child obeying; ignoring), after a phase had
+  ended, and after ready with no setup. Same sorted lines, exit 0, duration to 0.1 s, services started, and survivors
+  in all seven.
+- The Refactorer's own `probe-stop.mjs`, rerun on these copies: identical in its four cases. Its recorded files show
+  4.0 s old against 3.5 s new for the exited leader; here both were 3.5 s.
+- `launcher-defaults.mjs`: 77 calls of the validator, the fill (5 environments × 10 defaults), `readSetupConfig` and
+  `applyLauncherDefaults` give identical results; only the export lists differ (D-14).
 
-Rerun here, with one change to a copy of the file: this sandbox has no `ip`, so a five-line Python `ioctl`
-brings the namespace's loopback up instead. uv 0.8.17, as root (`unshare -n`), a fresh cache per run. [run]
+### 6.4 What the refactor removed from coverage
 
-| Source | First launch, online, to `/server_info` | Relaunch, network cut | Result |
+Fourteen test names went and five came (§6.2). Each probe below is one temporary edit in a clean worktree, the
+named tests run, the edit reverted, the tree checked clean: 19 probes at `61d9217`, four of them repeated at
+`6cfb9b7` (P5 is a read, below). [run]
+
+| # | Edit | Result at `61d9217` |
+|---|---|---|
+| P1 | a branch of a non-default repository is installed without `--reinstall` | **survives** (191 pass). At `6cfb9b7` `installs all four packages from OH_AGENT_SERVER_GIT_REPO` failed: `a641a0b` cut its argv to the four git URLs |
+| P2 | a local path loses to a git source once `OH_AGENT_SERVER_GIT_REPO` is set | **survives**. At `6cfb9b7` `a local path still wins over a git repository and ref` failed; upstream's precedence test sets no repository |
+| P3, P3b | `OH_PERSISTENCE_DIR` = the state directory; the session key in before-start | caught by `runs before-start … once it answers` |
+| P4, P4b | setup stdin left open; `cwd` dropped | caught by the merged contract test (P4 by its 30 s timeout) |
+| P6 | the timeout signals the command, not its group | caught by `… stopped, with its background children, and rejects` (by timeout) |
+| P7 | the repository validated only when it is filled | caught by the 5 rejection cases, which now run with the environment winning |
+| P8 | names returned unsorted | caught by `… returns their names, sorted` (r1's test could not see it) |
+| P9 | an environment `OH_AGENT_SERVER_GIT_REF` no longer counts as a source | caught by `the defaults' repo still applies to a ref from the environment` |
+| P11 | the agent-server's process not passed to `waitForService` | caught by the moved B1 test (still running at 20 s) |
+| P15 | `stopService` never gives up | caught twice: the timeout's `… at most 1 s past the SIGKILL` and the quit's `… exits within 6 s` |
+| P17 | a phase settles during a quit | caught by both `quitting while … ends the launch there` |
+| P18 | no SIGKILL | caught by two timeout tests and one quit test |
+
+Also cut (P5): `streams each output line …` no longer prints a stderr line under the phase; upstream's `forwards
+stdout, stderr, and exit lines to the listener` covers stderr for every `spawnService` service [read]. Not pinned before
+the refactor either: P10 (`dev:minimal` skips the fill: 443 pass; each launcher does refuse a relative
+`paths.stateDir` when run [run]), P12 (whitespace-only ref accepted), P13 (bare `~` not expanded), both confirmed
+unpinned at `6cfb9b7` too, P14 (the timeout message never names minutes) and P16 (the timeout's stop prints
+`Stopping...`).
+
+### 6.5 Size before and after
+
+| `git diff --numstat 02b7ac7..` | `22272d9` (r1) | `6cfb9b7` (fixes) | `61d9217` (refactor) |
 |---|---|---|---|
-| upstream `1e1390a` (v1.50.1), the file's default | 32.9 s | 10.7 s | passed |
-| SDK fork `ea51b3f` (head of `michaeltheologitis/software-agent-sdk` `deep-reasoning` today; not a `dr-N` tag, none exists) | 32.8 s | 10.3 s | passed |
-| control: upstream `1e1390a`, the relaunch with `--reinstall` added | 35.4 s | `uvx` exits 2 after 8.3 s: `Failed to fetch: https://pypi.org/simple/posthog/` … `dns error` | not ready, as it should be |
+| code | +668 −35 | +761 −39 | **+722 −35** |
+| of which statements / comment lines (scripts, Electron) | 401 / 217 | 460 / 247 | 433 / 235 |
+| tests (live test 199 included) | +1,444 −2 | +1,678 −3 | **+1,406 −3** |
+| docs, workflow | 71, 94 | 71, 94 | 71, 94 |
+| **total** | **+2,277 −37** | **+2,604 −42** | **+2,293 −38** |
+| upstream-shaped (all but the live test and workflow) | 1,984 | 2,311 | 2,000 |
 
-The durations are the probe's whole run (its 2 s stop grace and the reachability check included), not the
-agent-server's start alone. In every relaunch `https://pypi.org/simple/` was unreachable from inside the namespace.
-In CI (run 37109360172) the whole test, both launches, took 23.6 s; its log does not split them. [CI]
-
-### 6.4 The deterministic tests C3 adds (62, all passing) [run]
-
-- **`launcher-defaults.test.ts`, 29.** The fill: repo and ref from defaults; each environment source wins over the
-  defaults' ref; the defaults' repo applies to an environment ref; the environment's repo wins; `~/` expansion; both
-  key files move into a defaults state directory; they stay when the environment names the state directory; key
-  paths in the environment win; upstream's null shape fills nothing. Validation: a relative state directory; five
-  bad repositories (`owner/repo`, scp-style, `git+https`, `http`, `file`); an empty ref; validation even when the
-  environment wins. `applyLauncherDefaults` fills only unset names and returns them sorted. `readSetupConfig`:
-  argv and default phases, phases reordered to launch order, null means no setup, three bad commands, three bad
-  phases. `loadSharedDefaults` finds the file.
-- **`dev-safe.test.ts`, 14.** All four packages from `OH_AGENT_SERVER_GIT_REPO`; the source line for three
-  repository spellings; the repository ignored without a ref; a bad repository rejected with the design's message;
-  a full SHA without `--reinstall`; a branch, a tag, an abbreviated SHA and a 39-digit SHA still reinstall; a local
-  path still wins; `OH_APP_BACKEND_PUBLIC_URL` defaulted and overridable.
-- **`dev-with-automation.test.ts`, 19.** `buildSetupEnv` per phase (2). `runSetupCommand` with real child
-  processes (9): argv reaches the child as one literal argument (`$HOME; echo x`); lines stream under the phase
-  name with `Running …` first and `Done in Ns` last; stdin is at end of input; cwd and variables arrive; exit 2 in
-  each phase gives the exact message and fields; SIGKILL gives `was killed by SIGKILL`; a missing command gives
-  `could not be started (spawn … ENOENT)`; a 200 ms timeout stops the process (its pid is gone). The CLI's early
-  exit (D-1). Seven launches of a packaged-layout copy (`scripts/*.mjs`, `tools/`, a test-written
-  `defaults.json`, a stub `uvx` that records argv and answers 200, outside the repository; skipped on Windows):
-  the exact agent-server argv and source line from `defaults.json`; `OH_AGENT_SERVER_VERSION` still wins; the state
-  directory and key files from `defaults.json` with nothing under `~/.openhands`; before-start before the
-  agent-server starts and after-ready after its first `/server_info` and before automation, with the right cwd and
-  variables; a failing before-start exits 1 with the message and the stub `uvx` never ran; a failing after-ready
-  exits 1 with the message, the agent-server's port closed and automation never started; a string `setup.command`
-  exits 1 before anything runs.
-
-The design's three falsifiers map onto them as design §7.6 says: the packaged launch and the precedence tests
-(first); the no-`--reinstall` unit test and the live test (second); the two failing launches and the timeout test
-(third). All pass. [run; the live test CI and run]
+[run; the Refactorer's `count.sh` gives the same numbers] The fixes added 93 lines of code and 234 of tests; the
+refactor removed 39 and 272. Against v2 §8's ≈0.58 k estimate the build is about four times larger.
 
 ---
 
 ## 7 · What I could not verify
 
-1. **CI's test counts.** The GitHub tools return at most the last 5,000 lines of a job log, and the ubuntu job's
-   22,253 lines end with 11,000 lines of `npm pack` listing; downloading the full log is blocked here. CI's
-   Test step is green, but which C3 tests it ran, and how many, I read only from my own run (§6.1).
-2. **Windows.** No test runs on Windows in CI (D-8), and the launch tests skip there. The setup command's Windows
-   path (`where.exe` resolution, `taskkill /t /f` for the timeout and quit) is read only.
-3. **The desktop app.** Electron was not run: the splash status line for `setup …` services, the summary without
-   the ports hint, and quitting during a phase through `before-quit` are read. The desktop CI jobs build packages
-   and do not launch them.
-4. **`OH_APP_BACKEND_PUBLIC_URL` end to end** (D-2): only its value is tested; no App backend was reached through
-   the agent-server here, and the claim that the origin must differ from Canvas's is the commit message's.
-5. **The 15-minute timeout** ran only as a constant and as a 300 ms injected timeout.
-6. **The macOS `PATH` from Finder** (`/usr/bin:/bin:/usr/sbin:/sbin`, design §4.2) is the design's, not checked.
-7. **An offline relaunch of the whole app**, setup command and automation backend included: not tested by C3
-   (§4.5).
-8. **Lint and typecheck** at `22272d9`: CI's Lint step is green [CI]; I did not run either.
+1. **Windows**: no C3 test runs there (CI builds only, and 18 of C3's 23 `dev-with-automation` tests skip there).
+   `taskkill /t`, the no-op `evenIfLeaderExited`, and therefore D-9/D-10 on Windows, are read only.
+2. **The desktop app**: Electron was not run; the splash line, the summary without the ports hint, and the quit
+   through `before-quit` within its 6 s net are read.
+3. **The 15-minute limit** ran only as short injected limits; its wording is unpinned (P14) and was not run.
+4. **`OH_APP_BACKEND_PUBLIC_URL` end to end**: only its value is tested; C2's use of it and the SDK line are read.
+5. **The SDK fork's commit on the latest uv**: the live run at `61d9217` measured upstream's v1.50.1; wiring/dr-1's
+   `cef3b24` was not run live by anyone at this head.
+6. **`__tests__/scripts/` at `6cfb9b7`** (452, the Refactorer's figure) was not run as a folder; C3's four files there
+   were (200 + 1 skipped), and 443 + 9 agrees.
+7. **The Refactorer's other mutation checks**: I re-ran the cuts above, not each of its own probes.
+8. **Lint and typecheck**: CI's Lint is green; it covers `src/` and the TypeScript tests, not the `.mjs` launcher
+   scripts [read: `package.json`, `tsconfig.json`]. I did not run it.
+9. **"Validate PR description"**, red at `22272d9`, is not among the 13 check runs at `61d9217`; why was not checked.
