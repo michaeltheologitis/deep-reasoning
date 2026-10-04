@@ -3,8 +3,7 @@
 
 import { useEffect, useState } from "preact/hooks";
 
-import { BackendUnavailable, LibraryError, getProblems } from "./api";
-import { BACKEND_LOST } from "./texts";
+import { BackendUnavailable, LibraryError } from "./api";
 
 export type OnBackendLost = (error: BackendUnavailable) => void;
 
@@ -68,9 +67,8 @@ export type Resolved<T> =
   | { value: T; failure: null }
   | { value: null; failure: string };
 
-/** An effective view, or why D2 could not resolve inheritance. D2 answers a bare 500 when a
- * head no longer validates (its resolution raises); the reason is then D2's own sentence
- * for that head, from /problems. */
+/** An effective view, or why D2 could not resolve inheritance: its refusal, which for a head
+ * that no longer validates is D2's sentence for that head. */
 export async function resolved<T>(
   load: () => Promise<T>,
 ): Promise<Resolved<T>> {
@@ -79,11 +77,6 @@ export async function resolved<T>(
   } catch (error) {
     if (error instanceof LibraryError)
       return { value: null, failure: error.message };
-    if (!(error instanceof BackendUnavailable) || error.status !== 500)
-      throw error;
-    const problems = await getProblems();
-    const failure =
-      problems.map((p) => p.message).join(" ") || BACKEND_LOST(error.status);
-    return { value: null, failure };
+    throw error;
   }
 }
