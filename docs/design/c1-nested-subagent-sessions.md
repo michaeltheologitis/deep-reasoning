@@ -42,10 +42,11 @@ merge: the six §7 planned, `3f0fea8`, `b76b7ad`, `08fb2cc`, `67e3cdb`, `81d810e
 folded in the cost setting ("fold the cost toggle into C1 now", TASK-15). The stack is seven draft pull requests, each
 one commit on the one below it and #13 on the fork's `deep-reasoning`; nothing goes upstream. What is read beside each
 is the table in #19's description, "Gate C: reading beside the PRs", which cites v4 and the as-built document's
-revision 3 (`as_built/c1-nested-subagent-sessions.md` on deep-reasoning's `as-built/c1-r3`, which keeps r2's section
-numbers). What changed since Gate B, each change with its commit, is §3.2's last four groups, B18–B31; the tests that
-carry each property are the Gate B section's table "Which tests carry which property", current at `51ed1ad` (its v4
-marks, and the pull request that holds each part). The evidence at `51ed1ad`: CI on #19,
+revision 3 (`as_built/c1-nested-subagent-sessions.md` on deep-reasoning's `as-built/c1-r3`, `0cdbd8a`, which keeps
+r2's section, finding and probe numbers and adds D-23, D-24 and probe R17). What changed since Gate B, each change
+with its commit, is §3.2's last four groups, B18–B31; the tests that carry each property are the Gate B section's
+table "Which tests carry which property", current at `51ed1ad` (its v4 marks, and the pull request that holds each
+part). The evidence at `51ed1ad`: CI on #19,
 [run 37216817918](https://github.com/michaeltheologitis/OpenHands/actions/runs/37216817918), green: lint (0 errors,
 376 warnings, all upstream's), Vitest **770 files passed and 1 skipped; 8,235 tests passed**, 1 skipped, 7 todo, the
 app and library builds and `npm pack --dry-run` on Ubuntu, install and build on Windows; each level below has its own
@@ -234,7 +235,8 @@ of a live tier (a real task against real services, its outcome asserted) exactly
   the runner are the Implementer's report, with no committed configuration or log. The Cartographer's own 23 hand
   mutation probes over the three modules and seven component and consumer files (the as-built's §6.4): 18 caught, 5
   survived; ruling 6 takes the three a user would see. *(v4: Stryker has not run again. The as-built r2's 27 hand
-  probes at `2c0e743` (its §7): 19 caught, 8 survived; three of the survivors are pinned since, §3.2 B27.)*
+  probes at `2c0e743` (its §7): 19 caught, 8 survived; three of the survivors are pinned since, §3.2 B27, and of r3's
+  28, nine of them rerun at `51ed1ad`, 5 survive, each equivalent, unreachable or not produced by contiguous pages.)*
 
 **Which tests carry which property.** Each test's name states the property it pins. Paths are from the fork's root;
 `›` separates `describe` blocks; `[…]` is an `it.each`; "Live" names the six above by number. `index.test` is
@@ -314,8 +316,9 @@ Implementer left; and anything Stryker would find in the components, which it di
 are v2's plan; this section and §3.2 B9 are the tests as built. *(v4: the first four are pinned since Gate B, B16's
 case and C5, C7 and C9 (§3.2 B18, B19), and so are three the as-built r2's probes found unpinned (its §7): another
 tab's change to the cost setting (K4), a later snapshot that names or changes a child's spawning call (R12), and an
-anchor tied with an item's start (R10), §3.2 B27. The rest of the list stands, and r2 adds R13, a confirmed snapshot a
-page brings between two loaded ones without moving `firstAt`, which contiguous pages do not do.)*
+anchor tied with an item's start (R10; in a transcript, r3's R17), §3.2 B27. The rest of the list stands, and r2 adds
+R13, a confirmed snapshot a page brings between two loaded ones without moving `firstAt`, which contiguous pages do
+not do.)*
 
 **Revisions** (newest first; the Gate B reader approved the previous version, so each line says which sentences to
 stop trusting):
@@ -323,7 +326,9 @@ stop trusting):
   #19, whose tree equals `feat/acp-subagent-sessions` at `090a9d0`, for Gate C. Since v3: Michael's Gate B rulings
   (all six as recommended; 5 and 6 built) and his cost setting from TASK-15; the literate refactor, which the as-built
   r2 (`46bde22`) reads; five commits after r2; the merge of the fork's `deep-reasoning` with the dr-2 wiring; and the
-  split. B-numbers are §3.2's. Stop trusting: the "Matches the build" line (v3's is kept in parentheses) and the
+  split. It also carries what the as-built r3 (`0cdbd8a`), written beside it, adds: probe R17, E6 at `85a84c6`, and
+  the replay check's reliance on ACP's wire name `subagent_update` (B27, B28, B31, §9). B-numbers are §3.2's. Stop
+  trusting: the "Matches the build" line (v3's is kept in parentheses) and the
   header's one pull request (B29, B30); every sentence in which a row shows its cost unconditionally: §1.2, decision J,
   §2 items 5 and 7, §4.6, §4.7, SUB-006 in §4.11, §6.3's first test and §9.4 (B20); B5's `startOf?: ItemStart`, its
   exports `renderKeyOf`, `ItemStart`, `EMPTY_SUBAGENT_SUMMARY` and `compareTimestamps` from the index, and its
@@ -950,7 +955,7 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
 - **B21. The three event types are the client's, with Canvas's `BaseEvent`** (`1635097`; §4.2, §9, A.1; r2 D-15).
   §4.2 said that Canvas keeps its own event types and does not import the client's, and A.1 declared three
   interfaces. Built: `acp-subagent-event.ts:16–22`, each `Client<Name> & BaseEvent`, 22 lines for 99. The fields are
-  the `dr-2` client's (`dist/events/types.d.ts:141–172`), with A.1's names and optionality; Canvas's `BaseEvent` makes
+  the `dr-2` client's (`dist/events/types.d.ts:142–172`), with A.1's names and optionality; Canvas's `BaseEvent` makes
   `id` and `timestamp` required, and `source` Canvas's `SourceType` (`"agent" | "user" | "environment" | "hook"`) on
   all three, where A.1 narrowed it; only `source !== "environment"` reads it. §4.2's premise was already untrue at
   upstream `1ff45c2`, whose `observation-event.ts:4` and `conversation-state-event.ts:3` import `AgentErrorEvent` and
@@ -969,7 +974,7 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
   §4.4, A.3, A.5; r2 D-17, D-18, D-20). The same behaviour through fewer mechanisms:
   - one `upsert` (`subagent-index.ts:307–313`) for snapshots, calls and messages: the newest event, a tie to the later
     arrival, and the earliest timestamp, where §4.3 gave each record kind its own rule (`dfd5ab8`);
-  - a fold that changed nothing is found by comparing each record map with the index's (`:171–182`), not by asking
+  - a fold that changed nothing is found by comparing each record map with the index's (`:179–182`), not by asking
     each draft map whether it was written; a write always copies, so the two agree (`dfd5ab8`);
   - `TranscriptItem` has two variants, `{ kind: "tool_call" | "message"; key; at }` and the text item (`:61–73`,
     `dfd5ab8`);
@@ -1040,13 +1045,15 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
     in a transcript, sorts items "before anchors at an equal `at`", so a sub-agent anchored at the instant a call
     starts goes after that call. `messages.test › … › puts a child anchored at the instant a root call starts after
     that call` pins it in the root's flow, and `block.test › … › puts a grandchild anchored at the instant a child's
-    call starts after that call` in a child's transcript.
+    call starts after that call` in a child's transcript, whose probe the as-built r3 adds as R17 (its §7: both
+    survive at `bd4cabb`, the commit before, and are caught at the top).
 
   *Why* (the commits): "No test stated it: with the listener removed, every test still passed"; "with the call left
   out of the fields that mark placement dirty, every test still passed"; "an anchor put before a tied item passed
   every test". r2's other survivors stand: I3, S1, R9 and R14 are equivalent or unreachable for what S1 writes, and
   R13 changes behaviour only when a page brings a confirmed snapshot between two loaded ones without moving `firstAt`,
-  which contiguous pages do not do (r2 §7).
+  which contiguous pages do not do. The as-built r3 reran r2's eight survivors at `51ed1ad` and added R17: of its 28
+  probes, 23 are caught and 5 survive (its §7).
 - **B28. The replay requires a stored sub-agent when its transcript announces one** (`ece9e10`, `85a84c6`; §6.3,
   §6.4, §9.4; r2 §5.2). r2 found that the replay spec compared the two trees and nothing else, so a replay whose
   sub-agent events were never stored (the opt-in lost, or a recording without children) passed on two empty trees;
@@ -1057,7 +1064,13 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
   deep-reasoning's `main`, `tests/acp/golden/`). Every transcript must still render the tree the agent-server stored.
   *Why* (`85a84c6`): "D5's canvas-replay job replays all ten of D1's native recordings, and two of them … announce no
   sub-agent: the agent-server rightly stores none for them, and the spec would fail." *Pinned by:* Live 1, whose
-  `fallback-placement.jsonl` announces sub-agents; no run has replayed D1's recordings yet (r2 §8 item 4).
+  `fallback-placement.jsonl` announces sub-agents; and the as-built r3's probe E1 (its §7, run 37210189754 at
+  `85a84c6` plus the probe, on `dr-1`): an announcing transcript replayed with `acp_subagents` off fails with "the
+  agent-server stored no sub-agent for this transcript", while copies of D1's `linear` and `claude` pass on two empty
+  trees. The eight announcing recordings have not run through the spec as narrowed (r3 §8 item 4). The check knows a
+  sub-agent only by ACP's wire name `subagent_update` (ACP's unstable schema 1.24.1, which the SDK vendors): a
+  recording made under a renamed update would skip it and pass on two empty trees, so whoever moves the SDK's or
+  ACP's pin reruns E1 (r3 §5.1; §9).
 
 **The merge, the stack and the size** (v4)
 
@@ -1069,7 +1082,7 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
   into C1: 11 files conflicted, C3's launcher scripts, their three tests, `config/defaults.json` and the two package
   files, none of them C1's, and each took `deep-reasoning`'s side. So C1 now runs against S1 as `dr-2` builds it,
   after S1's own refactor and split, which r2 could not check (its §8 item 3): the `dr-2` client exports the five
-  names C1 needs (`dist/events/types.d.ts:141–177`, `dist/client/conversation-client.d.ts:125`), the agent-server's
+  names C1 needs (`dist/events/types.d.ts:142–177`, `dist/client/conversation-client.d.ts:125`), the agent-server's
   5xx handler is unchanged (`openhands-agent-server/openhands/agent_server/api.py:701–704` at `34c540c`), the scripted
   agent keeps its flags (`tests/fixtures/acp/scripted_agent.py:700–702`), and the live tier passed on it, 6 of 6, at
   `090a9d0` and at `51ed1ad` (B31). It reaches §9.3's plan, C1 on `deep-reasoning` after the wiring, by a merge. *Why*
@@ -1095,11 +1108,12 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
   Each level's CI on its pull request is green (runs 37216786166, 37216807043, 37216811329, 37216812537, 37216814113,
   37216816205 and 37216817918), and the live tier ran on #19 (B31). The levels add 5,872 lines and remove 51 between
   them, against the stack's net +5,865 −44, because higher levels rewrite seven lines of lower ones. PR #4
-  (`feat/acp-subagent-sessions`, now `090a9d0`, into `wiring/dr-1`) stays open until Michael closes it. *Why:* the
-  split recorded no reason for the order or the export's move; this design's reading: history completes what levels 2
-  and 3 render (placement waits for an older page, and the history flag is level 3's context), Stop needs nothing of
-  level 4 (#17's description says so), and the export has to keep child calls only once level 3 hides them from the
-  root's flow. *Pinned by:* each level's CI.
+  (`feat/acp-subagent-sessions`, now `090a9d0`, into `wiring/dr-1`) stays open until Michael closes it. *Why* (#16's
+  notes): "the stack puts the tree's completeness before the one action on it … Neither this level nor Stop (level 5)
+  uses the other's code; they share only a test file." For the export, #15's summary pairs it with the hide:
+  "`shouldRenderEvent` hides calls made inside a sub-agent session. The transcript export still carries every
+  session's calls."; that the export needs its change only once level 3 hides child calls is this design's reading.
+  *Pinned by:* each level's CI.
 - **B31. The size and E6 at the top** (§3.1 item 6, §5, B10, B15; the Gate B section's rulings 1 and 3). `git diff
   --numstat fc87687..51ed1ad`: 5,865 lines added and 44 removed in 56 files.
 
@@ -1129,11 +1143,13 @@ and no remaining test makes fewer `expect()` calls (r2 §1, §6.4). Two commits 
   |---|---|---|---|---|---|
   | [37216822781](https://github.com/michaeltheologitis/OpenHands/actions/runs/37216822781) | `51ed1ad` (#19) | 1,203 in 19.6 s, 61.3/s | **53.5 ms** | none | 79 |
   | [37215758052](https://github.com/michaeltheologitis/OpenHands/actions/runs/37215758052) | `090a9d0` (the merge) | 1,203 in 19.7 s, 61.0/s | 74.5 ms | none | 82 |
+  | [37210407059](https://github.com/michaeltheologitis/OpenHands/actions/runs/37210407059) | `85a84c6` (the pins, before the merge; `dr-1`) | 1,203 in 19.8 s, 60.8/s | 97.2 ms | none | 78 |
   | 37184736932 (r2 §6.2) | `2c0e743` (the refactor) | 1,203 in 19.6 s, 61.4/s | 43 ms | none | 79 |
   | 37177985083 (r2 §6.2) | `4db661f` (rulings, cost setting) | 1,203 in 19.7 s, 61.1/s | 74.8 ms | none | 77 |
 
-  Every run passes the null by a factor of 13 or more; each is one sample on a shared runner, and none isolates the
-  refactor's hot-path changes (B23).
+  Every run passes the null by a factor of 10 or more; each is one sample on a shared runner, the first two on `dr-2`
+  and the rest on `dr-1`, and none isolates the refactor's hot-path changes (B23). No production line differs
+  between the top four rows' commits (as-built r3 §6.2).
 
 ---
 
@@ -1203,7 +1219,7 @@ reconnect snapshots), and every field S1 may omit is optional, because the agent
 
 *(v4: the three are no longer Canvas's own. Each is the client's type intersected with Canvas's `BaseEvent`
 (`acp-subagent-event.ts:16–22`): the same fields and optionality, from the `dr-2` client's
-`dist/events/types.d.ts:141–172`, with `id` and `timestamp` required, and `source` Canvas's `SourceType` on all three
+`dist/events/types.d.ts:142–172`, with `id` and `timestamp` required, and `source` Canvas's `SourceType` on all three
 rather than the narrower unions above. The convention this section names did not hold even at upstream `1ff45c2`,
 which takes `AgentErrorEvent` and `ConversationErrorEvent` from the client (`observation-event.ts:4`,
 `conversation-state-event.ts:3`). `ACPToolCallEvent`'s two fields are still Canvas's own. §3.2 B21.)*
@@ -1639,8 +1655,8 @@ events in 19.7 s (61.1/s), worst scroll latency 138.6 ms against the 1,000 ms nu
 `9d75806`). Five runs so far range from 70.2 to 323.5 ms (§3.2 B10). Neither remedy above was needed. The generated
 load is this section's case since `5b89471`: each child's five cells open with a thought and close with a cumulative
 cost report, so a cost snapshot per cell rather than D1's two a second. *(v4: on the same load at `51ed1ad`, run
-37216822781: 1,203 events in 19.6 s (61.3/s), worst scroll 53.5 ms, no long task; 74.5 ms at `090a9d0`, and the
-as-built r2's 43 ms at `2c0e743` and 74.8 ms at `4db661f`, §3.2 B31. Still neither remedy.)*
+37216822781: 1,203 events in 19.6 s (61.3/s), worst scroll 53.5 ms, no long task; 74.5 ms at `090a9d0`, 97.2 ms at
+`85a84c6`, and the as-built r2's 43 ms at `2c0e743` and 74.8 ms at `4db661f`, §3.2 B31. Still neither remedy.)*
 
 ---
 
@@ -2000,7 +2016,7 @@ the top of `src/types/agent-server/core/events/index.ts`, kept both, alphabetica
 5xx rule above exists twice, C1's `refusalReason` and C2's own helper (as-built §2.1 D-1), so a change to the
 agent-server's format reaches both.
 
-*(v4)* **At `51ed1ad`**, the list changes in four places (§3.2 B21, B25, B29):
+*(v4)* **At `51ed1ad`**, the list changes in five places (§3.2 B21, B25, B28, B29):
 
 1. **S1 is the SDK fork's tag `dr-2`, `34c540c`**, which `config/defaults.json`'s `sources` now name: S1 after its
    own refactor and split, merged into the SDK fork's `deep-reasoning`. The live tier passed against it, 6 of 6, at
@@ -2009,13 +2025,17 @@ agent-server's format reaches both.
 2. **The `dr-2` TypeScript client** (`@openhands/typescript-client` 1.50.1 from the `dr-2` release tarball) supplies
    five names, not two: `ConversationClient.cancelAcpSession` and `CancelAcpSessionResponse`
    (`dist/client/conversation-client.d.ts:125`, `dist/events/types.d.ts:174`), and now the three event types
-   `ACPSubagentEvent`, `ACPSessionMessageEvent` and `ACPSessionTextEvent` (`dist/events/types.d.ts:141–172`), which
+   `ACPSubagentEvent`, `ACPSessionMessageEvent` and `ACPSessionTextEvent` (`dist/events/types.d.ts:142–172`), which
    C1's types intersect with Canvas's `BaseEvent` (B21). Against the stock npm client C1 does not typecheck
    (as-built r2 §5.3).
 3. **Upstream's 5xx format** is unchanged at `34c540c` (`openhands-agent-server/openhands/agent_server/api.py:701–704`),
    and C1 reads the body through upstream Canvas's `getApiErrorBody` (`src/utils/api-error-message.ts`).
 4. **Upstream Canvas, beyond the above**: `SettingsSwitch` and the App settings route, for the cost setting (B20), and
    `replaceEqualDeep` from `@tanstack/react-query`, for structural sharing (B23).
+5. **ACP's wire name `subagent_update`** (the unstable schema 1.24.1 the SDK vendors), by which the replay spec alone
+   decides that a transcript announces a sub-agent (`mock-llm-acp-replay.spec.ts:33`). A rename would make the
+   stored-sub-agent check skip silently; whoever moves the SDK's or ACP's pin reruns the as-built r3's probe E1 and
+   sees it fail (r3 §5.1; B28).
 
 C2 is now a stack on the same `deep-reasoning`; the trial merge of the two tops conflicts in the same one line, and
 both read a 5xx's body through `getApiErrorBody` (§8's v4 note).
@@ -2048,7 +2068,8 @@ both read a 5xx's body through `getApiErrorBody` (§8's v4 note).
 
 *(v3: all four are built in S1 at its v2.2 build, which `dr-1` carries: item 1 as guarantee 8, with the persisted
 profile fixture of `a3279be`; item 2 as `--transcript-interval-ms`, which E6 passes as 16 ms; item 3 as S1 §5 rule 10;
-item 4 as S1's B3, a reconnect snapshot only for a child that was active.)*
+item 4 as S1's B3, a reconnect snapshot only for a child that was active.)* *(v4: and in `dr-2`, which C1 runs against
+since `090a9d0`, where the opt-in still defaults to off (as-built r3 §5.1), §3.2 B29.)*
 
 ### 9.2 D1
 
@@ -2165,7 +2186,7 @@ export type ACPSessionTextEvent = ClientACPSessionTextEvent & BaseEvent;
 ```
 
 *(v4)* v3's declaration, kept as the reference for what each field means: the client's own types (the `dr-2`
-tarball's `dist/events/types.d.ts:141–172`) have the same fields with the same names and optionality, and no comments.
+tarball's `dist/events/types.d.ts:142–172`) have the same fields with the same names and optionality, and no comments.
 Two differences from the code above: there, `id` and `timestamp` are required, and `source` is Canvas's `SourceType`
 on all three, where v3 narrowed it to `"agent" | "environment"` and `"agent"`.
 
