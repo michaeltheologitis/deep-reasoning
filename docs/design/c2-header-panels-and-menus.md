@@ -11,7 +11,34 @@ only `AGENTS.md` and `CLAUDE.md`, so every `file:line` below is upstream's) · S
 `deep-reasoning` at `91430aa` (the agent-server's App-backend bridge and the TypeScript client 1.50.1 it ships) ·
 upstream Canvas `main` at `a8c8fb3` (three commits past the fork's base; one touches the chat input, §9).
 
-**Matches the build at `64b5a8b`** (v2): `feat/agent-surfaces` in the draft pull request
+**Version 3, 2026-10-04. Matches the code at `ca1dd71`** (v3): the top of C2's stack for Gate C, whose tree equals
+`feat/agent-surfaces` at `30068b8` exactly. That is C2's commits through `a1ec3d1` (v2's nine; the three Gate B fixes
+`3912c52`, `6fb7f05`, `61b9bdc`; 13 refactor commits, `0e396b9` … `f4c7ae5`; and two test commits, `667ec86` and
+`a1ec3d1`), merged by `30068b8` with the fork's `deep-reasoning` at `fc87687`. `fc87687` carries C3's merged launcher
+stack and the redone wiring, `wiring/dr-2`: the agent-server from the SDK fork at `34c540c` (tag `dr-2`, S1 and S2
+merged), the TypeScript client from that tag's release tarball, the client-pin guard (`988dce8`) and the `specs` input
+on `mock-llm-e2e.yml` (`9035f9e`). C2's own diff against `fc87687` is byte-identical to its diff against `wiring/dr-1`
+(the patches compare equal, index lines included), so every C2 line cited at `f4c7ae5` or `a1ec3d1` is the same line
+at `ca1dd71`; line numbers below marked v3 are at `ca1dd71`. §3.2 B21–B32 give each change since v2 its commit,
+reason and test, and the sections they name say it in place, each marked *(v3, …)*. Nothing in the code changed for
+this revision; it changes only this file.
+
+**Stacked for Gate C** (v3, 2026-10-04). The PR Splitter cut the code into seven draft PRs in the fork, #20 to #26,
+each one commit, #20 against `deep-reasoning` at `fc87687` and each later one against the one below it; #26's head
+`ca1dd71` is the top. v2's three PRs map onto them as levels: PR 1 is #20 (registration), #21 (the column) and #22
+(the button and the narrow page); PR 2 is #23 (the services and the event), #24 (a conversation's controls) and #25
+(the home screen's); PR 3 is #26 (§3.2 B29). Every level's `pull_request` CI is green (runs 37217269514 for #20 …
+37217310017 for #26); at `30068b8` CI is green ([run 37215713339](https://github.com/michaeltheologitis/OpenHands/actions/runs/37215713339))
+and C2's two end-to-end specs passed 7 of 7 against the `dr-2` agent-server ([run
+37215721829](https://github.com/michaeltheologitis/OpenHands/actions/runs/37215721829); §3.2 B28). What to read beside
+each PR is the table in #26's description, "Gate C: reading beside the PRs", which cites this version and the as-built
+document's revision 3 by section. What changed since Gate B, each change with its commit, is §3.2's last three groups,
+B21–B32; the tests that carry each property are the Gate B section's table "Which tests carry which property",
+current at `ca1dd71` in its v3 marks, and §4.9, §5.8 and §6.4 map every test file. The old draft PR #3
+(`feat/agent-surfaces` against `wiring/dr-1`) stays open until Michael decides; its diff now includes the
+`dr-2` wiring, so it is no longer C2 alone.
+
+*(v2's paragraph, as Gate B read it:)* **Matches the build at `64b5a8b`** (v2): `feat/agent-surfaces` in the draft pull request
 [michaeltheologitis/OpenHands#3](https://github.com/michaeltheologitis/OpenHands/pull/3) against the fork's branch
 `wiring/dr-1` (head `9881d24`). C2's own commits are nine: PR 1 `20b90cb`, `1828cec`, `a5436be`; PR 2 `4caaecc`,
 `82ff26a` and the test `86c00b5`; PR 3 `baddd10`, `db3b4b9`; and `70ce577`, a fix to PR 2's and PR 3's reading of
@@ -24,6 +51,14 @@ the file `22272d9` adds. So `git diff 9881d24..64b5a8b`, PR #3's diff, is C2 alo
 code are at `64b5a8b`; v1's are upstream's, as before.
 
 ## Gate B: what to read
+
+*(v3: this section is kept as Gate B read it, with v2 and the as-built r1 at `64b5a8b`, but for marked v3 notes. Its
+third ruling was decided (b), built as §3.2 B21. No decision on its first two is recorded in the commits, the task row
+or the Gate C ledger: Gate B passed with both as asked, and the task moved on to the refactor and the split,
+so this design treats the size and the mock-LLM live tier as accepted for Gate B and asks neither again. Its property
+table, "Which tests carry which property", is current at `ca1dd71`: a test the build has since cut is struck, and the
+v3 marks name the tests that replace it or were added, §3.2 B27. Its evidence paragraph is Gate B's, at `64b5a8b`; the
+evidence at the top is in "Stacked for Gate C", above.)*
 
 **About 50 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, C2's as-built document
 (`as_built/c2-header-panels-and-menus.md` on deep-reasoning's branch `as-built/c2`, the Cartographer's) and the runs
@@ -51,7 +86,9 @@ compression); Gate B does not need it, except §7 and §10.
    PR 3 996, `70ce577` 50. At ≈300 lines an hour Gate C reads it in about 23 h, four times v1's estimate and six and
    a half times the spec's: code 3.8 times the spec's ≈700, tests ten times its ≈400. §3.2 B20 has the table. The
    build recorded no reason for the growth; the reading there is this design's. The Scout and the Refactorer, after
-   Gate B, are where it shrinks.
+   Gate B, are where it shrinks. *(v3, B30: at `ca1dd71`, **6,974 added and 167 removed** in 88 files (6,313 non-blank),
+   about 23 h at Gate C. The fixes and the refactor took out 11 lines net, and the two test commits after it put 30
+   back.)*
 2. **The live tier is not a real task against a real model.** The workspace defines the live tier as a real task
    against real services, its outcome asserted. The spec's §4 layer 5 gives C2's live evidence as "its end-to-end
    tests, Playwright written as tests that assert behaviour", and §10 reads that as upstream's mock-LLM suite: the real
@@ -60,7 +97,8 @@ compression); Gate B does not need it, except §7 and §10.
    model runs, and dr-acp is not behind it: dr-acp's commands and namespace through the same agent-server are S2's
    live tier (deep-reasoning run 37147707860, on gpt-6-luna), and through Canvas they are D5's E12, which owns
    Canvas's real-model end to end. Ruling asked: accept §10's live tier as C2's, knowing it departs from the
-   workspace's definition, or ask for a C2 run with dr-acp and a real model before D5.
+   workspace's definition, or ask for a C2 run with dr-acp and a real model before D5. *(v3, B28: re-run at
+   `30068b8` against the `dr-2` agent-server, 7 of 7, run 37215721829; still the mock LLM and the mock ACP agent.)*
 3. **What a failed live option set says** (§3.2 B3). A 422 shows the agent's own sentence, as designed. Any other
    failure now toasts the client's raw error text: for the agent-server's 504 (the agent did not answer in 30 s) or
    500 (an agent's internal error), `HTTP request failed (504 Gateway Timeout): {"detail":"Internal Server
@@ -70,7 +108,9 @@ compression); Gate B does not need it, except §7 and §10.
    sentences for a client timeout or a lost connection; one line; (c) one generic sentence of ours for every non-422
    failure: a new key in 15 languages and a test. **Recommended: (b)**: the two pickers in one composer then fail
    alike, at the cost of one line; the raw text names the status, and a 5xx on a set means an agent that hung or
-   crashed. Nothing changes in code until Michael rules.
+   crashed. Nothing changes in code until Michael rules. *(v3: Michael decided (b), and it is built: §3.2 B21,
+   `3912c52`, completed by `4ff261c` for a 4xx with a string `detail`, and moved into the mutation by `3461e1c` so
+   the toast survives the composer unmounting.)*
 
 **Approved, now built:** the empty first controls event (the Conductor's ruling, carried at S2's Gate B and approved
 by Michael). The newest event is the state, so a conversation shows an empty slash menu until the agent's commands
@@ -145,38 +185,66 @@ after an empty first report until the agent's menu arrives` (`86c00b5`).
 | **Each panel's selected tab and pins are kept per conversation; whether it is open is session-only** (CX-003) | **Live:** 2. `__tests__/hooks/use-conversation-app-panel-tabs.test.ts › useConversationAppPanelTabs › falls back to the first pinned tab when the stored one is gone, without writing`, `› unpinning the selected tab selects the next pinned one and hides it`, `› keeps an unpinned tab visible while it is selected`, `› keeps the selection and pins per conversation and per panel`, `› ignores a tab the panel does not have, with a warning`; `__tests__/conversation-local-storage.test.ts › conversation localStorage utilities › appPanelTabs › round-trips each panel's selected tab and unpinned tabs`, `› sanitizes a stored $stored` [6 malformed shapes], `› writes one panel's state without dropping another panel's` |
 | **Only declared registrations; an agent-server without panels does not fail the App** (CX-004) | **Live:** 5. `src/components/features/canvas-extensions/canvas-extensions-runtime.test.tsx › CanvasExtensionsRuntimeProvider › conversation panels › lists a panel with its registered tabs in manifest order, paths without the leading slash`, `› fails activation when an App registers %s` [a panel's own id, an undeclared id], `› refuses tab registrations without failing the App on an agent-server without panels`, `› removes an App's panels when it is disabled`, `› re-activates an App whose manifest panels change`; `src/components/features/canvas-extensions/canvas-extension-card.test.tsx › CanvasExtensionCard › lists the App's header panels by title with their count`, `› says why an App's panels are missing on an agent-server without panels`, `› shows the App's activation error` |
 | **The narrow-window page** | **Live:** 4. `…/conversation-app-panel-mobile-page.test.tsx › ConversationAppPanelMobilePage › returns to the conversation with the back button`, `› shows the unavailable state once the App is active without that panel` |
-| **Feature detection, and the 60 s budget of an App's requests** | `__tests__/api/agent-server-compatibility-bundled-pin.test.ts › localAgentServerHasCapability › is true when the active local agent-server advertises the capability`, `› is false when the agent-server %s` [lists other capabilities, lists no capabilities], `› is false on a Cloud backend even with a cached local server_info`, `› is false when the cached server_info belongs to another local backend`; `src/api/canvas-extensions-service.test.ts › CanvasExtensionsService › gives an App's agent-server requests a minute, more than an App backend start takes` |
+| **Feature detection, and the 60 s budget of an App's requests** | `__tests__/api/agent-server-compatibility-bundled-pin.test.ts › localAgentServerHasCapability › is true when the active local agent-server advertises the capability`, `› is false when the agent-server %s` [lists other capabilities, lists no capabilities], `› is false on a Cloud backend even with a cached local server_info`, `› is false when the cached server_info belongs to another local backend`; ~~`src/api/canvas-extensions-service.test.ts › CanvasExtensionsService › gives an App's agent-server requests a minute, more than an App backend start takes`~~ *(v3, B27: cut in `9c49036`; the minute is pinned by upstream's `› fetches the bundle as authenticated text…`, which asserts `timeout: 60000` on the client builder `host.agentServer.request` shares, as-built §6.3 P1; the constant lands with #26, B29)* |
 
 *PR 2 · Agent commands and the option picker*
 
 | Property | Tests |
 |---|---|
 | **E11: the home screen's preview lists the agent's commands, and changing an option changes them** | **Live:** 6. `__tests__/hooks/query/use-acp-session-preview.test.tsx › useHomeAgentControls › previews the launch agent with the start's workspace, and again for each pick and workspace`, `› shows a pick in flight until its preview settles`; `__tests__/components/features/home/home-chat-launcher.test.tsx › HomeChatLauncher › ACP agent controls › shows the previewed agent's commands and starts with the values its preview accepted` |
-| **E11: the started run uses the chosen value, and a start sends only values a preview accepted** (ASC-002) | **Live:** 6 (the start's body and the agent's reply). `use-acp-session-preview.test.tsx › useHomeAgentControls › starts only with option ids and select values the last accepted preview reported`, `› does not send values picked for another launch agent`, `› keeps the last accepted controls and start values when the agent refuses a pick, and says why`; `__tests__/api/agent-server-conversation-service.test.ts › AgentServerConversationService › ACP session controls › sends picked option values with the start, and an otherwise identical body without them`, `› previews with the body %s would start with, less its first message and user` [a profile launch, an agent_settings launch], `› gives the preview the agent-server's start-up time` |
-| **The spec's falsifier and E11: the menu never offers a command the agent no longer lists; the newest report is the state** (ASC-001) | **Live:** 7 (live, then from the REST search). `__tests__/hooks/chat/use-agent-controls.test.tsx › useConversationAgentControls › offers the newest report's commands and its options except the model`, `› shows no agent commands after an empty first report until the agent's menu arrives`; `__tests__/hooks/query/use-latest-acp-session-controls.test.tsx › useLatestAcpSessionControls › searches the conversation's newest controls event by its module-qualified kind`, `› %s` [an older searched event loses to the live one, a newer searched event wins over the live one], `› keeps the newest of several live events`, `› is null when the conversation has no controls event`, `› ignores live events loaded for another conversation`, `› issues no search and reads nothing while disabled`; `__tests__/hooks/chat/use-slash-command.test.ts › useSlashCommand › agent commands › lists the agent's commands between the built-ins and the skills, with their input hints`, `› drops an item whose command repeats an earlier one, keeping the earlier`, `› replaces the agent's commands with each new report`, `› lists the agent's commands before the skills have loaded`, `› inserts the agent command's name followed by a space`; `src/api/event-service/event-service.api.test.ts › EventService › searchEvents › filters a local search by event kind`, `› filters a cloud search by event kind in the query string` |
+| **E11: the started run uses the chosen value, and a start sends only values a preview accepted** (ASC-002) | **Live:** 6 (the start's body and the agent's reply). `use-acp-session-preview.test.tsx › useHomeAgentControls › starts only with option ids and select values the last accepted preview reported`, `› does not send values picked for another launch agent`, ~~`› keeps the last accepted controls and start values when the agent refuses a pick, and says why`~~ *(v3, B22, B23: replaced in `6fb7f05` by `› returns the picks to the last accepted values when the agent refuses one, without asking again, and says why`; added `› returns refused picks to the agent's defaults when the home screen has no answer yet`, `› asks the agent again when the value it refused is picked again`, `› asks the agent again when the home screen returns`, and `chat-input-agent-options.test.tsx › ChatInputAgentOptions › sets nothing when the value in effect is chosen`)*; `__tests__/api/agent-server-conversation-service.test.ts › AgentServerConversationService › ACP session controls › sends picked option values with the start, and an otherwise identical body without them`, `› previews with the body %s would start with, less its first message and user` [a profile launch, an agent_settings launch] *(v3, B31: and less `conversation_id`, which the test deletes from both bodies; both launches name a workspace)*, `› gives the preview the agent-server's start-up time` |
+| **The spec's falsifier and E11: the menu never offers a command the agent no longer lists; the newest report is the state** (ASC-001) | **Live:** 7 (live, then from the REST search). `__tests__/hooks/chat/use-agent-controls.test.tsx › useConversationAgentControls › offers the newest report's commands and its options except the model`, `› shows no agent commands after an empty first report until the agent's menu arrives`; `__tests__/hooks/query/use-latest-acp-session-controls.test.tsx › useLatestAcpSessionControls › searches the conversation's newest controls event by its module-qualified kind`, `› %s` [an older searched event loses to the live one, a newer searched event wins over the live one], `› keeps the newest of several live events`, `› is null when the conversation has no controls event`, `› ignores live events loaded for another conversation`, ~~`› issues no search and reads nothing while disabled`~~ *(v3, B27: cut in `9c49036`; its search half is pinned by `use-agent-controls.test.tsx › useConversationAgentControls › has no controls, and searches nothing, for %s`, its scan half by nothing)*; `__tests__/hooks/chat/use-slash-command.test.ts › useSlashCommand › agent commands › lists the agent's commands between the built-ins and the skills, with their input hints`, `› drops an item whose command repeats an earlier one, keeping the earlier`, `› replaces the agent's commands with each new report`, `› lists the agent's commands before the skills have loaded`, `› inserts the agent command's name followed by a space`; `src/api/event-service/event-service.api.test.ts › EventService › searchEvents › filters a local search by event kind`, `› filters a cloud search by event kind in the query string` |
 | **The picker, which never offers the model** (ASC-003) | **Live:** 6, 7 (the fixed pill). `__tests__/components/features/chat/components/chat-input-agent-options.test.tsx › ChatInputAgentOptions › renders no row when the agent offers no options`, `› shows each option as a pill naming the option and its current value`, `› lists the values under a header per group, and choosing one sets it`, `› shows a value in flight with a spinner, and takes no other pick meanwhile`, `› shows an option with one value as fixed, with the option's description as its tooltip`, `› explains a fixed option without a description in Canvas's words`, `› disables the pickers while the composer is disabled`, `› shows the agent's sentence for a value it refused`; `use-acp-session-preview.test.tsx › useHomeAgentControls › offers the agent's select options except the model, and no boolean`; `__tests__/components/features/chat/slash-command-menu.test.tsx › SlashCommandMenu - agent commands › shows an agent command's input hint in its row, and no hint for commands without input` |
-| **A live set, and what its failure says** (§3.2 B2, B3) | `use-agent-controls.test.tsx › useConversationAgentControls › sets a pick live, showing it in flight until the agent answers`, `› shows the agent's own sentence when it refuses a pick`, `› never shows a 5xx answer's placeholder detail as the agent's sentence` (it asserts the raw text of ruling 3's option (a)); `agent-server-conversation-service.test.ts › … › ACP session controls › sets a live option through the conversation client`; `agent-server-compatibility-bundled-pin.test.ts › getSdkHttpErrorDetail › reads the agent-server's detail sentence from an SDK HTTP error`, `› is null for %s` [a validation error list, a body without detail, a 5xx answer whose detail is the agent-server's placeholder, an error that is not an SDK HTTP error] |
-| **Only where the agent-server supports them** (ASC-004) | `use-agent-controls.test.tsx › useConversationAgentControls › has no controls, and searches nothing, for %s` [an OpenHands conversation, an agent-server without acp_session_controls_v1, a Cloud backend]; `use-acp-session-preview.test.tsx › useHomeAgentControls › previews nothing when %s` [the agent-server lacks acp_session_controls_v1, the launch agent is not ACP], `› shows no commands and no picker, and starts with no values, when the preview answers %i` [400, 429, 501, 502, 504]; `home-chat-launcher.test.tsx › … › ACP agent controls › previews nothing and starts with an unchanged request without the agent-server capability`; `agent-server-conversation-service.test.ts › … › ACP session controls › refuses previews and live sets on a Cloud backend` |
-| **A refused start value has its own banner; the controls event never renders or exports** | `__tests__/components/chat/error-message-banner.test.tsx › heads a refused start-time option with its title and shows the agent's sentence`; `__tests__/utils/acp-error-codes.test.ts › maps a refused start-time option value to its own header`; `__tests__/components/conversation-events/chat/event-content-helpers/should-render-event.test.ts › shouldRenderEvent - ACP session controls › never renders the agent's commands and options report`; `src/utils/transcript-export/index.test.ts › leaves the agent's commands and options reports out of the export` |
+| **A live set, and what its failure says** (§3.2 B2, B3; v3: B21, B24) | `use-agent-controls.test.tsx › useConversationAgentControls › sets a pick live, showing it in flight until the agent answers`, `› shows the agent's own sentence when it refuses a pick`, ~~`› never shows a 5xx answer's placeholder detail as the agent's sentence` (it asserts the raw text of ruling 3's option (a))~~ *(v3: replaced by `› reports a failed pick that is not a refusal as upstream does, for %s` [a 504, in the client's own words and never the placeholder detail; a 400 with a detail; a 404 with a detail; a client timeout; a lost connection], and joined by `› still reports a failed pick when the composer unmounts before the agent answers`)*; `agent-server-conversation-service.test.ts › … › ACP session controls › sets a live option through the conversation client`; ~~`agent-server-compatibility-bundled-pin.test.ts › getSdkHttpErrorDetail › reads the agent-server's detail sentence from an SDK HTTP error`, `› is null for %s` [a validation error list, a body without detail, a 5xx answer whose detail is the agent-server's placeholder, an error that is not an SDK HTTP error]~~ *(v3: the helper is gone, `4ff261c`, B24)* |
+| **Only where the agent-server supports them** (ASC-004) | `use-agent-controls.test.tsx › useConversationAgentControls › has no controls, and searches nothing, for %s` [an OpenHands conversation, an agent-server without acp_session_controls_v1, a Cloud backend]; `use-acp-session-preview.test.tsx › useHomeAgentControls › previews nothing when %s` [the agent-server lacks acp_session_controls_v1, the launch agent is not ACP], `› shows no commands and no picker, and starts with no values, when the preview answers %i` [400, 429, 501, 502, 504], *(v3, `a1ec3d1`, B27)* `› keeps a pick whose preview answers %i after an earlier answer, and shows no sentence for it` [400, 504]; `home-chat-launcher.test.tsx › … › ACP agent controls › previews nothing and starts with an unchanged request without the agent-server capability`; `agent-server-conversation-service.test.ts › … › ACP session controls › refuses previews and live sets on a Cloud backend` |
+| **A refused start value has its own banner; the controls event never renders or exports** | `__tests__/components/chat/error-message-banner.test.tsx › heads a refused start-time option with its title and shows the agent's sentence`; ~~`__tests__/utils/acp-error-codes.test.ts › maps a refused start-time option value to its own header`~~ *(v3, B27: cut in `9c49036`; the banner test above fails when the map's key is renamed, as-built §6.3 P4)*; `__tests__/components/conversation-events/chat/event-content-helpers/should-render-event.test.ts › shouldRenderEvent - ACP session controls › never renders the agent's commands and options report`; `src/utils/transcript-export/index.test.ts › leaves the agent's commands and options reports out of the export` |
 
 *PR 3 · App backend frames*
 
 | Property | Tests |
 |---|---|
-| **An App's backend session is revoked only when its last frame closes** (CX-005) | `src/extensions/app-backend-session-keeper.test.ts › acquireAppBackendSession › mints one session per App on its ingress with the session key, shared by every lease`, `› revokes the session at the last release and not before`, `› refreshes the session a minute before it expires, and stops after the last release`, `› never refreshes sooner than its floor, however short the session`, `› tells every live lease of the App when a refresh fails`, `› keeps Apps apart: each has its own session`, `› leaves nothing behind when the acquisition is abandoned before the session exists`; `src/extensions/mount-app-backend-frame.test.ts › mountAppBackendFrame › keeps one session for two frames of the App and revokes it when the last one closes` |
-| **The frame, and each failure reported once** (§6.2; §3.2 B2, B13) | `mount-app-backend-frame.test.ts › mountAppBackendFrame › appends a sandboxed frame of the App's backend to the container, at the page's path`, `› removes its frame and releases the session when disposed`, `› leaves nothing behind when disposed while the session is being minted`, `› keeps its frame in the container through session refreshes, and when one fails adds the notice beside it`, `› reports %s once, with a notice in the container, for %s` [unsupported-backend for a Cloud backend; no-ingress for an agent-server without an App ingress; not-ready for a backend that is not running, a 503 whose reason is under `exception`; no-ingress for an ingress the agent-server lacks, likewise; session-refused for a refused session, a 421]; `canvas-extensions-runtime.test.tsx › CanvasExtensionsRuntimeProvider › gives each App a frame mounter bound to that App and its backend` |
+| **An App's backend session is revoked only when its last frame closes** (CX-005) | `src/extensions/app-backend-session-keeper.test.ts › acquireAppBackendSession › mints one session per App on its ingress with the session key, shared by every lease`, `› revokes the session at the last release and not before`, `› refreshes the session a minute before it expires, and stops after the last release`, `› never refreshes sooner than its floor, however short the session`, `› tells every live lease of the App when a refresh fails`, `› keeps Apps apart: each has its own session`, `› leaves nothing behind when the acquisition is abandoned before the session exists`; ~~`src/extensions/mount-app-backend-frame.test.ts › mountAppBackendFrame › keeps one session for two frames of the App and revokes it when the last one closes`~~ *(v3, B27: cut in `9c49036`; since `667ec86`, `› removes its frame when disposed, and releases the App's one session when its last frame closes` mounts two frames of the App through `mountAppBackendFrame`: one mint, no revoke at the first dispose, a revoke at the second)* |
+| **The frame, and each failure reported once** (§6.2; §3.2 B2, B13) | `mount-app-backend-frame.test.ts › mountAppBackendFrame › appends a sandboxed frame of the App's backend to the container, at the page's path`, ~~`› removes its frame and releases the session when disposed`~~ *(v3: rewritten as the CX-005 row's two-frame test, `667ec86`)*, `› leaves nothing behind when disposed while the session is being minted`, `› keeps its frame in the container through session refreshes, and when one fails adds the notice beside it`, `› reports %s once, with a notice in the container, for %s` [unsupported-backend for a Cloud backend; no-ingress for an agent-server without an App ingress; not-ready for a backend that is not running, a 503 whose reason is under `exception`; no-ingress for an ingress the agent-server lacks, likewise; session-refused for a refused session, a 421]; `canvas-extensions-runtime.test.tsx › CanvasExtensionsRuntimeProvider › gives each App a frame mounter bound to that App and its backend` |
 
 **Not pinned by any test:** the drawer's real terminal keeping its session behind an App panel (a stand-in for the
 drawer's content is pinned as never unmounted; §11 item 5); the overview's hover peek with an App panel open (§3.1
 item 7) and an App panel on an archived conversation (§3.1 item 6), both read; the selected tab clicked on the
 narrow-window page (§3.2 B9, read); the empty first controls event end to end (the end-to-end start sends a value,
 which the mock agent answers with a single event, S2's §3.2 B4; the unit test above crosses it); any browser run of an
-App backend frame (§6.4: D3's and D5's); and `getSdkHttpServerErrorReason` on its own (the frame tests reach it
-through `not-ready` and `no-ingress`). Mutation testing on the diff did not run (§3.2 B18). §4.9, §5.8 and §6.4 map
-every test file.
+App backend frame (§6.4: D3's and D5's); and ~~`getSdkHttpServerErrorReason` on its own (the frame tests reach it
+through `not-ready` and `no-ingress`)~~ *(v3: gone, B24)*. Mutation testing on the diff did not run (§3.2 B18).
+§4.9, §5.8 and §6.4 map every test file. *(v3, B27: also not pinned at `ca1dd71`: that a disabled
+`useLatestAcpSessionControls` does not scan the event store (as-built §6.3 P2; its one caller returns no controls
+first, so a scan costs time, not behaviour). The two other properties the refactor had left unpinned are pinned again:
+two frames of one App share one session through `mountAppBackendFrame` (`667ec86`), and on the home screen only a 422
+withdraws a pick or speaks for the agent (`a1ec3d1`).)*
 
 **Revisions** (newest first; the Gate B reader approved the previous version, so each line says which sentences to
 stop trusting):
+- 2026-10-04 · v3 · brought in line with the code at `ca1dd71`, the top of the Gate C stack #20–#26, whose tree equals
+  `feat/agent-surfaces` at `30068b8`. Since v2: ruling 3, decided (b) at Gate B (B21); the other two Gate B fixes
+  (B22, B23); the refactor (B24–B27); `667ec86` and `a1ec3d1`, which re-pin two properties the refactor had left
+  unpinned (B27); the merge of `deep-reasoning` at `fc87687`, which carries the `dr-2` wiring in place of
+  `wiring/dr-1` (B28); and the split (B29). It answers the as-built r2's D-12 to D-19 and its §2.3, and the Conductor's
+  open items on `staleTime`, §5.3, §5.4, §5.6 and ASC-002. B-numbers are §3.2's. Stop trusting: the "Matches the
+  build" line (now v2's, kept beneath v3's); the Gate B section's third ruling, "nothing changes in code until Michael
+  rules" (ruled (b), B21), and the struck tests of its property table (B27); decision M's "one small helper", §5.1's,
+  §6.2 step 4's and A.7's `getSdkHttpErrorDetail` and `getSdkHttpServerErrorReason`, and B2's and B3's account of
+  them (all gone, B24); §5.3's failure toast (B21); §5.4's `staleTime: 0` and "a return to the home screen refetches"
+  for inputs answered in the same visit (B23), and its "a 422 keeps the last successful preview's controls … the
+  refused value is not sent" (now withdrawn, B22); §5.2's, §5.7's, §8 item 1's and A.8's `type-guards.ts` (untouched,
+  B25); §9's first row (B25, B29); A.2's, A.9's and A.10's exported names `CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS`,
+  `LocalStartConversationRequest` (and its `conversationId`), `toAgentSlashCommandItem` and
+  `ACP_CONFIG_OPTION_REJECTED_CODE` (B26); B8's "documented … in upstream's spec" for a constant now module-private
+  (B26); decision I's, §5.2's and the parity test's "the start body less `initial_message` and `user_id`" (B31);
+  §4.1's "moves unchanged", decision L's scope, §5.6's "a select with one value" and A.2's `signal` (B32); B16's "the
+  split must put it first" (done, B29); B17's and §4.9's, §5.8's and §6.4's counts (B27); B19's run and its
+  `wiring/dr-1` (B28); B20's size (B30); §11 items 6 to 8 (each has a v3 note). Added without changing earlier
+  sentences: the "Matches the code" and "Stacked for Gate C" paragraphs; §3.2 B21–B32; the Gate B section's v3
+  preface and the v3 notes on its rulings and table; v3 notes in §1.2, §2 decisions I, L and M, §3.1 items 2, 13 and
+  15, §3.2 B2, B3, B8, B12, B16–B20, §4.1, §4.7, §4.9, §5.1–§5.8, §6.2, §6.4, §8, §9, §10 and §11; §11 items 9 to
+  11; Appendix A's preface and the `// v3:` lines in A.2, A.7–A.11. No section is renumbered, and every signature
+  block still parses as TypeScript: a name that is gone stays as a comment.
 - 2026-10-03 · v2 · brought in line with the build at `64b5a8b`, after Proof Green. Stop trusting: §1.2's and §6's
   "proposed" for PR 3 (approved as a scope addition on 2026-10-03); §3.1 items 2 and 13 (B20, B15); §4.4's spinner and
   activation-failure sentence for the panel body (B7); §4.7's and §5.7's file lists; §4.8's MSW mock mode (B6); §4.9's,
@@ -198,9 +266,12 @@ deep-reasoning's branch `design/c2`. That branch holds only documents: no docs s
 runner, no package, so nothing collects, builds or ships this file. No design document goes into the fork: its pull
 requests carry code, tests, translations and upstream's own product specs (`specs/*.md`, which upstream keeps
 beside the code and tags with `// @spec` ids; §4.9, §5.8), in upstream's layout. The PR split leaves this file
-behind.
+behind. *(v3: written on `design/c2-next`, cut from `design/c2` at `fbf4230`, which changes only this file; the
+Conductor merges it into `design/c2`. The as-built document, `as_built/c2-header-panels-and-menus.md`, is on the
+same branch; its r3 is on `as-built/c2-r3`.)*
 
-**Reading guide.** Gate B: the section above. §3.1 lists every departure from the approved spec, §3.2 every change
+**Reading guide.** *(v3:)* Gate C: the "Stacked for Gate C" paragraph at the top, #26's table beside each PR, and
+§3.2 B21–B32 for what changed since Gate B, then the sections each PR's row names. Gate B: the section above. §3.1 lists every departure from the approved spec, §3.2 every change
 the build made. D3's designer: §7 is the contract D3 builds against; read §6 with it, because it is how a panel page
 reaches its own backend. The Conductor: §3, §9 (the client pin and the PR split) and §11 (open items). The PR
 splitter: the "Matches the build" paragraph, §3.2 B16 and §9. The Implementer, the Cartographer and the Refactorer
@@ -254,7 +325,8 @@ deep_reasoner or reads `_meta`.
 PR 3 exists because the spec's D3 says the Library API is reached "bridged by the agent-server under
 `/app-backends/dr-library`", and that bridge is reachable only through a separate browser origin with a cookie
 session a page cannot bootstrap without the session key (§6.1). Without it, D3 has no way to write to its backend.
-*(v2: the spec's "Scope additions approved, 2026-10-03" (1) adds it to C2.)*
+*(v2: the spec's "Scope additions approved, 2026-10-03" (1) adds it to C2.)* *(v3, §3.2 B29: for Gate C the three
+are seven draft PRs: PR 1 is #20–#22, PR 2 is #23–#25, PR 3 is #26.)*
 
 ### 1.3 The flows, end to end
 
@@ -296,11 +368,11 @@ The spec's seven expensive-to-reverse decisions in §2 stand. These are the next
 | F | **Every new surface is gated by an agent-server capability**, read from the cached `/server_info` of the local backend: `canvas_conversation_panels_v1` (PR 1), `acp_session_controls_v1` (PR 2), `canvas_app_backend_bridge_v1` (PR 3). On an agent-server without panels, an App's attempt to register an undeclared tab id is refused **without failing the App's activation**, and the Apps page says why. | Upstream's own precedent (`profile_secret_scope_v1`, `profile-field-support.ts:46–53`). A version floor would break on every fork tag (S2's decision H). Without the non-fatal refusal, an App with panels installed on an older agent-server (which drops the key) would lose its route pages too. | Raising `compatibility.minimumAgentServer`: no released upstream agent-server has these, so the floor would lock Canvas to our fork; the capability makes the old-server path a tested branch instead. |
 | G | **Agent controls are a prop, `agentControls`, computed by the owner of each composer**: `HomeChatLauncher` (preview) and `InteractiveChatBox` (conversation). `CustomChatInput` passes them to the slash menu and the picker row. | The two sources need different context (the home launcher owns the pending workspace and the values; the conversation owns its id), and the shared input stays context-free. Upstream's review guide prefers named hooks and feature modules over branches in shared code. | Hooks inside `CustomChatInput` that branch on "home or conversation": the shared input would read the home launcher's local state through a store it does not own. |
 | H | **In a conversation, the controls are the newer (by timestamp) of the event store's newest `ACPSessionControlsEvent` and one REST search for it by kind.** Replaced, never merged. | The WebSocket delivers changes; the history preload holds only the newest 50 events, and dr-acp's last controls event is sent at the first prompt, so in any long conversation it is older than those 50. Ordering by timestamp handles the race between the REST answer and a live event. | S2's `getAcpSessionControls` (it returns the lists without the event, so a REST answer could overwrite a newer live event; §8). A dedicated slice filled by the WebSocket handler: more edits in upstream's busiest context file. |
-| I | **On the home screen, the preview body is built by the same function as the start body**, extracted from `createConversation`'s local path; the values the user picked live in a session-only store keyed by the launch agent; the start sends only values the last successful preview accepted. | S2's falsifier is "the commands a preview lists differ from those the started session lists"; the same builder and the same values make them differ only if the agent itself answers differently. A value the agent refused in the preview never reaches a start. | A preview body written by hand for the picker: a second builder, which drifts (secrets, hooks, workspace, profile). |
+| I | **On the home screen, the preview body is built by the same function as the start body**, extracted from `createConversation`'s local path; the values the user picked live in a session-only store keyed by the launch agent; the start sends only values the last successful preview accepted. | S2's falsifier is "the commands a preview lists differ from those the started session lists"; the same builder and the same values make them differ only if the agent itself answers differently. A value the agent refused in the preview never reaches a start. *(v3, §3.2 B31: the builder mints a fresh `conversation_id` per call, so the bodies differ in it, and, without a workspace, in the `working_dir` derived from it: two directories under the same root, each named for its own id. The agent-server's preview ignores the id; an agent whose commands depend on its working directory could answer the two differently.)* | A preview body written by hand for the picker: a second builder, which drifts (secrets, hooks, workspace, profile). |
 | J | **Agent controls on local backends only.** | The capability can be read only for the local agent-server; the Cloud start request (`AppConversationStartRequest`) has no `acp_config_options` and the Cloud App API has no preview or set route; Canvas Apps are already local-only (`use-canvas-extensions.ts:14–15`). Lifting it later is additive. | Reading controls events on Cloud too: half a feature (a menu with no picker) on a path no one in v1 runs. |
 | K | **The picker is a row above the message input** (the spec's mock-up: `┌ Namespace: router ▾ ──`), one pill per option. | The actions row below the input already measures widths to decide what overflows (`chat-input-actions.tsx:228–348`); new pills there would enter that arithmetic and upstream's next merge conflicts (§9). A row of its own needs none. | Pills in the actions row; options inside the ⋯ overflow menu (hidden where the namespace matters most). |
-| L | **Slash menu order: built-ins, then the agent's commands, then skills; a later item whose command repeats an earlier one is dropped.** | Built-ins are intercepted before the message is sent (`/btw`, `/model`, `/goal`, `/plan`, `/code`), so an agent command with the same name could never reach the agent: listing it would mislead. Between agent and skill, the agent's own command is the one an ACP agent acts on. | Showing duplicates (the menu keys items by command, `slash-command-menu.tsx:171`, so React would warn and selection would be ambiguous). |
-| M | **The agent's refusals are shown in its own words**, read from the agent-server's `detail` by one small helper. *(v2, §3.2 B2: from a 4xx only; a 5xx's `detail` is always "Internal Server Error", and its reason is under `exception`.)* | S2 passes the agent's sentence through as `detail` (D1's `namespace is fixed once a conversation has started (it is 'router').`); the client's `HttpError` message wraps it in `HTTP request failed (422 …): {"detail": …}`, which no user should read. | A generic "the agent refused" toast. |
+| L | **Slash menu order: built-ins, then the agent's commands, then skills; a later item whose command repeats an earlier one is dropped.** | Built-ins are intercepted before the message is sent (`/btw`, `/model`, `/goal`, `/plan`, `/code`), so an agent command with the same name could never reach the agent: listing it would mislead. Between agent and skill, the agent's own command is the one an ACP agent acts on. *(v3, §3.2 B32: the rule holds across the whole menu, so two skills with the same slash trigger, both listed before C2, now list once.)* | Showing duplicates (the menu keys items by command, `slash-command-menu.tsx:171`, so React would warn and selection would be ambiguous). |
+| M | **The agent's refusals are shown in its own words**, read from the agent-server's `detail` by one small helper. *(v2, §3.2 B2: from a 4xx only; a 5xx's `detail` is always "Internal Server Error", and its reason is under `exception`.)* *(v3, §3.2 B24: by no helper of C2's. Each refusal site counts only a 422 as the agent's (`isSdkHttpStatusError(error, 422)`, upstream's) and reads its sentence with upstream's `getApiErrorMessage`; any other failure is not the agent's words.)* | S2 passes the agent's sentence through as `detail` (D1's `namespace is fixed once a conversation has started (it is 'router').`); the client's `HttpError` message wraps it in `HTTP request failed (422 …): {"detail": …}`, which no user should read. | A generic "the agent refused" toast. |
 | N | **(PR 3; approved 2026-10-03) An App's backend is reached only in a host-owned, sandboxed frame on the agent-server's App ingress origin; the host keeps one ref-counted session per App alive.** | It is the bridge's own design (§6.1): a separate origin, a cookie session minted with the session key, non-GET requests only from that origin, a five-minute session. The host holds the key and can refresh; a page cannot. One session per App, because the cookie is per App and revoking one page's session would cut every other frame of that App. | Handing the page a session creator and letting each App refresh and revoke: every App re-implements the same timer, and a revoke on one tab's dispose kills its siblings. Calling `/app-backends/…` through `host.agentServer.request`: the bridge answers 421 or 503 on the agent-server's own origin. |
 
 ---
@@ -311,7 +383,7 @@ The spec's seven expensive-to-reverse decisions in §2 stand. These are the next
 
 Each item is a refinement inside C2's scope unless marked otherwise; if the Conductor reads any as a change of what
 was approved, it goes back to Michael. *(v2: items 3 to 12 hold as built; items 1, 2 and 13 have notes; items 14 and
-15 are new.)*
+15 are new.)* *(v3: items 2, 13 and 15 have notes; the others hold at `ca1dd71`.)*
 
 1. **A third pull request, App backend frames (§6), is outside C2's approved scope** and is proposed for the
    Conductor's ruling. Why: the spec's D3 reaches D2's API "bridged by the agent-server under
@@ -326,7 +398,7 @@ was approved, it goes back to Michael. *(v2: items 3 to 12 hold as built; items 
    flags and one end-to-end spec), PR 3 ≈0.27k. Why: the spec costed neither the end-to-end specs (its §4 layer 5
    makes them C2's Gate B evidence), the persisted tab state's sanitizer and narrow-window page, the extraction
    that makes the preview body equal the start body (decision I), nor PR 3. *(v2: built at 6,955 lines added, about
-   23 h at Gate C, §3.2 B20; for Michael's ruling, the Gate B section.)*
+   23 h at Gate C, §3.2 B20; for Michael's ruling, the Gate B section.)* *(v3: 6,974 at `ca1dd71`, §3.2 B30.)*
 3. **The panel's title is the button's tooltip ("Show <title>", "Hide <title>") and the panel's accessible name,
    not a visible heading.** The drawer has no heading either; D3's mock-up has none.
 4. **The App tab row scrolls horizontally when its tabs do not fit, instead of measuring and hiding the overflow**
@@ -359,21 +431,27 @@ was approved, it goes back to Michael. *(v2: items 3 to 12 hold as built; items 
     `CX-001`–`CX-005`; a new `specs/acp-session-controls.md` holds `ASC-001`–`ASC-004`; §4.9, §5.8, §6.4), and tags code and tests
     with `// @spec`, as upstream's `AGENTS.md` asks of behaviour changes. These are upstream's specs, not this
     design document. *(v2: they also hold `CX-006` and `ASC-005`, the `data-testid`s end-to-end tests rely on, §3.2
-    B15.)*
+    B15.)* *(v3, §3.2 B29: each unit's spec text lands at its first level, ahead of the levels whose code makes it
+    true: #20 carries `CX-001`–`CX-004` and `CX-006`, #23 all of `specs/acp-session-controls.md`, #26 the frames
+    section, `CX-005` and the 60 s sentence. ASC-002 also says that a refused pick is withdrawn, B22.)*
 14. *(v2)* **The live tier is the mock-LLM end to end, not a real task with a real model** (§10, §3.2 B19). The
     spec's §4 layer 5 gives C2's live evidence as its Playwright end-to-end tests, and v1's §10 runs them with the
     mock LLM and the scripted mock ACP agent. That follows the spec's words; it departs from the workspace's
     definition of a live tier (a real task against real services, its outcome asserted), so it goes to Michael at
     Gate B (ruling 2). Canvas's real-model end to end, with dr-acp, is D5's E12.
 15. *(v2)* **Mutation testing on the diff did not run** (§3.2 B18). The spec's layer 3 names `npm run
-    test:mutation:diff` for C2; no run is recorded.
+    test:mutation:diff` for C2; no run is recorded. *(v3: still none at `ca1dd71`; the as-built's ten hand probes,
+    its §6.3, are aimed at the cut tests and the fixes, not the diff.)*
 
-### 3.2 Changed by the build (v2)
+### 3.2 Changed by the build (v2–v3)
 
 Each was checked against the code at `64b5a8b` and folded into the sections named. B1 to B5 follow S2's contract
 as built; B6 to B9 are PR 1's, B10 to B12 PR 2's, B13 and B14 PR 3's; B15 and B16 the branch and the PR split; B17
 to B19 the tests and the live tier; B20 the size. Where the build recorded no reason (in
 a commit message, a code comment or PR #3's description), the reason given is marked as this design's reading.
+*(v3: B21 is the ruling made at Gate B; B22–B30 are what changed after it; B31 and B32 are where v1 and v2 described
+the build wrongly and the build stands. Each was checked against the code at `ca1dd71`; v3 notes in B2, B3, B8, B12
+and B16–B20 say which of their sentences moved. B21–B30 answer the as-built r2's D-12 to D-19, B31 and B32 its §2.3.)*
 
 **Against S2's contract**
 
@@ -403,6 +481,7 @@ a commit message, a code comment or PR #3's description), the reason given is ma
   agent's sentence`; `mount-app-backend-frame.test.ts › mountAppBackendFrame › reports %s once, with a notice in the
   container, for %s` [not-ready; no-ingress for an ingress the agent-server lacks], whose fake error now answers as
   the agent-server does (the commit: "the not-ready and no-ingress cases failed against the old keeper").
+  *(v3, B24: both helpers and their tests are gone; the rule stands, read through upstream's helpers.)*
 - **B3. A failed live set that is not a refusal toasts the client's raw error text** (`70ce577`; §5.3; the Gate B
   section's ruling 3). The code is v1's, `displayErrorToast(getSdkHttpErrorDetail(error) ?? error.message)`; B2
   changes what it shows. A 422 still shows the agent's sentence. A 5xx (the set route's 504 after 30 s; its 500 for an
@@ -414,7 +493,7 @@ a commit message, a code comment or PR #3's description), the reason given is ma
   toast"), whose `retrieveAxiosErrorMessage` shows the same text for a 5xx and upstream's own sentences for a client
   timeout or a lost connection. Michael rules (ruling 3); recommended: that helper, one line. *Pinned by:*
   `use-agent-controls.test.tsx › useConversationAgentControls › never shows a 5xx answer's placeholder detail as the
-  agent's sentence`, which asserts the raw text.
+  agent's sentence`, which asserts the raw text. *(v3: ruled (b) and built, B21.)*
 - **B4. The first controls event after a start can be empty; the newest event is the state** (`86c00b5`; §5.3, §5.5,
   §7.2). v1 said "No event at all means no commands and no picker" and nothing of an empty first event. S2's §3.2 B4
   found that every session start persists one event, and that an agent that sends its menu after answering
@@ -471,7 +550,8 @@ a commit message, a code comment or PR #3's description), the reason given is ma
   - `CanvasExtensionsService` names its 60 s request timeout `CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS`,
     documented on `host.agentServer.request` and in upstream's spec; the value is upstream's. *Why* (the commit):
     it "names the 60 s timeout of requests to an App's agent-server, host.agentServer.request included"; (the code)
-    "an App backend start can take 30 s".
+    "an App backend start can take 30 s". *(v3: module-private since `258944e`, B26, while upstream's spec still
+    names it; it lands with PR 3's level, #26, B29.)*
   - `ConversationAppPanelToggles` checks only for a conversation id. On a Cloud backend the runtime has no Apps
     (`use-canvas-extensions.ts`), so there is no panel and no button, as v1 said.
 
@@ -509,7 +589,7 @@ a commit message, a code comment or PR #3's description), the reason given is ma
   Of §5.1's helpers, `localAgentServerHasCapability` landed with PR 1 (`20b90cb`) and `getSdkHttpErrorDetail` with
   PR 2 (`4caaecc`); v1 put both in PR 1. *Why:* none recorded; this design's reading: the preview hook takes the
   context, and `use-agent-controls.ts` imports the preview hook, not the reverse; the `detail` helper has no user in
-  PR 1.
+  PR 1. *(v3: `getSdkHttpErrorDetail` is gone, B24; `localAgentServerHasCapability` lands at #20, B29.)*
 
 **PR 3 · App backend frames**
 
@@ -555,7 +635,9 @@ a commit message, a code comment or PR #3's description), the reason given is ma
   merge `c08ded0`, after PR 2's and PR 3's commits, so `4caaecc`, `82ff26a`, `baddd10` and `db3b4b9` should not
   type-check on their own; `64b5a8b`, the head CI ran, does. *Why:* none recorded. What it means: the PR split puts
   the client pin before PR 2's commits, as §9 says; nothing in the code changes. Read from those commits'
-  `package.json` and the client's exports, not by building them.
+  `package.json` and the client's exports, not by building them. *(v3: done. The stack's bottom, #20, is cut from
+  `deep-reasoning` at `fc87687`, which already pins the `dr-2` client, so every level type-checks on its own, and
+  each level's CI is green, B28, B29.)*
 
 **Tests and the live tier**
 
@@ -577,18 +659,21 @@ a commit message, a code comment or PR #3's description), the reason given is ma
 
   Counts: 109 vitest test definitions (11 of them `it.each` tables) in 26 files, and 7 Playwright tests in 2. *Why:*
   none recorded; this design's reading: each added file covers a module v1 gave no test file, and the move follows
-  upstream's existing file.
+  upstream's existing file. *(v3, B27: at `ca1dd71`, 109 definitions again, 12 of them `it.each`, 140 cases, in 25
+  files and two helpers.)*
 - **B18. Mutation testing on the diff did not run** (§3.1 item 15, §4.9, §5.8; the spec's §4 layer 3). v1: `npm run
   test:mutation:diff` (Stryker) runs on each PR, and the as-built lists the survivors. No workflow in the fork runs
   it, and neither PR #3's description nor the task's notes record a run. Nothing in the code changes; layer 3's
-  evidence lacks it, for the Conductor to have it run on `9881d24..64b5a8b` or to waive it.
+  evidence lacks it, for the Conductor to have it run on `9881d24..64b5a8b` or to waive it. *(v3: still not run; on
+  the stack the range is `fc87687..ca1dd71`, §11 item 7.)*
 - **B19. The live tier, as run** (§10; §3.1 item 14; the Gate B section's ruling 2). v1: the two specs green in the
   fork's mock-LLM run at the branch's head, dispatched on the task branch. Built: the fork's wiring adds a `specs`
   input to `mock-llm-e2e.yml` (`9881d24`, fork-only, merged as `64b5a8b`), so one dispatch runs C2's two specs alone;
   run 37153648974 is that run, 7 of 7. A dispatch without the input runs the whole suite, which fails six of
   upstream's tests on this branch and on the fork's base alike (the Gate B section). *Why* (the merge `64b5a8b`):
   "Brings in the fork's specs input for a manual mock-LLM E2E run, so C2's two end-to-end specs can run on their
-  own."
+  own." *(v3, B28: the input now comes with `wiring/dr-2` (`9035f9e`); run 37215721829 is the same dispatch at
+  `30068b8`, against `dr-2`, 7 of 7.)*
 
 **Size**
 
@@ -616,7 +701,213 @@ a commit message, a code comment or PR #3's description), the reason given is ma
   declared-contribution resolution and panel derivation (213 lines added to `canvas-extensions-runtime.tsx`),
   `use-agent-controls.ts` with its two hooks (212), the picker (221) and the frame keeper (217). Translations and
   upstream's specs were in neither estimate. At ≈300 lines an hour Gate C reads it in about 23 h (22.6 h without
-  the translations). The Scout and the Refactorer, after Gate B, are where it shrinks.
+  the translations). The Scout and the Refactorer, after Gate B, are where it shrinks. *(v3: B30 has the size at
+  `ca1dd71`.)*
+
+**Decided at Gate B (v3)**
+
+- **B21. A failed live set that is not a refusal says what the model picker says** (§5.3, decision M, B3; the Gate B
+  section's ruling 3, which Michael decided as (b); as-built r2 D-12; `3912c52`, `4ff261c`, `3461e1c`). Built: the
+  toast belongs to `useSetAcpConfigOption` itself (`use-set-acp-config-option.ts:37–42`), which keeps
+  `meta: {disableToast: true}`.
+  - A 422 shows upstream's `getApiErrorMessage(error, error.message)`: the body's `message`, else a string `detail`,
+    else the error's text.
+  - Any other failure shows upstream's `retrieveAxiosErrorMessage(error)`, as the model picker in the same composer
+    does through the global mutation toast: for the client's `HttpError` (a 4xx other than 422, or any 5xx), its own
+    `HTTP request failed (<status> <text>): <body as JSON>`; for a client timeout, "Disconnected (request timed
+    out). …"; for a lost connection, "Disconnected (check URL or network). …".
+  - `useConversationAgentControls` calls `mutate` with no callbacks (`use-agent-controls.ts:138–139`), so the toast
+    fires even when the composer unmounts before the agent answers.
+
+  *Why (recorded):* `3912c52`, ruling 3(b); `4ff261c`, "completes ruling 3(b) as approved", since a 400 or a 404
+  whose `detail` was a string still toasted that `detail`; `3461e1c`, React Query drops `mutate`'s own callbacks once
+  the calling component unmounts. *Pinned by:* `use-agent-controls.test.tsx › useConversationAgentControls › reports
+  a failed pick that is not a refusal as upstream does, for %s` [a 504, in the client's own words and never the
+  placeholder detail; a 400 with a detail; a 404 with a detail; a client timeout; a lost connection], `› shows the
+  agent's own sentence when it refuses a pick`, `› still reports a failed pick when the composer unmounts before the
+  agent answers` (as-built §6.3 P6b, P7). Unit tests only: no live test sets an option in a conversation.
+
+**After Gate B (v3)**
+
+Each landed after Gate B and was checked against the code at `ca1dd71`. B22 and B23 are the other two Gate B fixes;
+B24–B26 are the refactor's changes to helpers and names, which change nothing a user sees; B27 is the tests; B28 the
+base the code now stands on; B29 the split; B30 the size.
+
+- **B22. On the home screen a refused pick is withdrawn** (§5.4, §5.6, A.10, ASC-002; as-built r2 D-13; `6fb7f05`,
+  `61b9bdc`; the Conductor's items on §5.4, §5.6 and ASC-002). v2's §5.4: "a 422 keeps the last successful preview's
+  controls, shows the agent's sentence … and the refused value is not sent". The refused value stayed in the store,
+  so picking it again asked nothing, every later preview carried it, and a home screen mounted with it showed the
+  sentence and no picker. Built (`use-agent-controls.ts:156–229`; `home-agent-options-store.ts:15, 36`):
+  - On a 422 (`isSdkHttpStatusError(error, 422)`, `:187–192`) an effect (`:201–207`) replaces the stored picks with
+    the values of the preview the agent last answered for this launch key, or with none before any answer, through
+    the store's new `setValues(launchKey, values)`. The key then returns to that answer, which is cached (B23), so
+    nothing new is asked.
+  - The agent's sentence is kept per launch key in a ref (`:193–199`). It shows while controls are shown
+    (`:218–221`) and clears on the next pick (`:223–226`) or under another launch key. With no earlier answer, it
+    appears once the agent's default preview answers.
+  - Picking the refused value again moves the key to the failed query, which holds no data, so the agent is asked
+    again. Choosing the value in effect still sends nothing (`chat-input-agent-options.tsx:169`, B11).
+  - A failure that is not a 422 withdraws nothing: the pick stays in the store, the controls hide (B5), and the next
+    preview carries the pick.
+  - ASC-002 (`specs/acp-session-controls.md`) gains: "A refused pick is withdrawn: the picker shows the agent's value
+    again, and picking the refused value again asks the agent again."
+
+  *Why (recorded in `6fb7f05`):* the faults above; `61b9bdc` makes its test wait for the withdrawal, which runs in an
+  effect after the render that shows the sentence. *Pinned by:* `use-acp-session-preview.test.tsx ›
+  useHomeAgentControls › returns the picks to the last accepted values when the agent refuses one, without asking
+  again, and says why`, `› returns refused picks to the agent's defaults when the home screen has no answer yet`,
+  `› asks the agent again when the value it refused is picked again`, and since `a1ec3d1` `› keeps a pick whose
+  preview answers %i after an earlier answer, and shows no sentence for it` [400, 504]; `chat-input-agent-options.test.tsx
+  › ChatInputAgentOptions › sets nothing when the value in effect is chosen` (as-built §6.3 P6, P8). Unit tests only:
+  the mock agent can refuse, but no end-to-end spec picks a value it refuses.
+- **B23. A preview's answer stays current until the home screen unmounts** (§5.4, A.10; as-built r2 D-14;
+  `6fb7f05`; the Conductor's `staleTime` item). v2's §5.4 and A.10: `staleTime: 0`. Built
+  (`use-acp-session-preview.ts:74, 95–96`): the hook records when it mounted, and `staleTime` is `Infinity` for data
+  fetched since then and `0` for older data. Going back to inputs the agent answered during the visit asks nothing:
+  B22's withdrawal, and also re-picking `fast` after `thorough`. A remount, such as a return to the home screen, asks
+  again, as v2 said, so a decomposition saved in D3 shows in the next home menu. The other options are v2's. *Why
+  (recorded in `6fb7f05`):* "so that the withdrawal does not start the agent again for values it has just
+  answered". *Pinned by:* `› asks the agent again when the home screen returns`, which fails with `Infinity` for all
+  data, and B22's first and third tests, which fail with `0` (as-built §6.3 P9a, P9b). The withdrawal and this rule
+  fail together, which is why they are one fix.
+- **B24. Upstream's error helpers replace C2's** (§2 decision M, §5.1, §5.3, §5.4, §6.2 step 4, A.7, A.11, B2, B12;
+  as-built r2 D-15; `4ff261c`). v2: `getSdkHttpErrorDetail` (null for a 5xx) and `getSdkHttpServerErrorReason` in
+  `agent-server-compatibility.ts`. Built: neither exists; C2's only addition to that file is `AgentServerCapability`
+  and `localAgentServerHasCapability`. Both refusal sites count only a 422 as the agent's, with upstream's
+  `isSdkHttpStatusError(error, 422)`, and read its sentence with upstream's `getApiErrorMessage`
+  (`src/utils/api-error-message.ts`). The session keeper reads a 503's `exception` through upstream's
+  `getApiErrorBody` (`app-backend-session-keeper.ts:70–88`). What this changes: "a 5xx's placeholder is never the
+  agent's sentence" rests on each site's 422 check, not on a helper; on the live set B21's 504 row pins it, on the
+  home screen `a1ec3d1`'s rows (as-built §6.3 P6b, P6; the home check was unpinned from `6fb7f05` until `a1ec3d1`).
+  *Why (recorded in `4ff261c`):* upstream's `api-error-message.ts` already reads an SDK `HttpError`'s parsed body.
+  *Pinned by:* B21's and B22's tests; `mount-app-backend-frame.test.ts › mountAppBackendFrame › reports %s once, with
+  a notice in the container, for %s` [not-ready; no-ingress for an ingress the agent-server lacks].
+- **B25. The controls event guard is the client's, and C2 no longer touches `type-guards.ts`** (§5.2, §5.7, §8 item
+  1, §9, A.8; as-built r2 D-16; `0e396b9`). Built: `useLatestAcpSessionControls` imports `isACPSessionControlsEvent`,
+  with `ACP_SESSION_CONTROLS_EVENT_KIND` and the event type, from the client (`use-latest-acp-session-controls.ts:2–6`).
+  It checks `event.kind === "ACPSessionControlsEvent"`, as C2's guard did. The call site keeps `"kind" in event`
+  (`:17`), because Canvas's event union holds a message event without `kind`. `src/types/agent-server/type-guards.ts`
+  is untouched, so C1 and C2 share 8 files, not 9 (§9). *Why (recorded in `0e396b9`):* "The dr-1 TypeScript client
+  exports isACPSessionControlsEvent, the same one-line check C2 declared in type-guards.ts"; `dr-2`'s does too (B28).
+  *Pinned by:* `use-latest-acp-session-controls.test.tsx`'s six cases.
+- **B26. Names no longer exported, or gone** (§5.2, §5.5, A.2, A.9, A.10, B8; as-built r2 D-17; `258944e`,
+  `01411cd`, `501f0c6`).
+
+  | v2 | Built |
+  |---|---|
+  | A.10 `export const ACP_CONFIG_OPTION_REJECTED_CODE` | gone; the header map's entry is the literal `ACPConfigOptionRejected` (`src/utils/acp-error-codes.ts:12`), C2's only line in that file |
+  | A.10 and §5.5 `export declare function toAgentSlashCommandItem` | module-private (`src/hooks/chat/use-slash-command.ts:29`) |
+  | A.9 `export interface LocalStartConversationRequest {payload, conversationId, resolvedWorkspaceMode}`; §5.2: the builder "returns the body, the new id and the resolved workspace mode" | module-private, `{payload, resolvedWorkspaceMode}` (`agent-server-conversation-service.api.ts:429–433`); the id travels in the body as `conversation_id` |
+  | A.2 `export const CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS`; B8: "documented … in upstream's spec" | module-private (`src/api/canvas-extensions-service.ts:23`); `specs/canvas-extensions.md:124` still names it as the source of `host.agentServer.request`'s 60 s (§11 item 10) |
+  | A.10 `useLatestAcpSessionControls(conversationId, enabled)`, no rule for disabled | `enabled` gates the event-store selector and the query (`:34–38`, `:57`) but not the return: while disabled it can return a search cached earlier under the same key. Its one caller returns `NO_AGENT_CONTROLS` first (`use-agent-controls.ts:130`) |
+  | A.10 `HomeAgentOptionsState {launchKey, values, setValue}` | adds `setValues(launchKey, values)` (`home-agent-options-store.ts:15, 36`), for B22 |
+
+  *Why (recorded):* `258944e`, "stop exporting what only its own module reads"; `01411cd`, "return only what the
+  start body's readers use"; `501f0c6`, "check enabled once in useLatestAcpSessionControls". *Pinned by:* typecheck
+  and both builds, in every level's CI.
+- **B27. The tests, after the fixes, the refactor and two re-pins** (the Gate B section's table, §4.9, §5.8, §6.4,
+  B17; as-built r2 D-18; `8708eae`, `9c49036`, `334bba8`, `e483dc3`, `f4c7ae5`, `667ec86`, `a1ec3d1`). At `ca1dd71`:
+  109 vitest definitions, 12 of them `it.each`, 140 cases, in 25 files that carry C2 lines and two shared helpers
+  (`__tests__/helpers/canvas-extension-panels.tsx` and the new `__tests__/helpers/query-wrapper.tsx`).
+  `acp-error-codes.test.ts` no longer carries a C2 line. The two Playwright specs are unchanged: 7 tests.
+  - Cut, nine cases: `getSdkHttpErrorDetail`'s five, with the helper (`4ff261c`); and in `9c49036`, four that another
+    test pins: `useLatestAcpSessionControls › issues no search and reads nothing while disabled`, `acp-error-codes ›
+    maps a refused start-time option value to its own header`, `CanvasExtensionsService › gives an App's agent-server
+    requests a minute…` and `mountAppBackendFrame › keeps one session for two frames of the App…`.
+  - Replaced by the fixes: `never shows a 5xx answer's placeholder detail…` by B21's table, and `keeps the last
+    accepted controls…` by B22's first test.
+  - Added: B21's, B22's and B23's tests; `667ec86` rewrites the frame's dispose test to mount two frames of the App,
+    so CX-005 is pinned through `mountAppBackendFrame` again (as-built §6.3 P5); `a1ec3d1` adds B22's 400 and 504 rows
+    after an answer, so only a 422 withdraws or speaks (P6).
+  - Rewritten without a cut: the tests throw the client's own `HttpError` (`8708eae`), so B21's assertions read the
+    client's real message format; one React Query wrapper (`334bba8`); each repeated panel test step written once
+    (`e483dc3`); the repeat-dropping slash test names which copy survives (`f4c7ae5`).
+  - Not pinned: that a disabled `useLatestAcpSessionControls` does not scan the event store (P2; §11 item 9).
+
+  The Gate B section's property table is current at `ca1dd71` in its v3 marks. *Why (recorded in each commit):* a
+  test cut repeated another's property; the two re-pins name the probe each answers. *Pinned by:* every level's CI.
+- **B28. The code on the SDK fork's `dr-2`, through `deep-reasoning` at `fc87687`** (the header, §8, §9, §10, B16,
+  B19; `fc87687` with `988dce8`, `383771c` and `9035f9e`; the merge `30068b8`). `wiring/dr-1` (`9881d24`: the `dr-1`
+  agent-server `cef3b24` and its client, on C3's launcher at `22272d9`) is replaced by the fork's `deep-reasoning` at
+  `fc87687`: C3's launcher stack as merged (#5–#11) and `wiring/dr-2` (#12). That wiring names the SDK fork at
+  `34c540c` (tag `dr-2`, S1 and S2 merged into the SDK fork's `deep-reasoning`) in `config/defaults.json`'s
+  `sources`, pins `@openhands/typescript-client` to the `dr-2` release tarball (version string 1.50.1), and carries
+  the client-pin guard (`988dce8`, the same change as `32bc76e`) and the `specs` input (`9035f9e`, as `9881d24`).
+  `30068b8` merges it into `feat/agent-surfaces`; its eleven conflicted files are C3's launcher scripts and their
+  tests, `config/defaults.json`, `package.json` and `package-lock.json`, none of which C2 changes, so each takes
+  `deep-reasoning`'s side. C2's diff is byte-identical against either base. What C2 imports from the client (§8 item
+  1, B25) the `dr-2` client exports, and every level type-checks. *Why (recorded in `30068b8`):* "Bring C2 onto
+  deep-reasoning at fc87687, which carries C3's launcher stack and the dr-2 wiring in place of wiring/dr-1."
+  *Evidence:* CI at `30068b8`, run 37215713339, green; the mock-LLM dispatch with C2's two specs at `30068b8`, run
+  37215721829, 7 of 7 in 1.9 min, its agent-server the one `config/defaults.json` names, `34c540c`. Nothing has run an
+  App backend frame against the `dr-2` agent-server's bridge (§6.4, §11 item 1).
+- **B29. The stack for Gate C** (§1.2, §3.1 item 13, §4.7, §4.9, §5.7, §5.8, §6.4, §9, B16; the PR Splitter, one
+  commit per level). Each level's CI is green on its own; translations ride with their level.
+
+  | Level | PR | Head | v2's | What it holds | Upstream spec text |
+  |---|---|---|---|---|---|
+  | 1 | #20 | `d5d77c9` | PR 1 | manifest types; the runtime's registration and panels; `localAgentServerHasCapability` with all three capabilities; the Apps card; `useCanvasExtensionMount`; the `demo-panel` fixture; the store's `ConversationAppPanelKey`; both test helpers | the panels contract, `CX-001`–`CX-004`, `CX-006` |
+  | 2 | #21 | `66b4d80` | PR 1 | the store's actions, the column, the panel with its tab row and ⋯ menu, tab state per conversation | — |
+  | 3 | #22 | `8eed8db` | PR 1 | the toggle and its icon (`fetchPanelIcon`), the narrow page and its route, the panels end-to-end spec | — |
+  | 4 | #23 | `5e875d2` | PR 2 | the conversation and event services (preview, set, `kind`, `acp_config_options`), the event type in Canvas's union, the refused-option header | all of `specs/acp-session-controls.md`, `ASC-001`–`ASC-005` |
+  | 5 | #24 | `95037b3` | PR 2 | the latest-controls query, the set mutation and its toast, the conversation hook, the slash menu, the pills, the composer's prop | — |
+  | 6 | #25 | `4d2deac` | PR 2 | the preview query, the home store, the home hook, the launcher, the mock agent's controls mode, the controls end-to-end spec | — |
+  | 7 | #26 | `ca1dd71` | PR 3 | the keeper, the frame, the host API, the service's session calls and its 60 s constant | the frames section, `CX-005`, the 60 s sentence |
+
+  - Each unit's spec text lands at its first level, ahead of the levels whose code makes it true (§3.1 item 13).
+  - The client pin is below the stack, in `fc87687`, so B16 is resolved.
+  - C1's overlap (`src/types/agent-server/core/events/index.ts` and `openhands-event.ts`) lands at #23 (§9).
+  - #23 needs nothing from #20–#22, and #26 needs only #20 (its host API, runtime and capability check).
+  - At #24, `use-agent-controls.ts` is the final file less its home half, with `HomeAgentControls` and
+    `NO_AGENT_CONTROLS.startValues` already present for #25.
+
+  *Why:* Gate C reads the code as a stack of semantic PRs, bottom-up (the Gate C ledger, "The stack, bottom-up").
+  Nothing in the code changed: `ca1dd71`'s tree equals `30068b8`'s.
+- **B30. Size** (the Gate B section's ruling 1, §3.1 item 2, B20; as-built r2 D-19). `git diff --numstat
+  fc87687..ca1dd71`: **6,974 added and 167 removed, in 88 files**, 6,313 of the added lines not blank.
+
+  | Part | v2, `64b5a8b` | `ca1dd71` |
+  |---|---|---|
+  | Code (`src/`, not tests, fixtures or translations) | 2,635 (141) | 2,626 (141), 49 files |
+  | Unit tests, helpers included | 3,284 (11) | 3,310 (11), 27 files |
+  | The two Playwright specs | 474 | 474 |
+  | The mock agent and the e2e mapping | 157 (12) | 157 (12) |
+  | Translations, the fixture, upstream's `specs/`, the skill guide | 405 (3) | 407 (3), 8 files |
+  | **Total** | **6,955 (167), 89 files** | **6,974 (167), 88 files** |
+
+  Since v2: the Gate B fixes added 161, the refactor removed 172, and the two test commits added 30. By level: #20
+  +1,027 −65, #21 +1,128 −28, #22 +935 −2, #23 +456 −43, #24 +1,237 −11, #25 +1,189 −16, #26 +1,003 −3. Their sum,
+  +6,975 −168, is one more on each side than the whole: one line a level adds and a later one changes. At ≈300 lines
+  an hour, Gate C reads the whole diff in about 23 h, and the code with its unit tests (5,936 lines) in about 20 h.
+
+**Where v1 and v2 described the build wrongly (v3)**
+
+- **B31. The preview's body is the start's less `initial_message`, `user_id` and `conversation_id`; without a
+  workspace, its `working_dir` differs too** (decision I, §5.2, A.9; as-built r2 §2.3, r1's D-3). v1 and v2: the
+  preview body is the start body less `initial_message` and `user_id`. Built: `buildLocalStartConversationRequest`
+  mints a fresh `conversation_id` per call (`agent-server-conversation-service.api.ts:479`). Without a workspace,
+  `resolveNewConversationWorkspace` derives `working_dir` from that id, under the backend's workspace root, so a
+  preview and the start it previews name two directories, each named for its own id; `hooks_project_dir` is the
+  workspace root for both. The agent-server's preview ignores `conversation_id` (§8 item 4). What it changes:
+  decision I's guarantee holds for every other field; an agent whose commands depend on its working directory could
+  answer a no-workspace preview and its start differently. dr-acp's commands come from the Library's namespace, not
+  its directory. *Why:* none recorded; this design's reading: a start needs an id and a directory of its own, and the
+  preview reuses the start's builder, which decision I chose over a second one. *Pinned by:* `› previews with the body
+  %s would start with, less its first message and user`, which deletes `conversation_id` from both bodies and names a
+  workspace in both launches; no test covers a no-workspace preview's `working_dir`.
+- **B32. Four smaller places v1 and v2 read wrongly** (§4.1, decision L, §5.6, A.2; as-built r2 §2.3).
+  - §4.1 says the route page's mount effect "moves unchanged" into `useCanvasExtensionMount`. Built, it remounts when
+    `mount` or the mount key changes (`use-canvas-extension-mount.ts:62`), not on a change of `page` or `navigate`,
+    as upstream's effect did; the rest of the context is read through a ref when it mounts.
+  - Decision L's rule holds across the whole menu (`use-slash-command.ts:47–55, 110, 126`): two skills with the same
+    slash trigger, both listed before C2, now list once.
+  - §5.6 calls a fixed pill "a select with one value". Built, the test is `options.length < 2`
+    (`chat-input-agent-options.tsx:111`), so a select with none is fixed too.
+  - A.2's `createAppBackendSession(…, signal?)` is never passed a signal; the keeper races the mint against the abort
+    instead (`app-backend-session-keeper.ts:197`).
+
+  *Why:* none recorded; this design's reading: each is the simpler code, and none changes what a user or an App sees
+  in the cases v1 named. *Pinned by:* no test of its own, for any of the four.
 
 ---
 
@@ -664,7 +955,8 @@ changed re-activates the App.
 (`canvas-extension-page.tsx:47–51`). The page route's mount effect (`:34–75`) moves unchanged into a hook,
 `useCanvasExtensionMount` (`src/components/features/canvas-extensions/use-canvas-extension-mount.ts`), which the
 route page and the panel tab body both call; the route page's behaviour does not change (its tests stay as they are
-and pass).
+and pass). *(v3, §3.2 B32: not quite unchanged. It remounts when `mount` or the mount key changes, not on a change of
+`page` or `navigate`; upstream's tests pass.)*
 
 ### 4.2 State: one column, at most one panel
 
@@ -833,7 +1125,10 @@ helper, §5.1, shared with PR 2), `hooks/query/query-keys.ts`, `stores/conversat
 `specs/canvas-extensions.md`, `tests/e2e/mock-llm/test-mapping.json`, `.agents/skills/e2e-testing/references/guide.md`.
 *(v2, as built: also new, `conversation-app-panel/conversation-app-panel-unavailable.tsx` (B7) and
 `demo-panel/icon.svg` (B6); also changed, `utils/convert-image-to-base-64.ts` (it takes a `Blob`, B8); not changed,
-`mocks/canvas-extensions-handlers.ts` (B6). Tests: §4.9.)*
+`mocks/canvas-extensions-handlers.ts` (B6). Tests: §4.9.)* *(v3, §3.2 B29: these land at #20–#22, but for two
+pieces: `api/agent-server-compatibility.ts` lands at #20 with all three capabilities, and `canvas-extensions-service.ts`'s
+60 s constant with PR 3's level, #26. Also new, at #20: the shared test helper `__tests__/helpers/query-wrapper.tsx`,
+B27.)*
 
 ### 4.8 The demo-panel fixture
 
@@ -879,7 +1174,8 @@ sibling `conversation-app-panel-mobile-page.test.tsx`, and these are added: `can
 card's panels pill and notice), `__tests__/api/agent-server-compatibility-bundled-pin.test.ts` (the capability
 helper), `src/api/canvas-extensions-service.test.ts` (the icon fetch and the 60 s timeout) and the helper
 `__tests__/helpers/canvas-extension-panels.tsx`. The tests, by name and property, are in the Gate B section's PR 1
-table.)*
+table.)* *(v3, §3.2 B27, B29: the 60 s test is cut, its minute pinned by upstream's bundle test; `CX-001`–`CX-004`
+and `CX-006` land at #20, ahead of #21 and #22, whose code makes `CX-001`–`CX-003` and `CX-006` true.)*
 
 | File | Each test pins |
 |---|---|
@@ -895,7 +1191,7 @@ table.)*
 | `tests/e2e/mock-llm/canvas-extensions/mock-llm-canvas-extension-panels.spec.ts` (new) | against the real stack with our agent-server: install `demo-panel` by absolute path, enable it, create a conversation; the App's button is the last of the top-right group; it opens the panel showing `conversation=<id>`; Show panel closes it and opening it closes the drawer and the overview; ⋯ unpins Details, which survives a reload; switching conversation with the panel open shows the other id; at 800 px wide the button opens the panel page; disabling the App removes the button and closes the panel |
 
 `npm run test:mutation:diff` (Stryker on the diff, the spec's layer 3) runs on the PR; survivors are listed in the
-as-built. *(v2, §3.2 B18: not run.)*
+as-built. *(v2, §3.2 B18: not run.)* *(v3: still not run.)*
 
 ---
 
@@ -907,7 +1203,9 @@ as-built. *(v2, §3.2 B18: not run.)*
 active backend whose cached `/server_info` lists the string) and `getSdkHttpErrorDetail(error)` (the `detail` string
 of an SDK `HttpError`'s parsed body, else `null`). *(v2, §3.2 B2: `getSdkHttpErrorDetail` is `null` for any status of
 500 or above, whose `detail` is always "Internal Server Error"; a third helper, `getSdkHttpServerErrorReason(error)`,
-returns a 5xx's `exception`, where the agent-server puts the reason.)* Agent controls exist when the backend is
+returns a 5xx's `exception`, where the agent-server puts the reason.)* *(v3, §3.2 B24: neither helper exists. The file
+gains `AgentServerCapability` and `localAgentServerHasCapability` only; a refusal is upstream's
+`isSdkHttpStatusError(error, 422)`, its sentence upstream's `getApiErrorMessage`.)* Agent controls exist when the backend is
 local, the agent-server has `acp_session_controls_v1`, and the context is ACP: on the home screen `useAcpModelContext().isHomeAcp`
 (`use-acp-model-context.ts:43–48`), in a conversation `conversation.agent_kind === "acp"`. Otherwise every surface
 receives `NO_AGENT_CONTROLS` and renders exactly as today.
@@ -919,7 +1217,8 @@ receives `NO_AGENT_CONTROLS` and renders exactly as today.
   `ACPSessionControlsEvent` from `@openhands/typescript-client` (the pattern of
   `conversation-state-event.ts:3–5`), joins Canvas's `OpenHandsEvent` union (`openhands-event.ts`), and
   `type-guards.ts` gains `isACPSessionControlsEvent`. `shouldRenderEvent` already returns `false` for it (no branch
-  matches), so it never renders; transcript export skips it the same way (a test pins both).
+  matches), so it never renders; transcript export skips it the same way (a test pins both). *(v3, §3.2 B25:
+  `type-guards.ts` is untouched; the guard is the client's.)*
 - **`EventService.searchEvents`** (`event-service.api.ts:75–153`) gains `kind` in `EventSearchOptions`, passed to
   `RemoteEventsList.search` (which already accepts it) and, on Cloud, as a query parameter.
 - **`AgentServerConversationService`** (`agent-server-conversation-service.api.ts`):
@@ -928,7 +1227,8 @@ receives `NO_AGENT_CONTROLS` and renders exactly as today.
     `buildLocalStartConversationRequest(options)`, which returns the body, the new id and the resolved workspace
     mode. `createConversation` calls it, adds `acp_config_options` when the new `acpConfigOptions` option is
     non-empty (an empty map adds nothing, so the default body stays byte-identical, which upstream's payload
-    snapshots assert), then `user_id` as today.
+    snapshots assert), then `user_id` as today. *(v3, §3.2 B26: the builder is module-private and returns
+    `{payload, resolvedWorkspaceMode}`; the id is the body's `conversation_id`.)*
   - `previewAcpSession(options)` calls the same builder (no `query`), adds `acp_config_options`, and posts the body
     to `ConversationClient.previewAcpSession` with `ACP_PREVIEW_TIMEOUT_MS` (120 000: the agent-server's 90 s start-up
     bound plus its 2 s commands wait, with margin). Local only; Cloud throws.
@@ -939,6 +1239,8 @@ receives `NO_AGENT_CONTROLS` and renders exactly as today.
   fallbacks to `agent_settings` there are scoped to OpenHands profiles. The preview uses exactly that reduction
   (`resolveAcpLaunchProfile`, Appendix A.9), and a unit test asserts that the preview body equals the start body
   (less `initial_message` and `user_id`) for the same inputs, for a profile launch and an `agent_settings` launch.
+  *(v3, §3.2 B31: and less `conversation_id`, minted per call; without a workspace the `working_dir` derived from
+  it differs too. The test names a workspace in both launches.)*
 - **The error code.** `acp-error-codes.ts` maps `ACPConfigOptionRejected` (S2's code when a start-time value is
   refused) to `ERROR$ACP_CONFIG_OPTION_REJECTED_TITLE`; the banner's detail is the agent's sentence.
 
@@ -965,7 +1267,10 @@ receives `NO_AGENT_CONTROLS` and renders exactly as today.
   shows the agent's own sentence. *(v2, §3.2 B3: with B2, any other failure toasts the client's raw error text, for a
   5xx `HTTP request failed (504 Gateway Timeout): {"detail": …, "exception": …}`; what it should say is Michael's
   ruling 3.)* `applied: false` cannot arise from this UI (no picker exists before the session's
-  first controls event).
+  first controls event). *(v3, §3.2 B21: ruled (b). The toast is the mutation's own `onError`, so it survives the
+  composer unmounting: a 422 shows upstream's `getApiErrorMessage`, anything else upstream's
+  `retrieveAxiosErrorMessage`, as the model picker's failures do. §3.2 B26: the latest-controls hook's `enabled`
+  gates its scan and its search, not its return; its one caller returns no controls first.)*
 
 ### 5.4 On the home screen
 
@@ -983,13 +1288,19 @@ workspace (`undefined` when none or when the backend isolates the workspace, as 
   `refetchOnMount: true`, `refetchOnWindowFocus: false` (each preview starts the agent once, S2 §4.6), `retry: false`,
   `placeholderData: keepPreviousData`, `meta: {disableToast: true}`. Every input is a discrete user action (a click, a
   workspace choice), so the key itself is the debounce S2 asks for; no timer is needed. A return to the home screen
-  refetches, so a decomposition saved in D3 shows in the next home menu.
+  refetches, so a decomposition saved in D3 shows in the next home menu. *(v3, §3.2 B23: `staleTime` is `Infinity`
+  for data fetched since the hook mounted and `0` for older data, so inputs answered during the visit are not asked
+  again; a return to the home screen still asks again.)*
 - **Shown:** commands and options from the newest successful preview; a pill whose value the user just changed
   shows that value with a spinner until its preview settles.
 - **Errors:** a 422 keeps the last successful preview's controls, shows the agent's sentence
   (`getSdkHttpErrorDetail`) under the picker row (`data-testid="agent-option-rejection"`), and the refused value is
   not sent. 400, 429, 502 and 504 show no agent commands and no picker; the user can still start (S2 §7 item 2).
-  *(v2, §3.2 B5: so does 501, and any failure but a 422.)*
+  *(v2, §3.2 B5: so does 501, and any failure but a 422.)* *(v3, §3.2 B22, B24: a 422 now withdraws the pick: the
+  stored picks return to the values of the preview the agent last answered for this launch key (none before any
+  answer), which is cached, so nothing is asked; the sentence, read with upstream's `getApiErrorMessage`, shows under
+  the pills until the next pick; picking the refused value again asks the agent again. Any other failure withdraws
+  nothing: the pick stays and the next preview carries it.)*
 - **Start values** (`startValues`) = the values of the last successful preview, restricted to option ids it reported
   and, for a select, to values it listed (`ASC-002`). `HomeChatLauncher.handleSubmit` passes them as
   `acpConfigOptions` to `useCreateConversation`, whose new variable reaches `createConversation` (§5.2). Values stay
@@ -1012,7 +1323,8 @@ workspace (`undefined` when none or when the backend isolates the workspace, as 
   present (`data-testid="slash-command-hint"`; the guillemets are a display glyph under the guide's single-line
   `eslint-disable` exception, or a CSS pseudo-element). *(v2: the guillemets are literal text in the JSX; upstream's
   lint passes with no disable comment and no warning on that line. Each row also carries
-  `data-testid="slash-command-item"` and `data-command`, ASC-005, §3.2 B15.)*
+  `data-testid="slash-command-item"` and `data-command`, ASC-005, §3.2 B15.)* *(v3: `toAgentSlashCommandItem` is
+  module-private, §3.2 B26; the repeat rule covers the whole menu, skills among themselves included, B32.)*
 - Selecting an item still inserts `"/<name> "` (`:213–266`); the message is sent as usual, and S2 passes its text
   through unchanged.
 - The list is replaced whenever `agentCommands` changes, never merged, so an agent that clears its commands (dr-acp
@@ -1037,6 +1349,9 @@ which is its last line; it keeps only `select` options; choosing the current val
   a caret, not focusable as a button, with the option's `description` (else `CHAT_INTERFACE$AGENT_OPTION_FIXED`)
   as its tooltip.
 - The picker is disabled while the composer is disabled (conversation being created, no LLM configured).
+- *(v3, §3.2 B32, B22.)* Fixed means fewer than two values, so a select with none is fixed too. `controls.setOption`
+  sets the value live in a conversation; on the home screen it stores the pick, which changes the preview's key, and
+  clears the agent's last sentence.
 
 ### 5.7 Files
 
@@ -1054,6 +1369,8 @@ chat-input-container.tsx}`, `components/features/chat/{custom-chat-input.tsx, in
 `i18n/translation.json`, `tests/e2e/mock-llm/scripts/mock-acp-server.py`, `tests/e2e/mock-llm/test-mapping.json`,
 `.agents/skills/e2e-testing/references/guide.md`. And `package.json`/`package-lock.json` only through the wiring
 commit (§9). *(v2: as built; the wiring arrived by the merge `c08ded0`, after PR 2's commits, §3.2 B16. Tests: §5.8.)*
+*(v3: `type-guards.ts` is not changed, §3.2 B25; `acp-error-codes.ts` gains one line, B26. The files land at
+#23–#25, §3.2 B29; the client pin is below the stack, in `fc87687`, B28.)*
 
 ### 5.8 Tests for PR 2
 
@@ -1061,7 +1378,9 @@ commit (§9). *(v2: as built; the wiring arrived by the merge `c08ded0`, after P
 
 - **ASC-001:** The slash menu lists exactly the commands of the agent's newest report; a new report replaces the
   last.
-- **ASC-002:** The option values a conversation starts with are values the home screen's preview accepted.
+- **ASC-002:** The option values a conversation starts with are values the home screen's preview accepted. *(v3,
+  §3.2 B22: it also says that a refused pick is withdrawn, and that picking the refused value again asks the agent
+  again.)*
 - **ASC-003:** The option picker never offers the model option; the model picker owns it.
 - **ASC-004:** Agent commands and options appear only where the local agent-server advertises
   `acp_session_controls_v1`; elsewhere the composer is unchanged.
@@ -1073,7 +1392,9 @@ commit (§9). *(v2: as built; the wiring arrived by the merge `c08ded0`, after P
 `src/api/event-service/event-service.api.test.ts`; added is `__tests__/hooks/chat/use-agent-controls.test.tsx` (a
 conversation's controls: the newest report, the empty first report, a live set, a refusal, a 5xx, the gate), and
 `__tests__/api/agent-server-compatibility-bundled-pin.test.ts` gains the `detail` helper's tests. The tests, by name
-and property, are in the Gate B section's PR 2 table.)*
+and property, are in the Gate B section's PR 2 table.)* *(v3, §3.2 B27, B29: the `detail` helper's tests are gone with
+it, B24; `__tests__/utils/acp-error-codes.test.ts` carries no C2 test; B21's, B22's and B23's tests are added. The
+whole of `specs/acp-session-controls.md` lands at #23, ahead of #24 and #25.)*
 
 | File | Each test pins |
 |---|---|
@@ -1088,7 +1409,7 @@ and property, are in the Gate B section's PR 2 table.)*
 | `__tests__/components/features/chat/error-message-banner…` (additions where the banner is tested) | `ACPConfigOptionRejected` shows its header and the agent's sentence |
 | `tests/e2e/mock-llm/conversations/mock-llm-acp-session-controls.spec.ts` (new) | with the mock ACP agent in controls mode (Appendix C) as the active agent: the home row shows `Profile: fast` and `/` lists `/summarize`; choosing `thorough` lists `/summarize` and `/compare ‹what to compare›`; sending `/compare a b` opens the conversation whose reply contains `profile=thorough` (the value reached the agent before its first prompt); there the pill is fixed at `thorough` and `/` lists no agent command; after a reload the same (the REST path) |
 
-`npm run test:mutation:diff` runs on this PR too. *(v2, §3.2 B18: not run.)*
+`npm run test:mutation:diff` runs on this PR too. *(v2, §3.2 B18: not run.)* *(v3: still not run.)*
 
 ---
 
@@ -1140,7 +1461,8 @@ has neither the key nor the origin. PR 3 is the host half of that model, generic
    `unsupported-backend` for a backend that is not local, shown with the no-ingress sentence; `not-ready` for a 503
    whose reason, under the body's `exception` (its `detail` is always "Internal Server Error"), says the backend is
    not ready; `no-ingress` also for a 503 whose reason names the ingress; `session-refused` for every other failure.
-   The notice is a `<p role="status">` put before anything else in the container.
+   The notice is a `<p role="status">` put before anything else in the container. *(v3, §3.2 B24: the 503's
+   `exception` is read through upstream's `getApiErrorBody`, in the keeper's `toAppBackendError`.)*
 5. Returns a synchronous disposer: aborts a pending acquisition, removes the frame or notice, releases the lease.
 
 ### 6.3 The session keeper
@@ -1176,7 +1498,9 @@ D5's to run (§10).
 *(v2, §3.2 B17: as built, both new files fake the client's `CanvasExtensionsClient` class, not its HTTP; the keeper's
 tests also pin the refresh floor, that two Apps keep two sessions, and an acquisition abandoned before the session
 exists; the frame's, five failure cases (§6.2 step 4), the frame kept through refreshes, and one session for two
-frames. The tests, by name, are in the Gate B section's PR 3 table.)*
+frames. The tests, by name, are in the Gate B section's PR 3 table.)* *(v3, §3.2 B27, B29: `9c49036` cut the
+two-frame test and `667ec86` put the property back in the dispose test, which mounts two frames of the App. All of
+PR 3, with the frames section of `specs/canvas-extensions.md` and `CX-005`, is #26.)*
 
 ---
 
@@ -1279,7 +1603,8 @@ C2 builds on S2's §7 as written, with these points:
    `ConversationErrorEvent`), or Canvas would have to import from internal paths the package's `exports` map does not
    expose. *(v2: done in S2. The `dr-1` client exports them from its root, with `ACP_SESSION_CONTROLS_EVENT_KIND`, and
    C2 imports them from there, but for `isACPSessionControlsEvent`, which Canvas declares in its own
-   `type-guards.ts`, as A.8 says.)*
+   `type-guards.ts`, as A.8 says.)* *(v3, §3.2 B25, B28: `isACPSessionControlsEvent` too is imported from the
+   client, and the client is now the `dr-2` release tarball, S1 and S2 merged, which exports all of them.)*
 2. **No change, a usage note:** C2 does not call `getAcpSessionControls`; it searches the newest event itself through
    Canvas's `EventService`, because it must compare that event's timestamp with live events (decision H). The client
    method can stay for other consumers. *(v2: the search uses the client's `ACP_SESSION_CONTROLS_EVENT_KIND`, §3.2
@@ -1289,7 +1614,11 @@ C2 builds on S2's §7 as written, with these points:
    picker (§3.1 item 11).
 4. **Relied on, already in S2:** the preview ignores start-request fields that do not reach `session/new`
    (`conversation_id`, `worktree`, `initial_message`); the set route's 422 `detail` is the agent's sentence; the icon
-   route needs the session key; `conversation_panels` is omitted when empty.
+   route needs the session key; `conversation_panels` is omitted when empty. *(v3, §3.2 B28: C2 now runs on the SDK
+   fork's `dr-2` (`34c540c`) rather than `dr-1` (`cef3b24`); its two end-to-end specs passed against it, which crosses
+   the capabilities, the panels and their icon route, the preview and a start with a value, but not the set route,
+   the qualified-kind search on its own (test 7's preloaded history already holds the controls events, as-built
+   §6.4) or the App-backend bridge.)*
 
 ---
 
@@ -1297,11 +1626,11 @@ C2 builds on S2's §7 as written, with these points:
 
 | Place | Who else | Rule |
 |---|---|---|
-| `types/agent-server/core/{openhands-event.ts, events/index.ts}`, `type-guards.ts` | C1 adds S1's two event kinds | adjacent union members, exports and guards; whoever lands second merges by hand |
+| `types/agent-server/core/{openhands-event.ts, events/index.ts}`, `type-guards.ts` | C1 adds S1's two event kinds | adjacent union members, exports and guards; whoever lands second merges by hand. *(v3, §3.2 B25, B29: C2 no longer touches `type-guards.ts`. C1's head, `090a9d0`, is on `fc87687` too; it shares 8 files with C2, and an in-memory merge with `30068b8` conflicts in one hunk only, both branches' new export line at the top of `src/types/agent-server/core/events/index.ts`. In C2's stack that file is #23's.)* |
 | `tests/e2e/mock-llm/scripts/mock-acp-server.py` | C1 adds sub-agent behaviour (the spec's one generic fixture, mirrored in Canvas) | one script; each feature behind its own flag (Appendix C); defaults unchanged so upstream's ACP specs are unaffected |
 | `tests/e2e/mock-llm/test-mapping.json`, `.agents/skills/e2e-testing/references/guide.md` | C1 | adjacent entries |
 | `i18n/translation.json` | C1, C3 | adjacent keys |
-| `package.json` / `package-lock.json` (`@openhands/typescript-client`) | the wiring commit (Q2 (a)) | PR 2 needs a client built from an SDK fork tag that carries S2 PR 1; PR 1 and PR 3 need no new client API (PR 1 uses `AgentServerClient.get`, PR 3 the existing `CanvasExtensionsClient`). For each PR's upstream-shaped draft branch on our fork's `main`, PR 2's first commit is the client bump (upstream's rule: release the client, then bump the pin). *(v2, §3.2 B16: on `feat/agent-surfaces` the pin, to the `dr-1` release tarball, arrived with the merge `c08ded0`, after PR 2's commits, which need it; the split must put it first.)* |
+| `package.json` / `package-lock.json` (`@openhands/typescript-client`) | the wiring commit (Q2 (a)) | PR 2 needs a client built from an SDK fork tag that carries S2 PR 1; PR 1 and PR 3 need no new client API (PR 1 uses `AgentServerClient.get`, PR 3 the existing `CanvasExtensionsClient`). For each PR's upstream-shaped draft branch on our fork's `main`, PR 2's first commit is the client bump (upstream's rule: release the client, then bump the pin). *(v2, §3.2 B16: on `feat/agent-surfaces` the pin, to the `dr-1` release tarball, arrived with the merge `c08ded0`, after PR 2's commits, which need it; the split must put it first.)* *(v3, §3.2 B28, B29: the pin is now to the `dr-2` tarball, in `deep-reasoning` at `fc87687`, below the stack's first level.)* |
 | `conversation-main.tsx`, `conversation-store.ts` | upstream (the spec's merge-conflict note) | small, local hunks |
 | `chat-input-container.tsx`, `home-chat-launcher.tsx`, `custom-chat-input.tsx` | upstream `a8c8fb3` (voice dictation) touches `chat-input-container.tsx` and `chat-input-actions.tsx` | C2 adds one render line and one prop in the container and leaves the actions row alone (decision K), so the next upstream merge conflicts in at most one hunk |
 | `scripts/`, `electron/`, `config/defaults.json` | C3 | C2 touches none of them *(v2: as built; they reach the branch only through the wiring merges)* |
@@ -1309,7 +1638,9 @@ C2 builds on S2's §7 as written, with these points:
 **Order.** PR 1 can be built and unit-tested now; its end-to-end spec needs an agent-server with S2 PR 2 (through
 the wiring commit's tag). PR 2 needs S2 PR 1 and its client. PR 3 needs nothing new from S2, but is useful only once
 a launcher configures the ingress (§11 item 1). *(v2: all three are built on `feat/agent-surfaces`, on top of
-`wiring/dr-1`, which carries the `dr-1` agent-server and client and C3's launcher with its default ingress.)*
+`wiring/dr-1`, which carries the `dr-1` agent-server and client and C3's launcher with its default ingress.)* *(v3,
+§3.2 B28, B29: now on `deep-reasoning` at `fc87687`, which carries the `dr-2` agent-server and client and C3's merged
+launcher, and split as #20–#26.)*
 
 ---
 
@@ -1353,6 +1684,12 @@ and Chromium; what is scripted: the model (openhands-sdk's `TestLLM` behind the 
 is Michael's ruling 2 at Gate B (§3.1 item 14). The real-model end to end with dr-acp: S2's live tier through the
 agent-server (deep-reasoning run 37147707860), D5's E12 through Canvas.
 
+*(v3, §3.2 B28.)* The same dispatch at `30068b8`, the tree of the stack's top, with the agent-server the `dr-2`
+wiring names (`34c540c`): [run 37215721829](https://github.com/michaeltheologitis/OpenHands/actions/runs/37215721829),
+7 of 7 in 1.9 min, the same seven tests unchanged. CI at `30068b8` is green (run 37215713339), and so is each level's
+`pull_request` run, #20 to #26. No end-to-end test reaches a refusal, a live set or its toast (B21, B22), or an App
+backend frame.
+
 ---
 
 ## 11 · Open items for the Conductor
@@ -1379,10 +1716,23 @@ agent-server (deep-reasoning run 37147707860), D5's E12 through Canvas.
    unmounted (the drawer is hidden with the `hidden` attribute), so nothing exercises the real terminal's session
    behind an App panel, §3.2 B17.)*
 6. *(v2)* **Rule for Michael at Gate B:** size (§3.2 B20), the live tier (§3.1 item 14) and what a failed live
-   option set says (§3.2 B3).
+   option set says (§3.2 B3). *(v3: the third ruled (b), §3.2 B21; Gate B passed, and no decision on the first two
+   is recorded, the Gate B section's v3 preface.)*
 7. *(v2)* **Mutation testing on the diff** (§3.2 B18): have it run on `9881d24..64b5a8b`, so the as-built can list
-   the survivors, or waive it.
-8. *(v2)* **The PR split** puts the client pin before PR 2's commits (§3.2 B16).
+   the survivors, or waive it. *(v3: still open; the range is now `fc87687..ca1dd71`.)*
+8. *(v2)* **The PR split** puts the client pin before PR 2's commits (§3.2 B16). *(v3: done; the pin is below the
+   stack, §3.2 B29.)*
+9. *(v3)* **One property is unpinned at Gate C:** that a disabled `useLatestAcpSessionControls` does not scan the
+   event store (§3.2 B27; as-built §6.3 P2). A test of the hook alone, disabled, with controls events in the store,
+   would pin it; its cost when broken is a scan of the whole event store on every store update in a conversation
+   without agent controls. For the Conductor to have it added in Gate C's round, or to accept it as is.
+10. *(v3)* **Upstream's spec names a module-private constant.** `specs/canvas-extensions.md:124` (#26) gives
+    `CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS` as the source of `host.agentServer.request`'s 60 s, but the
+    name is not exported since `258944e` (§3.2 B26). Either the sentence keeps only the 60 s, or the constant is
+    exported again; a Gate C reviewer of #26 may ask.
+11. *(v3)* **No-workspace previews** (§3.2 B31): the preview and its start name different working directories. No
+    agent C2 serves depends on it; if one does, the builder could take the id from its caller so a preview and the
+    start after it share one. Not proposed for v1.
 
 ---
 
@@ -1394,7 +1744,9 @@ fork's root. Imports are shown where a name comes from outside the file; the for
 `WorkspaceMode`, `AgentKind`, `InstalledCanvasExtensionInfo`, …) are imported from where they live today.
 
 *(v2: checked against the code at `64b5a8b`. A line the build changed or added carries a `// v2:` comment naming its
-item in §3.2; everything else is as built.)*
+item in §3.2; everything else is as built.)* *(v3: checked again at `ca1dd71`. A line changed since carries a `// v3:`
+comment naming its item; a declaration that is gone or no longer exported stays as a comment beneath its `// v3:`
+line, so every block still parses as TypeScript.)*
 
 ### A.1 `src/types/canvas-extension.ts` (additions and changes; PR 1, PR 3)
 
@@ -1602,7 +1954,8 @@ import type { CanvasExtensionsClient } from "@openhands/typescript-client/client
 
 /** How long a request to an App's owning agent-server may take, `host.agentServer.request` included. */
 // v2: B8, upstream's 60 s, named
-export const CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS = 60_000;
+// v3: B26, module-private (no `export`); it lands with #26, B29
+const CANVAS_EXTENSION_AGENT_SERVER_REQUEST_TIMEOUT_MS = 60_000;
 
 // v2: B14, the client's own answer type
 export type AppBackendSession = Awaited<
@@ -1620,6 +1973,7 @@ declare class CanvasExtensionsService {
   ): Promise<Blob>;
 
   /** PR 3: POST {ingress}/app-backends/{name}/session, credentials included. */
+  // v3: B32, no caller passes `signal`; the keeper races the mint against its abort instead
   static createAppBackendSession(
     name: string,
     backend: Backend,
@@ -1894,22 +2248,27 @@ export declare function localAgentServerHasCapability(
   capability: AgentServerCapability,
 ): boolean;
 
-/**
- * The agent-server's `detail` sentence from an SDK HttpError (for example an
- * ACP agent's own reason for refusing a config option value), or null. A 5xx
- * answer has none: its `detail` is always "Internal Server Error".
- */
-// v2: B2, null for any status of 500 or above
-export declare function getSdkHttpErrorDetail(error: unknown): string | null;
-
-/**
- * Why the agent-server answered a 5xx, which its error handler moves under
- * `exception` (for example "503: Canvas App backend is not ready"), or null.
- */
-// v2: B2, new
-export declare function getSdkHttpServerErrorReason(
-  error: unknown,
-): string | null;
+// v3: B24, both helpers below are gone. A refusal is upstream's
+// isSdkHttpStatusError(error, 422) (this file), its sentence upstream's
+// getApiErrorMessage, and a 503's reason upstream's getApiErrorBody(error).exception
+// (both src/utils/api-error-message.ts).
+//
+// /**
+//  * The agent-server's `detail` sentence from an SDK HttpError (for example an
+//  * ACP agent's own reason for refusing a config option value), or null. A 5xx
+//  * answer has none: its `detail` is always "Internal Server Error".
+//  */
+// // v2: B2, null for any status of 500 or above
+// export declare function getSdkHttpErrorDetail(error: unknown): string | null;
+//
+// /**
+//  * Why the agent-server answered a 5xx, which its error handler moves under
+//  * `exception` (for example "503: Canvas App backend is not ready"), or null.
+//  */
+// // v2: B2, new
+// export declare function getSdkHttpServerErrorReason(
+//   error: unknown,
+// ): string | null;
 ```
 
 ### A.8 Events and the event service (PR 2)
@@ -1920,11 +2279,14 @@ import type { ACPSessionControlsEvent } from "@openhands/typescript-client";
 
 export type { ACPSessionControlsEvent };
 
+// v3: B25, type-guards.ts is untouched; useLatestAcpSessionControls imports
+// isACPSessionControlsEvent from "@openhands/typescript-client" and keeps
+// `"kind" in event` at its call site.
 // src/types/agent-server/type-guards.ts (addition)
-export const isACPSessionControlsEvent = (
-  event: OpenHandsEvent,
-): event is ACPSessionControlsEvent =>
-  "kind" in event && event.kind === "ACPSessionControlsEvent";
+// export const isACPSessionControlsEvent = (
+//   event: OpenHandsEvent,
+// ): event is ACPSessionControlsEvent =>
+//   "kind" in event && event.kind === "ACPSessionControlsEvent";
 
 // src/api/event-service/event-service.types.ts (addition)
 export interface EventSearchOptions {
@@ -1953,14 +2315,17 @@ export interface CreateConversationOptions {
   acpConfigOptions?: ACPConfigOptionValues;
 }
 
-export interface LocalStartConversationRequest {
+// v3: B26, module-private (no `export`), and without `conversationId`: the id
+// is the payload's conversation_id
+interface LocalStartConversationRequest {
   /** The body POST /api/conversations takes, without user_id and acp_config_options. */
   payload: Record<string, unknown>;
-  conversationId: string;
   resolvedWorkspaceMode: WorkspaceMode;
 }
 
 /** The local half of createConversation, unchanged, shared with the preview. */
+// v3: B31, mints a fresh conversation_id per call; without a workspace the
+// working_dir is derived from it, so a preview's differs from its start's
 declare function buildLocalStartConversationRequest(
   options: CreateConversationOptions,
 ): Promise<LocalStartConversationRequest>;
@@ -2068,6 +2433,8 @@ export interface AcpSessionPreview {
   values: ACPConfigOptionValues;
 }
 
+// v3: B23, staleTime is Infinity for data fetched since the hook mounted and 0
+// for older data; refetchOnMount, no refetch on focus, no retry, as v2
 export declare function useAcpSessionPreview(
   launch: AcpLaunchProfile | null,
   context: HomeLaunchContext,
@@ -2075,6 +2442,8 @@ export declare function useAcpSessionPreview(
 ): UseQueryResult<AcpSessionPreview, Error>;
 
 // src/hooks/query/use-latest-acp-session-controls.ts
+// v3: B26, `enabled` gates the event-store scan and the search, not the return:
+// while disabled it may return a search cached earlier under the same key
 export declare function useLatestAcpSessionControls(
   conversationId: string | null,
   enabled: boolean,
@@ -2087,6 +2456,8 @@ export interface SetAcpConfigOptionVariables {
   value: string | boolean;
 }
 
+// v3: B21, the mutation owns its toast (its own onError, meta.disableToast):
+// a 422 → getApiErrorMessage, anything else → retrieveAxiosErrorMessage
 export declare function useSetAcpConfigOption(): UseMutationResult<
   ACPConfigOptionSetResponse,
   Error,
@@ -2104,6 +2475,9 @@ export interface HomeAgentOptionsState {
     configId: string,
     value: string | boolean,
   ) => void;
+  /** Replaces the values picked for a launch agent. */
+  // v3: B22, new, for withdrawing a refused pick
+  setValues: (launchKey: string, values: ACPConfigOptionValues) => void;
 }
 
 export declare const useHomeAgentOptionsStore: UseBoundStore<StoreApi<HomeAgentOptionsState>>;
@@ -2122,7 +2496,8 @@ export interface UseSlashCommandOptions {
   agentCommands?: ACPAvailableCommand[];
 }
 
-export declare function toAgentSlashCommandItem(
+// v3: B26, module-private (no `export`)
+declare function toAgentSlashCommandItem(
   command: ACPAvailableCommand,
 ): SlashCommandItem;
 
@@ -2153,7 +2528,9 @@ export declare function ChatInputAgentOptions(
 //   agentControls?: AgentControls;
 
 // src/utils/acp-error-codes.ts (addition)
-export const ACP_CONFIG_OPTION_REJECTED_CODE = "ACPConfigOptionRejected";
+// v3: B26, gone; the header map's entry is the literal
+// `ACPConfigOptionRejected: I18nKey.ERROR$ACP_CONFIG_OPTION_REJECTED_TITLE`
+// export const ACP_CONFIG_OPTION_REJECTED_CODE = "ACPConfigOptionRejected";
 ```
 
 ### A.11 App backend frames (PR 3)
@@ -2199,6 +2576,7 @@ export declare function appBackendError(
  * no-ingress, anything else → session-refused.
  */
 // v2: B2, B13
+// v3: B24, the 503's `exception` read through upstream's getApiErrorBody
 export declare function toAppBackendError(
   error: unknown,
   extensionName: string,
