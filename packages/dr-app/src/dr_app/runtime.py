@@ -224,7 +224,17 @@ def install_runtime(
     steps = [
         (
             "uv venv",
-            [uv, "venv", "--managed-python", "--python", PYTHON_VERSION, str(building)],
+            # Relocatable: the venv is built under a temporary name, then renamed, and
+            # its commands must find their python where they end up.
+            [
+                uv,
+                "venv",
+                "--relocatable",
+                "--managed-python",
+                "--python",
+                PYTHON_VERSION,
+                str(building),
+            ],
         ),
         (
             "uv pip sync",

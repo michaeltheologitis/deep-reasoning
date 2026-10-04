@@ -39,6 +39,7 @@ def test_a_first_launch_checks_then_installs_from_the_lock(layout, stubs, capsys
     assert stubs.argvs("git") == [["--version"], ["ls-remote", DR_URL, "HEAD"]]
     assert stubs.argvs("uv")[0] == [
         "venv",
+        "--relocatable",
         "--managed-python",
         "--python",
         "3.12",
@@ -78,6 +79,18 @@ def test_a_first_launch_checks_then_installs_from_the_lock(layout, stubs, capsys
     assert "Resolved 170 packages" in said
     assert said[-1].startswith("installed in ")
     assert spec.deep_reasoner_url == DR_URL
+
+
+def test_the_runtimes_commands_run_from_where_the_install_leaves_them(layout, stubs):
+    setup(layout)
+    for name in ("dr-acp", "dr-library", "dr-app", "dr"):
+        ran = subprocess.run(
+            [layout.current_runtime / "bin" / name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert (ran.returncode, ran.stdout) == (0, f"{name} ran\n"), ran.stderr
 
 
 def test_a_relaunch_with_nothing_changed_runs_no_uv_and_no_git(layout, stubs, capsys):

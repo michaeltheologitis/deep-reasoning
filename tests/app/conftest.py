@@ -41,17 +41,30 @@ GIT = """
 if argv[:1] == ["--version"]:
     print("git version 2.39.5")
 """
+# What uv writes at the head of a command in a --relocatable venv: sh starts the python
+# beside the command's real path.
+RELOCATABLE_HEAD = (
+    "#!/bin/sh\n"
+    '\'\'\'exec\' "$(dirname -- "$(realpath -- "$0")")"/\'python\' "$0" "$@"\n'
+    "' '''\n"
+)
+# Like uv's, the commands pip sync writes start the venv's python by the absolute path it
+# had then, unless the venv was made --relocatable.
 UV = """
 if argv[:1] == ["venv"]:
-    bin_ = pathlib.Path(argv[-1]) / "bin"
-    bin_.mkdir(parents=True)
-    (bin_ / "python").write_text("#!/bin/sh\\nexec {python} \\"$@\\"\\n")
-    (bin_ / "python").chmod(0o755)
+    venv = pathlib.Path(argv[-1])
+    (venv / "bin").mkdir(parents=True)
+    (venv / "bin" / "python").write_text("#!/bin/sh\\nexec {python} \\"$@\\"\\n")
+    (venv / "bin" / "python").chmod(0o755)
+    relocatable = "--relocatable" in argv
+    (venv / "pyvenv.cfg").write_text("relocatable = true\\n" if relocatable else "")
     print("Creating virtual environment at:", argv[-1])
 if argv[:2] == ["pip", "sync"]:
     bin_ = pathlib.Path(argv[argv.index("--python") + 1]).parent
+    relocatable = "relocatable = true" in (bin_.parent / "pyvenv.cfg").read_text()
+    head = {relocatable_head} if relocatable else "#!" + str(bin_ / "python") + "\\n"
     for name in ("dr-acp", "dr-library", "dr-app", "dr"):
-        (bin_ / name).write_text("#!/bin/sh\\n")
+        (bin_ / name).write_text(head + "print(" + repr(name) + ", 'ran')\\n")
         (bin_ / name).chmod(0o755)
     with open(os.environ["STUB_LOG"], "a") as log:
         log.write(json.dumps({{"requirements": pathlib.Path(argv[-1]).read_text()}}) + "\\n")
@@ -94,9 +107,10 @@ def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Stubs:
     bin_.mkdir()
     for tool, body in (("git", GIT), ("uv", UV), ("uvx", UVX)):
         path = bin_ / tool
-        path.write_text(
-            STUB.format(python=sys.executable, body=body.format(python=sys.executable))
+        filled = body.format(
+            python=sys.executable, relocatable_head=repr(RELOCATABLE_HEAD)
         )
+        path.write_text(STUB.format(python=sys.executable, body=filled))
         path.chmod(0o755)
     log = tmp_path / "stub-calls.jsonl"
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
