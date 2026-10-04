@@ -482,7 +482,7 @@ after it, B22 being ruling 5; B31 and B32 are where v1 and v2 described
 the build wrongly and the build stands; B33 is the move onto C1, after the stack opened. Each was checked against
 the code at `ca1dd71`, and again at `6810335`; v3 notes in B2, B3, B8, B12
 and B16–B20 say which of their sentences moved. B21–B27 and B30 answer the as-built r2's D-12 to D-19, B31 and B32
-its §2.3; B28 and B29 are the r3's D-20 and D-21. "As-built §x" and "as-built D-n" below cite r3, on `as-built/c2-r3`,
+its §2.3; B28 and B33 are the r3's D-20, and B29 its D-21. "As-built §x" and "as-built D-n" below cite r3, on `as-built/c2-r3`,
 which keeps r2's numbers.)*
 
 **Against S2's contract**
@@ -905,7 +905,9 @@ base the code now stands on; B29 the split; B30 the size.
   - The client pin is below the stack, in `fc87687`, so B16 is resolved.
   - C1's overlap (`src/types/agent-server/core/events/index.ts` and `openhands-event.ts`) lands at #23 (§9), and so
     does the one conflict of C1's merge (B33).
-  - #23's own commit needs nothing from #20–#22: it applies to `fc87687` alone and passes there (as-built §5.2). #26 needs #20 in substance (its
+  - #23 needs nothing from #20–#22: its level diff (`47dfbbc..c979c89`) applies to `1913c58` alone, and typecheck and
+    its five test files pass there. Its original commit `5e875d2` applied to `fc87687` alone, but on `1913c58` it
+    conflicts on the one line its merge resolves (B33; as-built §5.2). #26 needs #20 in substance (its
     host API, runtime and capability check) and #22 only as text: its hunk in `canvas-extensions-service.ts` has
     #22's `fetchPanelIcon` as context (as-built §5.2).
   - At #24, `use-agent-controls.ts` is the final file less its home half, with `HomeAgentControls` and
@@ -966,7 +968,7 @@ base the code now stands on; B29 the split; B30 the size.
 **After the stack opened (v3)**
 
 - **B33. The stack on C1: `deep-reasoning` at `1913c58`** (the header, §9 and its Order paragraph, §10, B28, B29;
-  the merges `2368937` … `6810335`, the conflict at `c979c89`). C1 landed first, as #13–#19 into the fork's
+  as-built D-20, §5.1; the merges `2368937` … `6810335`, the conflict at `c979c89`). C1 landed first, as #13–#19 into the fork's
   `deep-reasoning`, which then stood at `1913c58`: `fc87687` plus C1's sub-agent sessions, 56 files, +5,865 −44.
   Each level then merged it: #20 merged `deep-reasoning` itself (`2368937`), and each level above merged the one below
   (`0e8c202` … `6810335`). The merges conflict in one place, line 2 of
@@ -1818,7 +1820,8 @@ tests unchanged and C1's six.
     of C2's lines (`canvas-extension-panels.tsx:71`, `import-x/extensions`, at #20; `conversation-app-panel.test.tsx:171`,
     `no-param-reassign`, at #21) among 839 errors that are nearly all upstream's; over `specs/*.md`, Prettier fails
     C2's invariant blocks in `canvas-extensions.md` and `acp-session-controls.md` (a blank line after each heading, a
-    deeper continuation indent), as it already fails three of upstream's five spec files. No design change; for the
+    deeper continuation indent). At `1913c58` it already fails 4 of the base's 6 spec files, C1's
+    `acp-subagent-sessions.md` among them; at the top, 5 of 7. No design change; for the
     Conductor to fix in Gate C's round or leave, as upstream leaves its own. *(v3: the ESLint errors on C2's two lines
     are fixed: `52b0bfe` (#20) imports the fixture without `.js`, `eef08ab` (#21) appends the text rather than
     assigning `textContent`. The Prettier gaps in C2's two spec files remain open.)*
