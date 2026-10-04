@@ -1345,9 +1345,12 @@ design's reading.
   offers **Update**. The Python side and `MCP_EXPORT_NOTE` are unchanged: an `auth` header is now a header. The names
   were run, not read: on the SDK fork at `91430aa`, `_remote_mcp_headers` sends exactly these, and `GET
   /api/settings` without `X-Expose-Secrets` returns `strategy`, `username`, `header_name` and the header keys, every
-  secret as `**********` and an unset one absent (§14 item 12, for `auth`). An `auth` whose secret is unset still
-  names its header, which the bridge does not send; under `dr` that variable, unset too, is left out (§4.3). Stop
-  trusting §7.5's v5 note that an entry's `auth` is not read. OAuth stays unexported (§14 item 6). *Pinned by:*
+  secret as `**********` and an unset one absent (§14 item 12, for `auth`). Re-run on 2026-10-04 at `fd0fc84`: the
+  frame's `mcpServersFromSettings`, given that route's own answer, names exactly the headers `_remote_mcp_headers`
+  sends, for each strategy with its secret set (an `api_key` whose `header_name` is `""` included). An `auth` whose
+  secret is unset still names its header, which the bridge does not send; under `dr` that variable, unset too, is
+  left out (§4.3). Stop trusting §7.5's v5 note that an entry's `auth` is not read, and §14 item 6's that
+  header-compatible `auth` is not exported. OAuth stays unexported (§14 item 6). *Pinned by:*
   `context.test.ts`'s "adds the header names a remote server's auth sends" [bearer, basic, an API key without a
   header name, an API key with a header name, named headers, none, OAuth]; the rest of the path was pinned already,
   by `test_grants.py::test_mcp_block_for_stdio_http_and_sse[http]` and
