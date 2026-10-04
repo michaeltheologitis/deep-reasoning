@@ -34,4 +34,21 @@ jobs:
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
-      - run: uv run pytest -m live -v -rA
+      - run: uv run pytest -m live -v -rA --basetemp="$RUNNER_TEMP/live"
+      # On a failure, every test's dr home is kept: its runs (run log, model calls,
+      # deep_reasoner's trace, each MCP server's log, all redacted) and the MCP test's
+      # transcript. It is uploaded only once no file in it holds the model key.
+      - name: No dr home holds the model key
+        id: keyless
+        if: failure()
+        run: |
+          if grep -rqF -- "$OPENAI_API_KEY" "$RUNNER_TEMP/live"; then
+            echo "::error::a dr home holds the model key, so it is not uploaded"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.keyless.outcome == 'success'
+        with:
+          name: live-dr-homes
+          path: ${{ runner.temp }}/live/*/home/
+          retention-days: 7

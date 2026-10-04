@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import sys
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -135,9 +135,12 @@ class DrAcp:
         for error in SCHEMA.message_errors(message, method):
             self.violations.append(f"{json.dumps(message)[:300]}: {error}")
 
-    async def open_session(self, cwd: Path) -> str:
-        """session/new, then the menu that follows its response (§5.4 rule 5)."""
-        response = await self.conn.new_session(cwd=str(cwd), mcp_servers=[])
+    async def open_session(self, cwd: Path, mcp_servers: Sequence[Any] = ()) -> str:
+        """session/new (with the MCP servers a client forwards), then the menu that
+        follows its response (§5.4 rule 5)."""
+        response = await self.conn.new_session(
+            cwd=str(cwd), mcp_servers=list(mcp_servers)
+        )
         await self.printer.wait_until(
             lambda p: response.session_id in p.commands, timeout=30
         )

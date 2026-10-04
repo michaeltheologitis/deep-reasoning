@@ -11,6 +11,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, TypeAdapter
 
 from deep_reasoning.acp.costs import CostLedger
+from deep_reasoning.mcp.wire import McpServerStatus
 
 Mode = Literal["native", "flat"]
 RunEndReason = Literal["closed", "stopped", "crashed", "failed", "build_failed", "lost"]
@@ -141,6 +142,13 @@ class AgentEnd(_Ev):
     collateral: bool = False
 
 
+class McpStatus(_Ev):
+    """D4: how each MCP server a run's config names was bound, before build_reasoner."""
+
+    kind: Literal["mcp.status"] = "mcp.status"
+    servers: list[McpServerStatus]
+
+
 class PromptEnd(_Ev):
     kind: Literal["prompt.end"] = "prompt.end"
     prompt: int
@@ -162,6 +170,7 @@ RunEvent = Annotated[
     | Usage
     | StopAccepted
     | AgentEnd
+    | McpStatus
     | PromptEnd,
     Field(discriminator="kind"),
 ]

@@ -16,6 +16,7 @@ from deep_reasoning.acp.runlog import (
     AgentStart,
     CellEnd,
     CellStart,
+    McpStatus,
     Mode,
     PromptEnd,
     PromptStart,
@@ -245,6 +246,8 @@ class Encoder:
                 return self._stop_accepted(ev)
             case AgentEnd():
                 return self._agent_end(ev)
+            case McpStatus():
+                return self._mcp_status(ev)
             case PromptEnd():
                 return self._prompt_end(ev)
             case RunEnd():
@@ -346,6 +349,18 @@ class Encoder:
             "content": _text(notice + "\n\n"),
         }
         return [(self._root, message)]
+
+    def _mcp_status(self, ev: McpStatus) -> list[Update]:
+        """D4: a root notice for each MCP server not bound, ahead of the first answer."""
+        notices = [texts.mcp_notice(server) for server in ev.servers]
+        return [
+            (
+                self._root,
+                {"sessionUpdate": "agent_message_chunk", "content": _text(n + "\n\n")},
+            )
+            for n in notices
+            if n is not None
+        ]
 
     def _prompt_start(self, ev: PromptStart) -> list[Update]:
         self._prompt = ev.prompt
