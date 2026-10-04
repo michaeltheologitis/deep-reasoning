@@ -56,6 +56,13 @@ button.danger {
   color: var(--oh-danger);
 }
 
+button.link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--oh-text-secondary);
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: default;
@@ -157,6 +164,10 @@ code {
   color: var(--oh-muted);
 }
 
+.inherited {
+  font-style: italic;
+}
+
 .errors {
   color: var(--oh-danger);
   margin: 2px 0;
@@ -169,6 +180,12 @@ p.errors {
 
 .warning {
   color: var(--oh-warning);
+}
+
+.group summary {
+  font-weight: 600;
+  padding: 6px 0 2px;
+  cursor: pointer;
 }
 
 .rows,
@@ -189,6 +206,10 @@ p.errors {
   background: none;
   padding: 4px 6px;
   margin: 0;
+}
+
+.row .inherited {
+  grid-column: 4;
 }
 
 .field {

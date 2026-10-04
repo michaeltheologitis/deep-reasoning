@@ -14,6 +14,7 @@ import {
 import { BackendUnavailable, getHealth } from "./api";
 import { ProblemsBanner, SafetyNotice } from "./components/notices";
 import { acknowledgeSafety, safetyAcknowledged } from "./drafts";
+import { BrowseTab } from "./tabs/browse";
 import { CreateTab } from "./tabs/create";
 import type { TabProps } from "./tabs/props";
 import { ToolsTab } from "./tabs/tools";
@@ -21,6 +22,7 @@ import { BACKEND_LOST, RELOAD, RESTART, SESSION_ENDED } from "./texts";
 import type { Health } from "./types";
 
 const TABS: Partial<Record<TabId, FunctionComponent<TabProps>>> = {
+  browse: BrowseTab,
   create: CreateTab,
   tools: ToolsTab,
 };
