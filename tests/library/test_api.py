@@ -177,6 +177,15 @@ def test_validate_answers_200_even_when_invalid(client, lib):
     assert response.json()["ok"] is False
 
 
+def test_validate_judges_a_tool_with_the_source_it_is_sent(client):
+    block = "factory: make\nfactory_from: tools/search.py\n"
+    sent = {"kind": "tool", "name": "search", "yaml": block}
+    source = "def make(config, parent):\n    return None\n"
+    alone = client.post("/validate", json=sent).json()
+    with_source = client.post("/validate", json={**sent, "source": source}).json()
+    assert (alone["ok"], with_source["ok"], with_source["yaml"]) == (False, True, block)
+
+
 def test_errors_carry_code_message_and_details(client):
     invalid = put(
         client,
