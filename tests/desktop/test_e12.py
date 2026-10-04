@@ -609,6 +609,17 @@ def test_the_next_conversation_in_the_namespace_offers_the_decomposition_and_use
     assert any(CREATED_TASK in str(m.get("content")) for m in first.messages)
 
 
+def test_the_tools_tab_shows_the_safety_notice_with_d4s_risk_line_under_it(
+    app, browser
+):
+    page = window(browser)
+    open_panel(page)
+    tools = panel_tab(page, "tools")
+    expect(tools.get_by_test_id("dr-notice")).to_contain_text(texts.safety("5"))
+    risk_under_notice = '[data-testid="dr-notice"] + [data-testid="dr-tools-risk"]'
+    expect(tools.locator(risk_under_notice)).to_be_visible()
+
+
 def test_an_mcp_server_granted_in_the_tools_tab_is_called_by_the_next_conversation(
     app, browser
 ):
