@@ -16,6 +16,9 @@ INLINE_DECOMPOSITIONS = (
 NOT_A_MAPPING = "The YAML must be a mapping of keys to values."
 REFUSE_ROOT = "root cannot be deleted: every namespace inherits from it."
 NO_FINAL_ANSWER = "This example never reaches FinalAnswer; the agent will imitate that."
+FORBIDDEN_PEER = "This library belongs to another user on this computer."
+BAD_REQUEST = "The body must be a JSON object with a 'yaml' string."
+NOT_JSON = "The body must be sent as application/json."
 
 
 def invalid(name: str | None, model: str, errors: Sequence[tuple[str, str]]) -> str:
@@ -98,6 +101,10 @@ def not_found(kind: str, name: str) -> str:
     return f"There is no {kind} '{name}' in the library."
 
 
+def no_version(kind: str, name: str, version: int) -> str:
+    return f"There is no version {version} of {kind} '{name}' in the library."
+
+
 def no_revision(rev: int, current: int) -> str:
     return f"There is no revision {rev}: the library is at revision {current}."
 
@@ -113,6 +120,10 @@ def conflict_stale(kind: str, name: str, head: int, base: int) -> str:
     )
 
 
+def bad_base_version(raw: str) -> str:
+    return f"base_version must be a whole number; got {raw!r}."
+
+
 def refuse_default(name: str) -> str:
     return f"'{name}' is the namespace new conversations start in; choose another one first."
 
@@ -120,6 +131,13 @@ def refuse_default(name: str) -> str:
 def refuse_children(name: str, children: Sequence[str]) -> str:
     return (
         f"'{name}' has namespaces under it ({', '.join(children)}); delete them first."
+    )
+
+
+def name_mismatch(yaml_name: str, key: str, kind: str) -> str:
+    return (
+        f"The YAML names '{yaml_name}', but this is the address of '{key}'. A new name is "
+        f"a new {kind}: save it at its own address."
     )
 
 
@@ -172,3 +190,32 @@ def unknown_tool(namespace: str, tool: str) -> str:
 
 def unknown_spawn(namespace: str, target: str) -> str:
     return f"Namespace '{namespace}' may spawn into '{target}', which is not in the library."
+
+
+def forbidden_host(port: int) -> str:
+    return (
+        f"This library answers only requests addressed to 127.0.0.1:{port} or "
+        f"localhost:{port}."
+    )
+
+
+def imported(path: str, rev: int, new: int, changed: int, unchanged: int) -> str:
+    return (
+        f"imported {path} as revision {rev}: {new} new, {changed} changed, "
+        f"{unchanged} unchanged"
+    )
+
+
+def nothing_imported(path: str) -> str:
+    return f"nothing changed: the library already holds {path}"
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def exported(main: str, namespaces: int, decompositions: int, tools: int) -> str:
+    return (
+        f"wrote {main}: {_count(namespaces, 'namespace')}, "
+        f"{_count(decompositions, 'decomposition')}, {_count(tools, 'tool')}"
+    )
