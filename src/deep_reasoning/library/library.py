@@ -11,6 +11,8 @@ namespace before its parent.
 """
 
 import contextlib
+import shutil
+import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any, Literal, get_args
@@ -34,6 +36,7 @@ from deep_reasoning.library.records import (
     LibraryState,
     LibraryValidationError,
     NamespaceRecord,
+    Problem,
     ProfileRecord,
     ToolRecord,
     ValidationResult,
@@ -249,6 +252,34 @@ class Library:
         """A dr config (its main YAML, or a directory holding main.yaml), merged by name."""
         parts = configdir.read_config(Path(path))
         return self._import(parts, "import", str(parts.main))
+
+    # ── files ───────────────────────────────────────────────────────────────────
+
+    def materialize(
+        self,
+        dest: Path | None = None,
+        *,
+        namespace: str | None = None,
+        rev: int | None = None,
+    ) -> Path:
+        """Write the Library (as of rev) as a plain dr config directory and return it.
+        dest: absent or empty (default: a new temporary directory); namespace: the entry
+        namespace written into main.yaml (default: the profile's)."""
+        state = self.state(rev=rev)
+        namespace = namespace or state.profile.default_namespace
+        self._get(state.namespaces, "namespace", namespace)
+        _refuse_stale(state)
+        if dest is not None and dest.exists() and any(dest.iterdir()):
+            raise LibraryRefused(texts.dest_not_empty(str(dest)))
+        made = dest is None or not dest.exists()
+        dest = Path(tempfile.mkdtemp(prefix="dr-library-")) if dest is None else dest
+        dest.mkdir(parents=True, exist_ok=True)
+        try:
+            configdir.write_config(state, dest, namespace=namespace)
+        except BaseException:
+            _empty(dest, remove=made)
+            raise
+        return dest
 
     # ── internals ───────────────────────────────────────────────────────────────
 
@@ -576,7 +607,53 @@ def _yaml_name(kind: Kind, text: str) -> str | None:
     return name if isinstance(name, str) else None
 
 
+def _stale(state: LibraryState) -> list[Problem]:
+    """Every live head that no longer validates under the installed deep_reasoner."""
+    problems = []
+    for kind, records in _records(state).items():
+        for name, record in records.items():
+            source = record.source if kind == "tool" else None
+            try:
+                _validator(kind, name, source)(record.yaml)
+            except LibraryValidationError as exc:
+                message = texts.stale_head(
+                    kind,
+                    name,
+                    record.version,
+                    shapes.deep_reasoner_build(),
+                    _first_error(exc),
+                )
+                problems.append(Problem(kind=kind, name=name, message=message))
+    return problems
+
+
+def _refuse_stale(state: LibraryState) -> None:
+    """LibraryValidationError with one STALE_HEAD sentence per stale head, if any."""
+    if problems := _stale(state):
+        sentences = [p.message for p in problems]
+        raise LibraryValidationError(
+            "\n".join(sentences), [FieldError(loc="", msg=s) for s in sentences]
+        )
+
+
+def _first_error(exc: LibraryValidationError) -> str:
+    first = exc.errors[0]
+    return f"{first.loc}: {first.msg}" if first.loc else first.msg
+
+
 # ── files: a failed write undone, and a new library's first revision ──────────────────
+
+
+def _empty(dest: Path, *, remove: bool) -> None:
+    """Undo a failed write: remove dest if we made it, else everything written into it."""
+    if remove:
+        shutil.rmtree(dest, ignore_errors=True)
+        return
+    for child in dest.iterdir():
+        if child.is_dir():
+            shutil.rmtree(child, ignore_errors=True)
+        else:
+            child.unlink(missing_ok=True)
 
 
 def _seed_bare(path: Path) -> None:

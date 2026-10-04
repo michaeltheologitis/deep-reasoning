@@ -4,7 +4,7 @@ import time
 import openai
 import pytest
 
-from deep_reasoning.acp.testing.fake_model import FakeOpenAI, token_usage
+from deep_reasoning.acp.testing.fake_model import EMBEDDING, FakeOpenAI, token_usage
 
 
 async def ask(model, content):
@@ -35,6 +35,18 @@ def test_answers_from_the_responder_and_records_each_call():
     first, second = sorted(c.started for c in calls)
     assert second - first < 0.1, "the second call was served while the first waited"
     assert replies[0].usage.prompt_tokens > 0 and replies[0].usage.completion_tokens > 0
+
+
+def test_embeds_every_input_alike_and_records_only_chat_calls():
+    with FakeOpenAI(lambda messages: "ok") as model:
+        client = openai.OpenAI(base_url=model.base_url, api_key="unused", max_retries=0)
+        embedded = client.embeddings.create(model="e", input=["one", "two"])
+        reply = client.chat.completions.create(
+            model="m", messages=[{"role": "user", "content": "hi"}]
+        )
+    assert [e.embedding for e in embedded.data] == [EMBEDDING, EMBEDDING]
+    assert reply.choices[0].message.content == "ok"
+    assert [c.messages for c in model.calls] == [[{"role": "user", "content": "hi"}]]
 
 
 def test_a_responder_that_raises_answers_500():

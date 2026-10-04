@@ -133,10 +133,20 @@ class Manifest(BaseModel):
     tools: dict[str, int]
     metadata: dict[str, DecompositionMeta]  # by name; import reads it back
 
+    def versions(self) -> dict[str, Any]:
+        """Everything but metadata: the version of each entity a materialized run used."""
+        return self.model_dump(mode="json", exclude={"metadata"})
+
 
 class FieldError(BaseModel):
     loc: str  # "messages.0.role"; "name" for the Library's own rules; "" for the whole
     msg: str
+
+
+class Problem(BaseModel):
+    kind: Kind
+    name: str
+    message: str
 
 
 class ValidationResult(BaseModel):

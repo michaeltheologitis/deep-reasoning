@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from deep_reasoning.library import LibraryImportError
+from deep_reasoning.library import Library, LibraryImportError
 from tests.library.conftest import ROUTER, example, text, write_config
 
 
@@ -200,3 +200,16 @@ def test_a_config_deep_reasoner_cannot_load_is_refused_with_its_message(lib, tmp
         f"{main} is not a dr config deep_reasoner can load: ValidationError: "
     )
     assert "max_iter" in str(raised.value)
+
+
+def test_an_exports_library_yaml_keeps_use_when_and_hint(lib, router, tmp_path):
+    lib.import_config(router)
+    lib.put_decomposition(
+        text(example("decline")), use_when="off-topic", hint="the question"
+    )
+    exported = lib.materialize(tmp_path / "export")
+    fresh = Library.open(tmp_path / "fresh.sqlite", starter=False)
+    fresh.import_config(exported)
+    record = fresh.decomposition("decline")
+    assert (record.use_when, record.hint) == ("off-topic", "the question")
+    assert fresh.decomposition("catalog lookup").use_when is None

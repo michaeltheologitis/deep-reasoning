@@ -13,11 +13,13 @@ from deep_reasoning.library import shapes, texts
 from deep_reasoning.library.records import (
     DecompositionMeta,
     LibraryImportError,
+    LibraryState,
     Manifest,
 )
 
 MAIN = "main.yaml"
 MANIFEST = "library.yaml"
+NAMESPACES_DIR = "namespaces"
 
 
 @dataclass(frozen=True)
@@ -131,3 +133,59 @@ def read_config(path: Path) -> ConfigParts:
         tools=_tools(main, cfg),
         metadata=_metadata(main),
     )
+
+
+def _write_yaml(path: Path, data: dict[str, Any], header: str = "") -> None:
+    path.write_text(header + shapes.canonical_yaml(data), encoding="utf-8")
+
+
+def write_config(state: LibraryState, dest: Path, *, namespace: str) -> Manifest:
+    """namespaces/<name>.yaml, tools/<name>.py, library.yaml, then main.yaml (last, so a
+    directory with a main.yaml is complete)."""
+    header = (
+        f"# Written by the deep-reasoning Library from {state.path} at revision "
+        f"{state.rev}. Edit the Library, not this file.\n"
+    )
+    bodies = {name: d.yaml for name, d in state.decompositions.items()}
+    (dest / NAMESPACES_DIR).mkdir()
+    for ns in state.namespaces.values():
+        config = shapes.namespace_config(
+            ns.yaml, [bodies[d] for d in ns.decompositions]
+        )
+        _write_yaml(dest / NAMESPACES_DIR / f"{ns.name}.yaml", _dump(config))
+    sourced = {
+        name: t.source for name, t in state.tools.items() if t.source is not None
+    }
+    if sourced:
+        (dest / shapes.TOOL_DIR).mkdir()
+    for name, source in sourced.items():
+        (dest / shapes.tool_file(name)).write_bytes(source.encode())
+    manifest = Manifest(
+        library=str(state.path),
+        rev=state.rev,
+        namespace=namespace,
+        deep_reasoner=shapes.deep_reasoner_build(),
+        profile=state.profile.version,
+        namespaces={name: ns.version for name, ns in state.namespaces.items()},
+        decompositions={name: d.version for name, d in state.decompositions.items()},
+        tools={name: t.version for name, t in state.tools.items()},
+        metadata={
+            name: DecompositionMeta(use_when=d.use_when, hint=d.hint)
+            for name, d in state.decompositions.items()
+            if d.use_when is not None or d.hint is not None
+        },
+    )
+    _write_yaml(dest / MANIFEST, manifest.model_dump(mode="json"), header)
+    main = dict(state.profile.data)
+    # Only a run in another namespace says so: an export re-imports as the same profile.
+    if namespace != state.profile.default_namespace:
+        main["entry_namespace"] = namespace
+    main["namespaces_dir"] = NAMESPACES_DIR
+    if state.profile.decompositions:
+        main["decompositions"] = [
+            state.decompositions[name].data for name in state.profile.decompositions
+        ]
+    if state.tools:
+        main["tools"] = {name: t.data for name, t in state.tools.items()}
+    _write_yaml(dest / MAIN, main, header)
+    return manifest

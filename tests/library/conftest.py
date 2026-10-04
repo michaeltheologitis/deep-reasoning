@@ -1,3 +1,7 @@
+import os
+import subprocess
+import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -74,3 +78,27 @@ def lib(tmp_path: Path) -> Library:
 def router(tmp_path: Path) -> Path:
     """A plain dr config of our own: root, router (entry) and courses."""
     return write_config(tmp_path / "router", ROUTER)
+
+
+DR = Path(sys.executable).parent / "dr"
+
+
+def run_dr(
+    config: Path,
+    task: str,
+    *,
+    cwd: Path,
+    sets: Sequence[str] = (),
+    env: Mapping[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """deep_reasoner's own `dr` on config, one task, logs under cwd/runs."""
+    argv = [str(DR), str(config), task, "--no-progress", "--run-dir", str(cwd / "runs")]
+    return subprocess.run(
+        [*argv, *(["--set", *sets] if sets else [])],
+        cwd=cwd,
+        env={**os.environ, "FAKE_KEY": "fake", **(env or {})},
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
