@@ -42,6 +42,9 @@ export const YAML_NOT_DECOMPOSITION =
   "To edit it as cards, the YAML must be a mapping with a name and a list of messages, each with a role and a content.";
 export const DELETE_CONFIRM = (name: string) =>
   `Delete '${name}'? It is removed from every namespace; its versions stay in the Library's history.`;
+export const INHERITED_ROW = (source: string) => `inherited from ${source}`;
+export const EFFECTIVE_FAILED = (message: string) =>
+  `Inherited decompositions cannot be shown: ${message} Showing each decomposition where it is attached.`;
 export const PROBLEMS = (n: number) =>
   n === 1 ? `${n} problem in the Library` : `${n} problems in the Library`;
 export const BACKEND_LOST = (status: number) =>
@@ -73,4 +76,7 @@ export const LABELS = {
   alsoUsedIn: (namespace: string) => `also used in ${namespace} (inherited)`,
   remove: "✕",
   removeTurn: (turn: number) => `Remove turn ${turn}`,
+  back: "← Decompositions",
+  everyNamespace: "Every namespace's menu",
+  notAttached: "Not attached",
 } as const;

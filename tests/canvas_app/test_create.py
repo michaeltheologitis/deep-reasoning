@@ -386,3 +386,17 @@ def test_a_draft_keeps_the_namespace_picked_over_the_preselected_one(open_ui):
     expect(page.get_by_test_id("dr-save")).to_have_text("Save to course_advisor")
     page.get_by_test_id("dr-discard-draft").click()
     expect(page.get_by_test_id("dr-namespace-router")).to_be_checked()
+
+
+def test_an_imported_decomposition_saved_unchanged_makes_no_new_version(
+    open_ui, library_server
+):
+    library = library_server.library()
+    rev = library.rev()
+    page = open_ui(tab="browse", focus="catalog-lookup")
+    expect(page.get_by_test_id("dr-card-2-output")).to_have_value("['CS101']")
+    page.get_by_test_id("dr-save").click()
+    expect(page.get_by_test_id("dr-result")).to_contain_text(
+        "✓ Saved 'catalog lookup' v1."
+    )
+    assert (library.rev(), library.decomposition("catalog lookup").version) == (rev, 1)
