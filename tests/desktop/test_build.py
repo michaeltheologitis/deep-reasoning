@@ -349,3 +349,39 @@ def test_the_build_offers_no_universal_or_intel_mac_target():
     with pytest.raises(SystemExit):
         build.main(["mac-universal"])
     assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}
+
+
+def commit_on(checkout: Path, message: str) -> str:
+    """A new commit on the checkout's deep-reasoning branch, pushed; its sha."""
+    (checkout / "f").write_text(message)
+    for argv in (["add", "-A"], ["commit", "-q", "-m", message]):
+        subprocess.run([*GIT, *argv], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "push", "-q", "origin", "deep-reasoning"], cwd=checkout, check=True
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def test_check_8_on_a_reused_work_dir_sees_commits_merged_since_its_first_clone(
+    tmp_path,
+):
+    """build.py's default --work persists: its fork caches must follow the branch."""
+    fork, checkout = tmp_path / "fork.git", tmp_path / "fork"
+    subprocess.run(["git", "init", "-q", "--bare", str(fork)], check=True)
+    subprocess.run(
+        [*GIT, "init", "-q", "-b", "deep-reasoning", str(checkout)], check=True
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", fork.as_uri()], cwd=checkout, check=True
+    )
+    first = commit_on(checkout, "first")
+    is_on_branch = build.fork_has(tmp_path / "work")
+    assert is_on_branch(fork.as_uri(), "deep-reasoning", first)
+    merged_later = commit_on(checkout, "merged after the first clone")
+    assert is_on_branch(fork.as_uri(), "deep-reasoning", merged_later)

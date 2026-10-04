@@ -325,7 +325,8 @@ def git_ls_remote(repo_url: str, refs: Sequence[str]) -> dict[str, str]:
 
 def fork_cache(work: Path, repo_url: str) -> Path:
     """A blobless copy of the fork's deep-reasoning branch under work, fetched afresh:
-    blobs arrive only when read."""
+    blobs arrive only when read. A bare clone keeps no fetch refspec, so the refetch
+    names the branch's ref, or it would move only FETCH_HEAD."""
     cache = work / "forks" / re.sub(r"[^A-Za-z0-9]+", "-", repo_url).strip("-")
     if not cache.exists():
         git(
@@ -339,7 +340,8 @@ def fork_cache(work: Path, repo_url: str) -> Path:
             str(cache),
         )
     else:
-        git("fetch", "--filter=blob:none", "origin", FORK_BRANCH, cwd=cache)
+        branch = f"refs/heads/{FORK_BRANCH}"
+        git("fetch", "--filter=blob:none", "origin", f"+{branch}:{branch}", cwd=cache)
     return cache
 
 
