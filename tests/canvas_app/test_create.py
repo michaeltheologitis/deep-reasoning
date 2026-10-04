@@ -53,6 +53,27 @@ def test_saving_stores_version_1_in_the_picked_namespace(open_ui, library_server
     expect(page.get_by_test_id("dr-name")).to_have_value("")
 
 
+def test_the_turn_after_a_step_reads_observation_think_code(open_ui):
+    page = open_ui(tab="create")
+    page.get_by_test_id("dr-add-turn").click()
+    expect(page.locator("[data-testid^='dr-card-'] label")).to_have_text(
+        ["task", "think", "code", "observation", "think", "code"]
+    )
+    expect(page.get_by_test_id("dr-card-2-output")).to_have_accessible_name(
+        "observation"
+    )
+    page.get_by_test_id("dr-view-yaml").click()
+    page.get_by_test_id("dr-edit-yaml").click()
+    page.get_by_test_id("dr-yaml").fill(
+        "name: brief\nmessages:\n  - role: system\n    content: Be brief.\n"
+    )
+    page.get_by_test_id("dr-edit-cards").click()
+    expect(page.get_by_test_id("dr-card-0")).to_contain_text(
+        "Shown as written: this message is not a task, a think-and-code step or an "
+        "observation."
+    )
+
+
 def test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations(
     open_ui,
 ):
