@@ -142,8 +142,22 @@ def import_tool_file(name: str, value: str, resolved: str) -> str:
     )
 
 
+def dest_not_empty(dest: str) -> str:
+    return (
+        f"{dest} is not empty; the library writes a config directory only into a new or "
+        "empty folder."
+    )
+
+
 def network_fs(path: str, fstype: str) -> str:
     return (
         f"{path} is on a network filesystem ({fstype}), where SQLite cannot keep the "
         "library safe. Set DR_HOME to a folder on this computer's own disk."
+    )
+
+
+def stale_head(kind: str, name: str, version: int, build: str, first_error: str) -> str:
+    return (
+        f"{kind.capitalize()} '{name}' version {version} no longer validates under "
+        f"deep_reasoner {build}: {first_error}"
     )
