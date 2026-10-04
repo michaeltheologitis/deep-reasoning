@@ -150,16 +150,14 @@ function inheritedNotes(
   names: readonly string[],
   attached: readonly string[],
 ): Record<string, string> {
-  const notes: Record<string, string> = {};
-  for (const name of names) {
-    if (
+  const inherited = names.filter(
+    (name) =>
       !attached.includes(name) &&
-      ancestors(name).some((a) => attached.includes(a))
-    ) {
-      notes[name] = LABELS.alsoUsedIn(name);
-    }
-  }
-  return notes;
+      ancestors(name).some((a) => attached.includes(a)),
+  );
+  return Object.fromEntries(
+    inherited.map((name) => [name, LABELS.alsoUsedIn(name)]),
+  );
 }
 
 function preselected(
