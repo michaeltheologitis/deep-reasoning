@@ -9,7 +9,12 @@ import {
   splitTools,
   toolDraftKey,
 } from "../src/ui/tools";
-import type { Effective, McpGrant, ToolRecord } from "../src/ui/types";
+import type {
+  Effective,
+  McpGrant,
+  McpSnapshot,
+  ToolRecord,
+} from "../src/ui/types";
 
 function server(
   name: string,
@@ -115,15 +120,49 @@ describe("mcpRows", () => {
     ]);
   });
 
-  it.each<[string, Partial<McpServerInfo>, boolean]>([
-    ["the same settings", {}, false],
-    ["another command", { command: "uvx" }, true],
-    ["other arguments", { args: ["-y"] }, true],
-    ["another variable", { env: ["TOKEN", "ORG"] }, true],
-    ["another transport", { transport: "http", url: "https://x" }, true],
-    ["a header", { headers: ["Authorization"] }, true],
-  ])("a granted server with %s is changed: %s", (_, fields, changed) => {
-    const [row] = mcpRows([server("github", fields)], [grant("github")]);
+  // A remote grant as GET /mcp answers it: its block keeps the URL and the headers.
+  const remote: Omit<McpSnapshot, "server"> = {
+    transport: "http",
+    command: null,
+    args: [],
+    url: "https://x",
+    env: [],
+    headers: ["X-Trace"],
+  };
+  it.each<[string, boolean, Partial<McpServerInfo>, Partial<McpGrant>]>([
+    ["server with the same settings", false, {}, {}],
+    ["server with another command", true, { command: "uvx" }, {}],
+    ["server with other arguments", true, { args: ["-y"] }, {}],
+    ["server with another variable", true, { env: ["TOKEN", "ORG"] }, {}],
+    [
+      "server with another transport",
+      true,
+      { transport: "http", url: "https://x" },
+      {},
+    ],
+    [
+      "remote server with another header",
+      true,
+      { ...remote, headers: ["X-Trace", "Authorization"] },
+      remote,
+    ],
+    [
+      "stdio server with a header, which its block does not keep",
+      false,
+      { headers: ["Authorization"] },
+      {},
+    ],
+    [
+      "remote server with arguments and a variable, which its block does not keep",
+      false,
+      { ...remote, args: ["--quiet"], env: ["TOKEN"] },
+      remote,
+    ],
+  ])("a granted %s is changed: %s", (_, changed, fields, granted) => {
+    const [row] = mcpRows(
+      [server("github", fields)],
+      [grant("github", granted)],
+    );
     expect(row?.changed).toBe(changed);
   });
 

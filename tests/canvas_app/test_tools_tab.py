@@ -312,9 +312,14 @@ def test_a_grant_gone_from_canvas_offers_remove(open_ui, library_server):
     assert "old_wiki" not in library_server.library().state().tools
 
 
-def test_a_changed_server_offers_update(open_ui, library_server):
+@pytest.mark.parametrize(
+    "canvas",
+    [GITHUB, GITHUB | {"headers": ["Authorization"]}],
+    ids=["its settings", "a header a stdio block does not keep"],
+)
+def test_a_changed_server_offers_update(open_ui, library_server, canvas):
     put_grant(library_server.library(), "github", ["router"], env=["OLD_TOKEN"])
-    page = open_ui(tab="tools", mcp=mcp_param(GITHUB))
+    page = open_ui(tab="tools", mcp=mcp_param(canvas))
     expect(page.get_by_test_id("dr-mcp-state-github")).to_contain_text(MCP_CHANGED)
     page.get_by_test_id("dr-mcp-update-github").click()
     expect(page.get_by_test_id("dr-mcp-state-github")).to_have_count(0)
