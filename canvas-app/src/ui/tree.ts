@@ -5,7 +5,7 @@ export interface NamespaceNode {
   children: NamespaceNode[];
 }
 
-const ROOT = "root";
+export const ROOT = "root";
 
 /** Rooted at "root"; order kept. A name whose parent is not listed hangs under root. */
 export function namespaceTree(names: readonly string[]): NamespaceNode {

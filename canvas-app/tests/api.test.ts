@@ -35,12 +35,6 @@ describe("the requests", () => {
     ["getProblems", () => api.getProblems(), "GET", "../problems"],
     ["getProfile", () => api.getProfile(), "GET", "../profile"],
     ["getNamespaces", () => api.getNamespaces(), "GET", "../namespaces"],
-    [
-      "getNamespace",
-      () => api.getNamespace("router.archive"),
-      "GET",
-      "../namespaces/router.archive",
-    ],
     ["getEffective", () => api.getEffective(), "GET", "../effective"],
     [
       "getNamespaceEffective",
@@ -54,21 +48,8 @@ describe("the requests", () => {
       "GET",
       "../decompositions",
     ],
-    [
-      "getDecomposition",
-      () => api.getDecomposition("a b"),
-      "GET",
-      "../decompositions/a%20b",
-    ],
     ["getTools", () => api.getTools(), "GET", "../tools"],
-    ["getTool", () => api.getTool("word_count"), "GET", "../tools/word_count"],
     ["getMcp", () => api.getMcp(), "GET", "../mcp"],
-    [
-      "toolVersions",
-      () => api.toolVersions("word_count"),
-      "GET",
-      "../tools/word_count/versions",
-    ],
     [
       "deleteNamespace",
       () => api.deleteNamespace("router.archive", 2),
@@ -77,9 +58,9 @@ describe("the requests", () => {
     ],
     [
       "deleteDecomposition",
-      () => api.deleteDecomposition("catalog-lookup", 3),
+      () => api.deleteDecomposition("a b", 3),
       "DELETE",
-      "../decompositions/catalog-lookup?base_version=3",
+      "../decompositions/a%20b?base_version=3",
     ],
     [
       "deleteTool",
@@ -87,11 +68,16 @@ describe("the requests", () => {
       "DELETE",
       "../tools/word_count?base_version=1",
     ],
-  ])("%s is %s %s, relative to the frame", async (_, request, method, url) => {
-    const sent = stubFetch();
-    await request();
-    expect(sent).toEqual([{ url, method, contentType: null, body: undefined }]);
-  });
+  ])(
+    "%s sends its method to its URL, relative to the frame, with no body",
+    async (_, request, method, url) => {
+      const sent = stubFetch();
+      await request();
+      expect(sent).toEqual([
+        { url, method, contentType: null, body: undefined },
+      ]);
+    },
+  );
 
   it.each<[string, () => Promise<unknown>, string, string, string[]]>([
     [

@@ -37,13 +37,11 @@ def test_native_mode_needs_a_subagents_object_and_no_flat_flag(params, flat, mod
     assert client.mode == mode
 
 
-def test_outbox_sends_raw_updates_in_order_and_shows_them_to_observers():
+def test_outbox_sends_raw_updates_in_order_and_drops_them_once_the_client_is_gone():
     async def body():
         ours, theirs = memory_transport_pair()
         conn = Connection(lambda *a: None, ours)
         outbox = Outbox(conn)
-        seen = []
-        outbox.observe(seen.append)
         await outbox.update(
             "s-1", {"sessionUpdate": "subagent_update", "sessionId": "r-n2"}
         )
@@ -52,9 +50,9 @@ def test_outbox_sends_raw_updates_in_order_and_shows_them_to_observers():
         received = [await theirs.receive(), await theirs.receive()]
         await conn.close()
         await outbox.update("s-1", {"sessionUpdate": "agent_message_chunk"})
-        return seen, received, quiet
+        return received, quiet
 
-    seen, received, quiet = run(body())
+    received, quiet = run(body())
     assert [m["params"] for m in received] == [
         {
             "sessionId": "s-1",
@@ -62,7 +60,6 @@ def test_outbox_sends_raw_updates_in_order_and_shows_them_to_observers():
         },
         {"sessionId": "s-1", "update": {"sessionUpdate": "agent_message_chunk"}},
     ]
-    assert seen == received
     assert quiet < 1.0
 
 

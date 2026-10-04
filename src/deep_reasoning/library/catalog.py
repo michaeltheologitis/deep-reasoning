@@ -1,7 +1,8 @@
-"""LibraryCatalog: D1's Catalog over the Library (§4.7).
+"""LibraryCatalog: the acp Catalog over the Library (§4.7).
 
-Nothing of deep_reasoner or of the Library is imported at module level: dr-acp builds
-the catalog before it serves, and the first snapshot (in a thread) pays the import.
+Nothing of deep_reasoner or of the Library is imported at module level: building a
+catalog, or finding the library with library_path, stays cheap, and the first snapshot
+or materialize pays the import.
 """
 
 import dataclasses
@@ -16,14 +17,13 @@ LIBRARY_FILE = "library.sqlite"
 
 
 def library_path(home: Path | None = None) -> Path:
-    """Home.resolve(home).root / "library.sqlite": --home, else $DR_HOME, else
-    ~/.deep-reasoning (D1's Home, acp/runlog.py). Here, not in library.py, so that dr-acp
-    finds its library without importing deep_reasoner."""
+    """Home.resolve(home).root / "library.sqlite": home, else $DR_HOME, else
+    ~/.deep-reasoning."""
     return Home.resolve(home).root / LIBRARY_FILE
 
 
 class LibraryCatalog:
-    """D1's Catalog (deep_reasoning.acp.catalog) over the Library at path."""
+    """The Catalog of deep_reasoning.acp.catalog, over the Library at path."""
 
     def __init__(self, path: Path) -> None:
         """Stores the path; opens nothing and imports nothing until first used, then

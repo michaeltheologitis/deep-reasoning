@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic_core import to_jsonable_python
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -168,17 +169,7 @@ def _base_version(request: Request) -> int | None:
     try:
         return int(raw)
     except ValueError as exc:
-        raise LibraryBadRequest(
-            f"base_version must be a whole number; got {raw!r}."
-        ) from exc
-
-
-def _dump(result: Any) -> Any:
-    if isinstance(result, BaseModel):
-        return result.model_dump(mode="json")
-    if isinstance(result, list):
-        return [_dump(item) for item in result]
-    return result
+        raise LibraryBadRequest(texts.bad_base_version(raw)) from exc
 
 
 def _exists(read: Callable[[], Any]) -> bool:
@@ -205,23 +196,6 @@ def _zip(directory: Path, prefix: str) -> bytes:
     return data.getvalue()
 
 
-def json_route(
-    path: str, method: str, handler: Callable[[Request, bytes], Any]
-) -> Route:
-    """A route whose handler runs in a thread with the request and its body, and returns
-    a Response, a payload, or (payload, status); payloads are sent as JSON."""
-
-    async def endpoint(request: Request) -> Response:
-        body = await request.body() if method in BODY_METHODS else b""
-        result = await run_in_threadpool(handler, request, body)
-        if isinstance(result, Response):
-            return result
-        payload, status = result if isinstance(result, tuple) else (result, 200)
-        return JSONResponse(_dump(payload), status_code=status)
-
-    return Route(path, endpoint, methods=[method])
-
-
 def create_app(
     library: Library,
     *,
@@ -231,7 +205,7 @@ def create_app(
     (D4 §7.2); a tool's PUT passes D4's Check first (D4 §3.5). same_user(client, server) is
     asked for every request; a False is 403 FORBIDDEN_PEER. Default: same_user_peer on
     Linux, no check elsewhere."""
-    # D4's routes build on json_route, so they are imported only once this module is.
+    # D4's modules import this one, so they are imported only once it is.
     from deep_reasoning.tools.check import require_check
     from deep_reasoning.tools.routes import tool_routes
 
@@ -289,11 +263,7 @@ def create_app(
     def put_tool(request: Request, body: bytes) -> Any:
         name, sent = request.path_params["name"], _parse(_ToolBody, body)
         require_check(
-            lib,
-            name,
-            sent.yaml,
-            sent.source,
-            accept_failure=sent.accept_check_failure,
+            lib, name, sent.yaml, sent.source, accept_failure=sent.accept_check_failure
         )
         existed = _exists(lambda: lib.tool(name))
         record = lib.put_tool(
@@ -343,58 +313,67 @@ def create_app(
             },
         )
 
+    def route(
+        path: str, method: str, handler: Callable[[Request, bytes], Any]
+    ) -> Route:
+        async def endpoint(request: Request) -> Response:
+            body = await request.body() if method in BODY_METHODS else b""
+            result = await run_in_threadpool(handler, request, body)
+            if isinstance(result, Response):
+                return result
+            payload, status = result if isinstance(result, tuple) else (result, 200)
+            return JSONResponse(to_jsonable_python(payload), status_code=status)
+
+        return Route(path, endpoint, methods=[method])
+
     def reading(
         read: Callable[..., Any], *params: str
     ) -> Callable[[Request, bytes], Any]:
         return lambda request, body: read(*(request.path_params[p] for p in params))
 
     routes = [
-        json_route("/health", "GET", health),
-        json_route("/problems", "GET", reading(lib.check)),
-        json_route("/validate", "POST", validate),
-        json_route("/profile", "GET", reading(lib.profile)),
-        json_route("/profile", "PUT", put_profile),
-        json_route("/profile/versions", "GET", versions("profile", None)),
-        json_route("/profile/versions/{n:int}", "GET", versions("profile", None)),
-        json_route("/namespaces", "GET", reading(lib.namespaces)),
-        json_route("/namespaces/{name}", "GET", reading(lib.namespace, "name")),
-        json_route("/namespaces/{name}", "PUT", put_namespace),
-        json_route("/namespaces/{name}", "DELETE", deleting("namespace", "name")),
-        json_route(
-            "/namespaces/{name}/effective", "GET", reading(lib.effective, "name")
-        ),
-        json_route("/namespaces/{name}/versions", "GET", versions("namespace", "name")),
-        json_route(
+        route("/health", "GET", health),
+        route("/problems", "GET", reading(lib.check)),
+        route("/validate", "POST", validate),
+        route("/profile", "GET", reading(lib.profile)),
+        route("/profile", "PUT", put_profile),
+        route("/profile/versions", "GET", versions("profile", None)),
+        route("/profile/versions/{n:int}", "GET", versions("profile", None)),
+        route("/namespaces", "GET", reading(lib.namespaces)),
+        route("/namespaces/{name}", "GET", reading(lib.namespace, "name")),
+        route("/namespaces/{name}", "PUT", put_namespace),
+        route("/namespaces/{name}", "DELETE", deleting("namespace", "name")),
+        route("/namespaces/{name}/effective", "GET", reading(lib.effective, "name")),
+        route("/namespaces/{name}/versions", "GET", versions("namespace", "name")),
+        route(
             "/namespaces/{name}/versions/{n:int}", "GET", versions("namespace", "name")
         ),
-        json_route(
+        route(
             "/effective",
             "GET",
             lambda request, body: [lib.effective(ns.name) for ns in lib.namespaces()],
         ),
-        json_route("/decompositions", "GET", reading(lib.decompositions)),
-        json_route("/decompositions/{slug}", "GET", reading(lib.decomposition, "slug")),
-        json_route("/decompositions/{slug}", "PUT", put_decomposition),
-        json_route(
-            "/decompositions/{slug}", "DELETE", deleting("decomposition", "slug")
-        ),
-        json_route(
+        route("/decompositions", "GET", reading(lib.decompositions)),
+        route("/decompositions/{slug}", "GET", reading(lib.decomposition, "slug")),
+        route("/decompositions/{slug}", "PUT", put_decomposition),
+        route("/decompositions/{slug}", "DELETE", deleting("decomposition", "slug")),
+        route(
             "/decompositions/{slug}/versions", "GET", versions("decomposition", "slug")
         ),
-        json_route(
+        route(
             "/decompositions/{slug}/versions/{n:int}",
             "GET",
             versions("decomposition", "slug"),
         ),
-        json_route("/tools", "GET", reading(lib.tools)),
-        json_route("/tools/{name}", "GET", reading(lib.tool, "name")),
-        json_route("/tools/{name}", "PUT", put_tool),
-        json_route("/tools/{name}", "DELETE", deleting("tool", "name")),
-        json_route("/tools/{name}/versions", "GET", versions("tool", "name")),
-        json_route("/tools/{name}/versions/{n:int}", "GET", versions("tool", "name")),
-        json_route("/export", "GET", export),
+        route("/tools", "GET", reading(lib.tools)),
+        route("/tools/{name}", "GET", reading(lib.tool, "name")),
+        route("/tools/{name}", "PUT", put_tool),
+        route("/tools/{name}", "DELETE", deleting("tool", "name")),
+        route("/tools/{name}/versions", "GET", versions("tool", "name")),
+        route("/tools/{name}/versions/{n:int}", "GET", versions("tool", "name")),
+        route("/export", "GET", export),
         *ui_routes(),
-        *tool_routes(lib),
+        *tool_routes(lib, route),
     ]
 
     async def library_error(request: Request, exc: Exception) -> Response:

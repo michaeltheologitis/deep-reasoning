@@ -107,7 +107,7 @@ def library_server(library_home: Path) -> Iterator[LibraryServer]:
 
 
 # Module scope: while Playwright's sync API is started, its event loop counts as running
-# in this thread, so asyncio.run (D1's harness) fails until it stops.
+# in this thread, so a test's asyncio.run fails until it stops.
 @pytest.fixture(scope="module")
 def browser() -> Iterator[Browser]:
     """Chromium; skips with a reason when Playwright's browser is missing, fails when CI is
@@ -150,10 +150,6 @@ def open_ui(
     yield open_page
     for context in contexts:
         context.close()
-
-
-def text(data: dict) -> str:
-    return json.dumps(data)
 
 
 def write_new(page: Page, name: str, task: str, code: str = "FinalAnswer(1)") -> None:

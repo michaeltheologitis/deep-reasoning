@@ -1,6 +1,7 @@
-"""An OpenAI-compatible chat endpoint on 127.0.0.1 for scripted runs (§8.2).
+"""An OpenAI-compatible endpoint on 127.0.0.1 for scripted runs: chat and embeddings
+(§8.2).
 
-Real HTTP, so the worker runs unmodified and D5's key proxy can later sit in front of it.
+Real HTTP, so the worker runs unmodified.
 """
 
 import json
@@ -16,6 +17,7 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 Messages = list[dict[str, Any]]
+EMBEDDING = [0.5, 0.5, 0.5, 0.5]
 
 
 @dataclass(frozen=True)
@@ -43,10 +45,12 @@ class _Server(ThreadingHTTPServer):
 
 
 class FakeOpenAI:
-    """POST /v1/chat/completions on 127.0.0.1, as an async context manager.
+    """POST /v1/chat/completions and /v1/embeddings on 127.0.0.1, as a context manager,
+    sync or async.
 
-    .base_url is the endpoint; .calls records each call's start time and messages. A
-    responder that raises answers HTTP 500 with the exception's text.
+    .base_url is the endpoint; .calls records each chat call's start time and messages.
+    A responder that raises answers HTTP 500 with the exception's text. Every input to
+    embed gets EMBEDDING.
     """
 
     def __init__(
@@ -91,13 +95,29 @@ class FakeOpenAI:
             "usage": self._usage(messages, reply),
         }
 
-    async def __aenter__(self) -> Self:
+    def embed(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        """The HTTP status and body for one embeddings request."""
+        given = request["input"]
+        inputs = given if isinstance(given, list) else [given]
+        return 200, {
+            "object": "list",
+            "model": request.get("model", ""),
+            "data": [
+                {"object": "embedding", "index": i, "embedding": EMBEDDING}
+                for i in range(len(inputs))
+            ],
+            "usage": {"prompt_tokens": len(inputs), "total_tokens": len(inputs)},
+        }
+
+    def __enter__(self) -> Self:
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:
                 length = int(self.headers.get("Content-Length", 0))
-                status, body = fake.answer(json.loads(self.rfile.read(length)))
+                request = json.loads(self.rfile.read(length))
+                embeds = self.path.endswith("/embeddings")
+                status, body = (fake.embed if embeds else fake.answer)(request)
                 data = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -112,6 +132,12 @@ class FakeOpenAI:
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         return self
 
-    async def __aexit__(self, *exc: object) -> None:
+    def __exit__(self, *exc: object) -> None:
         self._server.shutdown()
         self._server.server_close()
+
+    async def __aenter__(self) -> Self:
+        return self.__enter__()
+
+    async def __aexit__(self, *exc: object) -> None:
+        self.__exit__(*exc)

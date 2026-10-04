@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -402,9 +402,12 @@ function decompositionsIn(
     }
     Object.values(record).forEach((item) => visit(item, where));
   };
-  for (const file of folders.flatMap((folder) =>
-    yamlFiles(join(root, folder)),
-  )) {
+  const files = folders.flatMap((folder) =>
+    readdirSync(join(root, folder), { recursive: true, encoding: "utf8" })
+      .filter((name) => name.endsWith(".yaml"))
+      .map((name) => join(root, folder, name)),
+  );
+  for (const file of files) {
     for (const document of parseAllDocuments(readFileSync(file, "utf8"), {
       version: "1.1",
     })) {
@@ -419,12 +422,4 @@ function isMessage(value: unknown): value is ChatMessage {
   return (
     typeof message?.role === "string" && typeof message.content === "string"
   );
-}
-
-function yamlFiles(directory: string): string[] {
-  return readdirSync(directory).flatMap((name) => {
-    const path = join(directory, name);
-    if (statSync(path).isDirectory()) return yamlFiles(path);
-    return name.endsWith(".yaml") ? [path] : [];
-  });
 }

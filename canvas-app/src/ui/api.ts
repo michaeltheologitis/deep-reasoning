@@ -185,8 +185,6 @@ export const getProfile = () => read<ProfileRecord>("../profile");
 export const putProfile = async (body: ProfileBody) =>
   (await write<ProfileRecord>("../profile", body)).record;
 export const getNamespaces = () => read<NamespaceRecord[]>("../namespaces");
-export const getNamespace = (name: string) =>
-  read<NamespaceRecord>(at("namespaces", name));
 export const putNamespace = (name: string, body: NamespaceBody) =>
   write<NamespaceRecord>(at("namespaces", name), body);
 export const deleteNamespace = (name: string, baseVersion: number) =>
@@ -196,20 +194,15 @@ export const getNamespaceEffective = (name: string) =>
   read<Effective>(`${at("namespaces", name)}/effective`);
 export const getDecompositions = () =>
   read<DecompositionRecord[]>("../decompositions");
-export const getDecomposition = (slug: string) =>
-  read<DecompositionRecord>(at("decompositions", slug));
 export const putDecomposition = (slug: string, body: DecompositionBody) =>
   write<DecompositionRecord>(at("decompositions", slug), body);
 export const deleteDecomposition = (slug: string, baseVersion: number) =>
   remove(at("decompositions", slug), baseVersion);
 export const getTools = () => read<ToolRecord[]>("../tools");
-export const getTool = (name: string) => read<ToolRecord>(at("tools", name));
 export const putTool = (name: string, body: ToolBody) =>
   write<ToolRecord>(at("tools", name), body);
 export const deleteTool = (name: string, baseVersion: number) =>
   remove(at("tools", name), baseVersion);
-export const toolVersions = (name: string) =>
-  read<HistoryEntry[]>(`${at("tools", name)}/versions`);
 export const checkTool = async (name: string, body: CheckBody) =>
   (await call<CheckReport>("POST", `${at("tools", name)}/check`, body)).data;
 export const getMcp = () => read<McpGrant[]>("../mcp");

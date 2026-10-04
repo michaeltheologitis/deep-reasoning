@@ -29,7 +29,7 @@ from structlog.contextvars import bound_contextvars
 
 from deep_reasoning.acp.catalog import load_dr_config
 from deep_reasoning.acp.costs import PriceTable
-from deep_reasoning.acp.runlog import Home
+from deep_reasoning.acp.runlog import Home, detail_of
 from deep_reasoning.acp.worker.protocol import CONTROL, Close, Prompt, Start, Stop
 from deep_reasoning.acp.worker.recorder import EventSink, Recorder
 from deep_reasoning.acp.worker.stop import (
@@ -41,7 +41,6 @@ from deep_reasoning.mcp.session import open_session
 
 logger = structlog.get_logger(__name__)
 
-DETAIL_CAP = 2000
 CLOSE_RUN_WATCHDOG_S = 0.7
 EXIT_CLOSED, EXIT_FAILED, EXIT_BUILD_FAILED, EXIT_TEARDOWN_HUNG = 0, 1, 2, 3
 
@@ -53,11 +52,6 @@ class RunKilled(BaseException):
 def as_text(value: Any) -> str:
     """value if it is a str, else its repr."""
     return value if isinstance(value, str) else repr(value)
-
-
-def detail_of(exc: BaseException) -> str:
-    """deep_reasoner's own form for an exception (agent.end's detail), capped."""
-    return f"{type(exc).__name__}: {exc}"[:DETAIL_CAP]
 
 
 class Worker:

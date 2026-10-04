@@ -1,5 +1,6 @@
 """The routes D4 adds to the App backend (D4 §7.2), behind D2's guard."""
 
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -7,7 +8,7 @@ from starlette.requests import Request
 from starlette.routing import Route
 
 from deep_reasoning.library import shapes
-from deep_reasoning.library.api import _parse, json_route
+from deep_reasoning.library.api import _parse
 from deep_reasoning.library.library import Library
 from deep_reasoning.library.records import LibraryRefused, LibraryValidationError
 from deep_reasoning.mcp.grants import (
@@ -30,8 +31,13 @@ class CheckBody(BaseModel):
     example: str | None = None
 
 
-def tool_routes(library: Library) -> list[Route]:
-    """POST /tools/{name}/check, GET /mcp, PUT /mcp/{name} (§7.2), built with D2's json_route."""
+Handler = Callable[[Request, bytes], Any]
+
+
+def tool_routes(
+    library: Library, route: Callable[[str, str, Handler], Route]
+) -> list[Route]:
+    """POST /tools/{name}/check, GET /mcp, PUT /mcp/{name} (§7.2), built with D2's route."""
     lib = library
     home = lib.path.parent  # $DR_HOME, where dr-acp remembers the tools it saw (§4.7)
 
@@ -74,7 +80,7 @@ def tool_routes(library: Library) -> list[Route]:
         return listed, 200 if name in tools else 201
 
     return [
-        json_route("/tools/{name}/check", "POST", check),
-        json_route("/mcp", "GET", grants),
-        json_route("/mcp/{name}", "PUT", put_grant),
+        route("/tools/{name}/check", "POST", check),
+        route("/mcp", "GET", grants),
+        route("/mcp/{name}", "PUT", put_grant),
     ]

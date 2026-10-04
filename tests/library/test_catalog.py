@@ -6,9 +6,9 @@ import pytest
 import yaml
 
 from deep_reasoning.acp.catalog import CommandEntry, ConfigCatalog
+from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, LibraryCatalog, LibraryNotFound
-from tests.library.conftest import example, run_dr, text
-from tests.library.fake_openai import FakeOpenAI
+from tests.library.conftest import example, run_dr, text, user_texts
 
 ANSWER = '<think>ok</think>\n<repl>\nFinalAnswer("done")\n</repl>'
 
@@ -40,29 +40,6 @@ def test_snapshot_equals_config_catalog_over_the_materialized_config_plus_metada
             described if e.decomposition == "decline" else e
             for e in plain.commands["router"]
         ),
-    }
-
-
-def test_commands_carry_use_when_and_hint(catalog):
-    router = {e.name: e for e in catalog.snapshot().commands["router"]}
-    assert router["decline"] == CommandEntry(
-        "decline", "decline", "off-topic questions", "the question"
-    )
-    assert router["route-a-course-question"] == CommandEntry(
-        "route-a-course-question",
-        "route a course question",
-        "Open with the 'route a course question' decomposition",
-        "the task",
-    )
-
-
-def test_a_top_level_decomposition_is_offered_in_every_namespace(catalog, lib):
-    lib.put_decomposition(text(example("Triage it!")), top_level=True)
-    commands = catalog.snapshot().commands
-    assert {ns: entries[0].name for ns, entries in commands.items()} == {
-        "root": "triage-it",
-        "courses": "triage-it",
-        "router": "triage-it",
     }
 
 
@@ -120,17 +97,13 @@ def test_building_a_catalog_imports_nothing_of_deep_reasoner(tmp_path):
     subprocess.run([sys.executable, "-c", probe], check=True)
 
 
-def first_user_messages(request: dict) -> list[str]:
-    return [m["content"] for m in request["messages"] if m["role"] == "user"]
-
-
 def test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace(
     lib, router, tmp_path
 ):
     """Design §7.3 below dr-acp's front: what LibraryCatalog hands D1's worker."""
     lib.import_config(router)
     catalog = LibraryCatalog(lib.path)
-    with FakeOpenAI(ANSWER) as fake:
+    with FakeOpenAI(lambda messages: ANSWER) as fake:
         profile = {
             **lib.profile().data,
             "client": {"base_url": fake.base_url, "api_key_env": "FAKE_KEY"},
@@ -152,12 +125,12 @@ def test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace(
                 lib.put_decomposition(text(example("summarize then rank", edit)))
             run_dir = tmp_path / f"run{len(runs)}"
             source = catalog.materialize("router", run_dir=run_dir)
-            fake.requests.clear()
+            fake.calls.clear()
             done = run_dr(
                 source.config_path, "Which course comes after CS101?", cwd=tmp_path
             )
             assert (done.returncode, done.stdout.splitlines()[-1]) == (0, "done")
-            runs.append((source, first_user_messages(fake.requests[0])))
+            runs.append((source, user_texts(fake.calls[0].messages)))
 
     (first, first_asks), (second, second_asks) = runs
     assert (first.namespace, second.namespace) == ("router", "router")

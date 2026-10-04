@@ -7,7 +7,7 @@ import pytest
 import yaml
 from starlette.testclient import TestClient
 
-from deep_reasoning.library import shapes
+from deep_reasoning.library import shapes, store
 from deep_reasoning.library.api import create_app, same_user_peer
 from tests.library.conftest import example, text
 
@@ -77,6 +77,8 @@ def test_health_reports_the_revision_and_default_namespace(client, lib):
     ],
 )
 def test_every_read_answers_its_records(client, path, shape):
+    """shape is the versions a history lists, the names a listing holds, or some of a
+    record's fields."""
     response = client.get(path)
     assert response.status_code == 200
     found = response.json()
@@ -165,26 +167,23 @@ def test_every_write_route(client):
     assert client.delete("/namespaces/courses").json()["version"] == 2
 
 
-def test_validate_answers_200_even_when_invalid(client):
-    response = client.post(
-        "/validate", json={"kind": "decomposition", "yaml": "name: x\nmessages: []"}
-    )
+def test_validate_answers_200_even_when_invalid(client, lib):
+    sent = {"kind": "decomposition", "yaml": "name: x\nmessages: []"}
+    response = client.post("/validate", json=sent)
     assert response.status_code == 200
-    assert response.json() == {
-        "ok": False,
-        "message": "'x' is not a valid deep_reasoner Decomposition:\n"
-        "  messages: List should have at least 1 item after validation, not 0",
-        "errors": [
-            {
-                "loc": "messages",
-                "msg": "List should have at least 1 item after validation, not 0",
-            }
-        ],
-        "warnings": [],
-        "name": "x",
-        "slug": "x",
-        "yaml": None,
-    }
+    assert response.json() == lib.validate(sent["kind"], sent["yaml"]).model_dump(
+        mode="json"
+    )
+    assert response.json()["ok"] is False
+
+
+def test_validate_judges_a_tool_with_the_source_it_is_sent(client):
+    block = "factory: make\nfactory_from: tools/search.py\n"
+    sent = {"kind": "tool", "name": "search", "yaml": block}
+    source = "def make(config, parent):\n    return None\n"
+    alone = client.post("/validate", json=sent).json()
+    with_source = client.post("/validate", json={**sent, "source": source}).json()
+    assert (alone["ok"], with_source["ok"], with_source["yaml"]) == (False, True, block)
 
 
 def test_errors_carry_code_message_and_details(client):
@@ -231,25 +230,33 @@ def test_errors_carry_code_message_and_details(client):
         bad = put(client, "/namespaces/a", **body)
         assert (bad.status_code, bad.json()["error"]) == (400, "bad_request")
     stale = client.delete("/namespaces/router", params={"base_version": "x"})
-    assert (stale.status_code, stale.json()["error"]) == (400, "bad_request")
+    assert (stale.status_code, stale.json()) == (
+        400,
+        {
+            "error": "bad_request",
+            "message": "base_version must be a whole number; got 'x'.",
+        },
+    )
 
 
-def test_a_slug_with_spaces_in_the_name_round_trips(client):
-    put(
-        client,
-        "/decompositions/rank-by-prerequisites",
-        yaml=text(example("Rank by prerequisites")),
+@pytest.mark.parametrize("path", ["/effective", "/namespaces/router/effective"])
+def test_a_stale_head_makes_the_effective_view_answer_422_naming_it(client, lib, path):
+    decline = lib.decomposition("decline")
+    # As an earlier deep_reasoner saved it: the installed one requires messages.
+    with store.write(lib.path, "put decomposition", "decline") as w:
+        w.add("decomposition", "decline", yaml="name: decline\n", slug=decline.slug)
+    sentence = (
+        "Decomposition 'decline' version 2 no longer validates under deep_reasoner "
+        f"{shapes.deep_reasoner_build()}: messages: Field required"
     )
-    got = client.get("/decompositions/rank-by-prerequisites").json()
-    assert (got["name"], got["slug"]) == (
-        "Rank by prerequisites",
-        "rank-by-prerequisites",
-    )
-    assert (
-        client.get("/decompositions/rank-by-prerequisites/versions").json()[0][
-            "version"
-        ]
-        == 1
+    response = client.get(path)
+    assert (response.status_code, response.json()) == (
+        422,
+        {
+            "error": "invalid",
+            "message": sentence,
+            "errors": [{"loc": "", "msg": sentence}],
+        },
     )
 
 

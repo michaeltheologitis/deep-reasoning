@@ -1,6 +1,5 @@
 // The decomposition editor of §2.2 and §2.3: Create decomposition (record null) and an opened one.
 
-import type { Ref } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { FrameParams, TabId } from "../../shared/protocol";
@@ -61,7 +60,7 @@ import type {
   NamespaceRecord,
   ValidationResult,
 } from "../types";
-import { YamlSyntaxError, parseYaml, stringifyYaml } from "../yaml";
+import { YAMLParseError, parseYaml, stringifyYaml } from "../yaml";
 import { CodeField, ConfirmRow, FieldErrors } from "./fields";
 import { NamespaceChecklist, NamespacePicker } from "./pickers";
 
@@ -103,32 +102,21 @@ const failed = (error: LibraryError): Outcome => ({
   errors: error.errors,
 });
 
+/** The editor's state before any change: the record as saved, or a new decomposition. */
 function fresh(record: DecompositionRecord | null): Stored {
-  if (record === null) {
-    return {
-      draft: {
-        mode: "cards",
-        name: "",
-        useWhen: "",
-        hint: "",
-        cards: newDecompositionCards(),
-        yaml: "",
-        baseVersion: 0,
-      },
-      attached: [],
-    };
-  }
   return {
     draft: {
       mode: "cards",
-      name: record.name,
-      useWhen: record.use_when ?? "",
-      hint: record.hint ?? "",
-      cards: messagesToCards(record.data.messages),
+      name: record?.name ?? "",
+      useWhen: record?.use_when ?? "",
+      hint: record?.hint ?? "",
+      cards: record
+        ? messagesToCards(record.data.messages)
+        : newDecompositionCards(),
       yaml: "",
-      baseVersion: record.version,
+      baseVersion: record?.version ?? 0,
     },
-    attached: [...record.namespaces],
+    attached: [...(record?.namespaces ?? [])],
   };
 }
 
@@ -140,7 +128,7 @@ function decompositionOf(
   try {
     value = parseYaml(text);
   } catch (error) {
-    if (error instanceof YamlSyntaxError) return YAML_SYNTAX(error.message);
+    if (error instanceof YAMLParseError) return YAML_SYNTAX(error.message);
     throw error;
   }
   const data = value as { name?: unknown; messages?: unknown } | null;
@@ -161,16 +149,14 @@ function inheritedNotes(
   names: readonly string[],
   attached: readonly string[],
 ): Record<string, string> {
-  const notes: Record<string, string> = {};
-  for (const name of names) {
-    if (
+  const inherited = names.filter(
+    (name) =>
       !attached.includes(name) &&
-      ancestors(name).some((a) => attached.includes(a))
-    ) {
-      notes[name] = LABELS.alsoUsedIn(name);
-    }
-  }
-  return notes;
+      ancestors(name).some((a) => attached.includes(a)),
+  );
+  return Object.fromEntries(
+    inherited.map((name) => [name, LABELS.alsoUsedIn(name)]),
+  );
 }
 
 function preselected(
@@ -209,14 +195,16 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
   const yamlField = useRef<HTMLDivElement>(null);
   const { draft } = stored;
   const text = draftYaml(draft);
+  const validateDraft = () =>
+    attempt(
+      () => validate({ kind: "decomposition", yaml: text }),
+      onBackendLost,
+    );
 
   useEffect(() => {
     let current = true;
     const timer = setTimeout(async () => {
-      const result = await attempt(
-        () => validate({ kind: "decomposition", yaml: text }),
-        onBackendLost,
-      );
+      const result = await validateDraft();
       if (current && result.ok) setValidation(result.value);
     }, VALIDATE_AFTER_MS);
     return () => {
@@ -284,10 +272,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
     if (draft.mode === "cards" && draft.name.trim() === "")
       return setOutcome({ kind: "name-required" });
     setBusy(true);
-    const result = await attempt(
-      () => validate({ kind: "decomposition", yaml: text }),
-      onBackendLost,
-    );
+    const result = await validateDraft();
     setBusy(false);
     if (!result.ok) {
       if (result.error) setOutcome(failed(result.error));
@@ -327,10 +312,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
 
   async function viewYaml() {
     if (yamlView !== null) return setYamlView(null);
-    const result = await attempt(
-      () => validate({ kind: "decomposition", yaml: text }),
-      onBackendLost,
-    );
+    const result = await validateDraft();
     const canonical = result.ok ? result.value.yaml : null;
     setYamlView(
       canonical ??
@@ -449,16 +431,36 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
           onChange={(cards) => change({ cards })}
         />
       ) : (
-        <YamlField
-          containerRef={yamlField}
-          value={draft.yaml}
-          error={yamlError}
-          onChange={(yaml) => {
-            setYamlError(null);
-            change({ yaml });
-          }}
-          onEditCards={editAsCards}
-        />
+        <div class="yaml-edit" ref={yamlField}>
+          <CodeField
+            label="YAML"
+            language="yaml"
+            value={draft.yaml}
+            onChange={(yaml) => {
+              setYamlError(null);
+              change({ yaml });
+            }}
+            testId="dr-yaml"
+            describedBy={yamlError ? "dr-yaml-error" : undefined}
+          />
+          {yamlError && (
+            <p
+              class="errors"
+              id="dr-yaml-error"
+              role="alert"
+              data-testid="dr-yaml-error"
+            >
+              {yamlError}
+            </p>
+          )}
+          <button
+            type="button"
+            data-testid="dr-edit-cards"
+            onClick={editAsCards}
+          >
+            {LABELS.editCards}
+          </button>
+        </div>
       )}
       {draft.mode === "cards" && yamlView !== null && (
         <div class="yaml-view">
@@ -537,8 +539,6 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
       <OutcomeView
         outcome={outcome}
         record={record}
-        draft={draft}
-        picked={picked}
         onSaveAnyway={() => save(true)}
         onCancel={() => setOutcome(null)}
         onSaveAsNext={(head) =>
@@ -576,8 +576,6 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
 function OutcomeView(props: {
   outcome: Outcome | null;
   record: DecompositionRecord | null;
-  draft: DecompositionDraft;
-  picked: string | null;
   onSaveAnyway: () => void;
   onCancel: () => void;
   onSaveAsNext: (head: DecompositionRecord) => void;
@@ -684,44 +682,6 @@ function OutcomeView(props: {
   );
 }
 
-function YamlField(props: {
-  value: string;
-  error: string | null;
-  onChange: (value: string) => void;
-  onEditCards: () => void;
-  containerRef: Ref<HTMLDivElement>;
-}) {
-  return (
-    <div class="yaml-edit" ref={props.containerRef}>
-      <CodeField
-        label="YAML"
-        language="yaml"
-        value={props.value}
-        onChange={props.onChange}
-        testId="dr-yaml"
-        describedBy={props.error ? "dr-yaml-error" : undefined}
-      />
-      {props.error && (
-        <p
-          class="errors"
-          id="dr-yaml-error"
-          role="alert"
-          data-testid="dr-yaml-error"
-        >
-          {props.error}
-        </p>
-      )}
-      <button
-        type="button"
-        data-testid="dr-edit-cards"
-        onClick={props.onEditCards}
-      >
-        {LABELS.editCards}
-      </button>
-    </div>
-  );
-}
-
 export interface CardListProps {
   cards: readonly Card[];
   /** D2's errors for each card, by index. */
@@ -774,6 +734,8 @@ export function CardList(props: CardListProps) {
   );
 }
 
+/** One card: its text areas (dr-card-<index>-<field>, each described by D2's errors for the card)
+ * and, for a raw card, its role. */
 function CardFields(props: {
   card: Card;
   index: number;
@@ -782,105 +744,69 @@ function CardFields(props: {
 }) {
   const { card, index } = props;
   const errorsId = `dr-card-${index}-errors`;
-  const describedBy = props.errors?.length ? errorsId : undefined;
-  const field = (name: string) => `dr-card-${index}-${name}`;
+  const field = (
+    name: string,
+    label: string,
+    value: string,
+    edit: (value: string) => Card,
+  ) => (
+    <CodeField
+      label={label}
+      language={name === "code" ? "python" : "text"}
+      value={value}
+      testId={`dr-card-${index}-${name}`}
+      describedBy={props.errors?.length ? errorsId : undefined}
+      onChange={(next) => props.onChange(edit(next))}
+    />
+  );
   return (
     <div class={`card ${card.kind}`} data-testid={`dr-card-${index}`}>
-      {card.kind === "task" && (
-        <CodeField
-          label={LABELS.task}
-          language="text"
-          value={card.text}
-          testId={field("task")}
-          describedBy={describedBy}
-          onChange={(text) => props.onChange({ ...card, text })}
-        />
-      )}
+      {card.kind === "task" &&
+        field("task", LABELS.task, card.text, (text) => ({ ...card, text }))}
       {card.kind === "step" && (
         <>
-          <CodeField
-            label={LABELS.think}
-            language="text"
-            value={card.think}
-            testId={field("think")}
-            describedBy={describedBy}
-            onChange={(think) =>
-              props.onChange({
-                ...card,
-                think,
-                thinkLayout: think.includes("\n") ? "block" : card.thinkLayout,
-              })
-            }
-          />
-          <CodeField
-            label={LABELS.code}
-            language="python"
-            value={card.code}
-            testId={field("code")}
-            describedBy={describedBy}
-            onChange={(code) => props.onChange({ ...card, code })}
-          />
+          {field("think", LABELS.think, card.think, (think) => ({
+            ...card,
+            think,
+            thinkLayout: think.includes("\n") ? "block" : card.thinkLayout,
+          }))}
+          {field("code", LABELS.code, card.code, (code) => ({ ...card, code }))}
         </>
       )}
-      {card.kind === "output" && (
-        <CodeField
-          label={LABELS.output}
-          language="text"
-          value={card.text}
-          testId={field("output")}
-          describedBy={describedBy}
-          onChange={(text) => props.onChange({ ...card, text })}
-        />
-      )}
+      {card.kind === "output" &&
+        field("output", LABELS.output, card.text, (text) => ({
+          ...card,
+          text,
+        }))}
       {card.kind === "raw" && (
-        <RawCardFields
-          card={card}
-          index={index}
-          describedBy={describedBy}
-          onChange={props.onChange}
-        />
+        <>
+          <p class="note">{RAW_NOTE}</p>
+          <label class="role">
+            role{" "}
+            <select
+              value={card.role}
+              data-testid={`dr-card-${index}-role`}
+              onChange={(event) =>
+                props.onChange({
+                  ...card,
+                  role: event.currentTarget.value as RawCard["role"],
+                })
+              }
+            >
+              {(ROLES.includes(card.role) ? ROLES : [...ROLES, card.role]).map(
+                (role) => (
+                  <option value={role}>{role}</option>
+                ),
+              )}
+            </select>
+          </label>
+          {field("raw", card.role, card.content, (content) => ({
+            ...card,
+            content,
+          }))}
+        </>
       )}
       <FieldErrors id={errorsId} testId={errorsId} errors={props.errors} />
     </div>
-  );
-}
-
-function RawCardFields(props: {
-  card: RawCard;
-  index: number;
-  describedBy?: string;
-  onChange: (card: RawCard) => void;
-}) {
-  const { card } = props;
-  const roles = ROLES.includes(card.role) ? ROLES : [...ROLES, card.role];
-  return (
-    <>
-      <p class="note">{RAW_NOTE}</p>
-      <label class="role">
-        role{" "}
-        <select
-          value={card.role}
-          data-testid={`dr-card-${props.index}-role`}
-          onChange={(event) =>
-            props.onChange({
-              ...card,
-              role: event.currentTarget.value as RawCard["role"],
-            })
-          }
-        >
-          {roles.map((role) => (
-            <option value={role}>{role}</option>
-          ))}
-        </select>
-      </label>
-      <CodeField
-        label={card.role}
-        language="text"
-        value={card.content}
-        testId={`dr-card-${props.index}-raw`}
-        describedBy={props.describedBy}
-        onChange={(content) => props.onChange({ ...card, content })}
-      />
-    </>
   );
 }

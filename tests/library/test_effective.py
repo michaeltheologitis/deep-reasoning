@@ -83,7 +83,9 @@ def layered(lib):
         ),
     ],
 )
-def test_sources(layered, field, namespace, expected):
+def test_each_inherited_value_names_the_level_it_comes_from(
+    layered, field, namespace, expected
+):
     assert layered.effective(namespace).model_dump(mode="json")[field] == expected
 
 

@@ -60,7 +60,9 @@ def test_top_level_and_unattached_decompositions_have_groups_of_their_own(
     expect(page.get_by_test_id("dr-row-unattached-old-draft")).to_contain_text("v1")
 
 
-def test_saving_an_opened_decomposition_makes_its_next_version(open_ui, library_server):
+def test_saving_an_opened_decomposition_makes_its_next_version_keeping_use_when_and_hint(
+    open_ui, library_server
+):
     page = open_ui(tab="browse")
     page.get_by_test_id("dr-row-router-summarize-then-rank").click()
     expect(page.get_by_test_id("dr-name")).to_have_value("summarize then rank")
@@ -73,6 +75,7 @@ def test_saving_an_opened_decomposition_makes_its_next_version(open_ui, library_
     )
     saved = library_server.library().decomposition("summarize then rank")
     assert saved.version == 2
+    assert (saved.use_when, saved.hint) == ("comparing many courses", "the courses")
     assert (
         saved.data["messages"][0]["content"] == "Rank them by workload, then summarize."
     )

@@ -1,4 +1,6 @@
-# The live tier: real runs on gpt-6-luna through dr-acp, started on demand.
+# The live tier: real runs through dr-acp, started on demand: gpt-6-luna on the OpenAI
+# key, and Claude Code on Sonnet on Michael's subscription token. No ANTHROPIC_API_KEY,
+# ever: Claude Code would bill it per token instead of the subscription.
 name: live
 
 on:
@@ -10,17 +12,25 @@ jobs:
     timeout-minutes: 20
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
-      - name: The model key is a repository secret
+      - name: The model keys are repository secrets
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::error::the OPENAI_API_KEY repository secret is not set"
-            exit 1
-          fi
+          for name in OPENAI_API_KEY CLAUDE_CODE_OAUTH_TOKEN; do
+            if [ -z "$(printenv "$name")" ]; then
+              echo "::error::the $name repository secret is not set"
+              exit 1
+            fi
+          done
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: The Claude Code CLI, pinned
+        run: npm install -g @anthropic-ai/claude-code@2.1.285 && claude --version
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked

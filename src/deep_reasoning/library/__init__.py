@@ -1,8 +1,8 @@
 """The Library: namespaces, decompositions, tools and one profile, as canonical YAML in
-one SQLite file per user, every save an immutable version (D2).
+one SQLite file per user, every save an immutable version.
 
-Library and Effective are imported on first use: they import deep_reasoner, and dr-acp
-builds its LibraryCatalog before it serves.
+Library and Effective are imported on first use, because they import deep_reasoner;
+importing this package, LibraryCatalog or library_path does not.
 """
 
 import importlib

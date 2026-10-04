@@ -1,4 +1,4 @@
-"""What a conversation can run: namespaces and their slash commands (§4.6, D2's seam)."""
+"""What a conversation can run: namespaces and their slash commands (§4.6)."""
 
 import hashlib
 import re
@@ -27,7 +27,7 @@ class CatalogSnapshot:
 class RunSource:
     config_path: Path  # a plain dr main.yaml the worker loads
     namespace: str  # becomes cfg.entry_namespace
-    client: Mapping[str, Any]  # the config's client block as loaded: D5's upstream
+    client: Mapping[str, Any]  # the config's client block as loaded: a route's upstream
     versions: Mapping[str, Any]  # recorded in run.start
 
 
@@ -81,7 +81,7 @@ def _menu(decompositions: list[Any]) -> tuple[CommandEntry, ...]:
 
 
 class ConfigCatalog:
-    """The catalog of one plain dr config, until D2's Library."""
+    """The catalog of one plain dr config, read in place."""
 
     def __init__(self, path: Path) -> None:
         self._path = path.resolve()

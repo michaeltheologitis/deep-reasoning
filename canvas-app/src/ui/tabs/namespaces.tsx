@@ -2,6 +2,7 @@
 // Every action changes one key of the namespace's (or the profile's) own YAML document and
 // saves it at once, with the version it was read at (§5.3).
 
+import type { ComponentChildren } from "preact";
 import { useRef, useState } from "preact/hooks";
 
 import {
@@ -32,7 +33,7 @@ import {
   SET_HERE,
   UNDEFINED_TOOL,
 } from "../texts";
-import { type NamespaceNode, namespaceTree } from "../tree";
+import { type NamespaceNode, ROOT, ancestors, namespaceTree } from "../tree";
 import type {
   DecompositionRecord,
   Effective,
@@ -41,11 +42,10 @@ import type {
   ToolRecord,
 } from "../types";
 import { type Attempt, attempt, resolved, useLoaded } from "../load";
-import { parseYaml, stringifyYaml } from "../yaml";
+import { stringifyYaml } from "../yaml";
 import type { TabProps } from "./props";
 
 const RUN_SETTINGS = "run-settings";
-const ROOT = "root";
 const SETTINGS = [
   "model",
   "models",
@@ -74,11 +74,6 @@ async function loadLibrary(): Promise<Library> {
     getDecompositions(),
   ]);
   return { namespaces, profile, tools, decompositions };
-}
-
-function documentOf(yaml: string): Document {
-  const value = parseYaml(yaml);
-  return value && typeof value === "object" ? { ...(value as Document) } : {};
 }
 
 function without(document: Document, key: string): Document {
@@ -287,7 +282,7 @@ function NamespaceDetail(props: {
   const [editing, setEditing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const namespace = library.namespaces.find((n) => n.name === name)!;
-  const document = documentOf(namespace.yaml);
+  const document = namespace.data;
   const isDefault = library.profile.default_namespace === name;
 
   async function save(next: Document) {
@@ -319,7 +314,7 @@ function NamespaceDetail(props: {
 
   async function makeDefault() {
     const profile = {
-      ...documentOf(library.profile.yaml),
+      ...library.profile.data,
       entry_namespace: name,
     };
     await props.write(() =>
@@ -335,10 +330,7 @@ function NamespaceDetail(props: {
     const result = await props.write(() =>
       deleteNamespace(name, namespace.version),
     );
-    if (result.ok)
-      props.onDeleted(
-        name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : ROOT,
-      );
+    if (result.ok) props.onDeleted(ancestors(name).at(-1) ?? ROOT);
   }
 
   const fieldProps = { here: name, document, editing, setEditing, set, reset };
@@ -420,6 +412,20 @@ function NamespaceDetail(props: {
   );
 }
 
+/** A row of the namespace's fields: its name, then its value, source and actions. */
+function FieldRow(props: {
+  field: string;
+  label: string;
+  children: ComponentChildren;
+}) {
+  return (
+    <div class="field-row" data-testid={`dr-field-${props.field}`}>
+      <dt>{props.label}</dt>
+      <dd>{props.children}</dd>
+    </div>
+  );
+}
+
 interface FieldProps {
   here: string;
   document: Document;
@@ -476,33 +482,30 @@ function ValueField(
 ) {
   const { field, sourced } = props;
   return (
-    <div class="field-row" data-testid={`dr-field-${field}`}>
-      <dt>{props.label}</dt>
-      <dd>
-        <pre class="value">
-          {sourced.source === null ? "—" : shown(sourced.value)}
-        </pre>
-        <span class="source" data-testid={`dr-source-${field}`}>
-          {sourceOf(sourced.source, props.here)}
-        </span>
-        <Actions
-          id={field}
-          setHere={field in props.document}
-          onEdit={() => props.setEditing(field)}
-          onReset={() => props.reset(field)}
+    <FieldRow field={field} label={props.label}>
+      <pre class="value">
+        {sourced.source === null ? "—" : shown(sourced.value)}
+      </pre>
+      <span class="source" data-testid={`dr-source-${field}`}>
+        {sourceOf(sourced.source, props.here)}
+      </span>
+      <Actions
+        id={field}
+        setHere={field in props.document}
+        onEdit={() => props.setEditing(field)}
+        onReset={() => props.reset(field)}
+      />
+      {props.editing === field && (
+        <ValueEditor
+          label={props.label}
+          value={sourced.value}
+          mode="yaml"
+          testId={`dr-value-${field}`}
+          onSave={(value) => props.set(field, value)}
+          onCancel={() => props.setEditing(null)}
         />
-        {props.editing === field && (
-          <ValueEditor
-            label={props.label}
-            value={sourced.value}
-            mode="yaml"
-            testId={`dr-value-${field}`}
-            onSave={(value) => props.set(field, value)}
-            onCancel={() => props.setEditing(null)}
-          />
-        )}
-      </dd>
-    </div>
+      )}
+    </FieldRow>
   );
 }
 
@@ -517,52 +520,49 @@ function SpawnField(
     : null;
   const [checked, setChecked] = useState<string[]>(targets ?? []);
   return (
-    <div class="field-row" data-testid="dr-field-spawn">
-      <dt>May spawn into</dt>
-      <dd>
-        <span class="value">
-          {targets === null ? ANY_NAMESPACE : targets.join(", ") || "—"}
-        </span>
-        <span class="source" data-testid="dr-source-spawn">
-          {sourceOf(props.sourced.source, props.here)}
-        </span>
-        <Actions
-          id="spawn"
-          setHere={"spawn" in props.document}
-          onEdit={() => {
-            setChecked(targets ?? []);
-            props.setEditing("spawn");
-          }}
-          onReset={() => props.reset("spawn")}
-        />
-        {props.editing === "spawn" && (
-          <div class="value-editor">
-            <NamespaceChecklist
-              label="May spawn into"
-              namespaces={props.namespaces}
-              checked={checked}
-              testIdPrefix="dr-spawn"
-              onChange={setChecked}
-            />
-            <button
-              type="button"
-              class="primary"
-              data-testid="dr-value-save"
-              onClick={() => props.set("spawn", checked)}
-            >
-              {LABELS.save}
-            </button>
-            <button
-              type="button"
-              data-testid="dr-value-cancel"
-              onClick={() => props.setEditing(null)}
-            >
-              {CANCEL}
-            </button>
-          </div>
-        )}
-      </dd>
-    </div>
+    <FieldRow field="spawn" label="May spawn into">
+      <span class="value">
+        {targets === null ? ANY_NAMESPACE : targets.join(", ") || "—"}
+      </span>
+      <span class="source" data-testid="dr-source-spawn">
+        {sourceOf(props.sourced.source, props.here)}
+      </span>
+      <Actions
+        id="spawn"
+        setHere={"spawn" in props.document}
+        onEdit={() => {
+          setChecked(targets ?? []);
+          props.setEditing("spawn");
+        }}
+        onReset={() => props.reset("spawn")}
+      />
+      {props.editing === "spawn" && (
+        <div class="value-editor">
+          <NamespaceChecklist
+            label="May spawn into"
+            namespaces={props.namespaces}
+            checked={checked}
+            testIdPrefix="dr-spawn"
+            onChange={setChecked}
+          />
+          <button
+            type="button"
+            class="primary"
+            data-testid="dr-value-save"
+            onClick={() => props.set("spawn", checked)}
+          >
+            {LABELS.save}
+          </button>
+          <button
+            type="button"
+            data-testid="dr-value-cancel"
+            onClick={() => props.setEditing(null)}
+          >
+            {CANCEL}
+          </button>
+        </div>
+      )}
+    </FieldRow>
   );
 }
 
@@ -583,42 +583,37 @@ function ToolsField(props: FieldProps & { view: Effective; library: Library }) {
     else props.reset("tools");
   };
   return (
-    <div class="field-row" data-testid="dr-field-tools">
-      <dt>Tools</dt>
-      <dd>
-        <ul class="plain">
-          {names.map((tool) => {
-            const granted = props.view.tools.find((t) => t.name === tool);
-            const inherited =
-              granted !== undefined && granted.source !== props.here;
-            return (
-              <li>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={granted !== undefined}
-                    disabled={inherited}
-                    data-testid={`dr-grant-${tool}`}
-                    onChange={(event) =>
-                      grant(tool, event.currentTarget.checked)
-                    }
-                  />
-                  {tool}
-                </label>{" "}
-                {granted && (
-                  <span class="source" data-testid={`dr-tool-source-${tool}`}>
-                    {inherited ? INHERITED(granted.source) : GRANTED_HERE}
-                  </span>
-                )}
-                {granted && !granted.defined && (
-                  <span class="warning"> {UNDEFINED_TOOL}</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      </dd>
-    </div>
+    <FieldRow field="tools" label="Tools">
+      <ul class="plain">
+        {names.map((tool) => {
+          const granted = props.view.tools.find((t) => t.name === tool);
+          const inherited =
+            granted !== undefined && granted.source !== props.here;
+          return (
+            <li>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={granted !== undefined}
+                  disabled={inherited}
+                  data-testid={`dr-grant-${tool}`}
+                  onChange={(event) => grant(tool, event.currentTarget.checked)}
+                />
+                {tool}
+              </label>{" "}
+              {granted && (
+                <span class="source" data-testid={`dr-tool-source-${tool}`}>
+                  {inherited ? INHERITED(granted.source) : GRANTED_HERE}
+                </span>
+              )}
+              {granted && !granted.defined && (
+                <span class="warning"> {UNDEFINED_TOOL}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </FieldRow>
   );
 }
 
@@ -633,62 +628,59 @@ function VarsField(props: FieldProps & { view: Effective }) {
     else props.reset("vars");
   };
   return (
-    <div class="field-row" data-testid="dr-field-vars">
-      <dt>Variables</dt>
-      <dd>
-        <ul class="plain">
-          {Object.entries(props.view.vars).map(([key, sourced]) => (
-            <li data-testid={`dr-var-${key}`}>
-              <code>{key}</code>{" "}
-              <pre class="value inline">{shown(sourced.value)}</pre>{" "}
-              <span class="source">{sourceOf(sourced.source, props.here)}</span>{" "}
-              <Actions
-                id={`var-${key}`}
-                setHere={key in own}
-                onEdit={() => props.setEditing(`var-${key}`)}
-                onReset={() => resetVar(key)}
+    <FieldRow field="vars" label="Variables">
+      <ul class="plain">
+        {Object.entries(props.view.vars).map(([key, sourced]) => (
+          <li data-testid={`dr-var-${key}`}>
+            <code>{key}</code>{" "}
+            <pre class="value inline">{shown(sourced.value)}</pre>{" "}
+            <span class="source">{sourceOf(sourced.source, props.here)}</span>{" "}
+            <Actions
+              id={`var-${key}`}
+              setHere={key in own}
+              onEdit={() => props.setEditing(`var-${key}`)}
+              onReset={() => resetVar(key)}
+            />
+            {props.editing === `var-${key}` && (
+              <ValueEditor
+                label={key}
+                value={sourced.value}
+                mode="yaml"
+                testId={`dr-value-var-${key}`}
+                onSave={(value) => setVar(key, value)}
+                onCancel={() => props.setEditing(null)}
               />
-              {props.editing === `var-${key}` && (
-                <ValueEditor
-                  label={key}
-                  value={sourced.value}
-                  mode="yaml"
-                  testId={`dr-value-var-${key}`}
-                  onSave={(value) => setVar(key, value)}
-                  onCancel={() => props.setEditing(null)}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          data-testid="dr-add-variable"
-          onClick={() => props.setEditing("new-variable")}
-        >
-          + {LABELS.addVariable}
-        </button>
-        {props.editing === "new-variable" && (
-          <div class="add">
-            <label for="dr-new-variable">{LABELS.name}</label>
-            <input
-              id="dr-new-variable"
-              value={newName}
-              data-testid="dr-new-variable"
-              onInput={(event) => setNewName(event.currentTarget.value)}
-            />
-            <ValueEditor
-              label={newName}
-              value={undefined}
-              mode="yaml"
-              testId="dr-value-new-variable"
-              onSave={(value) => setVar(newName.trim(), value)}
-              onCancel={() => props.setEditing(null)}
-            />
-          </div>
-        )}
-      </dd>
-    </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        data-testid="dr-add-variable"
+        onClick={() => props.setEditing("new-variable")}
+      >
+        + {LABELS.addVariable}
+      </button>
+      {props.editing === "new-variable" && (
+        <div class="add">
+          <label for="dr-new-variable">{LABELS.name}</label>
+          <input
+            id="dr-new-variable"
+            value={newName}
+            data-testid="dr-new-variable"
+            onInput={(event) => setNewName(event.currentTarget.value)}
+          />
+          <ValueEditor
+            label={newName}
+            value={undefined}
+            mode="yaml"
+            testId="dr-value-new-variable"
+            onSave={(value) => setVar(newName.trim(), value)}
+            onCancel={() => props.setEditing(null)}
+          />
+        </div>
+      )}
+    </FieldRow>
   );
 }
 
@@ -698,39 +690,36 @@ function SuffixField(props: FieldProps & { view: Effective }) {
       ? props.document.system_suffix
       : null;
   return (
-    <div class="field-row" data-testid="dr-field-system_suffix">
-      <dt>System suffix</dt>
-      <dd>
-        <ul class="plain">
-          {props.view.system_suffix.map((part) => (
-            <li data-testid={`dr-suffix-${part.source}`}>
-              <pre class="value">{part.text}</pre>{" "}
-              <span class="source">{sourceOf(part.source, props.here)}</span>
-            </li>
-          ))}
-        </ul>
-        <Actions
-          id="system_suffix"
-          setHere={own !== null}
-          onEdit={() => props.setEditing("system_suffix")}
-          onReset={() => props.reset("system_suffix")}
+    <FieldRow field="system_suffix" label="System suffix">
+      <ul class="plain">
+        {props.view.system_suffix.map((part) => (
+          <li data-testid={`dr-suffix-${part.source}`}>
+            <pre class="value">{part.text}</pre>{" "}
+            <span class="source">{sourceOf(part.source, props.here)}</span>
+          </li>
+        ))}
+      </ul>
+      <Actions
+        id="system_suffix"
+        setHere={own !== null}
+        onEdit={() => props.setEditing("system_suffix")}
+        onReset={() => props.reset("system_suffix")}
+      />
+      {props.editing === "system_suffix" && (
+        <ValueEditor
+          label="System suffix"
+          value={own ?? ""}
+          mode="text"
+          testId="dr-value-system_suffix"
+          onSave={(text) =>
+            text === ""
+              ? props.reset("system_suffix")
+              : props.set("system_suffix", text)
+          }
+          onCancel={() => props.setEditing(null)}
         />
-        {props.editing === "system_suffix" && (
-          <ValueEditor
-            label="System suffix"
-            value={own ?? ""}
-            mode="text"
-            testId="dr-value-system_suffix"
-            onSave={(text) =>
-              text === ""
-                ? props.reset("system_suffix")
-                : props.set("system_suffix", text)
-            }
-            onCancel={() => props.setEditing(null)}
-          />
-        )}
-      </dd>
-    </div>
+      )}
+    </FieldRow>
   );
 }
 
@@ -749,75 +738,72 @@ function DecompositionsField(props: {
   const [choice, setChoice] = useState<string>("");
   const here = props.namespace.name;
   return (
-    <div class="field-row" data-testid="dr-field-decompositions">
-      <dt>Decompositions</dt>
-      <dd>
-        <ul class="plain">
-          {props.view.decompositions.map((d) => (
-            <li data-testid={`dr-decomposition-${d.slug}`}>
-              {d.name}{" "}
-              <span class="source">
-                {d.source === here ? ATTACHED_HERE : INHERITED(d.source)}
-              </span>{" "}
-              {d.source === here && (
-                <button
-                  type="button"
-                  data-testid={`dr-detach-${d.slug}`}
-                  onClick={() =>
-                    props.attach(attached.filter((n) => n !== d.name))
-                  }
-                >
-                  {LABELS.detach}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        <button
-          type="button"
-          data-testid="dr-attach"
-          onClick={() => {
-            setChoice(candidates[0]?.name ?? "");
-            props.setEditing("attach");
-          }}
-        >
-          {LABELS.attach}
-        </button>
-        {props.editing === "attach" && (
-          <div class="add">
-            <select
-              value={choice}
-              aria-label={LABELS.attach}
-              data-testid="dr-attach-choice"
-              onChange={(event) => setChoice(event.currentTarget.value)}
-            >
-              {candidates.map((d) => (
-                <option value={d.name}>{d.name}</option>
-              ))}
-            </select>
-            <button
-              type="button"
-              class="primary"
-              data-testid="dr-attach-confirm"
-              disabled={choice === ""}
-              onClick={() => props.attach([...attached, choice])}
-            >
-              {LABELS.attach.replace("…", "")}
-            </button>
-            <button type="button" onClick={() => props.setEditing(null)}>
-              {CANCEL}
-            </button>
-          </div>
-        )}
-      </dd>
-    </div>
+    <FieldRow field="decompositions" label="Decompositions">
+      <ul class="plain">
+        {props.view.decompositions.map((d) => (
+          <li data-testid={`dr-decomposition-${d.slug}`}>
+            {d.name}{" "}
+            <span class="source">
+              {d.source === here ? ATTACHED_HERE : INHERITED(d.source)}
+            </span>{" "}
+            {d.source === here && (
+              <button
+                type="button"
+                data-testid={`dr-detach-${d.slug}`}
+                onClick={() =>
+                  props.attach(attached.filter((n) => n !== d.name))
+                }
+              >
+                {LABELS.detach}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        data-testid="dr-attach"
+        onClick={() => {
+          setChoice(candidates[0]?.name ?? "");
+          props.setEditing("attach");
+        }}
+      >
+        {LABELS.attach}
+      </button>
+      {props.editing === "attach" && (
+        <div class="add">
+          <select
+            value={choice}
+            aria-label={LABELS.attach}
+            data-testid="dr-attach-choice"
+            onChange={(event) => setChoice(event.currentTarget.value)}
+          >
+            {candidates.map((d) => (
+              <option value={d.name}>{d.name}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            class="primary"
+            data-testid="dr-attach-confirm"
+            disabled={choice === ""}
+            onClick={() => props.attach([...attached, choice])}
+          >
+            {LABELS.attach.replace("…", "")}
+          </button>
+          <button type="button" onClick={() => props.setEditing(null)}>
+            {CANCEL}
+          </button>
+        </div>
+      )}
+    </FieldRow>
   );
 }
 
 function RunSettings(props: { profile: ProfileRecord; write: Write }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [newKey, setNewKey] = useState("");
-  const document = documentOf(props.profile.yaml);
+  const document = props.profile.data;
   const keys = Object.keys(document).filter((key) => key !== "entry_namespace");
   const modeOf = (key: string) => (TEXT_SETTINGS.has(key) ? "text" : "yaml");
 
@@ -836,32 +822,29 @@ function RunSettings(props: { profile: ProfileRecord; write: Write }) {
       <h2 data-testid="dr-namespace-title">{LABELS.runSettings}</h2>
       <dl class="fields">
         {keys.map((key) => (
-          <div class="field-row" data-testid={`dr-field-${key}`}>
-            <dt>{key}</dt>
-            <dd>
-              <pre class="value">
-                {modeOf(key) === "text"
-                  ? String(document[key])
-                  : shown(document[key])}
-              </pre>
-              <Actions
-                id={key}
-                setHere
-                onEdit={() => setEditing(key)}
-                onReset={() => save(without(document, key))}
+          <FieldRow field={key} label={key}>
+            <pre class="value">
+              {modeOf(key) === "text"
+                ? String(document[key])
+                : shown(document[key])}
+            </pre>
+            <Actions
+              id={key}
+              setHere
+              onEdit={() => setEditing(key)}
+              onReset={() => save(without(document, key))}
+            />
+            {editing === key && (
+              <ValueEditor
+                label={key}
+                value={document[key]}
+                mode={modeOf(key)}
+                testId={`dr-value-${key}`}
+                onSave={(value) => save({ ...document, [key]: value })}
+                onCancel={() => setEditing(null)}
               />
-              {editing === key && (
-                <ValueEditor
-                  label={key}
-                  value={document[key]}
-                  mode={modeOf(key)}
-                  testId={`dr-value-${key}`}
-                  onSave={(value) => save({ ...document, [key]: value })}
-                  onCancel={() => setEditing(null)}
-                />
-              )}
-            </dd>
-          </div>
+            )}
+          </FieldRow>
         ))}
       </dl>
       <button

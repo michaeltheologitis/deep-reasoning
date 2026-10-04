@@ -17,7 +17,7 @@ from typing import Any, Literal
 from deep_reasoner.v2.messages import NoCodeBlock, code
 
 from deep_reasoning.acp.costs import PriceTable
-from deep_reasoning.acp.worker.stop import StoppedByUser, StopReceipt
+from deep_reasoning.acp.worker.stop import StoppedByUser
 
 TEXT_CAP = 8 * 1024 * 1024
 FINAL_ANSWER = "FinalAnswer: "
@@ -147,8 +147,9 @@ class Recorder:
         with self._lock:
             self._puppeteer = list(turns)
 
-    def note_stop(self, node: int, mode: Literal["dean", "interim"]) -> StopReceipt:
-        """Record an accepted target (§6.3) and emit stop.accepted."""
+    def note_stop(self, node: int, mode: Literal["dean", "interim"]) -> None:
+        """Record a running agent as a stop target (§6.3), and emit stop.accepted saying
+        whether it was one. An interim target's branch raises at its next agent.turn."""
         with self._lock:
             agent = self._agents.get(node)
             reason = None
@@ -159,18 +160,14 @@ class Recorder:
             else:
                 self._clock += 1
                 self._targets[node] = _Target(node, agent.drive, mode, self._clock)
-            receipt = StopReceipt(
-                node=node, mode=mode, accepted=reason is None, reason=reason
-            )
             self.emit(
                 "stop.accepted",
                 node=node,
                 mode=mode,
-                accepted=receipt.accepted,
+                accepted=reason is None,
                 reason=reason,
                 backbone=agent.backbone if agent else None,
             )
-            return receipt
 
     def holding(self) -> threading.RLock:
         """The recorder's lock, for a step no event may interleave with."""
@@ -182,12 +179,9 @@ class Recorder:
             agent = self._agents.get(node)
             return agent is not None and agent.ended_at is None
 
-    def arm(self, node: int) -> StopReceipt:
-        """Interim: note_stop(node, "interim"); the target now raises at agent.turn."""
-        return self.note_stop(node, "interim")
-
     def emit(self, kind: str, **fields: Any) -> None:
-        """The runner's own events (worker.ready, prompt.end), and the recorder's."""
+        """Send one RunEvent unless muted; under the lock, so lines from different
+        threads never interleave."""
         with self._lock:
             if not self._muted:
                 self._sink.emit({"kind": kind, **fields})

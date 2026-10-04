@@ -1,4 +1,5 @@
-"""What the Library returns and raises (§4.4); the HTTP API sends model_dump(mode="json")."""
+"""What the Library returns and raises (§4.4): pydantic models, and errors that carry
+their HTTP status and JSON payload."""
 
 from collections.abc import Sequence
 from datetime import datetime
@@ -69,6 +70,9 @@ class ToolRecord(Saved):
 
 
 class HistoryEntry(Saved):
+    """One stored version, with its revision's time and action; a tombstone is deleted
+    and has no yaml."""
+
     kind: Kind
     name: str
     action: str  # the revision's action
@@ -130,7 +134,7 @@ class Manifest(BaseModel):
     metadata: dict[str, DecompositionMeta]  # by name; import reads it back
 
     def versions(self) -> dict[str, Any]:
-        """Everything but metadata: what D1 records as run.start.source.versions."""
+        """Everything but metadata: the version of each entity a materialized run used."""
         return self.model_dump(mode="json", exclude={"metadata"})
 
 

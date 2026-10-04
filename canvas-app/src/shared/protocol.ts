@@ -1,6 +1,5 @@
 // The page ↔ frame contract (§4.3): the frame's URL parameters and the frame's two messages.
 
-export const APP_NAME = "dr-library";
 export const TAB_IDS = ["browse", "create", "namespaces", "tools"] as const;
 export type TabId = (typeof TAB_IDS)[number];
 
@@ -11,31 +10,35 @@ export const TAB_TITLES: Readonly<Record<TabId, string>> = {
   tools: "Tools",
 };
 
-export const THEME_TOKENS: readonly string[] = [
-  "--oh-surface",
-  "--oh-surface-raised",
-  "--oh-surface-deep",
-  "--oh-foreground",
-  "--oh-muted",
-  "--oh-text-secondary",
-  "--oh-text-dim",
-  "--oh-border",
-  "--oh-border-subtle",
-  "--oh-border-input",
-  "--oh-color-primary",
-  "--oh-accent",
-  "--oh-accent-foreground",
-  "--oh-danger",
-  "--oh-success",
-  "--oh-warning",
-  "--oh-interactive-hover",
-  "--oh-interactive-active",
-  "--oh-focus",
-  "--oh-radius",
-  "--oh-field-radius",
-  "color-scheme",
-  "font-family",
-];
+/** Every token the frame takes from Canvas, with Canvas's dark value, which the frame uses when
+ * Canvas sends none (the standalone page). */
+export const DEFAULT_THEME: Readonly<Record<string, string>> = {
+  "--oh-surface": "#21252F",
+  "--oh-surface-raised": "#2C313F",
+  "--oh-surface-deep": "#05070A",
+  "--oh-foreground": "#EEF2F7",
+  "--oh-muted": "#A3B0C4",
+  "--oh-text-secondary": "#C3CDDC",
+  "--oh-text-dim": "#7E8A9E",
+  "--oh-border": "#4B5468",
+  "--oh-border-subtle": "#383F50",
+  "--oh-border-input": "#4B5468",
+  "--oh-color-primary": "#c9b974",
+  "--oh-accent": "#c9b974",
+  "--oh-accent-foreground": "#0B0E14",
+  "--oh-danger": "#e76a5e",
+  "--oh-success": "#a5e75e",
+  "--oh-warning": "#c9b974",
+  "--oh-interactive-hover": "#4B5468",
+  "--oh-interactive-active": "#383F50",
+  "--oh-focus": "#ffffff",
+  "--oh-radius": "8px",
+  "--oh-field-radius": "8px",
+  "color-scheme": "dark",
+  "font-family":
+    '-apple-system, "SF Pro", BlinkMacSystemFont, "Segoe UI", "Roboto", "Ubuntu", sans-serif',
+};
+export const THEME_TOKENS: readonly string[] = Object.keys(DEFAULT_THEME);
 export const MAX_THEME_VALUE_LENGTH = 200;
 export const DEFAULT_SPEND_CAP = "5";
 

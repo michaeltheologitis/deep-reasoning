@@ -9,7 +9,6 @@ _CHILD_FORMS = re.compile(rf"{RUN_ID}-n(\d+)(?:-([ca])(\d+))?")
 
 
 def new_session_id() -> str:
-    """'s-' + secrets.token_hex(8)."""
     return f"s-{secrets.token_hex(8)}"
 
 

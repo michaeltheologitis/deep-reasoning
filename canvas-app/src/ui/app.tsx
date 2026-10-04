@@ -19,7 +19,6 @@ import { NamespacesTab } from "./tabs/namespaces";
 import type { TabProps } from "./tabs/props";
 import { ToolsTab } from "./tabs/tools";
 import { BACKEND_LOST, RELOAD, RESTART, SESSION_ENDED } from "./texts";
-import { POLL_MS } from "./theme";
 import type { Health } from "./types";
 
 const TABS = {
@@ -29,6 +28,7 @@ const TABS = {
   tools: ToolsTab,
 };
 const SESSION_STATUS = 401;
+const POLL_MS = 3_000;
 
 function post(params: FrameParams, message: FrameMessage) {
   if (params.parent !== null) window.parent.postMessage(message, params.parent);

@@ -18,7 +18,6 @@ import {
 import {
   type Answer,
   controlsEvent,
-  deferred,
   eventsSearch,
   fakeHost,
   messageEvent,
@@ -249,7 +248,7 @@ describe("mountTab", () => {
   });
 
   it("leaves nothing behind when disposed during the backend check", async () => {
-    const pending = deferred<unknown>();
+    const pending = Promise.withResolvers<unknown>();
     const fake = fakeHost((call) =>
       call.path === BACKEND_PATH ? pending.promise : agentServer(call),
     );
