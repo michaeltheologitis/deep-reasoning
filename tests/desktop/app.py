@@ -20,7 +20,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 APP = Path(os.environ.get("DR_APP_EXECUTABLE", "/opt/Deep Reasoning/deep-reasoning"))
 CANVAS_URL = "http://localhost:8000/"
@@ -30,6 +30,10 @@ AGENT_SERVER = "http://127.0.0.1:18000"
 FIRST_LAUNCH_S = 25 * 60
 QUIT_S = 6.0  # C3 v3 §4.4: the launcher in about 4 s, inside Electron's 6 s net
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+# The packaged app stays open on its failure screen after this line (Canvas's
+# electron/main.mjs), so a wait for anything later can end there.
+STARTUP_FAILED = "[desktop] Startup failed"
+LOG_TAIL_LINES = 40  # of the app's log, in a failed wait's message
 # The test runner's own uv and venv settings, which a user's environment does not hold.
 RUNNER_ONLY = (
     "VIRTUAL_ENV",
@@ -112,16 +116,24 @@ class LaunchedApp:
         return [ANSI.sub("", line) for line in text.splitlines()]
 
     def wait_for_line(self, fragment: str, timeout_s: float) -> str:
-        """The first log line holding fragment; fails if the app exits first."""
+        """The first log line holding fragment; fails, with the log's last lines, if
+        the app exits or reports its launch failed first."""
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
-            for line in self.lines():
+            lines = self.lines()
+            for line in lines:
                 if fragment in line:
                     return line
             if self.process.poll() is not None:
-                raise AssertionError(f"the app exited {self.process.returncode}")
+                self.fail(f"the app exited {self.process.returncode}")
+            if any(STARTUP_FAILED in line for line in lines):
+                self.fail("the app reported its launch failed")
             time.sleep(1.0)
-        raise AssertionError(f"no {fragment!r} in the app's log in {timeout_s} s")
+        self.fail(f"no {fragment!r} in the app's log in {timeout_s} s")
+
+    def fail(self, why: str) -> NoReturn:
+        tail = "\n".join(self.lines()[-LOG_TAIL_LINES:])
+        raise AssertionError(f"{why}; the end of {self.log}:\n{tail}")
 
     def request(self, method: str, path: str, body: Any = None) -> Any:
         """The agent-server's REST API with the app's session key; non-2xx raises."""

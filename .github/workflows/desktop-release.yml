@@ -107,14 +107,24 @@ jobs:
           cp -R "$RUNNER_TEMP/dmg/Deep Reasoning.app" "$RUNNER_TEMP/"
           hdiutil detach "$RUNNER_TEMP/dmg"
       - name: Launch it once; the Library App's backend starts (S2 PR 3's falsifier)
-        run: uv run pytest -m desktop tests/desktop/test_launch_smoke.py -v -rA -s
+        run: uv run pytest -m desktop tests/desktop/test_launch_smoke.py -v -rA -s --basetemp "$RUNNER_TEMP/pytest"
         env:
           DR_APP_EXECUTABLE: ${{ runner.temp }}/Deep Reasoning.app/Contents/MacOS/Deep Reasoning
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: desktop-macos
           path: dist/*.dmg
           if-no-files-found: error
+      # What a failed launch leaves: the app's own log, and macOS's crash reports.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-macos-launch
+          path: |
+            ${{ runner.temp }}/pytest/**/app.log
+            ~/Library/Logs/DiagnosticReports/
+          if-no-files-found: ignore
 
   release:
     needs: [linux, macos]
