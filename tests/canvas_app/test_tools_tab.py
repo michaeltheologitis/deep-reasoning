@@ -255,6 +255,18 @@ def test_an_inherited_grant_is_fixed(open_ui, library_server):
     expect(page.get_by_test_id("dr-tool-grant-router")).to_be_enabled()
 
 
+def test_an_inherited_server_grant_is_fixed(open_ui, library_server):
+    put_grant(library_server.library(), "github", ["router"])
+    page = open_ui(tab="tools", mcp=mcp_param(GITHUB))
+    archive = page.get_by_test_id("dr-mcp-grant-github-router.archive")
+    expect(archive).to_be_checked()
+    expect(archive).to_be_disabled()
+    expect(page.get_by_test_id("dr-mcp-grant-github-list")).to_contain_text(
+        "router.archive inherited from router"
+    )
+    expect(page.get_by_test_id("dr-mcp-grant-github-router")).to_be_enabled()
+
+
 def test_the_editor_keeps_python_indentation(open_ui):
     page = open_ui(tab="tools")
     page.get_by_test_id("dr-tool-new").click()
@@ -292,6 +304,19 @@ def test_canvas_mcp_servers_are_listed_and_granted_per_namespace(
     assert stored.version == 1
     assert stored.data["env"] == ["GITHUB_PERSONAL_ACCESS_TOKEN"]
     expect(page.get_by_test_id("dr-tool-github")).to_have_count(0)
+
+
+def test_a_later_tick_keeps_the_granted_settings(open_ui, library_server):
+    put_grant(library_server.library(), "github", ["router"], env=["OLD_TOKEN"])
+    page = open_ui(tab="tools", mcp=mcp_param(GITHUB))
+    expect(page.get_by_test_id("dr-mcp-state-github")).to_contain_text(MCP_CHANGED)
+    page.get_by_test_id("dr-mcp-grant-github-course_advisor").check()
+    stored = stored_when(
+        lambda: library_server.library().tool("github"),
+        lambda t: t.granted_in == ["router", "course_advisor"],
+    )
+    assert (stored.version, stored.data["env"]) == (1, ["OLD_TOKEN"])
+    expect(page.get_by_test_id("dr-mcp-state-github")).to_contain_text(MCP_CHANGED)
 
 
 def test_a_disabled_server_says_so_and_can_still_be_granted(open_ui, library_server):
