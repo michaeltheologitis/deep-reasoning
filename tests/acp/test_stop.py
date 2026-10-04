@@ -52,13 +52,15 @@ SIBLING_TASKS = {f"Survey {d}." for d in DEPARTMENTS[1:]}
 SIBLING_HOLD_S = 60
 
 
-def holding_the_siblings(respond):
+def holding_the_siblings(respond, stalled):
     """D0's siblings get no answer before the root's next turn, which comes only once
     run_all has ended. So each is awaiting its model when D0's StoppedByUser ends
     run_all, and run_all's cancellation lands there. A sibling with a call in flight
     can swallow it and end done, or end failed with a ValueError from anyio (httpx
     0.28, httpcore 1.0, anyio 4; design §10 item 8), though D0's message names it. A
-    sibling still held after SIBLING_HOLD_S is answered 500, never with its plan."""
+    sibling still held after SIBLING_HOLD_S is answered 500, never with its plan, and
+    its task is added to stalled: its answer may then be in flight when run_all is
+    cancelled, so the run did not test the stop."""
     root_moved_on = threading.Event()
 
     def held(messages):
@@ -66,6 +68,7 @@ def holding_the_siblings(respond):
         if task == "Compare departments." and turn > 0:
             root_moved_on.set()
         elif task in SIBLING_TASKS and not root_moved_on.wait(SIBLING_HOLD_S):
+            stalled.append(task)
             raise TimeoutError(
                 f"{task!r} held {SIBLING_HOLD_S} s: the root never moved on"
             )
@@ -137,10 +140,12 @@ def root_cell_output(client, root):
 def test_interim_stops_the_branch_at_its_next_turn_and_names_the_siblings_it_took(
     tmp_path, home, work
 ):
-    respond = holding_the_siblings(scripted(PLAN))
+    stalled = []
+    respond = holding_the_siblings(scripted(PLAN), stalled)
     client, root, department, response, log, calls = run(
         stop_the_department(scripted_env(), respond, tmp_path, home, work)
     )
+    assert not stalled
     agents, d0 = evidence_common(client, root, department, response, log, calls)
     siblings = [agents[task].field_meta["deep_reasoner"] for task in SIBLING_TASKS]
     taken = {(s["status"], s["stopped_by"], s.get("collateral")) for s in siblings}
