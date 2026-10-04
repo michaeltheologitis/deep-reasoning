@@ -42,6 +42,8 @@ export const THEME_TOKENS: readonly string[] = Object.keys(DEFAULT_THEME);
 export const MAX_THEME_VALUE_LENGTH = 200;
 export const DEFAULT_SPEND_CAP = "5";
 
+export type McpTransport = "stdio" | "http" | "sse";
+
 export interface FrameParams {
   tab: TabId;
   /** Canvas's origin; null on the standalone page. */

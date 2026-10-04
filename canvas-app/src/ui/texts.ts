@@ -103,3 +103,50 @@ export const LABELS = {
   everyNamespace: "Every namespace's menu",
   notAttached: "Not attached",
 } as const;
+
+// D4's sentences (D4 §9.3), verbatim.
+export const TOOLS_RISK =
+  "Tools and MCP servers run as you, with your files and network: your tools inside the agent's process, a stdio MCP server as a program started for each conversation that can use it. Check runs your code too. Add only code and servers you trust.";
+export const YOUR_TOOLS = "Your tools";
+export const NEW_TOOL = "+ New tool";
+export const CHECKING = "Checking… (building your tool in a separate process)";
+export const SAVING_CHECKING = "Checking and saving…";
+export const CHECK_BUILT = (seconds: string) =>
+  `✓ builds (${seconds} s). The agent is told:`;
+export const CANNOT_SAVE =
+  "Fix this before saving: a tool that does not build stops every conversation from starting.";
+export const SAVE_ANYWAY_NOTE =
+  "Check could not build this tool here, where it has no secrets, no model and only its own folder. If it builds in a conversation, save it anyway; if it does not, no conversation will start until you fix it.";
+export const SAVED_TOOL = (name: string, version: number) =>
+  `✓ Saved '${name}' v${version}. New conversations build it; conversations already started keep the version they began with.`;
+export const DELETE_TOOL_CONFIRM = (name: string) =>
+  `Delete '${name}'? It is removed from every namespace; its versions stay in the Library's history.`;
+export const TRY_LABEL =
+  "Try (an expression Check evaluates with the tool bound)";
+export const PRINTED = "It printed:";
+export const NAME_FIXED =
+  "how the agent calls it: a Python name, fixed once saved";
+export const NEW_TOOL_SOURCE = `from deep_reasoner import Func
+
+
+def make(client, params):
+    def word_count(text: str) -> int:
+        """Count the words in text."""
+        return len(text.split())
+
+    return Func(word_count, description="word_count(text) -> int: number of words in text.")
+`;
+export const TOOL_HELP =
+  "A tool is a factory, make(client, params), that returns Func(value, description=…): the REPL binds value under the tool's name and the agent is told description. params are the block's other keys. Only this file is stored, so it cannot import a file beside it. Call models through client, the conversation's own, never with a key of your own. Read secrets and files when the tool is called, not when it is built: it is built at the start of every conversation and by Check, which has neither. The factory is not told where the config is (deep_reasoner passes no config_path to factory_from tools). A kg tool's saved layers record document paths against the config folder of the conversation that saved them.";
+export const TOOL_LABELS = {
+  name: "Name",
+  block: "Block",
+  blockNote:
+    "YAML: the factory's name and its parameters (factory_from is the Library's)",
+  source: "Source",
+  check: "Check",
+  grantedIn: "Granted in",
+  help: "How tools work",
+  tools: "Tools",
+  back: "← Tools",
+} as const;
