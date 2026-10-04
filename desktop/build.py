@@ -365,7 +365,8 @@ def payload_paths(artifact: Path, canvas: Path) -> list[str]:
             text=True,
             check=True,
         ).stdout
-        return [line.split()[-1] for line in listed.splitlines() if line.strip()]
+        # mode, owner, size, date, time, then the path, which may hold spaces
+        return [line.split(maxsplit=5)[-1] for line in listed.splitlines() if line]
     output = canvas / "dist-electron"
     unpacked = [p for p in output.iterdir() if p.is_dir() and "unpacked" in p.name]
     unpacked += [p for p in output.glob("mac*") if p.is_dir()]

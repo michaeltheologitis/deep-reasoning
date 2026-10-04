@@ -260,3 +260,24 @@ def test_the_committed_pins_load():
     )
     assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2")
     assert "@" in pins.app.maintainer
+
+
+@pytest.mark.skipif(
+    shutil.which("dpkg-deb") is None, reason="lists a .deb with dpkg-deb"
+)
+def test_a_debs_payload_paths_keep_their_spaces(tmp_path):
+    package = tmp_path / "package"
+    (package / "DEBIAN").mkdir(parents=True)
+    (package / "DEBIAN" / "control").write_text(
+        "Package: t\nVersion: 1\nArchitecture: all\nMaintainer: t <t@example.invalid>\n"
+        "Description: t\n"
+    )
+    (package / "opt" / "Deep Reasoning").mkdir(parents=True)
+    (package / "opt" / "Deep Reasoning" / "deep-reasoning").write_text("")
+    subprocess.run(
+        ["dpkg-deb", "--build", str(package), str(tmp_path / "t.deb")],
+        check=True,
+        capture_output=True,
+    )
+    paths = build.payload_paths(tmp_path / "t.deb", tmp_path)
+    assert "./opt/Deep Reasoning/deep-reasoning" in paths
