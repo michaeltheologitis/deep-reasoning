@@ -1,6 +1,5 @@
 // The decomposition editor of §2.2 and §2.3: Create decomposition (record null) and an opened one.
 
-import type { Ref } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 
 import type { FrameParams, TabId } from "../../shared/protocol";
@@ -436,16 +435,36 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
           onChange={(cards) => change({ cards })}
         />
       ) : (
-        <YamlField
-          containerRef={yamlField}
-          value={draft.yaml}
-          error={yamlError}
-          onChange={(yaml) => {
-            setYamlError(null);
-            change({ yaml });
-          }}
-          onEditCards={editAsCards}
-        />
+        <div class="yaml-edit" ref={yamlField}>
+          <CodeField
+            label="YAML"
+            language="yaml"
+            value={draft.yaml}
+            onChange={(yaml) => {
+              setYamlError(null);
+              change({ yaml });
+            }}
+            testId="dr-yaml"
+            describedBy={yamlError ? "dr-yaml-error" : undefined}
+          />
+          {yamlError && (
+            <p
+              class="errors"
+              id="dr-yaml-error"
+              role="alert"
+              data-testid="dr-yaml-error"
+            >
+              {yamlError}
+            </p>
+          )}
+          <button
+            type="button"
+            data-testid="dr-edit-cards"
+            onClick={editAsCards}
+          >
+            {LABELS.editCards}
+          </button>
+        </div>
       )}
       {draft.mode === "cards" && yamlView !== null && (
         <div class="yaml-view">
@@ -664,44 +683,6 @@ function OutcomeView(props: {
         />
       )}
     </>
-  );
-}
-
-function YamlField(props: {
-  value: string;
-  error: string | null;
-  onChange: (value: string) => void;
-  onEditCards: () => void;
-  containerRef: Ref<HTMLDivElement>;
-}) {
-  return (
-    <div class="yaml-edit" ref={props.containerRef}>
-      <CodeField
-        label="YAML"
-        language="yaml"
-        value={props.value}
-        onChange={props.onChange}
-        testId="dr-yaml"
-        describedBy={props.error ? "dr-yaml-error" : undefined}
-      />
-      {props.error && (
-        <p
-          class="errors"
-          id="dr-yaml-error"
-          role="alert"
-          data-testid="dr-yaml-error"
-        >
-          {props.error}
-        </p>
-      )}
-      <button
-        type="button"
-        data-testid="dr-edit-cards"
-        onClick={props.onEditCards}
-      >
-        {LABELS.editCards}
-      </button>
-    </div>
   );
 }
 
