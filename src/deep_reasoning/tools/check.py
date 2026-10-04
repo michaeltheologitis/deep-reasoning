@@ -1,6 +1,9 @@
 """Check (D4 §3): will this tool build when a conversation starts, and what will the agent
 be told? A static stage in the backend, then a throwaway process that builds the tool as
-make_tools does, without secrets or a model, under time limits."""
+make_tools does, without secrets or a model, under time limits.
+
+In this file: the report; check_tool; the child it starts, and the supervisor that reads
+the child's lines; then require_check, the gate a tool's save passes."""
 
 import contextlib
 import json
@@ -91,26 +94,6 @@ class CheckReport(BaseModel):
     can_save_anyway: bool
 
 
-def tool_name_errors(name: str) -> list[FieldError]:
-    """RESERVED_NAME for a name in RESERVED_NAMES; D2's TOOL_NAME rule is shapes.validate_tool's."""
-    if name in RESERVED_NAMES:
-        return [FieldError(loc="name", msg=texts.reserved_name(name))]
-    return []
-
-
-def check_env(base: Mapping[str, str]) -> dict[str, str]:
-    """PASSED_ENV from base; HOME, USER and LOGNAME from the password database;
-    PYTHONUNBUFFERED=1 and PYTHONDONTWRITEBYTECODE=1. Nothing else."""
-    user = pwd.getpwuid(os.getuid())
-    return {name: base[name] for name in PASSED_ENV if name in base} | {
-        "HOME": user.pw_dir,
-        "USER": user.pw_name,
-        "LOGNAME": user.pw_name,
-        "PYTHONUNBUFFERED": "1",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
-
-
 def _report(
     outcome: Outcome,
     message: str,
@@ -136,6 +119,105 @@ def _report(
     )
 
 
+def check_tool(
+    name: str,
+    yaml_text: str,
+    source: str | None,
+    *,
+    example: str | None = None,
+    limits: CheckLimits = DEFAULT_LIMITS,
+) -> CheckReport:
+    """§3.2's static stage, which starts no process, then §3.3's throwaway process under
+    limits; never raises for anything the tool does."""
+    try:
+        shaped = shapes.validate_tool(name, yaml_text, source)
+    except LibraryValidationError as exc:
+        return _report("invalid", str(exc))
+    if errors := tool_name_errors(name):
+        return _report("invalid", errors[0].msg)
+    factory = shaped.data.get("factory", name)
+    if factory == MCP_FACTORY:
+        return _report("invalid", texts.mcp_via_grant(name))
+    if source is None:
+        if factory == "llm" or factory in TOOL_BUILDERS:
+            return _report("builtin", texts.builtin(factory))
+        return _report(
+            "bad_factory", texts.unknown_factory(factory, name, TOOL_BUILDERS)
+        )
+    try:
+        compile(source, shapes.tool_file(name), "exec")
+    except SyntaxError as exc:
+        return _report("syntax", texts.syntax(name, exc.lineno, exc.msg))
+    return _build_in_a_child(name, shaped.data, source, example, limits)
+
+
+def tool_name_errors(name: str) -> list[FieldError]:
+    """RESERVED_NAME for a name in RESERVED_NAMES; D2's TOOL_NAME rule is shapes.validate_tool's."""
+    if name in RESERVED_NAMES:
+        return [FieldError(loc="name", msg=texts.reserved_name(name))]
+    return []
+
+
+def check_env(base: Mapping[str, str]) -> dict[str, str]:
+    """PASSED_ENV from base; HOME, USER and LOGNAME from the password database;
+    PYTHONUNBUFFERED=1 and PYTHONDONTWRITEBYTECODE=1. Nothing else."""
+    user = pwd.getpwuid(os.getuid())
+    return {name: base[name] for name in PASSED_ENV if name in base} | {
+        "HOME": user.pw_dir,
+        "USER": user.pw_name,
+        "LOGNAME": user.pw_name,
+        "PYTHONUNBUFFERED": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+
+
+def _build_in_a_child(
+    name: str,
+    block: Mapping[str, Any],
+    source: str,
+    example: str | None,
+    limits: CheckLimits,
+) -> CheckReport:
+    """§3.3: a one-tool config in a 0700 folder, built by check_child in its own group."""
+    with tempfile.TemporaryDirectory(
+        prefix="dr-check-", ignore_cleanup_errors=True
+    ) as tmp:
+        folder = Path(tmp)
+        config = folder / "config"
+        (config / shapes.TOOL_DIR).mkdir(parents=True)
+        (config / shapes.tool_file(name)).write_bytes(source.encode())
+        main = {
+            "client": {"base_url": CHECK_MODEL_URL, "max_retries": 0},
+            "tools": {name: dict(block)},
+        }
+        (config / "main.yaml").write_text(shapes.canonical_yaml(main))
+        printed = folder / "printed.txt"
+        read_fd, write_fd = os.pipe()
+        tried = ("--example", example) if example is not None else ()
+        argv = [sys.executable, "-m", CHILD, "--report-fd", str(write_fd)]
+        argv += ["--name", name, *tried, str(config / "main.yaml")]
+        with printed.open("wb") as out:
+            try:
+                child = subprocess.Popen(
+                    argv,
+                    cwd=config,
+                    env=check_env(os.environ),
+                    stdin=subprocess.DEVNULL,
+                    stdout=out,
+                    stderr=out,
+                    pass_fds=(write_fd,),
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                os.close(read_fd)
+                how = f"{type(exc).__name__}: {exc}"
+                return _report("unavailable", texts.child_ended(name, how, "starting"))
+            finally:
+                os.close(write_fd)
+        fields = _follow(name, _Reports(read_fd), child, example, limits)
+        return _report(**fields, printed=_tail(printed))
+
+
 class _Reports:
     """The child's report lines, read on a thread so that each can be awaited with a
     deadline. get() returns a line, None at the end, or raises queue.Empty."""
@@ -158,25 +240,6 @@ class _Reports:
             line = self._lines.get(timeout=max(0.0, deadline - time.monotonic()))
             if line is None or line.get("phase") in phases:
                 return line
-
-
-def _how(code: int) -> str:
-    return f"signal {-code}" if code < 0 else f"exit code {code}"
-
-
-def _tail(path: Path) -> str:
-    """The last SHOWN_LIMIT characters of what the tool printed."""
-    with path.open("rb") as printed:
-        printed.seek(max(0, path.stat().st_size - 4 * SHOWN_LIMIT))
-        return printed.read().decode(errors="replace")[-SHOWN_LIMIT:]
-
-
-def _end(child: subprocess.Popen[bytes]) -> int:
-    """SIGKILL the child's group before reaping it (so its pid, the group's id, cannot
-    have been reused), then its exit code."""
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(child.pid, signal.SIGKILL)
-    return child.wait()
 
 
 def _follow(
@@ -246,83 +309,23 @@ def _follow(
     return built | {"example": ExampleResult(expression=example, **fields)}
 
 
-def _build_in_a_child(
-    name: str,
-    block: Mapping[str, Any],
-    source: str,
-    example: str | None,
-    limits: CheckLimits,
-) -> CheckReport:
-    """§3.3: a one-tool config in a 0700 folder, built by check_child in its own group."""
-    with tempfile.TemporaryDirectory(
-        prefix="dr-check-", ignore_cleanup_errors=True
-    ) as tmp:
-        folder = Path(tmp)
-        config = folder / "config"
-        (config / shapes.TOOL_DIR).mkdir(parents=True)
-        (config / shapes.tool_file(name)).write_bytes(source.encode())
-        main = {
-            "client": {"base_url": CHECK_MODEL_URL, "max_retries": 0},
-            "tools": {name: dict(block)},
-        }
-        (config / "main.yaml").write_text(shapes.canonical_yaml(main))
-        printed = folder / "printed.txt"
-        read_fd, write_fd = os.pipe()
-        tried = ("--example", example) if example is not None else ()
-        argv = [sys.executable, "-m", CHILD, "--report-fd", str(write_fd)]
-        argv += ["--name", name, *tried, str(config / "main.yaml")]
-        with printed.open("wb") as out:
-            try:
-                child = subprocess.Popen(
-                    argv,
-                    cwd=config,
-                    env=check_env(os.environ),
-                    stdin=subprocess.DEVNULL,
-                    stdout=out,
-                    stderr=out,
-                    pass_fds=(write_fd,),
-                    start_new_session=True,
-                )
-            except OSError as exc:
-                os.close(read_fd)
-                how = f"{type(exc).__name__}: {exc}"
-                return _report("unavailable", texts.child_ended(name, how, "starting"))
-            finally:
-                os.close(write_fd)
-        fields = _follow(name, _Reports(read_fd), child, example, limits)
-        return _report(**fields, printed=_tail(printed))
+def _end(child: subprocess.Popen[bytes]) -> int:
+    """SIGKILL the child's group before reaping it (so its pid, the group's id, cannot
+    have been reused), then its exit code."""
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.killpg(child.pid, signal.SIGKILL)
+    return child.wait()
 
 
-def check_tool(
-    name: str,
-    yaml_text: str,
-    source: str | None,
-    *,
-    example: str | None = None,
-    limits: CheckLimits = DEFAULT_LIMITS,
-) -> CheckReport:
-    """§3.2's static stage, which starts no process, then §3.3's throwaway process under
-    limits; never raises for anything the tool does."""
-    try:
-        shaped = shapes.validate_tool(name, yaml_text, source)
-    except LibraryValidationError as exc:
-        return _report("invalid", str(exc))
-    if errors := tool_name_errors(name):
-        return _report("invalid", errors[0].msg)
-    factory = shaped.data.get("factory", name)
-    if factory == MCP_FACTORY:
-        return _report("invalid", texts.mcp_via_grant(name))
-    if source is None:
-        if factory == "llm" or factory in TOOL_BUILDERS:
-            return _report("builtin", texts.builtin(factory))
-        return _report(
-            "bad_factory", texts.unknown_factory(factory, name, TOOL_BUILDERS)
-        )
-    try:
-        compile(source, shapes.tool_file(name), "exec")
-    except SyntaxError as exc:
-        return _report("syntax", texts.syntax(name, exc.lineno, exc.msg))
-    return _build_in_a_child(name, shaped.data, source, example, limits)
+def _how(code: int) -> str:
+    return f"signal {-code}" if code < 0 else f"exit code {code}"
+
+
+def _tail(path: Path) -> str:
+    """The last SHOWN_LIMIT characters of what the tool printed."""
+    with path.open("rb") as printed:
+        printed.seek(max(0, path.stat().st_size - 4 * SHOWN_LIMIT))
+        return printed.read().decode(errors="replace")[-SHOWN_LIMIT:]
 
 
 class ToolCheckFailed(LibraryError):
