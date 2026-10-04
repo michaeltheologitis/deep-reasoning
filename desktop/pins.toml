@@ -3,8 +3,8 @@
 
 [canvas_fork]
 repo = "https://github.com/michaeltheologitis/OpenHands"
-commit = "fc87687abb304a839c60171ac8445f306eacd907"
-tag = "dr-1"
+commit = "9d050ab5e4b1842813c2448a29d42635ad63016a"
+tag = "dr-2"
 
 [sdk_fork]
 repo = "https://github.com/michaeltheologitis/software-agent-sdk"
