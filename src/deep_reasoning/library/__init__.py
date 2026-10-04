@@ -33,6 +33,7 @@ _LAZY = {"Library": "library", "Effective": "effective"}
 __all__ = [
     "DecompositionMeta",
     "DecompositionRecord",
+    "Effective",
     "HistoryEntry",
     "ImportReport",
     "Library",
