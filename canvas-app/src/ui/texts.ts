@@ -34,7 +34,6 @@ export const SAVE_OVER = "Save over it";
 export const SAVE_ANYWAY = "Save anyway";
 export const CANCEL = "Cancel";
 export const NAME_REQUIRED = "Give the decomposition a name.";
-export const OUTPUT_NOTE = "written by you, not run";
 export const RAW_NOTE =
   "Shown as written: this message is not a task, a think-and-code step or an observation.";
 export const YAML_SYNTAX = (message: string) =>

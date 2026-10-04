@@ -265,24 +265,33 @@ fieldset.choices input,
   padding: 0;
 }
 
-/* A turn's cards are one group, so its divider falls before its observation. */
+/* A turn's cards are one group, so its divider falls before its observation. Its fields sit
+   close together; the space and the divider are between groups. */
 .card-group {
   display: grid;
   grid-template-columns: 2em 1fr auto;
   gap: 6px;
   align-items: start;
   border-top: 1px solid var(--oh-border);
-  padding: 8px 0;
+  padding: 14px 0;
+}
+
+.cards .field {
+  margin: 0 0 4px;
+}
+
+.cards textarea {
+  display: block;
 }
 
 .card-group .turn {
   color: var(--oh-muted);
-  padding-top: 22px;
+  padding-top: 16px;
   text-align: right;
 }
 
 .card-group .remove {
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .actions,
