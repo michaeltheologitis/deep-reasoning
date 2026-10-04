@@ -34,6 +34,13 @@ dev = [
     "deep-reasoning-app",
 ]
 
+[tool.uv]
+# onnxruntime (chromadb's, through deep_reasoner) ships no Intel macOS wheel after 1.23.2,
+# so the runtime an Intel Mac installs keeps that release (D5 §4.4.3, decision C).
+constraint-dependencies = [
+    "onnxruntime<1.24; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
 [tool.uv.workspace]
 members = ["packages/dr-app"]
 

@@ -209,6 +209,44 @@ def test_the_runtime_lock_matches_uv_lock():
     assert LOCK.read_text() == exported.stdout
 
 
+# What the desktop app ships for (D5 §4.2.4): Linux on x64, and macOS on both halves of
+# the universal app, from macOS 14, the oldest the locked arm64 wheels install on.
+SHIPPED_PLATFORMS = (
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+)
+OLDEST_MACOS = "14.0"
+
+
+@pytest.mark.parametrize("platform", SHIPPED_PLATFORMS)
+def test_the_runtime_lock_installs_on_every_platform_the_app_ships_for(
+    tmp_path, platform
+):
+    """A dry run of the lock's registry packages for the platform, which fails on a
+    package with neither a wheel nor a source there. It reads PyPI's metadata."""
+    registry_only = tmp_path / "lock.txt"
+    registry_only.write_text(
+        "".join(
+            line
+            for line in LOCK.read_text().splitlines(keepends=True)
+            if " @ git+" not in line
+        )
+    )
+    dry_run = subprocess.run(
+        [
+            *("uv", "pip", "install", "--dry-run", "--no-deps"),
+            *("--python-platform", platform, "--python-version", "3.12"),
+            *("--target", str(tmp_path / "target"), "-r", str(registry_only)),
+        ],
+        env=os.environ | {"MACOSX_DEPLOYMENT_TARGET": OLDEST_MACOS},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert dry_run.returncode == 0, dry_run.stderr
+
+
 def test_a_background_child_that_keeps_the_output_never_holds_setup():
     logged: list[str] = []
     started = time.monotonic()
