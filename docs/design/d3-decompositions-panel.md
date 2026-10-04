@@ -82,6 +82,7 @@ a parametrization.
 | **The backend before every mount** (§2.1, decision F): ready, start of the approved revision only, never `prepare`, the 45 s limit, a start that gets no answer read from the status, an abort | `backend.test.ts › ensureBackend ›` (15 cases, among them `gives up on a backend still starting after the timeout`; v3, `polls the status when start gets no answer, [until it is ready, and says why it did not start]`; v4, `gives a backend still starting after start timed out a fresh 45 s`); `mount.test.ts › mountTab › says the backend is not approved, and Try again checks again`, `says when Canvas cannot show an App's frames` |
 | **Writes and conflicts** (§5.2, §5.3, decision H): every body is exactly D2's fields, `use_when` and `hint` always sent; a new decomposition is version 1 in the picked namespace; an edit is the next version; Attached to is the exact set; a stale save offers Reload or Save over it; an existing name offers Save mine as v*n* keeping its namespaces; an unchanged imported decomposition makes no version; a namespace edit changes one key of the namespace's own YAML and keeps the rest | `save.test.ts`; `api.test.ts › the requests`; `test_create.py::test_saving_stores_version_1_in_the_picked_namespace`, `::test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`, `::test_use_when_and_hint_survive_a_save_that_did_not_touch_them`, `::test_an_imported_decomposition_saved_unchanged_makes_no_new_version`, `::test_an_example_without_final_answer_asks_before_saving`; `test_browse.py::test_saving_an_opened_decomposition_makes_its_next_version`, `::test_attached_to_is_the_exact_set_after_a_save`, `::test_a_stale_save_offers_reload_or_save_over`, `::test_deleting_a_decomposition_detaches_it_everywhere`; `test_namespaces.py::test_override_sets_a_field_here_and_reset_removes_it`, `::test_keys_the_panel_does_not_show_survive_an_override`, `::test_yaml_values_mean_what_dr_reads`, `::test_attach_and_detach_change_only_this_namespaces_list` |
 | **Create decomposition's draft and errors** (§2.3): the draft survives a reload of the frame, the namespace picked included; a card-mode save without a name asks for one and writes nothing; D2's errors land on the card they name, and an error that names no card sits above the cards; Rename in YAML mode focuses the YAML, which holds the name | `test_create.py::test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (v4), `::test_a_draft_survives_reloading_the_frame`, `::test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (v3), `::test_validation_errors_show_on_the_card_they_name`, `::test_an_error_that_names_no_card_shows_above_the_cards` (v3), `::test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (v3) |
+| **The turn after a step reads observation, think, code** (§2.3, v6, B28): the card holding a step's result is labelled `observation`, which is its field's accessible name, and `RAW_NOTE` names it the same way | `test_create.py::test_the_turn_after_a_step_reads_observation_think_code` (v6) |
 | **Namespaces: adding, deleting, and the selection** (§2.4): Add namespace is prefilled `<selected>.`, and empty under `root` and Run settings; D2's refusals come in its words; a write answered after the user selected another node leaves that selection | `test_namespaces.py::test_adding_and_deleting_a_namespace`, `::test_add_namespace_is_not_prefilled_under_root_or_run_settings[root, run-settings]` (v4), `::test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (v4) |
 | **Lossless cards** (§5.1, decision J): one card per message; the round trip is the identity on a table, on 2,000 generated conversations and on every decomposition in deep_reasoner_beta's configs | `cards.test.ts › messages ↔ cards ›` (the table; `round trip is identity over generated messages`; `round trip is identity over every decomposition in deep_reasoner_beta's configs`) |
 | **A Library D2 cannot resolve** (§3.2 B1): both tabs say why in D2's words, Decompositions falls back to attachments, and neither reports the backend lost | `test_browse.py::test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_namespaces.py::test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` |
@@ -92,6 +93,16 @@ a parametrization.
 §7.2–§7.5 list every test file.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-04 · v6 · one label renamed at Michael's request: the card that holds a step's result is labelled
+  `observation`, not `output`, so the turn after a step reads observation, think, code, as deep_reasoner names it
+  (§3.2 B28; test `2fda86d`, the label, `RAW_NOTE` and the rebuilt frame `93f4e24`). Stop trusting: §2.3's mock-up
+  line `output` and its Cards bullet, §4.7's `RAW_NOTE` row and the `output` in its Labels (each now says
+  `observation`, marked v6); §7.3's counts; and, as v5 said, the header's "Matches the build at `d4e9cd3`" and this
+  section's evidence and counts until a CI run at the new head is recorded (browser tier now 56 passed, 1 skipped).
+  Unchanged: the card's internal names (`kind: "output"`, `OutputCard`, `parseOutput`, `renderOutput` in §5.1 and
+  A.3; the `.card.output` class; `OUTPUT_NOTE`), its test id `dr-card-<index>-output` (A.5), and the stored YAML,
+  since the card always wrote §5.1's `<observation>` form. Added without changing earlier sentences: §3.2 B28, its
+  row in the property table above and §7.3's v6 test. Nothing else of v5 changes.
 - 2026-10-03 · v5 · one fix after Gate B, found by C2's Cartographer: the page searched the controls event by a `kind`
   the agent-server never matches, so every mount framed the panel with namespace `null` and `started` false (§3.2 B27;
   tests `141784a`, fix and rebuilt bundle `436c513`). Stop trusting: §1's traffic, line 3, and §4.2's
@@ -371,7 +382,7 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
 1  task    Which of CS201, CS310 and CS330 can I take first?
 2  think   Each course's prerequisites decide it; look them up, then sort.
    code    order = sorted(cs, key=lambda c: len(catalog[c]['prereqs'])); print(order)
-   output  ['CS201', 'CS310', 'CS330']                                  written by you, not run
+   observation ['CS201', 'CS310', 'CS330']                              written by you, not run
 3  think
    code    FinalAnswer(order)
    [+ turn]                                              [View YAML]   [Save to course_advisor]
@@ -386,11 +397,12 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
 - **The slash command** beside the name is `/` + the `slug` `POST /validate` returns (D2 computes it; the panel never
   slugs by itself).
 - **Cards** (§5.1): a new decomposition starts with a task card and one step whose code is `FinalAnswer(...)`. A step
-  has think (optional) and code; **+ turn** gives the last step an output card if it has none (the observation the agent
-  will see) and adds a new step. Each step and output has a ✕ that removes it; a step's ✕ removes its output too.
-  Output cards say "written by you, not run". A message that is not in this form (a system message, an assistant
-  message with prose outside `<think>` and `<repl>`, a user message that is neither the task nor an observation) is a
-  raw card: its role and its text, editable, labelled `RAW_NOTE`.
+  has think (optional) and code; **+ turn** gives the last step an observation card if it has none (what the agent will
+  see in `<observation>`) and adds a new step, so the turn after a step reads observation, think, code (v6, B28: v5
+  labelled the card `output`). Each step and observation has a ✕ that removes it; a step's ✕ removes its observation
+  too. Observation cards say "written by you, not run". A message that is not in this form (a system message, an
+  assistant message with prose outside `<think>` and `<repl>`, a user message that is neither the task nor an
+  observation) is a raw card: its role and its text, editable, labelled `RAW_NOTE`.
 - **View YAML** shows the canonical YAML of what would be saved (`POST /validate`'s `yaml`), read-only, with **Edit
   YAML**: the textarea then holds the YAML, and **Edit as cards** parses it back (YAML 1.1) into the name and the cards,
   or stays in YAML with `YAML_SYNTAX` or `YAML_NOT_DECOMPOSITION`. A save from YAML mode sends that text as written.
@@ -835,6 +847,23 @@ reading.
   `session/new` or `session/load` answer (D1's `agent.py` returns the namespace option in both); events leave out
   their null fields (B2), and the page reads `id`, `current_value` and `options`, which S2's model never leaves null.
 
+**v6: Michael's request**
+
+- **B28. A step's result card is labelled `observation`, not `output`** (§2.3, §4.7; commits `2fda86d`, `93f4e24`).
+  v1 to v5 labelled the card that holds a step's result `output` (`LABELS.output`), and `RAW_NOTE` named it "an
+  output". Built: the label is `observation`, which is also its field's accessible name (the label is the textarea's
+  `<label for>`), and `RAW_NOTE` ends "or an observation.". *Why (Michael, 2026-10-04):* "the decomposition editor's
+  turn after a step should read as 'observation – think – code', not 'output'"; deep_reasoner itself calls it an
+  observation, and the agent sees it in an `<observation>` tag (§5.1). Only what the user reads changes: the card's
+  `kind: "output"`, `OutputCard`, `parseOutput` and `renderOutput` (§5.1, A.3), the `.card.output` class,
+  `OUTPUT_NOTE` (its text, "written by you, not run", never named the card) and the test id
+  `dr-card-<index>-output` (A.5, which D4's and D5's tests may use) keep their names, and the stored YAML and the
+  decomposition format are unchanged: the card renders `<observation>\n…\n</observation>` as before. *Pinned by:*
+  `test_create.py::test_the_turn_after_a_step_reads_observation_think_code` (after **+ turn** the cards' labels
+  read, in order, task, think, code, observation, think, code; the result field's accessible name is `observation`;
+  a system message, made a raw card through Edit YAML, carries `RAW_NOTE` ending "or an observation."). Before
+  the change it failed on the labels (`output`) and, with only the label changed, on `RAW_NOTE`.
+
 ---
 
 ## 4 · Modules
@@ -1136,7 +1165,7 @@ The frame (`src/ui/texts.ts`):
 | `CANCEL` | `Cancel` |
 | `NAME_REQUIRED` | `Give the decomposition a name.` |
 | `OUTPUT_NOTE` | `written by you, not run` (the spec's) |
-| `RAW_NOTE` | `Shown as written: this message is not a task, a think-and-code step or an output.` |
+| `RAW_NOTE` | `Shown as written: this message is not a task, a think-and-code step or an observation.` (v6, B28: v5's ended `or an output.`) |
 | `YAML_SYNTAX` | `This is not valid YAML: {message}` |
 | `YAML_NOT_DECOMPOSITION` | `To edit it as cards, the YAML must be a mapping with a name and a list of messages, each with a role and a content.` |
 | `DELETE_CONFIRM` | `Delete '{name}'? It is removed from every namespace; its versions stay in the Library's history.` |
@@ -1159,13 +1188,13 @@ The frame (`src/ui/texts.ts`):
 | `NO_TOOLS` | `No tools in the Library.` |
 | `DISCARD_DRAFT` | `Discard draft` |
 
-Labels: `Name`, `Use when`, `Hint`, `Namespace`, `task`, `think`, `code`, `output`, `+ turn`, `View YAML`, `Edit YAML`,
-`Edit as cards`, `Save to {namespace}`, `Save`, `Delete`, `Attached to`, `Override`, `Edit`, `Reset`, `Add variable`,
-`Add namespace`, `Delete namespace`, `Run settings`, `Add setting`, `Attach…`, `Detach`. (v2, B8: they are `LABELS` in
-`ui/texts.ts`, which also has `what the slash command asks for; optional` (the hint's note), `also used in {namespace}
-(inherited)`, `✕`, `← Decompositions`, `Every namespace's menu` and `Not attached`. A few are literals in their tab:
-`granted in` (Tools); `REPL`, `Backbone`, `May spawn into`, `Tools`, `Variables`, `System suffix` (Namespaces); `YAML`
-and `role` (the editor).)
+Labels: `Name`, `Use when`, `Hint`, `Namespace`, `task`, `think`, `code`, `observation` (v6, B28: v5's `output`;
+`LABELS.output`), `+ turn`, `View YAML`, `Edit YAML`, `Edit as cards`, `Save to {namespace}`, `Save`, `Delete`,
+`Attached to`, `Override`, `Edit`, `Reset`, `Add variable`, `Add namespace`, `Delete namespace`, `Run settings`, `Add
+setting`, `Attach…`, `Detach`. (v2, B8: they are `LABELS` in `ui/texts.ts`, which also has `what the slash command asks
+for; optional` (the hint's note), `also used in {namespace} (inherited)`, `✕`, `← Decompositions`, `Every namespace's
+menu` and `Not attached`. A few are literals in their tab: `granted in` (Tools); `REPL`, `Backbone`, `May spawn into`,
+`Tools`, `Variables`, `System suffix` (Namespaces); `YAML` and `role` (the editor).)
 
 D2's `texts.py` gains (D3's Python): `UI_NOT_BUILT` = `The panel's files are not in this installation: reinstall
 deep-reasoning, or run npm run build in canvas-app/.` and `ui_file_missing(name)` = `There is no file '{name}' in the
@@ -1351,12 +1380,13 @@ adds `serve` and `stop` (the server without the fixture, for E8), `parent_site` 
 `write_new` and `SAFETY_ACK`. 48 cases in eight files, 47 passed and one skipped (D5's sentence, B19); the new test
 and the parametrizations are marked v2 below. v3, at `2af80ef`: 51 cases, 50 passed and the same one skipped;
 `test_create.py` gains three (B21–B23), marked v3. v4, at `d4e9cd3`: 56 cases, 55 passed and the same one skipped;
-`test_create.py` gains one (B24) and `test_namespaces.py` four (B25, B26), marked v4.
+`test_create.py` gains one (B24) and `test_namespaces.py` four (B25, B26), marked v4. v6, at `93f4e24`: 57 cases,
+56 passed and the same one skipped; `test_create.py` gains one (B28), marked v6.
 
 | File | Tests (each named for its property) |
 |---|---|
 | `test_browse.py` | `test_decompositions_are_grouped_by_namespace_with_version_slash_command_and_use_when`; `test_an_inherited_decomposition_says_where_it_comes_from`; `test_top_level_and_unattached_decompositions_have_groups_of_their_own`; `test_saving_an_opened_decomposition_makes_its_next_version`; `test_attached_to_is_the_exact_set_after_a_save`; `test_a_stale_save_offers_reload_or_save_over`; `test_deleting_a_decomposition_detaches_it_everywhere`; `test_a_change_made_elsewhere_appears_without_a_reload` (a `put_decomposition` through the Python API; the row appears within the poll); `test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_focus_opens_that_decomposition` |
-| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23); v4: `test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (B24) |
+| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23); v4: `test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (B24); v6: `test_the_turn_after_a_step_reads_observation_think_code` (B28) |
 | `test_namespaces.py` | `test_the_tree_follows_dotted_names_and_marks_the_default`; `test_each_field_shows_its_effective_value_and_source`; `test_override_sets_a_field_here_and_reset_removes_it`; `test_a_variable_is_overridden_and_reset_key_by_key`; `test_a_tool_granted_here_adds_to_the_inherited_ones`; `test_attach_and_detach_change_only_this_namespaces_list`; `test_start_new_conversations_here_moves_the_default` (`/health`'s `default_namespace`); `test_adding_and_deleting_a_namespace` (and D2's refusal for root, the default and a parent, in its words); `test_run_settings_edit_the_profile`; `test_yaml_values_mean_what_dr_reads` (a variable typed as `on` is stored `true`); `test_keys_the_panel_does_not_show_survive_an_override`; v2: `test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` (B1); v4: `test_add_namespace_is_not_prefilled_under_root_or_run_settings[root, run-settings]` (B25), `test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (B26; `test_adding_and_deleting_a_namespace` now also waits for the added namespace's title) |
 | `test_tools_tab.py` | `test_the_tools_tab_always_shows_the_safety_notice_with_the_cap` (v2: `[5, 12]`, the cap from the URL); `test_the_tools_tab_lists_tools_with_their_grants` |
 | `test_notice.py` | `test_the_safety_notice_shows_until_understood`; `test_the_notice_is_d5s_sentence_with_the_cap` (equal to `dr_app.texts.SAFETY` formatted with `7`; skipped until D5's package is in the environment); `test_without_the_key_proxy_the_notice_says_nothing_caps_spending` |
