@@ -56,8 +56,8 @@ def holding_the_siblings(respond, stalled):
     """D0's siblings get no answer before the root's next turn, which comes only once
     run_all has ended. So each is awaiting its model when D0's StoppedByUser ends
     run_all, and run_all's cancellation lands there. A sibling with a call in flight
-    can swallow it and end done, or end failed with a ValueError from anyio (httpx
-    0.28, httpcore 1.0, anyio 4; design §10 item 8), though D0's message names it. A
+    can swallow it and end done (design §10 item 8), or end failed with a ValueError
+    from anyio (httpx 0.28, httpcore 1.0, anyio 4), though D0's message names it. A
     sibling still held after SIBLING_HOLD_S is answered 500, never with its plan, and
     its task is added to stalled: its answer may then be in flight when run_all is
     cancelled, so the run did not test the stop."""
