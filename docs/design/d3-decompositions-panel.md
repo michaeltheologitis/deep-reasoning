@@ -84,6 +84,7 @@ a parametrization.
 | **Create decomposition's draft and errors** (§2.3): the draft survives a reload of the frame, the namespace picked included; a card-mode save without a name asks for one and writes nothing; D2's errors land on the card they name, and an error that names no card sits above the cards; Rename in YAML mode focuses the YAML, which holds the name | `test_create.py::test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (v4), `::test_a_draft_survives_reloading_the_frame`, `::test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (v3), `::test_validation_errors_show_on_the_card_they_name`, `::test_an_error_that_names_no_card_shows_above_the_cards` (v3), `::test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (v3) |
 | **The turn after a step reads observation, think, code** (§2.3, v6, B28): the card holding a step's result is labelled `observation`, which is its field's accessible name, and `RAW_NOTE` names it the same way | `test_create.py::test_the_turn_after_a_step_reads_observation_think_code` (v6) |
 | **A turn after the first reads observation, think, code** (§2.3, §5.1, v7, B29): turn 1 is the first step alone, every later turn is an observation with the step after it, the task is in no turn; removing a turn removes all of it, turn 1 with the observation after it, and never leaves an observation after anything but a step; **+ turn** appends a turn at the end | `cards.test.ts › editing cards ›` `groups an observation with the step after it; every other card stands alone`, `numbers turns: […]`, `removes […]`, `never leaves an observation that follows no step`, `adds a turn […]`; `test_create.py::test_a_turn_after_the_first_starts_with_its_observation` (v7) |
+| **A turn reads as one block, and an observation carries no note** (§2.3, v8, B30): no "written by you, not run" anywhere; inside a turn a field is under a quarter as far from the next label as one group (the task card, a turn) is from the next | `test_create.py::test_a_turn_reads_as_one_block_with_no_note_under_its_observation` (v8) |
 | **Namespaces: adding, deleting, and the selection** (§2.4): Add namespace is prefilled `<selected>.`, and empty under `root` and Run settings; D2's refusals come in its words; a write answered after the user selected another node leaves that selection | `test_namespaces.py::test_adding_and_deleting_a_namespace`, `::test_add_namespace_is_not_prefilled_under_root_or_run_settings[root, run-settings]` (v4), `::test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (v4) |
 | **Lossless cards** (§5.1, decision J): one card per message; the round trip is the identity on a table, on 2,000 generated conversations and on every decomposition in deep_reasoner_beta's configs | `cards.test.ts › messages ↔ cards ›` (the table; `round trip is identity over generated messages`; `round trip is identity over every decomposition in deep_reasoner_beta's configs`) |
 | **A Library D2 cannot resolve** (§3.2 B1): both tabs say why in D2's words, Decompositions falls back to attachments, and neither reports the backend lost | `test_browse.py::test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_namespaces.py::test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` |
@@ -94,6 +95,17 @@ a parametrization.
 §7.2–§7.5 list every test file.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-04 · v8 · at Michael's request, the observation card's note is gone and a turn reads as one block (§3.2 B30;
+  test `b5353af`, the change and the rebuilt frame `97febe3`): `OUTPUT_NOTE`, "written by you, not run", the spec's
+  sentence, is no longer shown or defined; inside the cards a field sits 4 px above the next label, and each group, the
+  task card or a turn, has 14 px above and below its divider (4.0 px inside a turn, 33.0 px between groups, measured in
+  Chromium; v7's were 11.8 and 34.8, and 50.7 across the note). Stop trusting: §2.3's mock-up line 2 and its Cards
+  bullet's "Observation cards say …" (both now marked v8), §4.7's `OUTPUT_NOTE` row (removed), the v6 line's and B28's
+  naming `OUTPUT_NOTE` among the names that stay, §7.3's counts; and, as v5 to v7 said, the header's "Matches the build
+  at `d4e9cd3`" and this section's evidence and counts until a CI run at the new head is recorded (browser tier now 58
+  passed, 1 skipped; vitest unchanged, 168 passed, 1 skipped with the configs). Unchanged: the stored YAML, the cards,
+  their labels and grouping, the divider, the colours in either theme, and every test id (A.5). Added without changing
+  earlier sentences: §3.2 B30, the property table's row and §7.3's v8 test. Nothing else of v7 changes.
 - 2026-10-04 · v7 · the cards regrouped at Michael's request: the editor shows them in turns, and every turn after the
   first reads observation, think, code (§3.2 B29; tests `9578c2e`, the change and the rebuilt frame `7af632a`). Turn 1
   is the first step alone; an observation belongs to the step after it, and one with no step after it is a last turn of
@@ -398,7 +410,7 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
 1  think   Each course's prerequisites decide it; look them up, then sort.                          [✕]
    code    order = sorted(cs, key=lambda c: len(catalog[c]['prereqs'])); print(order)
 ───────────────────────────────────────────────────────────────────────────────────────────────────────
-2  observation ['CS201', 'CS310', 'CS330']                              written by you, not run     [✕]
+2  observation ['CS201', 'CS310', 'CS330']                                                          [✕]
    think
    code    FinalAnswer(order)
    [+ turn]                                              [View YAML]   [Save to course_advisor]
@@ -408,6 +420,7 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
 
 (v7, B29: the cards are in turns, a divider above each; turn 1 is the first step, and turn 2 starts with the
 observation of turn 1's code. v6's mock-up numbered the task 1 and showed each observation under the step before it.)
+(v8, B30: the observation says nothing beside its text; v7's mock-up showed "written by you, not run" there.)
 
 - **The namespace** is picked from the Library's namespaces (`GET /namespaces`), one of them, required. Preselected: the
   open conversation's namespace when the page found one and the Library has it, else the namespace new conversations
@@ -424,8 +437,10 @@ observation of turn 1's code. v6's mock-up numbered the task 1 and showed each o
   has one ✕, named `Remove turn {n}`, that removes the whole turn; removing turn 1 also removes the observation after
   it, so the next step becomes turn 1 and no observation is left without a step before it. (v6 numbered the task and
   each step, an observation with the step before it, and gave each step and observation its own ✕, a step's taking its
-  observation.) Observation cards say "written by you, not run". A message that is not in this form (a system message,
-  an assistant message with prose outside `<think>` and `<repl>`, a user message that is neither the task nor an
+  observation.) (v8, B30:) A turn reads as one block: inside it each field sits 4 px above the next label, and the space
+  is between groups, 14 px above and below each divider, the task card's included. An observation card holds only its
+  text (v1 to v7 said "written by you, not run" under it). A message that is not in this form (a system message, an
+  assistant message with prose outside `<think>` and `<repl>`, a user message that is neither the task nor an
   observation) is a raw card: its role and its text, editable, labelled `RAW_NOTE`.
 - **View YAML** shows the canonical YAML of what would be saved (`POST /validate`'s `yaml`), read-only, with **Edit
   YAML**: the textarea then holds the YAML, and **Edit as cards** parses it back (YAML 1.1) into the name and the cards,
@@ -920,6 +935,30 @@ reading.
   change 11 of the unit cases failed (the numbering, a middle turn's removal, a step after a step, adding at the end,
   `cardGroups` missing) and the browser test found no turn.
 
+**v8: Michael's request**
+
+- **B30. A turn reads as one block, and an observation carries no note** (§2.3, §4.7; commits `b5353af`, `97febe3`).
+  v1 to v7 put `OUTPUT_NOTE`, "written by you, not run", under every observation card, and spaced every field alike
+  (6 px margins, and the textarea's baseline gap below it), so the fields inside a turn were 11.8 px apart against
+  34.8 px between turns, and 50.7 px from an observation across its note to the think below it. Built: the note is
+  gone, its text (`OUTPUT_NOTE` in `ui/texts.ts`) and its paragraph; the `.note` style stays, since the hint's note,
+  `RAW_NOTE` and the namespace pickers use it. Inside the cards a field sits 4 px above the next label (`.cards .field`,
+  and the textareas are blocks, so no baseline gap) and each group, the task card or a turn, has 14 px above and below
+  its divider (`li.card-group`, `--oh-border`, unchanged): 4.0 px inside a turn, 33.0 px from one group to the next,
+  measured in Chromium. The turn number and the ✕ move up by the 6 px the first field no longer has above it. Only
+  spacing changed in `styles.css`, so both themes keep their colours. `OUTPUT_NOTE` was the spec's sentence (§4.7
+  marked it so), so this departs from the approved spec's text at Michael's request. *Why (Michael, 2026-10-04):*
+  "also remove this thing 'written by you not run' weirdness! i dont even understand what this means remove it. also
+  have the same-turn stuff a little closer to each other think/code or whatever not so big spaces between them and
+  keep these big spaces for the separation of turns (ofc along with this nice horizontal line)". Unchanged: the
+  stored YAML, the cards, their labels and grouping, every test id (A.5), and the divider. *Pinned by:*
+  `test_create.py::test_a_turn_reads_as_one_block_with_no_note_under_its_observation` (after **+ turn** twice, the
+  page holds no "written by you, not run", and the largest gap from a textarea to the next label inside a group is
+  under a quarter of the smallest gap from the task card to turn 1 and from one turn to the next; a quarter because a
+  half would accept the old spacing once the note was gone, 11.8 against 34.8). Before the change it failed on the
+  note; with only the note removed, on the gaps (11.8 against a bound of 34.8 / 4).
+  `test_saving_stores_version_1_in_the_picked_namespace` no longer asserts the note.
+
 ---
 
 ## 4 · Modules
@@ -1220,7 +1259,6 @@ The frame (`src/ui/texts.ts`):
 | `SAVE_ANYWAY` | `Save anyway` |
 | `CANCEL` | `Cancel` |
 | `NAME_REQUIRED` | `Give the decomposition a name.` |
-| `OUTPUT_NOTE` | `written by you, not run` (the spec's) |
 | `RAW_NOTE` | `Shown as written: this message is not a task, a think-and-code step or an observation.` (v6, B28: v5's ended `or an output.`) |
 | `YAML_SYNTAX` | `This is not valid YAML: {message}` |
 | `YAML_NOT_DECOMPOSITION` | `To edit it as cards, the YAML must be a mapping with a name and a list of messages, each with a role and a content.` |
@@ -1448,12 +1486,13 @@ and the parametrizations are marked v2 below. v3, at `2af80ef`: 51 cases, 50 pas
 `test_create.py` gains three (B21–B23), marked v3. v4, at `d4e9cd3`: 56 cases, 55 passed and the same one skipped;
 `test_create.py` gains one (B24) and `test_namespaces.py` four (B25, B26), marked v4. v6, at `93f4e24`: 57 cases,
 56 passed and the same one skipped; `test_create.py` gains one (B28), marked v6. v7, at `7af632a`: 58 cases, 57 passed
-and the same one skipped; `test_create.py` gains one (B29), marked v7.
+and the same one skipped; `test_create.py` gains one (B29), marked v7. v8, at `97febe3`: 59 cases, 58 passed and the
+same one skipped; `test_create.py` gains one (B30), marked v8.
 
 | File | Tests (each named for its property) |
 |---|---|
 | `test_browse.py` | `test_decompositions_are_grouped_by_namespace_with_version_slash_command_and_use_when`; `test_an_inherited_decomposition_says_where_it_comes_from`; `test_top_level_and_unattached_decompositions_have_groups_of_their_own`; `test_saving_an_opened_decomposition_makes_its_next_version`; `test_attached_to_is_the_exact_set_after_a_save`; `test_a_stale_save_offers_reload_or_save_over`; `test_deleting_a_decomposition_detaches_it_everywhere`; `test_a_change_made_elsewhere_appears_without_a_reload` (a `put_decomposition` through the Python API; the row appears within the poll); `test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_focus_opens_that_decomposition` |
-| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23); v4: `test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (B24); v6: `test_the_turn_after_a_step_reads_observation_think_code` (B28); v7: `test_a_turn_after_the_first_starts_with_its_observation` (B29) |
+| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23); v4: `test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (B24); v6: `test_the_turn_after_a_step_reads_observation_think_code` (B28); v7: `test_a_turn_after_the_first_starts_with_its_observation` (B29); v8: `test_a_turn_reads_as_one_block_with_no_note_under_its_observation` (B30) |
 | `test_namespaces.py` | `test_the_tree_follows_dotted_names_and_marks_the_default`; `test_each_field_shows_its_effective_value_and_source`; `test_override_sets_a_field_here_and_reset_removes_it`; `test_a_variable_is_overridden_and_reset_key_by_key`; `test_a_tool_granted_here_adds_to_the_inherited_ones`; `test_attach_and_detach_change_only_this_namespaces_list`; `test_start_new_conversations_here_moves_the_default` (`/health`'s `default_namespace`); `test_adding_and_deleting_a_namespace` (and D2's refusal for root, the default and a parent, in its words); `test_run_settings_edit_the_profile`; `test_yaml_values_mean_what_dr_reads` (a variable typed as `on` is stored `true`); `test_keys_the_panel_does_not_show_survive_an_override`; v2: `test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` (B1); v4: `test_add_namespace_is_not_prefilled_under_root_or_run_settings[root, run-settings]` (B25), `test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (B26; `test_adding_and_deleting_a_namespace` now also waits for the added namespace's title) |
 | `test_tools_tab.py` | `test_the_tools_tab_always_shows_the_safety_notice_with_the_cap` (v2: `[5, 12]`, the cap from the URL); `test_the_tools_tab_lists_tools_with_their_grants` |
 | `test_notice.py` | `test_the_safety_notice_shows_until_understood`; `test_the_notice_is_d5s_sentence_with_the_cap` (equal to `dr_app.texts.SAFETY` formatted with `7`; skipped until D5's package is in the environment); `test_without_the_key_proxy_the_notice_says_nothing_caps_spending` |
