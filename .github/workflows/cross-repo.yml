@@ -15,9 +15,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  # main carries this file before D5's code does (decision M): on a tree without
+  # desktop/pins.toml every job below is skipped, not failed.
+  has-d5:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.look.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: desktop/pins.toml
+          sparse-checkout-cone-mode: false
+      - id: look
+        run: |
+          if [ -f desktop/pins.toml ]; then echo "present=true"; else echo "present=false"; fi >> "$GITHUB_OUTPUT"
+
   # The staged Library App in a real agent-server from the SDK fork's pin: it installs,
   # its artifact passes prepare and its backend answers /health (D5 §7.2).
-  canvas-app:
+  library-app:
+    needs: has-d5
+    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -51,6 +68,8 @@ jobs:
   # E5's second half: each of D1's native recordings, played by S1's scripted agent into
   # the SDK fork's agent-server, is stored as the tree it records (D5 §7.5).
   bridge-replay:
+    needs: has-d5
+    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
