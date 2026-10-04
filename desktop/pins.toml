@@ -1,0 +1,20 @@
+# What one desktop build is made of. A pin moves only when cross-repo.yml is green on the new set (spec §2).
+# Commits are authoritative (Michael's ruling); tags are for people and for the TypeScript client check.
+
+[canvas_fork]
+repo = "https://github.com/michaeltheologitis/OpenHands"
+commit = "<40 hex: the redone wiring's merge into deep-reasoning, §8.6>"
+tag = "dr-1"
+
+[sdk_fork]
+repo = "https://github.com/michaeltheologitis/software-agent-sdk"
+commit = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
+tag = "dr-2"
+
+[app]
+product_name = "Deep Reasoning"
+app_id = "io.github.michaeltheologitis.deep-reasoning"
+executable_name = "deep-reasoning"
+version = "1.0.0-rc.1"
+maintainer = "<name and email for the .deb; fpm requires an email>"
+uv_version = "0.12.23"

@@ -23,8 +23,9 @@ DEV_BIN = Path(sys.executable).parent
 DR_APP = str(DEV_BIN / "dr-app")
 D3_APP = Path(__file__).resolve().parents[2] / "src" / "deep_reasoning" / "canvas_app"
 
-# Each stub appends {"tool", "argv", "env"} to $STUB_LOG and exits with
-# $STUB_<TOOL>_EXIT when that is set, after doing what the real tool would leave behind.
+# Each stub appends {"tool", "argv", "env"} to $STUB_LOG, does what the real tool would
+# leave behind, and exits with $STUB_<TOOL>_<COMMAND>_EXIT when that is set: the command
+# is the first argument without its dashes, as in STUB_GIT_LS_REMOTE_EXIT.
 STUB = """#!{python}
 import json, os, pathlib, sys
 tool, argv = pathlib.Path(sys.argv[0]).name, sys.argv[1:]
@@ -33,7 +34,7 @@ with open(os.environ["STUB_LOG"], "a") as log:
     log.write(json.dumps({{"tool": tool, "argv": argv,
                           "env": {{k: os.environ.get(k) for k in watched}}}}) + "\\n")
 {body}
-sys.exit(int(os.environ.get("STUB_" + tool.upper() + "_" + (argv[:1] or ["x"])[0].upper().replace("-", "_") + "_EXIT", "0")))
+sys.exit(int(os.environ.get("STUB_" + tool.upper() + "_" + (argv[:1] or ["x"])[0].lstrip("-").upper().replace("-", "_") + "_EXIT", "0")))
 """
 GIT = """
 if argv[:1] == ["--version"]:
