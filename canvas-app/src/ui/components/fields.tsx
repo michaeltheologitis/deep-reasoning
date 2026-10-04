@@ -1,4 +1,4 @@
-// Fields every tab uses: code and text areas, value editors, D2's field errors, confirmations, banners.
+// Shared fields: code and text areas, value editors, D2's field errors, confirmations, banners.
 
 import type { ComponentChildren } from "preact";
 import { useId, useState } from "preact/hooks";

@@ -1,4 +1,4 @@
-// Tools (§2.5; D4 extends it): the safety banner, always first, and the Library's tools.
+// Tools (§2.5): the safety banner, always first, and the Library's tools.
 
 import { getTools } from "../api";
 import { Banner } from "../components/fields";
