@@ -15,6 +15,7 @@ import {
   type Card,
   type RawCard,
   addTurn,
+  cardGroups,
   cardIndexForLoc,
   cardsToMessages,
   messagesToCards,
@@ -729,102 +730,122 @@ export interface CardListProps {
   onChange: (cards: Card[]) => void;
 }
 
-/** The cards as an ordered list, numbered by turn (an output shares its step's number). */
+/** The cards as an ordered list of groups (§5.1): each turn, a step or an output with the step
+ * after it, is numbered once and has one ✕; the task and raw cards stand alone. */
 export function CardList(props: CardListProps) {
   const numbers = turnNumbers(props.cards);
   const set = (index: number, card: Card) =>
     props.onChange(props.cards.map((c, i) => (i === index ? card : c)));
-  const remove = (index: number) => (
-    <button
-      type="button"
-      class="remove"
-      aria-label={`${LABELS.remove} ${numbers[index]}`}
-      data-testid={`dr-remove-${index}`}
-      onClick={() => props.onChange(removeTurn(props.cards, index))}
-    >
-      {LABELS.remove}
-    </button>
-  );
   return (
     <ol class="cards">
-      {props.cards.map((card, i) => {
-        const errorsId = `dr-card-${i}-errors`;
-        const describedBy = props.errors[i]?.length ? errorsId : undefined;
-        const field = (name: string) => `dr-card-${i}-${name}`;
+      {cardGroups(props.cards).map((group) => {
+        const first = group[0]!;
+        const turn = numbers[first] ?? null;
         return (
-          <li class={`card ${card.kind}`} data-testid={`dr-card-${i}`}>
-            <span class="turn">{numbers[i]}</span>
-            <div class="card-body">
-              {card.kind === "task" && (
-                <CodeField
-                  label={LABELS.task}
-                  language="text"
-                  value={card.text}
-                  testId={field("task")}
-                  describedBy={describedBy}
-                  onChange={(text) => set(i, { ...card, text })}
-                />
-              )}
-              {card.kind === "step" && (
-                <>
-                  <CodeField
-                    label={LABELS.think}
-                    language="text"
-                    value={card.think}
-                    testId={field("think")}
-                    describedBy={describedBy}
-                    onChange={(think) =>
-                      set(i, {
-                        ...card,
-                        think,
-                        thinkLayout: think.includes("\n")
-                          ? "block"
-                          : card.thinkLayout,
-                      })
-                    }
-                  />
-                  <CodeField
-                    label={LABELS.code}
-                    language="python"
-                    value={card.code}
-                    testId={field("code")}
-                    describedBy={describedBy}
-                    onChange={(code) => set(i, { ...card, code })}
-                  />
-                </>
-              )}
-              {card.kind === "output" && (
-                <>
-                  <CodeField
-                    label={LABELS.output}
-                    language="text"
-                    value={card.text}
-                    testId={field("output")}
-                    describedBy={describedBy}
-                    onChange={(text) => set(i, { ...card, text })}
-                  />
-                  <p class="note">{OUTPUT_NOTE}</p>
-                </>
-              )}
-              {card.kind === "raw" && (
-                <RawCardFields
-                  card={card}
+          <li
+            class="card-group"
+            data-testid={turn === null ? undefined : `dr-turn-${turn}`}
+          >
+            <span class="turn">{turn}</span>
+            <div>
+              {group.map((i) => (
+                <CardFields
+                  card={props.cards[i]!}
                   index={i}
-                  describedBy={describedBy}
-                  onChange={(c) => set(i, c)}
+                  errors={props.errors[i]}
+                  onChange={(card) => set(i, card)}
                 />
-              )}
-              <FieldErrors
-                id={errorsId}
-                testId={errorsId}
-                errors={props.errors[i]}
-              />
+              ))}
             </div>
-            {(card.kind === "step" || card.kind === "output") && remove(i)}
+            {turn !== null && (
+              <button
+                type="button"
+                class="remove"
+                aria-label={LABELS.removeTurn(turn)}
+                data-testid={`dr-remove-${first}`}
+                onClick={() => props.onChange(removeTurn(props.cards, first))}
+              >
+                {LABELS.remove}
+              </button>
+            )}
           </li>
         );
       })}
     </ol>
+  );
+}
+
+function CardFields(props: {
+  card: Card;
+  index: number;
+  errors?: readonly FieldError[];
+  onChange: (card: Card) => void;
+}) {
+  const { card, index } = props;
+  const errorsId = `dr-card-${index}-errors`;
+  const describedBy = props.errors?.length ? errorsId : undefined;
+  const field = (name: string) => `dr-card-${index}-${name}`;
+  return (
+    <div class={`card ${card.kind}`} data-testid={`dr-card-${index}`}>
+      {card.kind === "task" && (
+        <CodeField
+          label={LABELS.task}
+          language="text"
+          value={card.text}
+          testId={field("task")}
+          describedBy={describedBy}
+          onChange={(text) => props.onChange({ ...card, text })}
+        />
+      )}
+      {card.kind === "step" && (
+        <>
+          <CodeField
+            label={LABELS.think}
+            language="text"
+            value={card.think}
+            testId={field("think")}
+            describedBy={describedBy}
+            onChange={(think) =>
+              props.onChange({
+                ...card,
+                think,
+                thinkLayout: think.includes("\n") ? "block" : card.thinkLayout,
+              })
+            }
+          />
+          <CodeField
+            label={LABELS.code}
+            language="python"
+            value={card.code}
+            testId={field("code")}
+            describedBy={describedBy}
+            onChange={(code) => props.onChange({ ...card, code })}
+          />
+        </>
+      )}
+      {card.kind === "output" && (
+        <>
+          <CodeField
+            label={LABELS.output}
+            language="text"
+            value={card.text}
+            testId={field("output")}
+            describedBy={describedBy}
+            onChange={(text) => props.onChange({ ...card, text })}
+          />
+          <p class="note">{OUTPUT_NOTE}</p>
+        </>
+      )}
+      {card.kind === "raw" && (
+        <RawCardFields
+          card={card}
+          index={index}
+          describedBy={describedBy}
+          onChange={props.onChange}
+        />
+      )}
+      <FieldErrors id={errorsId} testId={errorsId} errors={props.errors} />
+    </div>
   );
 }
 

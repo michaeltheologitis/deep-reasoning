@@ -143,31 +143,53 @@ export function newDecompositionCards(): Card[] {
   return [{ kind: "task", text: "" }, emptyStep("FinalAnswer(...)")];
 }
 
-/** The last step gets an empty output card when it has none; then a new empty step. */
+/** A new turn at the end: an empty output card if the last card is a step, then an empty step
+ * (after a trailing output, the step that output lacks). */
 export function addTurn(cards: readonly Card[]): Card[] {
-  const next = [...cards];
-  const last = next.findLastIndex((card) => card.kind === "step");
-  if (last >= 0 && next[last + 1]?.kind !== "output") {
-    next.splice(last + 1, 0, { kind: "output", text: "", end: "" });
-  }
-  return [...next, emptyStep()];
+  const output: Card[] =
+    cards.at(-1)?.kind === "step"
+      ? [{ kind: "output", text: "", end: "" }]
+      : [];
+  return [...cards, ...output, emptyStep()];
 }
 
-/** Removes card index; a step takes the output after it with it. */
+/** Card indices by group: an output and the step directly after it are one turn; every other
+ * card is a group of its own. */
+export function cardGroups(cards: readonly Card[]): number[][] {
+  const groups: number[][] = [];
+  cards.forEach((card, i) => {
+    if (card.kind === "step" && cards[i - 1]?.kind === "output") {
+      groups.at(-1)!.push(i);
+    } else {
+      groups.push([i]);
+    }
+  });
+  return groups;
+}
+
+/** Removes the group holding card index, and the output after it if no step would precede that
+ * output: an output always follows a step. */
 export function removeTurn(cards: readonly Card[], index: number): Card[] {
-  const count =
-    cards[index]?.kind === "step" && cards[index + 1]?.kind === "output"
-      ? 2
-      : 1;
-  return cards.filter((_, i) => i < index || i >= index + count);
+  const group = cardGroups(cards).find((g) => g.includes(index));
+  if (!group) return [...cards];
+  const start = group[0]!;
+  let end = group.at(-1)! + 1;
+  if (cards[start - 1]?.kind !== "step" && cards[end]?.kind === "output") end++;
+  return cards.filter((_, i) => i < start || i >= end);
 }
 
-/** Task, step and raw cards numbered 1, 2, 3…; an output shares its step's number. */
-export function turnNumbers(cards: readonly Card[]): number[] {
+/** Turns numbered 1, 2, 3… by group: a step, an output with the step after it, or an output with
+ * no step after it. Task and raw cards are no turn (null). */
+export function turnNumbers(cards: readonly Card[]): (number | null)[] {
+  const numbers: (number | null)[] = cards.map(() => null);
   let turn = 0;
-  return cards.map((card) =>
-    card.kind === "output" ? Math.max(turn, 1) : ++turn,
-  );
+  for (const group of cardGroups(cards)) {
+    const kind = cards[group[0]!]!.kind;
+    if (kind !== "step" && kind !== "output") continue;
+    turn++;
+    for (const i of group) numbers[i] = turn;
+  }
+  return numbers;
 }
 
 /** "messages.3.content" → 3; null for any other location. */
