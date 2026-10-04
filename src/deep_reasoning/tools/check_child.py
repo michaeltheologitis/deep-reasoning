@@ -65,7 +65,6 @@ def _build(name: str, cfg: Any, say: Say) -> Func | None:
     build = _load(name, block, path, cfg, say)
     if build is None:
         return None
-    say("loaded")
     try:
         built = build(build_client(cfg.client), params)
     except Exception as exc:  # noqa: BLE001 -- whatever the tool raises is the report
@@ -120,7 +119,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     say("built", told=told, seconds=time.monotonic() - started)
     if args.example is not None:
         say("example", **_try(args.example, args.name, built.value))
-    say("done")
     return 0
 
 
