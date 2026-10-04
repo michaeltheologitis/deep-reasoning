@@ -524,8 +524,6 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
       <OutcomeView
         outcome={outcome}
         record={record}
-        draft={draft}
-        picked={picked}
         onSaveAnyway={() => save(true)}
         onCancel={() => setOutcome(null)}
         onSaveAsNext={(head) =>
@@ -563,8 +561,6 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
 function OutcomeView(props: {
   outcome: Outcome | null;
   record: DecompositionRecord | null;
-  draft: DecompositionDraft;
-  picked: string | null;
   onSaveAnyway: () => void;
   onCancel: () => void;
   onSaveAsNext: (head: DecompositionRecord) => void;
