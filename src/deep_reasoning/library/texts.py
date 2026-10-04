@@ -161,3 +161,14 @@ def stale_head(kind: str, name: str, version: int, build: str, first_error: str)
         f"{kind.capitalize()} '{name}' version {version} no longer validates under "
         f"deep_reasoner {build}: {first_error}"
     )
+
+
+def unknown_tool(namespace: str, tool: str) -> str:
+    return (
+        f"Namespace '{namespace}' grants '{tool}', which is not a tool in the library; an "
+        "agent there will not start."
+    )
+
+
+def unknown_spawn(namespace: str, target: str) -> str:
+    return f"Namespace '{namespace}' may spawn into '{target}', which is not in the library."

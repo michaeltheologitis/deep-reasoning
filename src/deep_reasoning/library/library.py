@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import Any, Literal, get_args
 
 import yaml
+from pydantic import ValidationError
 
 from deep_reasoning.library import configdir, shapes, store, texts
 from deep_reasoning.library.catalog import library_path
+from deep_reasoning.library.effective import Effective, defined_tools, effective
 from deep_reasoning.library.records import (
     Change,
     DecompositionMeta,
@@ -112,6 +114,38 @@ class Library:
         if not rows:
             raise LibraryNotFound(texts.not_found(kind, key))
         return rows
+
+    def effective(self, namespace: str) -> Effective:
+        """What namespace inherits; a stale head is LibraryValidationError, as at
+        materialize."""
+        state = self.state()
+        self._get(state.namespaces, "namespace", namespace)
+        try:
+            return effective(state, namespace)
+        except ValidationError:
+            _refuse_stale(state)
+            raise
+
+    def check(self) -> list[Problem]:
+        """Every live head re-validated under the installed deep_reasoner, plus granted
+        tools the Library does not define and spawn targets it does not hold."""
+        state = self.state()
+        defined = defined_tools(state)
+        problems = _stale(state)
+        for ns in state.namespaces.values():
+            tools, spawn = ns.data.get("tools", []), ns.data.get("spawn") or []
+            missing = [
+                texts.unknown_tool(ns.name, t) for t in tools if t not in defined
+            ]
+            missing += [
+                texts.unknown_spawn(ns.name, t)
+                for t in spawn
+                if t not in state.namespaces
+            ]
+            problems += [
+                Problem(kind="namespace", name=ns.name, message=m) for m in missing
+            ]
+        return problems
 
     def validate(
         self,

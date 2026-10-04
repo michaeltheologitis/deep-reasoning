@@ -1,4 +1,6 @@
 import pytest
+from deep_reasoner.prompt_config import Decomposition
+from pydantic import ConfigDict, Field
 
 from deep_reasoning.library import (
     Library,
@@ -310,6 +312,56 @@ def test_a_revision_the_library_has_not_reached_is_not_found(lib, rev):
         str(raised.value)
         == f"There is no revision {rev}: the library is at revision 2."
     )
+
+
+def test_check_reports_ungranted_tools_and_missing_spawn_targets(lib):
+    lib.put_namespace("name: a\ntools: [llm, search]\nspawn: [a, b]")
+    assert [p.model_dump() for p in lib.check()] == [
+        {
+            "kind": "namespace",
+            "name": "a",
+            "message": "Namespace 'a' grants 'llm', which is not a tool in the library; an "
+            "agent there will not start.",
+        },
+        {
+            "kind": "namespace",
+            "name": "a",
+            "message": "Namespace 'a' grants 'search', which is not a tool in the library; "
+            "an agent there will not start.",
+        },
+        {
+            "kind": "namespace",
+            "name": "a",
+            "message": "Namespace 'a' may spawn into 'b', which is not in the library.",
+        },
+    ]
+    lib.put_profile("model: m")
+    lib.put_tool("search", "factory: llm\n")
+    lib.put_namespace("name: b")
+    assert lib.check() == []
+
+
+class _Stricter(Decomposition):
+    model_config = ConfigDict(extra="forbid")
+
+    messages: list = Field(min_length=3)
+
+
+def test_a_head_that_stops_validating_is_a_problem_and_blocks_materialize(
+    lib, monkeypatch, tmp_path
+):
+    lib.put_decomposition(text(example("lookup")))
+    monkeypatch.setattr(shapes, "Decomposition", _Stricter)
+    [problem] = lib.check()
+    assert (problem.kind, problem.name) == ("decomposition", "lookup")
+    assert problem.message == (
+        f"Decomposition 'lookup' version 1 no longer validates under deep_reasoner "
+        f"{shapes.deep_reasoner_build()}: messages: List should have at least 3 items "
+        "after validation, not 2"
+    )
+    with pytest.raises(LibraryValidationError, match="no longer validates"):
+        lib.materialize(tmp_path / "out")
+    assert not (tmp_path / "out").exists()
 
 
 def test_validate_reports_without_saving(lib):
