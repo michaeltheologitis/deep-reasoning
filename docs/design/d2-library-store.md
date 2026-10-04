@@ -7,13 +7,79 @@ D3, D4 and §4 that use the store; save-a-run is out of v1) and D1's design v2
 **Pinned against:** deep_reasoner_beta `d7334ae6ea884617a377d9f1ce872530d898484c` (conflit 0.1.4,
 pydantic 2.13.5 as its lock resolves them) · D1's committed `src/deep_reasoning/acp/catalog.py` at
 `21c2c7a` (identical to D1 §4.6) · the SDK fork at `91430aa` (upstream `53a4bc5` plus the ASE commit;
-the Canvas App backend manager and bridge line numbers below) · SQLite 3.45 (the stdlib's; `STRICT` tables need 3.37 or later).
+the Canvas App backend manager and bridge line numbers below) · SQLite 3.45 (the stdlib's; `STRICT`
+tables need 3.37 or later) · Python 3.12 (`sqlite3.connect(autocommit=True)`, v3).
 
-**Matches the build at `90044f0`** (v2): D2's code (`8d24b56` … `5158693`), D1 at `21f4a8b` merged
-under it (`da58a33`), and `dr-acp` serving the Library without `--config` (`90044f0`). Commits after
-it on this branch change only `docs/`.
+**Matches the build at `0e0a394`** (v3): D2 after one fix made since Gate B (`cd0b60c`, §3.3 F1)
+and its literate refactor (`452db0e..0e0a394`, §3.3 R1–R12), which changed no behaviour. D2 now
+sits on `main` at `32c7f61`, which holds D1's merged stack (`a7bbe41`; D1 after its own refactor
+came in at `7bcd0d1`). D1's `Catalog`, `CatalogSnapshot`, `CommandEntry` and `RunSource` are the
+shapes §4.7 relies on; only their comments changed. v3 changes only this file. v2 matched the build
+at `90044f0`.
 
-## Gate B: what to read
+**The evidence at `0e0a394`** (v3). Both runs are at the branch's last commit that touches code.
+
+- **CI**, [run 37165314704](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37165314704):
+  `ruff check`, `ruff format --check` and the deterministic suite, **525 passed** (the 5 live tests
+  deselected), in 4 min 13 s. deep_reasoner_beta's configs are checked out at `d7334ae`, so E7 runs
+  in full. 287 of the 525 are D2's (`tests/library/`: Gate B's 285, minus the 4 the refactor
+  removed, plus 6 new cases, §7.2). No test calls a model.
+- **Live tier**, [run 37166626513](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37166626513):
+  **5 of 5 passed** in 51 s: D1's four (gpt-6-luna, and Claude Code on Sonnet) and D2's
+  `tests/library/test_live.py::test_an_edited_decomposition_reaches_a_real_run_at_its_saved_version`
+  on gpt-6-luna.
+
+**Revisions** (newest first; the reader approved the previous one, so each line says which
+sentences to stop trusting):
+- 2026-10-04 · v3 · brought in line with the build at `0e0a394`, for Gate C: one fix since Gate B
+  (§3.3 F1: the effective view answers 422 for a stale head where it answered 500) and the literate
+  refactor, which changed no behaviour (R1–R12). Stop trusting: §4.2's `isolation_level=None`,
+  `migrate`'s statement-by-statement steps, the heads query, `Row`, and `Kind`'s re-export (R2, R3,
+  R8); §4.4's and §4.8's `model_dump(mode="json")` as the API's encoder (R1); §4.4's error table,
+  decision J and §6.1–§6.2 on a stale head (F1); §4.10's sentence outside `texts.py` and §9 item 13
+  (R11, R12); §3.2 B15, §7.1's and §7.5's D2 fake, and B20's `fake_openai.py 84` (R5 reverses them);
+  §3.2 B3's and B7's "not pinned" (R12); §3.2 B13's and §4.7's line numbers in D1's files (D1's
+  refactor moved them); §4.3's `METADATA_IN_YAML` (a v2 slip: B4 made it two constants); §7.2's
+  four removed and two renamed tests (R6, R10). Added without changing earlier sentences: the
+  evidence above; §3.3; `effective.defined_tools` (§4.9, R7); `library.py`'s reading order (§4.5,
+  R9); §9 item 14. This list, the file's place and the reading guide moved up from the Gate B
+  section, which is kept as approved; its property table is marked where v3 changed a test.
+- 2026-10-03 · v2 · brought in line with the build at `90044f0`, after Proof Green. Stop trusting:
+  §1.1 decision K (B1); §4.2's temporary file name, `connect`'s signature and the heads query's
+  order (B8); §4.4's error classes and where `Kind` lives (B3, B8, B10); §4.5's `LIBRARY_FILE` and
+  `library_path` (now §4.7, B6), `validate`'s signature (B7) and the error class of a broken
+  invariant (B3); §4.6's `main.yaml` (B5) and the import's write order (B11); §4.8's endpoints and
+  error mapping (B1, B2, B9); §4.10's table (B4); §6.1's status codes (B1–B3); §7.1's working
+  folder and counts (B16, B17); §7.3's harness (B14); §7.4 (B18); §7.5 (B15, B19); §3.1 item 16's
+  size (B20); §9 item 4 (resolved). Added without changing earlier sentences: the Gate B section;
+  §3.2; §8's B6 (the bridge drops `Host`); §9 items 11–13. §3.1 (v1's §3) keeps every item as
+  written, with marked v2 notes on items 12 and 16; Michael accepted it on 2026-10-02 (spec,
+  "Rulings at design" (2)). Every change is listed, with its reason, in §3.2.
+- 2026-10-02 · v1 · first full-depth version.
+
+**Where this file lives, and why nothing trips over it.** `docs/design/` on the task branch. The
+repo has no docs site; pytest collects `tests/` only (`testpaths = ["tests"]`), the wheel is built
+from `src/deep_reasoning` only, this branch's sdist excludes `docs/` and `as_built/`, and ruff
+excludes `docs` (D1 §8.5). The PR split leaves it behind.
+
+**Reading guide.** Gate C: §3.3 says what changed since Gate B, each change with its commit; the
+PRs' reading order is the PR Splitter's, and each module's section is §4. D3 and D4 design against
+§6, which is their contract, and §2, which says what the records mean. D1's Implementer reads §4.7.
+D5 reads §4.8 and §4.6 (the command, the export). The Implementer and the Cartographer read
+everything; Appendix A indexes every signature.
+
+**What was verified for v1 (2026-10-02, in a scratch environment outside every repo):**
+a 150-line prototype of import, canonical YAML and materialize, run over every YAML file in
+deep_reasoner_beta's `docs/configs` and `configs` at `d7334ae`: every file `dr` accepts as a config
+round-trips (equal `V2Config`, equal `registry.resolve(ns)` for every namespace, idempotent
+re-import), and `dr` run against a fake OpenAI endpoint behaves identically on each original and
+its materialized copy (same exit code, same answer, same first model request). Details in §7.1.
+
+## Gate B: what was read (v2, approved)
+
+**Approved at Gate B**, as v2 (`41416c7`) with the build at `90044f0`. This section is kept as it
+was read, as history; the one table later work uses, which tests carry which property, is marked
+where v3 changed a test. What changed since is §3.3.
 
 **About 50 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, D2's
 as-built document (`as_built/d2-library-store.md`, the Cartographer's; it also
@@ -34,7 +100,8 @@ reference D3, D4 and D5 build against (Michael: don't force compression); Gate B
 "Rulings at design, 2026-10-02" (2), from §3.1 item 16's estimate). The build is **2,684 lines of
 code and 2,576 of tests** at `90044f0` (2,239 and 2,203 non-blank), about 2.8 times that. The
 breakdown by file is §3.2 B20. The build recorded no reason for the growth; the estimate was this
-design's. The Scout and the Refactorer, after Gate B, are where it shrinks.
+design's. The Scout and the Refactorer, after Gate B, are where it shrinks. *(v3: after the
+refactor, 2,598 and 2,495, or 2,142 and 2,138 non-blank, §3.3.)*
 
 **The evidence.** Both runs are at `90044f0`, the branch's last commit that touches code.
 
@@ -54,46 +121,16 @@ design's. The Scout and the Refactorer, after Gate B, are where it shrinks.
 | Property | Tests |
 |---|---|
 | **E7 level 1.** Every config `dr` accepts round-trips: imported, materialized and loaded with `dr`'s own loader, the `V2Config`s are equal but for what materialize moves, every namespace resolves equal, tool files are byte-identical, and the copy re-imports to the same rows and makes no revision. **Measured at `d7334ae`: 39 YAML files; the 37 that load round-trip; the 2 namespace files `V2Config` refuses are asserted refused, with that reason; their directory is covered by a composed config the test writes.** | `test_roundtrip.py::test_every_config_dr_accepts_round_trips[39 files]`; `::test_the_example_namespaces_directory_round_trips`; the guard `::test_the_corpus_is_read_in_ci` (fails in CI without the corpus) |
-| **E7 level 2.** `dr` gives the same exit code, last line of stdout and first model request on the original and on its copy, against a fake OpenAI, deep_reasoner's fake Claude CLI and no network. **Measured: equal on all 38 cases (the 37 configs and the composed one). 19 reach the fake's answer, `done`; the 2 Claude-backbone configs end at the fake CLI's end; both sets are pinned in the test, so a broken fake cannot pass by failing everywhere. The other 17 exit 1 identically on both sides; for them the test asserts equality only.** | `test_roundtrip.py::test_dr_answers_the_same_from_the_original_and_its_copy[38 cases]` |
+| **E7 level 2.** `dr` gives the same exit code, last line of stdout and first model request on the original and on its copy, against a fake OpenAI (v3: D1's `FakeOpenAI`, which now also embeds, §3.3 R5), deep_reasoner's fake Claude CLI and no network. **Measured: equal on all 38 cases (the 37 configs and the composed one). 19 reach the fake's answer, `done`; the 2 Claude-backbone configs end at the fake CLI's end; both sets are pinned in the test, so a broken fake cannot pass by failing everywhere. The other 17 exit 1 identically on both sides; for them the test asserts equality only.** | `test_roundtrip.py::test_dr_answers_the_same_from_the_original_and_its_copy[38 cases]` |
 | **D3's falsifier, at the store** (spec D3: a decomposition saved in Create decomposition is used, at its saved version, by the next conversation in that namespace, as our run log records). Saved, and saved then edited, each followed by a new conversation through `dr-acp` without `--config`, over stdio: the slash menu lists it with its use-when line; `run.start` records the namespace and the saved version; the model is sent that version's text and not the other's; the session index names the Library. | `test_acp.py::test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace[saved, edited]`; the same below `dr-acp`'s front (`LibraryCatalog` and `dr`, two runs, v1 then v2): `test_catalog.py::test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace` |
-| **The HTTP contract** (§6): every route, its status and its JSON shape; errors carry code, message and details; a `PUT`'s path key must be the YAML's own; 201 on create, 200 on update | `test_api.py::test_every_read_answers_its_records[…]`, `::test_every_write_route`, `::test_creating_a_decomposition_answers_201_and_updating_200`, `::test_validate_answers_200_even_when_invalid`, `::test_errors_carry_code_message_and_details`, `::test_the_path_key_must_match_the_yaml[…]`, `::test_a_slug_with_spaces_in_the_name_round_trips`, `::test_records_carry_yaml_and_parsed_data`, `::test_health_reports_the_revision_and_default_namespace`, `::test_export_is_a_zip_of_a_materialized_directory` |
+| **The HTTP contract** (§6): every route, its status and its JSON shape; errors carry code, message and details; a `PUT`'s path key must be the YAML's own; 201 on create, 200 on update | `test_api.py::test_every_read_answers_its_records[…]`, `::test_every_write_route`, `::test_creating_a_decomposition_answers_201_and_updating_200`, `::test_validate_answers_200_even_when_invalid`, `::test_errors_carry_code_message_and_details`, `::test_the_path_key_must_match_the_yaml[…]`, `::test_records_carry_yaml_and_parsed_data`, `::test_health_reports_the_revision_and_default_namespace`, `::test_export_is_a_zip_of_a_materialized_directory`. *(v3: `::test_a_slug_with_spaces_in_the_name_round_trips` is removed: `::test_creating_a_decomposition_answers_201_and_updating_200` writes at `summarize-then-rank`, and `::test_every_read_answers_its_records` reads `catalog-lookup` and its versions, R6.)* |
 | **Who may call it** (decision K, §3.2 B1): another OS user's connection, a `Host` other than loopback at the backend's port, and a `PUT` or `POST` body not sent as JSON are refused; a real `dr-library serve` with only an App backend's six variables answers `/health` and refuses a rebound `Host` | `test_api.py::test_another_users_connection_is_refused`, `::test_same_user_peer_reads_the_client_sockets_owner[…]`, `::test_a_request_addressed_to_another_host_is_refused[…]`, `::test_a_body_that_is_not_sent_as_json_is_refused[…]`; `test_cli.py::test_serve_answers_health_on_loopback` |
 | **Every save an immutable version** (decision A, L) | `test_store.py::test_versions_and_revisions_cannot_be_updated_or_deleted[…]`, `::test_a_save_that_changes_nothing_makes_no_revision`, `::test_two_processes_saving_at_once_both_land`; `test_library.py::test_every_save_is_a_new_version`, `::test_a_stale_base_version_is_a_conflict_carrying_the_head`, `::test_deleted_and_recreated_continues_its_version_numbers` |
 | **Live tier**, on gpt-6-luna (spec §4 layer 5, "D2: import, edit, version, materialize and run") | `test_live.py::test_an_edited_decomposition_reaches_a_real_run_at_its_saved_version`: imports D1's advising config, saves `first course` and edits it (history v2, v1), refuses the spec's failure cell without making a revision, materializes (manifest `first course: 2`) and runs `dr`: exit 0, the answer names CS101, and the root's node log carries v2's example, not v1's or the refused one |
+| (v3) **A stale head refuses the effective view**, 422 `invalid` with one `STALE_HEAD` sentence per stale head, as materialize does (§3.3 F1) | `test_api.py::test_a_stale_head_makes_the_effective_view_answer_422_naming_it[/effective, /namespaces/router/effective]` |
+| (v3) **Pinned by the refactor, as built before it**: a migration step that fails leaves `user_version` 0 and no table (R2); a namespace that is not there cannot be attached to or granted in, 422 at `namespaces` or `granted_in` (§3.2 B3, R12); `POST /validate` judges a tool with the source it is sent (B7, R12); the `?base_version=` 400 carries its sentence (R11) | `test_store.py::test_a_migration_that_fails_halfway_leaves_the_file_unmigrated`; `test_library.py::test_a_namespace_that_is_not_there_cannot_be_attached_to_or_granted_in[namespaces, granted_in]`; `test_api.py::test_validate_judges_a_tool_with_the_source_it_is_sent`, `::test_errors_carry_code_message_and_details` |
 
 §7.2 maps every test file.
-
-**Revisions** (newest first; the Gate B reader approved the previous one, so each line says which
-sentences to stop trusting):
-- 2026-10-03 · v2 · brought in line with the build at `90044f0`, after Proof Green. Stop trusting:
-  §1.1 decision K (B1); §4.2's temporary file name, `connect`'s signature and the heads query's
-  order (B8); §4.4's error classes and where `Kind` lives (B3, B8, B10); §4.5's `LIBRARY_FILE` and
-  `library_path` (now §4.7, B6), `validate`'s signature (B7) and the error class of a broken
-  invariant (B3); §4.6's `main.yaml` (B5) and the import's write order (B11); §4.8's endpoints and
-  error mapping (B1, B2, B9); §4.10's table (B4); §6.1's status codes (B1–B3); §7.1's working
-  folder and counts (B16, B17); §7.3's harness (B14); §7.4 (B18); §7.5 (B15, B19); §3.1 item 16's
-  size (B20); §9 item 4 (resolved). Added without changing earlier sentences: the Gate B section;
-  §3.2; §8's B6 (the bridge drops `Host`); §9 items 11–13. §3.1 (v1's §3) keeps every item as
-  written, with marked v2 notes on items 12 and 16; Michael accepted it on 2026-10-02 (spec,
-  "Rulings at design" (2)). Every change is listed, with its reason, in §3.2.
-- 2026-10-02 · v1 · first full-depth version.
-
-**Where this file lives, and why nothing trips over it.** `docs/design/` on the task branch. The
-repo has no docs site; once D1's `pyproject.toml` is on the branch, pytest collects `tests/` only
-(`testpaths = ["tests"]`), the wheel is built from `src/deep_reasoning` only, the sdist excludes
-`docs/`, and ruff excludes `docs` (D1 §8.5). The PR split leaves it behind.
-
-**Reading guide.** Gate B: the section above. D3 and D4 design against §6, which is their
-contract, and §2, which says what the records mean. D1's Implementer reads §4.7. D5 reads §4.8 and
-§4.6 (the command, the export). The Implementer and the Cartographer read everything; Appendix A
-indexes every signature.
-
-**What was verified for v1 (2026-10-02, in a scratch environment outside every repo):**
-a 150-line prototype of import, canonical YAML and materialize, run over every YAML file in
-deep_reasoner_beta's `docs/configs` and `configs` at `d7334ae`: every file `dr` accepts as a config
-round-trips (equal `V2Config`, equal `registry.resolve(ns)` for every namespace, idempotent
-re-import), and `dr` run against a fake OpenAI endpoint behaves identically on each original and
-its materialized copy (same exit code, same answer, same first model request). Details in §7.1.
 
 ---
 
@@ -144,7 +181,7 @@ dr-acp front (D1), per conversation ── LibraryCatalog ───────�
 | G | **Import merges by name, in one revision, and never deletes.** Each entity whose canonical form differs from the head gets a version; equal ones are left alone; nothing absent from the imported config is touched. | Importing a second config must not destroy the first's namespaces. Re-importing the same config makes no revision. Anything an import overwrote is one version back. | Import as "replace the Library" (one wrong click loses everything). Import into a fresh file only (no way to bring a config into an existing Library). |
 | H | **`dr-acp` reads the file in-process; `LibraryCatalog` materializes and then delegates to D1's own `ConfigCatalog`** for the snapshot and the `RunSource`, adding only the use-when line, the hint and the versions. | The menu is computed by D1's code from the very config the run will load, so the slash menu and the run cannot disagree, and D1's menu rules (order, slugs, first name wins) are not copied. The App backend's port is assigned by the agent-server and known to nothing else. | `dr-acp` calling the HTTP API (spec §2 draws it that way; it has no way to find the port). Re-implementing D1's menu over rows. |
 | I | **WAL mode, `BEGIN IMMEDIATE` per save, a fresh connection per operation.** | The App backend, every `dr-acp` and `dr-library import` share one file; writers serialize, readers see one consistent revision and never block a writer. The App backend runs each handler on Starlette's thread pool (§4.8), and a connection per call needs no locking of ours. | A long-lived connection with a lock; a server process owning the file (a second service, the thing spec §2 rejected). |
-| J | **Validation is deep_reasoner's own models at every save, and again over every head at every materialize**, under the installed deep_reasoner. A head that stops validating after a pin bump is a named problem (`GET /problems`) and blocks materialize; it is never rewritten silently. | The spec's "stored YAML records the commit it was validated against and the importer migrates it": the record is kept per version; a migration can only be written once Dean's change exists, and E7 on the new pin is what shows one is needed. | Re-validating only at save (a pin bump would surface as a failed run). Silent best-effort rewriting. |
+| J | **Validation is deep_reasoner's own models at every save, and again over every head at every materialize**, under the installed deep_reasoner. A head that stops validating after a pin bump is a named problem (`GET /problems`) and blocks materialize (v3: and the effective view, when the head is in the config the view builds, §3.3 F1); it is never rewritten silently. | The spec's "stored YAML records the commit it was validated against and the importer migrates it": the record is kept per version; a migration can only be written once Dean's change exists, and E7 on the new pin is what shows one is needed. | Re-validating only at save (a pin bump would surface as a failed run). Silent best-effort rewriting. |
 | K | **The HTTP API has no import, binds 127.0.0.1 only, and refuses every request that is not plainly the user's own** (v2, §3.2 B1): on Linux a TCP peer that belongs to another OS user; everywhere a `Host` other than `127.0.0.1:<port>` or `localhost:<port>`; and a `PUT` or `POST` body not sent as `application/json`. | A Canvas App backend is unauthenticated loopback HTTP: the agent-server's bridge authenticates the browser, but anything on the machine can reach the port directly. On a shared lab machine another user could otherwise write a tool (code that runs as you at your next conversation) or make the backend import a config whose `factory_from` names your private files. Import stays a command the user runs. The user's own browser is the other way in, as the user: a page on another site that rebinds its DNS name to 127.0.0.1 can read the answers, but its `Host` still names its site; a cross-site form or `text/plain` fetch can `POST` without a CORS preflight, and a JSON body cannot. The bridge's own requests pass, since it sends `Host: 127.0.0.1:<port>` (§8, B6). | Trusting loopback. A token we cannot deliver: the bridge sends the backend no credential (§8, B4). |
 | L | **Optimistic concurrency.** Every write may carry `base_version`, the head version the edit started from (`0`: must not exist yet); a mismatch is a conflict that carries the current head. | Two conversations can have the panel open at once; D3's "'catalog lookup' is already in router (v2)" needs the head. Scripts and import omit it and write unconditionally. | Locks held by a panel. Last write wins silently. |
 | M | **A new Library starts from a starter config shipped in the package**, imported through the same import path as any config: a `root` namespace with the `llm` tool and a profile with a model, a client and a short system prompt of our own. | Spec §1's first "done when" (install, ask) needs a Library that can run before the user has written anything. One code path: the starter is just the first import. | An empty Library (the first question fails with "LLM requires a model"). Seeding in D5's setup (every test and every `dr-acp --home` would need the same seeding). |
@@ -287,8 +324,9 @@ decompositions: {summarize then rank: 1, …}}`, and D1 records that in the run 
 
 ## 3 · Departures from the spec, and what the build changed
 
-§3.1 is where this design departs from the approved spec (v1, unchanged in v2). §3.2 is what the
-build changed in this design (v2). None is a re-scope.
+§3.1 is where this design departs from the approved spec (v1, unchanged since). §3.2 is what the
+build changed in this design (v2). §3.3 is what changed after Gate B: one fix and the literate
+refactor (v3). None is a re-scope.
 
 ### 3.1 Where this design departs from, or adds to, the approved spec
 
@@ -340,7 +378,7 @@ build kept every one; item 16's size did not hold (§3.2 B20).
 16. **Cost.** About 1.1k LOC of code and 0.8k of tests, roughly 6 h at Gate C, against the
     spec's ≈1.2k LOC with tests and ≈4 h. The growth is items 2, 3, 12 and 13 (the effective view
     and validation were nobody's: D3 has no Python), and the invariants of §2.5. *(v2: built at
-    2.7k and 2.6k, §3.2 B20.)*
+    2.7k and 2.6k, §3.2 B20. v3: 2.6k and 2.5k after the refactor, §3.3.)*
 
 ### 3.2 Changed by the build (v2)
 
@@ -412,14 +450,16 @@ for D3. Where the build recorded no reason, the reason given is marked as this d
   `::test_putting_a_namespace_sets_its_list_only_when_given` (unknown and listed twice),
   `test_materialize.py::test_a_non_empty_destination_is_refused`,
   `test_shapes.py::test_a_document_that_is_not_a_mapping_is_invalid[…]`. **Not pinned:** a name
-  in `namespaces` or `granted_in` that is not a live namespace (§9 item 13).
+  in `namespaces` or `granted_in` that is not a live namespace (§9 item 13). *(v3: pinned, §3.3
+  R12.)*
 - **B4. Five new sentences, and two renamed** (§4.10). `FORBIDDEN_HOST` (B1), `NOT_JSON` (B1),
   `BAD_REQUEST` (B2), `NO_VERSION` (404 for `GET …/versions/{n}` when the entity has no version
   `n`) and `NO_REVISION` (404 when `state(rev=)`, `materialize(rev=)` or `export --rev` names a
   revision outside 1 … now; v1 would have failed on an empty unpacking). v1's `METADATA_IN_YAML`
   is two constants, `METADATA_USE_WHEN` and `METADATA_HINT`; `INVALID`'s line for an error
   without a location is `  {msg}`. One sentence lives outside `texts.py`: `base_version must be a
-  whole number; got {raw!r}.` in `api.py` (§9 item 13). *Pinned by:*
+  whole number; got {raw!r}.` in `api.py` (§9 item 13). *(v3: it is `texts.bad_base_version`,
+  §3.3 R11.)* *Pinned by:*
   `test_library.py::test_a_revision_the_library_has_not_reached_is_not_found[0, 3]`, B1's and
   B2's tests.
 - **B5. `main.yaml` carries `entry_namespace` only when it differs from the profile's** (§4.6).
@@ -442,14 +482,15 @@ for D3. Where the build recorded no reason, the reason given is marked as this d
   `test_catalog.py::test_building_a_catalog_imports_nothing_of_deep_reasoner`.
 - **B7. `Library.validate` takes `source=`** (§4.5). `POST /validate` already carried `source`
   (§6.2); a tool whose block names `factory_from` validates only with its source
-  (`TOOL_NO_SOURCE` otherwise). **Not pinned** by a test (§9 item 13).
+  (`TOOL_NO_SOURCE` otherwise). **Not pinned** by a test (§9 item 13). *(v3: pinned, §3.3 R12.)*
 - **B8. Store details** (§4.2). The temporary file is `library.sqlite.<pid>-<8 hex>.new`
   (`secrets.token_hex(4)`), and its `-wal` and `-shm` are removed with it. *Why (this design's
   reading):* a pid alone is not unique among creators: two threads of one process, or two
   processes in different PID namespaces sharing one home, would race for one name.
   `connect(path, *, mounts=MOUNTS)` takes the mounts file, so the network-filesystem refusal is
   testable; connections are opened with `isolation_level=None`
-  (every transaction is an explicit `BEGIN`) and `check_same_thread=False`. New helpers:
+  (every transaction is an explicit `BEGIN`) and `check_same_thread=False` *(v3: `autocommit=True`
+  in place of `isolation_level=None`, §3.3 R2)*. New helpers:
   `read(path)`, one read transaction, which every read method of `Library` is;
   `decomposition_named(conn, slug)`, the name last saved under a slug, deleted or not (so
   `GET /decompositions/{slug}/versions` works after a delete); `filesystem_type(path, *, mounts)`
@@ -458,7 +499,9 @@ for D3. Where the build recorded no reason, the reason given is marked as this d
   once. **Creation order is the row id of each entity's version 1**, not its revision: the heads
   query selects it as `created` and orders by it. *Why:* one import creates many entities in one
   revision, which `created_rev` cannot order; the row id keeps the order they were written. `Kind`
-  is defined in `records.py`, and `store.py` re-exports it. *Pinned by:*
+  is defined in `records.py`, and `store.py` re-exports it. *(v3: the heads query orders by the
+  row id directly, `created_rev` and `created` are gone, R3; nothing re-exports `Kind`, R8.)*
+  *Pinned by:*
   `test_store.py::test_heads_are_in_creation_order_within_one_revision`,
   `::test_a_second_creator_loses_and_leaves_nothing_behind`,
   `::test_a_library_on_a_network_filesystem_is_refused`.
@@ -488,10 +531,12 @@ for D3. Where the build recorded no reason, the reason given is marked as this d
 **D2's edit to D1's files**
 
 - **B13. `dr-acp` serves the Library without `--config`** (§4.7), in `90044f0`. `acp/cli.py`
-  builds `LibraryCatalog(library_path(options.home))` when `--config` is absent (`cli.py:93–97`);
+  builds `LibraryCatalog(library_path(options.home))` when `--config` is absent (`cli.py:93–97`;
+  v3, after D1's refactor: `91–95`);
   D1's `NEEDS_CONFIG` sentence and exit 2 are gone. `acp/session.py` writes the session index's
   `source` as `{"kind": "library", "library": <path>}` when the `RunSource`'s versions name a
-  library (`session.py:198–203`). D1's `test_without_a_config_dr_acp_exits_2_and_says_why` became
+  library (`session.py:198–203`; v3: `199–204`). D1's
+  `test_without_a_config_dr_acp_exits_2_and_says_why` became
   `test_without_a_config_dr_acp_serves_the_library_at_its_home`, and D1's test harness starts
   `dr-acp` without `--config` when given `config=None`. *Pinned by:* that test, and B14's.
 
@@ -505,7 +550,8 @@ for D3. Where the build recorded no reason, the reason given is marked as this d
 - **B15. D2 keeps its own fake OpenAI** (`tests/library/fake_openai.py`, 84 lines: chat
   completions, `/v1/embeddings` with a fixed vector, each chat request recorded) instead of adding
   embeddings to D1's (§7.5). v1's §7.5 allowed either; this one leaves D1's test helper unchanged.
-  E7 and `test_catalog.py` use it; `test_acp.py` uses D1's.
+  E7 and `test_catalog.py` use it; `test_acp.py` uses D1's. *(v3: reversed. D2's fake is deleted;
+  D1's `FakeOpenAI` serves embeddings and a plain `with`, and every test uses it, §3.3 R5.)*
 - **B16. E7 level 2 runs from a copy of the corpus folder, not a symlink, with
   `PYTHONDONTWRITEBYTECODE=1`** (§7.1). Also: every proxy variable points at a closed port
   (`127.0.0.1:9`, `NO_PROXY` loopback), so nothing but the fake is reachable, and the providers'
@@ -541,14 +587,130 @@ for D3. Where the build recorded no reason, the reason given is marked as this d
   `tests/library/` (B13's edits to D1's tests are not counted):
   `test_library.py` 384, `test_api.py` 378, `test_roundtrip.py` 238, `test_shapes.py` 220,
   `test_import.py` 215, `test_catalog.py` 171, `test_materialize.py` 170, `test_store.py` 144,
-  `test_effective.py` 143, `test_cli.py` 131, `conftest.py` 104, `fake_openai.py` 84,
-  `test_live.py` 82, `test_acp.py` 69, `corpus.py` 43. Michael rules on it at Gate B (§9 item 11).
+  `test_effective.py` 143, `test_cli.py` 131, `conftest.py` 104, `fake_openai.py` 84 (v3:
+  deleted, R5), `test_live.py` 82, `test_acp.py` 69, `corpus.py` 43. Michael rules on it at Gate B
+  (§9 item 11). *(v3: the size after the refactor, by file, is §3.3.)*
 
 **For D3 (no change; said again because D3 builds on it)**
 
 - **B21. A `PUT` that omits `use_when` or `hint` erases it** (§2.3, as designed: absent, `null`
   and `""` all store no value). D3 always resends both, from the record it opened (D3's design,
   decision H). *Pinned by:* `test_library.py::test_use_when_and_hint_are_replaced_by_every_save`.
+
+### 3.3 Changed after Gate B (v3)
+
+Each item was checked against the code at `0e0a394` and folded into the section named. F1 is the
+one change of behaviour. R1–R12 are the literate refactor (`452db0e..0e0a394`), which changed no
+behaviour. The three merges since Gate B (D1 after its refactor, `7bcd0d1`; `main` with D1's merged
+stack, `a7bbe41`; D1's revised as-built, `76d23b2`) touch none of D2's code; they moved B13's line
+numbers in D1's files.
+
+**The fix**
+
+- **F1. The effective view refuses a stale head, 422 `invalid`, as materialize does** (decision J,
+  §4.4, §4.5, §4.9, §6.1, §6.2; `cd0b60c`, its test first in `802a639`). `GET /effective` and
+  `GET /namespaces/{name}/effective` build deep_reasoner's config over the live heads (§4.9 step
+  1). A head the installed deep_reasoner refuses made that validation raise pydantic's
+  `ValidationError`, which no handler maps, so the API answered 500. Now `Library.effective`
+  catches it and raises what materialize raises: `LibraryValidationError` with one `STALE_HEAD`
+  sentence per stale head in the Library, joined as the message, each also an error with an empty
+  `loc`. A failure no stale head explains still raises as itself. The config the view builds is
+  the profile plus every live namespace with its attached decompositions inlined, so one stale
+  head there refuses every namespace's view: the profile, any namespace, or any decomposition a
+  namespace attaches. A stale tool, or a stale decomposition no namespace attaches, is not in that
+  config and refuses nothing. `GET /problems` still answers 200 and lists them all. *Why:* a 500
+  told D3 nothing, and materialize already had the sentence for this case. The refusal is taken
+  where the view fails rather than checked before every view, so nothing that answered 200 before
+  answers 422 now. *Pinned by:*
+  `test_api.py::test_a_stale_head_makes_the_effective_view_answer_422_naming_it[/effective,
+  /namespaces/router/effective]` (a decomposition head with no `messages`, attached to `router`,
+  stored through the store, since the Library refuses to save one; it failed on both routes before
+  `cd0b60c`).
+
+**Changed by the refactor** (no change of behaviour)
+
+- **R1. JSON answers come from `pydantic_core.to_jsonable_python`** (§4.4, §4.8; `452db0e`), not
+  `api._dump`, which applied `model_dump(mode="json")` to a model or a list of models. Identical
+  output, since no field that reaches a response has an alias (§9 item 14). `pydantic_core` is
+  installed with pydantic.
+- **R2. Connections open with `autocommit=True`; each migration step is one `executescript`
+  inside its `BEGIN IMMEDIATE`** (§4.2; `290899f`). `_statements` is gone: it split each script
+  because under `isolation_level=None` `executescript` commits the open transaction first; in
+  autocommit mode it commits nothing of its own. Every transaction was already an explicit `BEGIN`.
+  *Pinned by:* `test_store.py::test_a_migration_that_fails_halfway_leaves_the_file_unmigrated`
+  (`user_version` stays 0 and no table exists; it passes on the code before too).
+- **R3. `store.Row` is an alias of `records.HistoryEntry`, and records are validated from stored
+  rows** (§4.2, §4.4; `b8f14d1`). The rows query names its columns as `HistoryEntry` does
+  (`r.at AS saved_at`, `v.attached AS decompositions`), so `saved_at` replaces `at` and
+  `decompositions` replaces `attached` on a row. `created_rev`, which nothing read, is gone with its
+  subquery; heads still order by the row id of each entity's version 1. `library._history_entry` is
+  gone: `history` and a delete's tombstone return the rows themselves, and each record is
+  `model_validate` of its row plus what other heads imply. The column stays `attached`, and so does
+  `Writer.add`'s keyword. A Python caller can see one difference: `saved_at`'s `tzinfo` is
+  pydantic's UTC `TzInfo`, not `datetime.timezone.utc`; the instant, `isoformat()` and the JSON
+  are the same.
+- **R4. Private helpers share one rule each** (`ca8dfa0`, `3e2f43a`, `98bdb6f`). The three
+  membership cascades (`_attached_set`, `_top_level`, `_granted_set`) use `_live_namespaces` and
+  `_toggled`; `_stale` and `_read_back` reach records through `_records`, one map by kind (`_stale`
+  validates each head with `_validator`, and problems keep their order: profile, namespaces,
+  decompositions, tools); `shapes._validated` is folded into `_shaped`, its one caller.
+- **R5. One fake OpenAI: D1's `FakeOpenAI` gains `/embeddings` and a plain `with`; D2's
+  `tests/library/fake_openai.py` is deleted** (§7.1, §7.5, §8; `633a3a8`). This reverses §3.2 B15.
+  `POST …/embeddings` answers `EMBEDDING` (`[0.5, 0.5, 0.5, 0.5]`) for every input and is not
+  recorded in `.calls`; `__enter__` and `__exit__` start and stop the server, and the async pair
+  calls them. E7 and `test_catalog.py` read `fake.calls[i].messages`. What `dr` sees differs in one
+  field, chat usage (`FakeOpenAI`'s word count, not a fixed 1/1/2); E7 compares both sides of one
+  fake, and its pinned 19 and 2 still hold. *Pinned by:* D1's
+  `tests/acp/test_fake_model.py::test_embeds_every_input_alike_and_records_only_chat_calls`.
+- **R6. Four tests are removed, their properties pinned elsewhere** (§7.2; `c922a02`):
+  `test_catalog.py::test_commands_carry_use_when_and_hint` and
+  `::test_a_top_level_decomposition_is_offered_in_every_namespace` (the snapshot test and D1's menu
+  test); `test_api.py::test_a_slug_with_spaces_in_the_name_round_trips` (the 201/200 test writes
+  at `summarize-then-rank`, and the reads test reads `catalog-lookup` and its versions);
+  `test_library.py::test_the_spec_mock_up_runs_as_written` (its three assertions are three other
+  tests'). `test_validate_answers_200_even_when_invalid` now asserts the answer is what
+  `Library.validate` returns. Both falsifiers stay (B14).
+- **R7. `effective.defined_tools(state)`** (§4.9; `00d7a69`): the tools a grant can name, the
+  Library's and `llm` while the profile has a `model`. `check()` and the effective view each
+  decided it in their own words; both call it.
+- **R8. `store.py` no longer re-exports `Kind`** (§4.2; `e5c5aed`): every module and test imports
+  it from `records`. `store.Kind` still resolves, since `store.py` imports it.
+- **R9. `library.py` reads `Library` first, then its helpers in the order a save runs** (§4.5;
+  `381b6fe`, move only): one save, records from live heads, validation and stale heads, files.
+  `library.py` and `store.py` open with a short account of a save and of the file (`cca362e`), and
+  docstrings say what a thing promises, not who calls it (`39b4f15`). Prose and order only.
+- **R10. Two tests are renamed for the property they pin, and `user_texts` is `conftest.py`'s**
+  (§7.2; `cd77904`): `test_effective.py::test_sources` is
+  `test_each_inherited_value_names_the_level_it_comes_from`, and
+  `test_shapes.py::test_namespace_names` is
+  `test_a_namespace_name_is_ascii_words_joined_by_single_dots`. No assertion changes.
+- **R11. The `?base_version=` sentence is `texts.bad_base_version`**, word for word (§4.10;
+  `0c94c1b`); `test_errors_carry_code_message_and_details` now asserts the whole body.
+- **R12. Two behaviours v2 left unpinned are pinned** (§3.2 B3, B7; §9 item 13), each by a test
+  that passes on the code before too: a namespace that is not there, in `namespaces` or
+  `granted_in`, is 422 with `NOT_FOUND`'s sentence at that `loc` and no revision
+  (`test_library.py::test_a_namespace_that_is_not_there_cannot_be_attached_to_or_granted_in[namespaces,
+  granted_in]`, `ca8dfa0`); and `POST /validate` judges a tool with the source it is sent
+  (`test_api.py::test_validate_judges_a_tool_with_the_source_it_is_sent`, `0e0a394`), which fails
+  with `source` dropped from the route.
+
+**Size, before and after** (B20's measure: D2's package and `tests/library/`, all lines, non-blank
+in brackets)
+
+| | Gate B, `90044f0` | after F1, `76d23b2` | after the refactor, `0e0a394` |
+|---|---|---|---|
+| code | 2,684 (2,239) | 2,696 (2,249) | 2,598 (2,142) |
+| tests | 2,576 (2,203) | 2,597 (2,222) | 2,495 (2,138) |
+
+The task row counts non-blank lines added over `main` in `src` and `tests`, which also counts B13's
+edits to D1's files and R5's to `FakeOpenAI`: 2,288 and 2,234 before the refactor (`76d23b2`),
+2,211 and 2,161 after (`Lines Before` 4,522, `Lines After` 4,372). By file at `0e0a394`, code:
+`library.py` 702, `api.py` 370, `store.py` 296, `records.py` 232, `shapes.py` 230, `texts.py` 221,
+`configdir.py` 191, `effective.py` 129, `catalog.py` 83, `cli.py` 81, `__init__.py` 63 (and
+`starter.yaml`, 24). Tests: `test_library.py` 391, `test_api.py` 385, `test_roundtrip.py` 238,
+`test_shapes.py` 220, `test_import.py` 215, `test_materialize.py` 170, `test_store.py` 157,
+`test_effective.py` 145, `test_catalog.py` 144, `test_cli.py` 131, `conftest.py` 109,
+`test_live.py` 82, `test_acp.py` 65, `corpus.py` 43.
 
 ---
 
@@ -567,7 +729,8 @@ src/deep_reasoning/library/
                      errors
     library.py       Library: the Python API (reads, writes, import, materialize, check)
     configdir.py     read_config (a dr config → parts) and write_config (a state → a directory)
-    effective.py     inherited values and their sources (D3's Namespaces tab)
+    effective.py     inherited values and their sources (D3's Namespaces tab); the tools a grant
+                     can name (v3, §3.3 R7)
     catalog.py       LibraryCatalog: D1's Catalog over the Library; library_path, LIBRARY_FILE
     api.py           the Starlette app (§6), the request guard (same user, Host, JSON)
     cli.py           dr-library serve | import | export
@@ -587,13 +750,15 @@ first asked for, so
 ### 4.2 `store.py`: the file
 
 **Opening.** `connect(path, *, mounts=MOUNTS)` returns a `sqlite3.Connection` opened with
-`isolation_level=None` (every transaction is an explicit `BEGIN`) and `check_same_thread=False`,
+`autocommit=True` (v3, §3.3 R2: sqlite3 opens no transaction of its own, so every transaction is an
+explicit `BEGIN`, and `executescript` commits nothing) and `check_same_thread=False`,
 with `row_factory = sqlite3.Row`, `PRAGMA foreign_keys = ON`, `PRAGMA busy_timeout = 5000`,
 `PRAGMA synchronous = FULL`. `migrate(conn)` applies `MIGRATIONS[user_version:]` in one
 `BEGIN IMMEDIATE` transaction each, re-reading `user_version` inside it (two processes migrating at
-once apply a migration once), and sets `user_version`; D4 appends to `MIGRATIONS` if it needs a
-table. `read(path)` is one read transaction (`BEGIN` … `ROLLBACK`): every read method of `Library`
-is one, so every query in it sees the same revision.
+once apply a migration once). A step is one `executescript` of the migration followed by its
+`PRAGMA user_version`, so a step that fails leaves the file as it was (v3); D4 appends to
+`MIGRATIONS` if it needs a table. `read(path)` is one read transaction (`BEGIN` … `ROLLBACK`):
+every read method of `Library` is one, so every query in it sees the same revision.
 
 **Creating** a library is atomic, because the App backend and a `dr-acp` may both find the file
 missing at the same moment. `create(path, seed)` makes the parent directory (mode 0700) if missing;
@@ -659,19 +824,18 @@ BEGIN SELECT RAISE(ABORT, 'library revisions are immutable'); END;
 
 **Heads as of a revision** (`:rev` is the current revision when not given), **in creation order:
 the row id of each entity's version 1** (v2, §3.2 B8; one import creates many entities in one
-revision, so `created_rev` cannot order them):
+revision, so the revision of version 1 cannot order them). The columns are named as
+`HistoryEntry`'s fields, so a row validates as one (v3, §3.3 R3):
 
 ```sql
-SELECT v.*, r.at, r.action,
-       (SELECT w.rev FROM versions AS w
-         WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1) AS created_rev,
-       (SELECT w.rowid FROM versions AS w
-         WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1) AS created
+SELECT v.kind, v.name, v.version, v.rev, r.at AS saved_at, r.action, v.deleted, v.yaml,
+       v.attached AS decompositions, v.slug, v.use_when, v.hint, v.source, v.deep_reasoner
   FROM versions AS v JOIN revisions AS r USING (rev)
  WHERE v.version = (SELECT MAX(w.version) FROM versions AS w
                      WHERE w.kind = v.kind AND w.name = v.name AND w.rev <= :rev)
    AND v.deleted = 0
- ORDER BY created
+ ORDER BY (SELECT w.rowid FROM versions AS w
+            WHERE w.kind = v.kind AND w.name = v.name AND w.version = 1)
 ```
 
 `history` is the same select without the `WHERE` on heads, for one `(kind, name)`, newest first.
@@ -684,7 +848,7 @@ the invariants of §2.5 against `w.heads()` (`Library._save`, once per save that
 and commits; any exception rolls back.
 
 ```python
-# Kind is records.Kind (§4.4); store.py re-exports it.
+# Kind is records.Kind (§4.4), imported here and not re-exported (v3, §3.3 R8).
 
 SCHEMA_V1: str  # the schema above
 MIGRATIONS: tuple[str, ...]  # MIGRATIONS[i] takes user_version i to i + 1; (SCHEMA_V1,)
@@ -696,23 +860,9 @@ MOUNTS = Path("/proc/self/mounts")
 BUSY_TIMEOUT_MS = 5000
 
 
-@dataclass(frozen=True)
-class Row:
-    kind: Kind
-    name: str
-    version: int
-    rev: int
-    at: datetime  # the revision's time, UTC
-    action: str  # the revision's action
-    created_rev: int  # the revision of version 1 (creation order: its row id)
-    deleted: bool
-    yaml: str | None
-    attached: list[str] | None
-    slug: str | None
-    use_when: str | None
-    hint: str | None
-    source: str | None
-    deep_reasoner: str
+# One version as read back, joined to its revision's time and action: records.HistoryEntry
+# (§4.4), whose saved_at and decompositions are revisions.at and versions.attached (v3, §3.3 R3).
+Row = HistoryEntry
 
 
 def create(path: Path, seed: Callable[[Path], None]) -> bool:
@@ -795,7 +945,7 @@ dots (`messages.0.role`) and `msg` unchanged.
 | Kind | Model | Extra rules (each a `FieldError`, sentence from §4.10) |
 |---|---|---|
 | namespace | `NamespaceConfig` | `name` matches `NAMESPACE_NAME`; no `decompositions` key (`INLINE_DECOMPOSITIONS`) |
-| decomposition | `Decomposition` | name has no leading or trailing whitespace and no control characters (`DECOMPOSITION_NAME`); slug non-empty (`SLUG_EMPTY`); a `use_when` or `hint` key gets the extra line `METADATA_IN_YAML` |
+| decomposition | `Decomposition` | name has no leading or trailing whitespace and no control characters (`DECOMPOSITION_NAME`); slug non-empty (`SLUG_EMPTY`); a `use_when` or `hint` key gets the extra line `METADATA_USE_WHEN` or `METADATA_HINT` (v3: v2 left v1's `METADATA_IN_YAML` here, §3.2 B4) |
 | tool | the YAML is a mapping with string keys | name is an identifier and not a keyword (`TOOL_NAME`); `factory_from` absent, or equal to `tools/<name>.py` when a source is given (`TOOL_FILE`); a `factory_from` without a source (`TOOL_NO_SOURCE`) |
 | profile | `V2Config` | none of `namespaces`, `namespaces_dir`, `decompositions`, `tools`, `config_path` (`PROFILE_PART`) |
 
@@ -873,8 +1023,9 @@ def namespace_config(
 
 ### 4.4 `records.py`: what the API returns
 
-Pydantic models, frozen; the HTTP API returns `model_dump(mode="json")` of these. `data` is the
-canonical YAML parsed, so D3 needs no YAML parser to read a record.
+Pydantic models, frozen; the HTTP API answers `pydantic_core.to_jsonable_python` of these (v3,
+§3.3 R1), which is their `model_dump(mode="json")` while no field has an alias, and none has (§9
+item 14). `data` is the canonical YAML parsed, so D3 needs no YAML parser to read a record.
 
 ```python
 Kind = Literal["profile", "namespace", "decomposition", "tool"]
@@ -885,7 +1036,7 @@ class Saved(BaseModel):
 
     version: int
     rev: int  # the revision that wrote this version
-    saved_at: datetime
+    saved_at: datetime  # UTC; tzinfo is pydantic's TzInfo (v3, §3.3 R3)
 
 
 class ProfileRecord(Saved):
@@ -934,6 +1085,9 @@ class ToolRecord(Saved):
 
 
 class HistoryEntry(Saved):
+    """One stored version, with its revision's time and action; a tombstone is deleted
+    and has no yaml. store.Row is this class (v3, §3.3 R3)."""
+
     kind: Kind
     name: str
     action: str  # the revision's action
@@ -1083,19 +1237,20 @@ class LibraryNotJson(LibraryError):
     status = 415
 ```
 
-**Which error each failure is** (v2, §3.2 B1–B4; v1 left the invariants' class open):
+**Which error each failure is** (v2, §3.2 B1–B4; v1 left the invariants' class open; v3 adds the
+effective view's refusal, §3.3 F1):
 
 | Failure | Class, status, `error` | Sentence (§4.10) |
 |---|---|---|
 | YAML that fails its kind's model or the Library's name rules | `LibraryValidationError`, 422 `invalid` | `INVALID` with one line per error |
 | YAML that does not parse, or is not a mapping | `LibraryValidationError`, 422 `invalid` | `INVALID` (`this YAML is not a valid …:`), the parser's message or `NOT_A_MAPPING` |
 | A save that breaks an invariant (§2.5) | `LibraryValidationError`, 422 `invalid`, one `FieldError` | `SLUG_TAKEN`, `PARENT_MISSING`, `DEFAULT_MISSING`, `UNKNOWN_DECOMPOSITION`, `LISTED_TWICE`; a `namespaces` or `granted_in` name that is not live: `NOT_FOUND` |
-| A head that no longer validates, at materialize | `LibraryValidationError`, 422 `invalid` | one `STALE_HEAD` per head |
+| A head that no longer validates: at materialize (so `GET /export` too); and, a build change in v3 (`cd0b60c`), in the effective view when the head is in the config the view builds (the profile, a namespace, a decomposition a namespace attaches), which answered 500 with pydantic's unmapped `ValidationError` before | `LibraryValidationError`, 422 `invalid`, one `FieldError` with an empty `loc` per sentence | one `STALE_HEAD` per stale head, the same list as at materialize |
 | A config that cannot be imported | `LibraryImportError`, 422 `import_failed` | `IMPORT_LOAD`, `IMPORT_COLLISION`, `IMPORT_TOOL_FILE`, and `SLUG_TAKEN` inside one config |
 | A `base_version` that is not the head's | `LibraryConflict`, 409 `conflict`, with `head` | `CONFLICT_EXISTS`, `CONFLICT_STALE` |
 | A delete or a write the Library's state forbids | `LibraryRefused`, 409 `refused` | `REFUSE_ROOT`, `REFUSE_DEFAULT`, `REFUSE_CHILDREN`, `DEST_NOT_EMPTY` |
 | Nothing at that key, version or revision | `LibraryNotFound`, 404 `not_found` | `NOT_FOUND`, `NO_VERSION`, `NO_REVISION` |
-| A `PUT` whose path key is not the YAML's; a body that is not a JSON object of the route's fields; a `?base_version=` that is not a whole number | `LibraryBadRequest`, 400 `bad_request` | `NAME_MISMATCH`; `BAD_REQUEST` and pydantic's first message; the `api.py` sentence of §4.10 |
+| A `PUT` whose path key is not the YAML's; a body that is not a JSON object of the route's fields; a `?base_version=` that is not a whole number | `LibraryBadRequest`, 400 `bad_request` | `NAME_MISMATCH`; `BAD_REQUEST` and pydantic's first message; `bad_base_version` (v3; v2's `api.py` sentence) |
 | Another user's socket; a foreign `Host` | `LibraryForbidden`, 403 `forbidden` | `FORBIDDEN_PEER`, `FORBIDDEN_HOST` |
 | A `PUT` or `POST` not sent as JSON | `LibraryNotJson`, 415 `unsupported_media_type` | `NOT_JSON` |
 | The library on a network filesystem | `LibraryError`, 400 `error` (at start-up: `dr-library` exits 1) | `NETWORK_FS` |
@@ -1103,7 +1258,9 @@ class LibraryNotJson(LibraryError):
 ### 4.5 `library.py`: the Python API
 
 `LIBRARY_FILE` and `library_path` are defined in `catalog.py` (§4.7; v2, §3.2 B6) and imported
-here.
+here. The module reads `Library` first, then its private helpers in the order a save runs them:
+one save (the base version, what changed, the cascades, the invariants), records from live heads,
+validation and stale heads, then files (v3, §3.3 R9).
 
 ```python
 class Library:
@@ -1142,7 +1299,9 @@ class Library:
         """Newest first, tombstones included; works for deleted entities. A decomposition's
         key is its name or its slug."""
 
-    def effective(self, namespace: str) -> Effective: ...
+    def effective(self, namespace: str) -> Effective:
+        """What namespace inherits (§4.9). A stale head in the config the view builds is
+        LibraryValidationError with materialize's STALE_HEAD sentences (v3, §3.3 F1)."""
 
     def check(self) -> list[Problem]:
         """Every live head re-validated under the installed deep_reasoner, plus granted
@@ -1431,8 +1590,9 @@ not taken up here (§9 item 3).
 instead of exiting 2 (D1's `NEEDS_CONFIG` sentence and `EXIT_USAGE` are gone); the
 `Options.config` comment reads "else the Library". `acp/session.py`: the session index's `source`
 (D1 §4.4) is written as `{"kind": "library", "library": "<path>"}` when the `RunSource`'s versions
-carry a `library` (`session.py:198–203`), else as before. D1's tests: the harness's `dr_acp` takes
-`config=None`, and `test_without_a_config_dr_acp_exits_2_and_says_why` became
+carry a `library` (`session.py:199–204` since D1's refactor; v2 said `198–203`), else as before.
+D1's tests: the harness's `dr_acp` takes `config=None`, and
+`test_without_a_config_dr_acp_exits_2_and_says_why` became
 `test_without_a_config_dr_acp_serves_the_library_at_its_home`. Nothing in the `Catalog`,
 `CatalogSnapshot`, `CommandEntry` or `RunSource` shapes changes.
 
@@ -1484,10 +1644,12 @@ client's uid; and the bridge's requests arrive with `Host: 127.0.0.1:<port>` (§
 
 **Endpoints** (v2, §3.2 B9) are `async` wrappers: each reads the body of a `PUT` or `POST`, then
 runs a sync handler with `run_in_threadpool`; the handler calls one `Library` method and returns
-its record's `model_dump(mode="json")` (and 201 or 200 for a `PUT`, decided by whether the key
-existed just before). A body is parsed into a pydantic model with `extra="forbid"` per route
-(§3.2 B2): one that is not JSON, lacks `yaml`, or has a field the route does not know or a value
-of the wrong type is 400 `bad_request` (`BAD_REQUEST` and pydantic's first message). One exception
+its record (and 201 or 200 for a `PUT`, decided by whether the key existed just before), which the
+endpoint answers as `pydantic_core.to_jsonable_python(record)` (v3, §3.3 R1; v2's `_dump` applied
+`model_dump(mode="json")`, with the same output). A body is parsed into a pydantic model with
+`extra="forbid"` per route (§3.2 B2): one that is not JSON, lacks `yaml`, or has a field the route
+does not know or a value of the wrong type is 400 `bad_request` (`BAD_REQUEST` and pydantic's first
+message). One exception
 handler turns `LibraryError` into `JSONResponse(exc.payload(), status_code=exc.status)`; §4.4's
 table is the whole mapping.
 
@@ -1542,13 +1704,22 @@ values come from deep_reasoner's own `resolve`; only the sources are ours.
      default).
    - `system_suffix`: every level that sets one, in order, with its text.
    - `tools`: each of `resolved.tools` with the first level that lists it, and whether the Library
-     defines it (a tool row, or `llm` while the profile has a `model`).
+     defines it (a tool row, or `llm` while the profile has a `model`: `defined_tools`, which
+     `check()` uses too; v3, §3.3 R7).
    - `vars`: each key of `resolved.vars` with the last level that sets it.
    - `decompositions`: each of `resolved.decompositions` with the last level whose list has that
      name, its version, slug and use-when line.
 
 A test asserts that the walk's values equal `resolved`'s for every namespace of every corpus config
 (§7.2), so a change in deep_reasoner's rules fails a test rather than mislabelling a badge.
+
+**A stale head** (v3, §3.3 F1). Step 1 validates the profile and every live namespace with its
+attached bodies inlined, so a head the installed deep_reasoner refuses makes it raise pydantic's
+`ValidationError`. `Library.effective` catches that and, when any head is stale, raises
+materialize's `LibraryValidationError` (one `STALE_HEAD` per stale head); otherwise it re-raises.
+Every namespace's view is built over the same config, so one stale head there refuses them all. A
+stale tool, or a decomposition no namespace attaches, is not in that config and refuses no view;
+`check()` lists it either way.
 
 ```python
 class Sourced(BaseModel):
@@ -1595,6 +1766,11 @@ def resolved(state: LibraryState, namespace: str) -> Any:
     """deep_reasoner's ResolvedNamespace for namespace, over the Library's live heads."""
 
 
+def defined_tools(state: LibraryState) -> set[str]:
+    """The tools a grant can name: the Library's, and llm while the profile has a model
+    (v3, §3.3 R7)."""
+
+
 def effective(state: LibraryState, namespace: str) -> Effective: ...
 ```
 
@@ -1602,7 +1778,8 @@ def effective(state: LibraryState, namespace: str) -> Effective: ...
 
 A sentence without fields is a constant; one with `{fields}` is a lower-case function of them
 returning an f-string, as in D1's `texts.py`. D3 shows `message` from the API as it is. v2 adds
-five sentences and splits one (§3.2 B4); they are marked (v2).
+five sentences and splits one (§3.2 B4); they are marked (v2). v3 moves one in from `api.py`
+(§3.3 R11), marked (v3).
 
 | Name | Text |
 |---|---|
@@ -1636,7 +1813,7 @@ five sentences and splits one (§3.2 B4); they are marked (v2).
 | `IMPORT_TOOL_FILE` | `Tool '{name}': factory_from '{value}' resolved to {resolved}, which does not exist.` |
 | `DEST_NOT_EMPTY` | `{dest} is not empty; the library writes a config directory only into a new or empty folder.` |
 | `NETWORK_FS` | `{path} is on a network filesystem ({fstype}), where SQLite cannot keep the library safe. Set DR_HOME to a folder on this computer's own disk.` |
-| `STALE_HEAD` | `{kind} '{name}' version {version} no longer validates under deep_reasoner {build}: {first_error}` (a problem; also a line of materialize's error) |
+| `STALE_HEAD` | `{kind} '{name}' version {version} no longer validates under deep_reasoner {build}: {first_error}` (a problem; also a line of materialize's error, and of the effective view's, v3, §3.3 F1) |
 | `UNKNOWN_TOOL` | `Namespace '{namespace}' grants '{tool}', which is not a tool in the library; an agent there will not start.` (a problem) |
 | `UNKNOWN_SPAWN` | `Namespace '{namespace}' may spawn into '{target}', which is not in the library.` (a problem) |
 | `NO_FINAL_ANSWER` | `This example never reaches FinalAnswer; the agent will imitate that.` (D3's mock-up; a warning) |
@@ -1644,6 +1821,7 @@ five sentences and splits one (§3.2 B4); they are marked (v2).
 | `FORBIDDEN_HOST` (v2) | `This library answers only requests addressed to 127.0.0.1:{port} or localhost:{port}.` (403) |
 | `NOT_JSON` (v2) | `The body must be sent as application/json.` (415) |
 | `BAD_REQUEST` (v2) | `The body must be a JSON object with a 'yaml' string.` (400; followed by a space and pydantic's first message) |
+| `bad_base_version` (v3) | `base_version must be a whole number; got {raw!r}.` (400, a `?base_version=` that is not a whole number; v2 wrote it inline in `api.py`) |
 | `IMPORTED` | `imported {path} as revision {rev}: {new} new, {changed} changed, {unchanged} unchanged` |
 | `NOTHING_IMPORTED` | `nothing changed: the library already holds {path}` |
 | `EXPORTED` | `wrote {main}: {n} namespace(s), {m} decomposition(s), {k} tool(s)` (singular for 1, as D5's mock-up: `4 namespaces, 6 decompositions, 1 tool`) |
@@ -1653,9 +1831,9 @@ empty `messages` list that is `List should have at least 1 item after validation
 mock-up shortened it), and `IMPORT_LOAD`'s `{detail}` is `f"{type(exc).__name__}: {exc}"`, D1's
 form.
 
-**One sentence is not in `texts.py`** (v2, §3.2 B4): `base_version must be a whole number; got
-{raw!r}.` (400, a `?base_version=` that is not a whole number) is written inline in `api.py`.
-Moving it is the Refactorer's (§9 item 13).
+**Every sentence is in `texts.py`** (v3, §3.3 R11). v2's one exception (§3.2 B4), the
+`?base_version=` sentence written inline in `api.py`, is now `texts.bad_base_version`, word for
+word.
 
 ---
 
@@ -1721,8 +1899,9 @@ connection across calls. A crash mid-save leaves the previous revision, by SQLit
   unconditional. D3 always sends it.
 - **Status codes**: 200 read or updated; 201 created (version 1, or re-created after a delete);
   400 `bad_request`; 403 `forbidden`; 404 `not_found`; 409 `conflict` or `refused`; 415
-  `unsupported_media_type`; 422 `invalid` (a broken invariant included, §4.4). `import_failed`
-  (422) is never answered over HTTP, which has no import.
+  `unsupported_media_type`; 422 `invalid` (a broken invariant included, and a stale head in the
+  effective view since v3, §4.4). `import_failed` (422) is never answered over HTTP, which has no
+  import.
 - **Errors** are `{"error": code, "message": sentence, ...}`: `invalid` adds `errors: [{loc, msg}]`;
   `conflict` adds `head` (the current record, or `null`).
 - **No push.** A panel polls `GET /health` for `rev` while it is visible and refetches when it
@@ -1733,7 +1912,7 @@ connection across calls. A crash mid-save leaves the previous revision, by SQLit
 | Method and path | Body or query | Answer |
 |---|---|---|
 | `GET /health` | | `{"ok": true, "rev", "path", "deep_reasoner", "default_namespace"}` |
-| `GET /problems` | | `[Problem]` |
+| `GET /problems` | | `[Problem]`, always 200, stale heads included |
 | `POST /validate` | `{"kind", "yaml", "name"?, "source"?}` | `ValidationResult`, always 200 |
 | `GET /profile` | | `ProfileRecord` |
 | `PUT /profile` | `{"yaml", "decompositions"?, "base_version"?}` | `ProfileRecord` |
@@ -1741,8 +1920,8 @@ connection across calls. A crash mid-save leaves the previous revision, by SQLit
 | `GET /namespaces/{name}` | | `NamespaceRecord` |
 | `PUT /namespaces/{name}` | `{"yaml", "decompositions"?, "base_version"?}` | `NamespaceRecord`, 201 or 200 |
 | `DELETE /namespaces/{name}` | `?base_version=n` | `HistoryEntry` (the tombstone) |
-| `GET /namespaces/{name}/effective` | | `Effective` |
-| `GET /effective` | | `[Effective]`, one per namespace, in `GET /namespaces` order |
+| `GET /namespaces/{name}/effective` | | `Effective`; 422 `invalid` while a head in the config it builds is stale (v3, §3.3 F1) |
+| `GET /effective` | | `[Effective]`, one per namespace, in `GET /namespaces` order; 422 as above (v3) |
 | `GET /decompositions` | | `[DecompositionRecord]`, by slug |
 | `GET /decompositions/{slug}` | | `DecompositionRecord` |
 | `PUT /decompositions/{slug}` | `{"yaml", "use_when"?, "hint"?, "namespaces"?, "top_level"?, "base_version"?}` | `DecompositionRecord`, 201 or 200 |
@@ -1893,11 +2072,12 @@ assert:
 
 **Level 2, every config and the composed one (a fake model, no network).** Run `dr <config>
 "Which course comes after CS101?" --no-progress --run-dir <tmp>` on the original and on the
-materialized copy, against D2's own fake OpenAI (`tests/library/fake_openai.py`, v2 §3.2 B15)
-answering every chat call `<think>ok</think>\n<repl>\nFinalAnswer("done")\n</repl>` and every
-`/v1/embeddings` call with a fixed vector, with `--set client.base_url=<fake>` and, for each tool
-block that has its own `client`, `--set tools.<name>.client.base_url=<fake>`; dummy provider keys
-in the environment (`DAYTONA_API_KEY` left unset), every proxy variable pointed at a closed port
+materialized copy, against D1's `FakeOpenAI` (`deep_reasoning.acp.testing.fake_model`; v3, §3.3
+R5, where v2 had D2's own `tests/library/fake_openai.py`) answering every chat call
+`<think>ok</think>\n<repl>\nFinalAnswer("done")\n</repl>` and every `/v1/embeddings` call with
+the fixed vector `EMBEDDING`, with `--set client.base_url=<fake>` and, for each tool block that has
+its own `client`, `--set tools.<name>.client.base_url=<fake>`; dummy provider keys in the
+environment (`DAYTONA_API_KEY` left unset), every proxy variable pointed at a closed port
 (`127.0.0.1:9`, `NO_PROXY` loopback) and `PYTHONDONTWRITEBYTECODE=1`; deep_reasoner's
 `write_fake_claude_cli` first on `PATH`; and as working directory a temporary folder holding a
 **copy** (v2, §3.2 B16; v1 said a symlink) named `configs` of the checkout's `configs/` for a file
@@ -1930,7 +2110,8 @@ namespace files are refused as expected, and the composed one passes. Level 2 ru
 `restricted`, `sandboxes`; `docs/configs/examples/` `cruncher`, `experience`, `research/assistant`,
 `waitlist`); the **2** Claude-backbone configs end at the fake CLI's end; the other **17** exit 1
 identically on both sides: the 16 corpus files that set no `model` (fragments, data files, and
-the 4 loadable files under `namespaces/` directories), and the composed one.
+the 4 loadable files under `namespaces/` directories), and the composed one. *(v3: on D1's fake
+the same; CI at `0e0a394` is green with the corpus, so the pinned 19 and 2 hold, §3.3 R5.)*
 
 **Null:** any case failing either level. Failures are listed (one case each), never skipped. In CI
 `DR_BETA_CHECKOUT` is set (§7.5); outside CI, without it, the cases skip with that reason, and a
@@ -1938,24 +2119,32 @@ guard test fails when `CI=true` and it is unset.
 
 ### 7.2 Test files, named for what they pin
 
-As built at `90044f0` (v2): every test v1 named exists under that name; the ones the build added
-are marked +. `[…]` is a parametrization.
+As built at `0e0a394` (v3). + marks a test the build added (v2); (v3) marks one added after Gate
+B. Every test v1 named exists under that name, except two v3 removed and the two it renamed; v3's
+removals and renames are listed below the table. `[…]` is a parametrization.
 
 | File | Pins |
 |---|---|
-| `test_store.py` | `test_versions_and_revisions_cannot_be_updated_or_deleted[…]` (the triggers); `test_a_save_that_changes_nothing_makes_no_revision`; + `test_one_save_is_one_revision_however_many_versions_it_writes`; `test_heads_as_of_a_revision_ignore_later_versions`; + `test_heads_are_in_creation_order_within_one_revision`; + `test_an_exception_inside_a_save_writes_nothing`; `test_a_new_library_file_is_private_to_its_user` (0600); + `test_a_second_creator_loses_and_leaves_nothing_behind`; `test_two_processes_saving_at_once_both_land` (two subprocesses, `BEGIN IMMEDIATE`); `test_a_library_on_a_network_filesystem_is_refused` (a fake `/proc/self/mounts` passed in) |
-| `test_shapes.py` | `test_canonical_yaml_is_the_same_for_every_spelling_of_one_model[…]` (flow, block, JSON, key order); `test_canonical_yaml_is_idempotent`; `test_multiline_strings_are_literal_blocks`; + `test_canonical_yaml_keeps_only_what_the_author_set`; `test_metadata_in_the_yaml_is_refused_with_deep_reasoners_message` (the spec's failure cell, verbatim); + `test_pydantic_locations_are_joined_with_dots`; `test_namespace_names[…]`; + `test_a_namespace_carries_no_inline_decompositions`; + `test_decomposition_names_must_make_a_slash_command[…]`; `test_tool_factory_from_must_be_its_own_file[…]`; + `test_a_tool_name_is_a_python_identifier[…]`; `test_profile_refuses_namespaces_decompositions_and_tools[…]`; + `test_a_profile_keeps_extras_and_drops_nothing_it_was_given`; `test_an_example_without_final_answer_warns`; + `test_a_document_that_is_not_a_mapping_is_invalid[…]`; + `test_the_build_names_the_pinned_commit`; + `test_namespace_config_inlines_decompositions_in_attachment_order` |
-| `test_library.py` | + `test_a_new_library_starts_from_the_starter`; + `test_a_bare_library_holds_an_empty_profile_and_root`; + `test_opening_an_existing_library_changes_nothing`; `test_put_then_get_returns_the_canonical_record`; `test_every_save_is_a_new_version`; + `test_an_unchanged_save_returns_the_head_and_makes_no_revision`; + `test_use_when_and_hint_are_replaced_by_every_save`; `test_a_stale_base_version_is_a_conflict_carrying_the_head`; `test_base_version_zero_refuses_an_existing_entry`; + `test_a_base_version_on_something_that_is_not_there_is_not_found`; `test_attaching_versions_the_namespace_and_appends_in_order`; `test_namespaces_is_the_exact_set_after_a_save`; + `test_top_level_is_the_profiles_list`; + `test_putting_a_namespace_sets_its_list_only_when_given` (also `UNKNOWN_DECOMPOSITION`, `LISTED_TWICE`); `test_deleting_a_decomposition_detaches_it_everywhere`; `test_deleting_a_tool_ungrants_it_everywhere`; + `test_granted_in_is_the_exact_set_after_a_save`; `test_root_the_default_and_a_parent_cannot_be_deleted`; `test_a_namespace_needs_its_parent`; + `test_the_default_namespace_must_be_in_the_library`; `test_two_names_with_one_slug_are_refused`; `test_deleted_and_recreated_continues_its_version_numbers`; `test_history_lists_tombstones`; + `test_state_as_of_an_old_revision`; + `test_a_revision_the_library_has_not_reached_is_not_found[0, 3]`; `test_check_reports_ungranted_tools_and_missing_spawn_targets`; `test_a_head_that_stops_validating_is_a_problem_and_blocks_materialize` (monkeypatch the model to a stricter one); + `test_validate_reports_without_saving`; + `test_the_spec_mock_up_runs_as_written` |
+| `test_store.py` | `test_versions_and_revisions_cannot_be_updated_or_deleted[…]` (the triggers); (v3) `test_a_migration_that_fails_halfway_leaves_the_file_unmigrated`; `test_a_save_that_changes_nothing_makes_no_revision`; + `test_one_save_is_one_revision_however_many_versions_it_writes`; `test_heads_as_of_a_revision_ignore_later_versions`; + `test_heads_are_in_creation_order_within_one_revision`; + `test_an_exception_inside_a_save_writes_nothing`; `test_a_new_library_file_is_private_to_its_user` (0600); + `test_a_second_creator_loses_and_leaves_nothing_behind`; `test_two_processes_saving_at_once_both_land` (two subprocesses, `BEGIN IMMEDIATE`); `test_a_library_on_a_network_filesystem_is_refused` (a fake `/proc/self/mounts` passed in) |
+| `test_shapes.py` | `test_canonical_yaml_is_the_same_for_every_spelling_of_one_model[…]` (flow, block, JSON, key order); `test_canonical_yaml_is_idempotent`; `test_multiline_strings_are_literal_blocks`; + `test_canonical_yaml_keeps_only_what_the_author_set`; `test_metadata_in_the_yaml_is_refused_with_deep_reasoners_message` (the spec's failure cell, verbatim); + `test_pydantic_locations_are_joined_with_dots`; `test_a_namespace_name_is_ascii_words_joined_by_single_dots[…]` (v3: was `test_namespace_names`); + `test_a_namespace_carries_no_inline_decompositions`; + `test_decomposition_names_must_make_a_slash_command[…]`; `test_tool_factory_from_must_be_its_own_file[…]`; + `test_a_tool_name_is_a_python_identifier[…]`; `test_profile_refuses_namespaces_decompositions_and_tools[…]`; + `test_a_profile_keeps_extras_and_drops_nothing_it_was_given`; `test_an_example_without_final_answer_warns`; + `test_a_document_that_is_not_a_mapping_is_invalid[…]`; + `test_the_build_names_the_pinned_commit`; + `test_namespace_config_inlines_decompositions_in_attachment_order` |
+| `test_library.py` | + `test_a_new_library_starts_from_the_starter`; + `test_a_bare_library_holds_an_empty_profile_and_root`; + `test_opening_an_existing_library_changes_nothing`; `test_put_then_get_returns_the_canonical_record`; `test_every_save_is_a_new_version`; + `test_an_unchanged_save_returns_the_head_and_makes_no_revision`; + `test_use_when_and_hint_are_replaced_by_every_save`; `test_a_stale_base_version_is_a_conflict_carrying_the_head`; `test_base_version_zero_refuses_an_existing_entry`; + `test_a_base_version_on_something_that_is_not_there_is_not_found`; `test_attaching_versions_the_namespace_and_appends_in_order`; `test_namespaces_is_the_exact_set_after_a_save`; + `test_top_level_is_the_profiles_list`; + `test_putting_a_namespace_sets_its_list_only_when_given` (also `UNKNOWN_DECOMPOSITION`, `LISTED_TWICE`); `test_deleting_a_decomposition_detaches_it_everywhere`; `test_deleting_a_tool_ungrants_it_everywhere`; + `test_granted_in_is_the_exact_set_after_a_save`; (v3) `test_a_namespace_that_is_not_there_cannot_be_attached_to_or_granted_in[namespaces, granted_in]`; `test_root_the_default_and_a_parent_cannot_be_deleted`; `test_a_namespace_needs_its_parent`; + `test_the_default_namespace_must_be_in_the_library`; `test_two_names_with_one_slug_are_refused`; `test_deleted_and_recreated_continues_its_version_numbers`; `test_history_lists_tombstones`; + `test_state_as_of_an_old_revision`; + `test_a_revision_the_library_has_not_reached_is_not_found[0, 3]`; `test_check_reports_ungranted_tools_and_missing_spawn_targets`; `test_a_head_that_stops_validating_is_a_problem_and_blocks_materialize` (monkeypatch the model to a stricter one); + `test_validate_reports_without_saving` |
 | `test_import.py` | `test_import_creates_every_entity_in_one_revision`; `test_reimporting_the_same_config_changes_nothing`; `test_import_never_deletes`; `test_import_replaces_what_the_config_names`; `test_compose_is_flattened`; + `test_a_namespaces_dir_is_layered_under_the_inline_namespaces`; `test_one_name_with_two_bodies_is_refused_naming_both_places`; + `test_one_name_with_one_body_in_two_places_is_one_decomposition`; `test_factory_from_is_read_into_the_library`; `test_a_missing_factory_file_is_refused`; + `test_a_config_deep_reasoner_cannot_load_is_refused_with_its_message`; `test_an_exports_library_yaml_keeps_use_when_and_hint` |
 | `test_materialize.py` | `test_materialized_directory_layout`; + `test_the_materialized_config_loads_and_resolves_like_the_library`; `test_decompositions_are_inlined_in_attachment_order`; + `test_top_level_decompositions_are_written_into_main`; `test_materialize_as_of_an_old_revision`; `test_the_manifest_records_every_version`; + `test_a_namespace_that_is_not_live_is_not_found`; `test_a_non_empty_destination_is_refused`; `test_a_failed_write_leaves_no_directory`; + `test_without_a_destination_it_writes_a_new_temporary_directory` |
-| `test_effective.py` | `test_sources[…]` (each field rule of §4.9); + `test_a_repl_set_in_a_namespace_is_its_source`; + `test_the_sources_rebuild_deep_reasoners_resolve`; `test_effective_values_equal_deep_reasoners_resolve[37 corpus configs]` (with `DR_BETA_CHECKOUT`) |
-| `test_catalog.py` | `test_snapshot_equals_config_catalog_over_the_materialized_config_plus_metadata`; `test_commands_carry_use_when_and_hint`; + `test_a_top_level_decomposition_is_offered_in_every_namespace`; `test_materialize_gives_d1_a_run_source_with_versions`; `test_an_unknown_namespace_is_not_found`; + `test_a_catalog_creates_its_library_from_the_starter_when_absent`; + `test_building_a_catalog_imports_nothing_of_deep_reasoner`; **`test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace`** (§7.3, below `dr-acp`'s front) |
+| `test_effective.py` | `test_each_inherited_value_names_the_level_it_comes_from[…]` (each field rule of §4.9; v3: was `test_sources`); + `test_a_repl_set_in_a_namespace_is_its_source`; + `test_the_sources_rebuild_deep_reasoners_resolve`; `test_effective_values_equal_deep_reasoners_resolve[37 corpus configs]` (with `DR_BETA_CHECKOUT`) |
+| `test_catalog.py` | `test_snapshot_equals_config_catalog_over_the_materialized_config_plus_metadata`; `test_materialize_gives_d1_a_run_source_with_versions`; `test_an_unknown_namespace_is_not_found`; + `test_a_catalog_creates_its_library_from_the_starter_when_absent`; + `test_building_a_catalog_imports_nothing_of_deep_reasoner`; **`test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace`** (§7.3, below `dr-acp`'s front) |
 | + `test_acp.py` | **`test_a_saved_decomposition_reaches_the_next_conversation_in_its_namespace[saved, edited]`** (§7.3, through `dr-acp` over stdio) |
-| `test_api.py` | Starlette's `TestClient` (with `base_url` `http://127.0.0.1:8123`, so the `Host` check passes): + `test_health_reports_the_revision_and_default_namespace`; + `test_every_read_answers_its_records[…]`; + `test_records_carry_yaml_and_parsed_data`; + `test_creating_a_decomposition_answers_201_and_updating_200`; + `test_every_write_route`; + `test_validate_answers_200_even_when_invalid`; `test_errors_carry_code_message_and_details`; `test_a_slug_with_spaces_in_the_name_round_trips`; `test_the_path_key_must_match_the_yaml[…]`; `test_export_is_a_zip_of_a_materialized_directory`; + `test_a_request_addressed_to_another_host_is_refused[…]`; + `test_a_body_that_is_not_sent_as_json_is_refused[…]`; `test_another_users_connection_is_refused`; + `test_same_user_peer_reads_the_client_sockets_owner[…]` (a fake `/proc/net` passed to `same_user_peer`) |
+| `test_api.py` | Starlette's `TestClient` (with `base_url` `http://127.0.0.1:8123`, so the `Host` check passes): + `test_health_reports_the_revision_and_default_namespace`; + `test_every_read_answers_its_records[…]`; + `test_records_carry_yaml_and_parsed_data`; + `test_creating_a_decomposition_answers_201_and_updating_200`; + `test_every_write_route`; + `test_validate_answers_200_even_when_invalid`; (v3) `test_validate_judges_a_tool_with_the_source_it_is_sent`; `test_errors_carry_code_message_and_details`; (v3) `test_a_stale_head_makes_the_effective_view_answer_422_naming_it[…]`; `test_the_path_key_must_match_the_yaml[…]`; `test_export_is_a_zip_of_a_materialized_directory`; + `test_a_request_addressed_to_another_host_is_refused[…]`; + `test_a_body_that_is_not_sent_as_json_is_refused[…]`; `test_another_users_connection_is_refused`; + `test_same_user_peer_reads_the_client_sockets_owner[…]` (a fake `/proc/net` passed to `same_user_peer`) |
 | `test_cli.py` | `test_serve_answers_health_on_loopback` (a real `dr-library serve` subprocess with only the six variables an App backend gets; a rebound `Host` is 403); `test_import_and_export_print_their_lines`; + `test_export_at_an_old_revision`; + `test_a_library_error_exits_1_with_its_message_on_stderr`; + `test_usage_errors_exit_2` |
 | `test_roundtrip.py` | E7, §7.1: `test_every_config_dr_accepts_round_trips[39 files]`; `test_the_example_namespaces_directory_round_trips`; `test_the_corpus_is_read_in_ci`; `test_dr_answers_the_same_from_the_original_and_its_copy[38 cases]` |
 | `test_live.py` | §7.4: `test_an_edited_decomposition_reaches_a_real_run_at_its_saved_version` |
-| helpers | `conftest.py` (`lib`, `router`, `example`, `text`, `write_config`, `run_dr`); `corpus.py` (the corpus, `NOT_CONFIGS`, the composed config); `fake_openai.py` (§3.2 B15) |
+| helpers | `conftest.py` (`lib`, `router`, `example`, `text`, `user_texts` (v3), `write_config`, `run_dr`); `corpus.py` (the corpus, `NOT_CONFIGS`, the composed config); D1's `FakeOpenAI` (v3: `fake_openai.py` is deleted, §3.3 R5) |
+
+**Removed in v3** (§3.3 R6): `test_catalog.py::test_commands_carry_use_when_and_hint` and
+`::test_a_top_level_decomposition_is_offered_in_every_namespace`;
+`test_api.py::test_a_slug_with_spaces_in_the_name_round_trips`;
+`test_library.py::test_the_spec_mock_up_runs_as_written`. **Renamed** (R10): `test_effective.py`'s
+`test_sources` and `test_shapes.py`'s `test_namespace_names`, as marked above. **Added in D1's
+tests** (R5): `tests/acp/test_fake_model.py::test_embeds_every_input_alike_and_records_only_chat_calls`.
 
 ### 7.3 D3's falsifier, at the store
 
@@ -1998,7 +2187,8 @@ https://api.openai.com/v1` and `api_key_env OPENAI_API_KEY`):
 
 `tests/library/test_live.py::test_an_edited_decomposition_reaches_a_real_run_at_its_saved_version`;
 passed in [run 37085761405](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37085761405)
-at `90044f0`.
+at `90044f0`, and in [run 37166626513](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37166626513)
+at `0e0a394` (v3).
 
 Cents per run.
 
@@ -2009,9 +2199,9 @@ Cents per run.
   dev group `httpx` (Starlette's `TestClient`); script `dr-library =
   "deep_reasoning.library.cli:main"`. `starter.yaml` ships inside the package (hatch includes it, as
   D1's `prices.yaml`).
-- **D2 keeps its own fake** (v2, §3.2 B15): `tests/library/fake_openai.py` (chat completions and
-  `POST /v1/embeddings` with a fixed vector per input); D1's `testing/fake_model.FakeOpenAI` is
-  unchanged. v1 offered either.
+- **One fake, D1's** (v3, §3.3 R5; v2 kept D2's own, §3.2 B15): `testing/fake_model.FakeOpenAI`
+  answers `POST /v1/embeddings` with `EMBEDDING` for every input and serves under a plain `with` as
+  well as `async with`; `tests/library/fake_openai.py` is deleted. v1 offered either.
 - **No CI change** (v2, §3.2 B19): D1's `.github/workflows/ci.yml` already checks out
   deep_reasoner_beta at the pin into `${{ github.workspace }}/deep_reasoner_beta`, with the read
   token D1 needs, and sets `DR_BETA_CHECKOUT`; ruff checks `src` and `tests` only.
@@ -2040,12 +2230,14 @@ The Conductor turns these into Expectation rows at merge, with the merged `file:
 | L10 | `code(text, start=, end=)` extracts the last `<repl>` block into `.source`, raising `NoCodeBlock` | `v2/messages.py:288–307` | the FinalAnswer warning |
 | L11 | `write_fake_claude_cli` | `mocks.py:357` | E7 level 2 |
 
-**D1 (committed on `v1-dr-acp`, `21c2c7a`; merged under D2 at `21f4a8b`)**: `acp/catalog.py`'s
+**D1 (committed on `v1-dr-acp`, `21c2c7a`; merged under D2 at `21f4a8b`; v3: on `main` at
+`32c7f61`, under D2 since `a7bbe41`)**: `acp/catalog.py`'s
 `Catalog`, `CatalogSnapshot`, `CommandEntry`, `RunSource`, `ConfigCatalog`, `load_dr_config`,
 `slug`; `acp/runlog.py`'s `Home` and `SessionIndex`; `tests/conftest.py`; `tests/acp/harness.py`'s
 `dr_acp`, `run` and `run_ids`, and `tests/acp/scenarios.py`'s `BASE_CONFIG` and `repl` (§7.3);
-`testing/fake_model.FakeOpenAI` and `testing/client.ShimConnection` (§7.3); `run.start.source`
-recording `RunSource.versions` (D1 §4.4). D2's own edits to D1's files are §3.2 B13.
+`testing/fake_model.FakeOpenAI` (with its `/embeddings` and plain `with`, v3) and
+`testing/client.ShimConnection` (§7.3); `run.start.source` recording `RunSource.versions` (D1
+§4.4). D2's own edits to D1's files are §3.2 B13 and §3.3 R5.
 
 **The agent-server (SDK fork `91430aa`)**
 
@@ -2100,7 +2292,8 @@ recording `RunSource.versions` (D1 §4.4). D2's own edits to D1's files are §3.
     different directory. Data-file paths themselves are relative to the working directory and are
     unaffected. Worth a line in D4's docs; not worked around.
 11. **(v2) Size, for Michael at Gate B** (§3.2 B20): about 5.3k lines against the 1.9k with tests
-    accepted on 2026-10-02. The Scout and the Refactorer record `Lines After`.
+    accepted on 2026-10-02. The Scout and the Refactorer record `Lines After`. *(v3: about 5.1k
+    after the refactor, 2,598 of code and 2,495 of tests; `Lines After` is 4,372, §3.3.)*
 12. **(v2) D3's UI is served by this backend** (the spec's scope addition of 2026-10-03: the UI is
     a frame the Library backend serves, C2's PR 3). D3's design (`ab6f2ec` on `design/d3`, §1.2 and
     §4.5) adds `library/ui.py` with `ui_routes()`, one line in `create_app` that appends them, and
@@ -2111,7 +2304,13 @@ recording `RunSource.versions` (D1 §4.4). D2's own edits to D1's files are §3.
     that is not a live namespace (422, §3.2 B3). One user-visible sentence outside `texts.py`: the
     `?base_version=` one in `api.py` (§4.10). A `PUT`'s 201 or 200 is decided by a read just before
     the write, outside its transaction, so two concurrent creates of one key can both answer 201
-    (the second is a new version, as `base_version` absent allows).
+    (the second is a new version, as `base_version` absent allows). *(v3: three of the four are
+    closed. Both behaviours are pinned (§3.3 R12), and every sentence is in `texts.py`, the
+    `?base_version=` one as `bad_base_version` (R11). The concurrent 201 stands, unchanged.)*
+14. **(v3) `pydantic_core.to_jsonable_python` writes a field's alias** (§3.3 R1): its `by_alias`
+    defaults to true, where `model_dump`'s does not. No field of a record or of `Effective` has an
+    alias, so the JSON is v2's. An alias added later would rename that key in every answer; D3
+    reads these keys.
 
 ---
 
@@ -2122,7 +2321,7 @@ Every public name, by module, with the section that gives it in full.
 | Module | Names | § |
 |---|---|---|
 | `__init__.py` | re-exports: `LIBRARY_FILE`, `library_path`, `LibraryCatalog`, the records and the v1 errors eagerly; `Library` and `Effective` lazily | 4.1 |
-| `store.py` | `Kind` (re-exported from `records.py`), `SCHEMA_V1`, `MIGRATIONS`, `NETWORK_FILESYSTEMS`, `MOUNTS`, `BUSY_TIMEOUT_MS`, `Row`, `filesystem_type`, `refuse_network_filesystem`, `create`, `connect`, `migrate`, `read`, `current_rev`, `heads`, `history`, `decomposition_named`, `Writer` (`rev`, `head`, `heads`, `add`), `write` | 4.2 |
+| `store.py` | `SCHEMA_V1`, `MIGRATIONS`, `NETWORK_FILESYSTEMS`, `MOUNTS`, `BUSY_TIMEOUT_MS`, `Row` (`records.HistoryEntry`, v3), `filesystem_type`, `refuse_network_filesystem`, `create`, `connect`, `migrate`, `read`, `current_rev`, `heads`, `history`, `decomposition_named`, `Writer` (`rev`, `head`, `heads`, `add`), `write`; `Kind` is `records.Kind`, imported, no longer re-exported (v3) | 4.2 |
 | `shapes.py` | `NAMESPACE_NAME`, `SPLIT_KEYS`, `TOOL_DIR`, `YAML_WIDTH`, `FINAL_ANSWER`, `canonical_yaml`, `slug` (D1's), `load_mapping`, `tool_file`, `deep_reasoner_build`, `Shaped`, `validate_namespace`, `validate_decomposition`, `validate_tool`, `validate_profile`, `namespace_config` | 4.3 |
 | `records.py` | `Kind`, `Saved`, `ProfileRecord`, `NamespaceRecord`, `DecompositionRecord`, `ToolRecord`, `HistoryEntry`, `LibraryState`, `Entry`, `Change`, `ImportReport`, `DecompositionMeta`, `Manifest`, `FieldError`, `Problem`, `ValidationResult`, `LibraryError`, `LibraryValidationError`, `LibraryNotFound`, `LibraryConflict`, `LibraryRefused`, `LibraryImportError`, `LibraryForbidden`, `LibraryBadRequest`, `LibraryNotJson` | 4.4 |
 | `library.py` | `STARTER`, `ROOT`, `PROFILE`, `Library` (`open`, `rev`, `state`, `profile`, `namespaces`, `namespace`, `decompositions`, `decomposition`, `tools`, `tool`, `history`, `effective`, `check`, `validate`, `put_profile`, `put_namespace`, `put_decomposition`, `put_tool`, `delete`, `import_config`, `materialize`) | 4.5 |
@@ -2130,5 +2329,5 @@ Every public name, by module, with the section that gives it in full.
 | `catalog.py` | `LIBRARY_FILE`, `library_path`, `LibraryCatalog` (`snapshot`, `materialize`) | 4.7 |
 | `api.py` | `Peer`, `JSON_TYPE`, `BODY_METHODS`, `PROC_NET`, `create_app`, `same_user_peer` | 4.8 |
 | `cli.py` | `EXIT_ERROR`, `HOST`, `main` | 4.8 |
-| `effective.py` | `Sourced`, `SuffixPart`, `EffectiveTool`, `EffectiveDecomposition`, `Effective`, `chain`, `resolved`, `effective` | 4.9 |
+| `effective.py` | `Sourced`, `SuffixPart`, `EffectiveTool`, `EffectiveDecomposition`, `Effective`, `chain`, `resolved`, `defined_tools` (v3), `effective` | 4.9 |
 | `texts.py` | every name in §4.10's table | 4.10 |
