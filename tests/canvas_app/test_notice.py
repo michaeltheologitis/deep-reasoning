@@ -15,6 +15,18 @@ SAFETY_NO_CAP = (
 )
 
 
+def test_the_safety_notice_shows_until_understood(open_ui):
+    page = open_ui(notice=True, tab="create")
+    expect(page.get_by_test_id("dr-notice")).to_have_text(SAFETY_5 + "I understand")
+    expect(page.get_by_test_id("dr-save")).to_have_count(0)
+    page.get_by_test_id("dr-notice-ack").click()
+    expect(page.get_by_test_id("dr-notice")).to_have_count(0)
+    expect(page.get_by_test_id("dr-save")).to_be_visible()
+    page.reload()
+    expect(page.get_by_test_id("dr-save")).to_be_visible()
+    expect(page.get_by_test_id("dr-notice")).to_have_count(0)
+
+
 def test_the_notice_is_d5s_sentence_with_the_cap(open_ui):
     texts = pytest.importorskip("dr_app.texts", reason="D5's dr_app is not installed")
     page = open_ui(notice=True, cap="7")

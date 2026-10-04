@@ -28,7 +28,7 @@ jobs:
       - run: uv run ruff format --check src tests
       - run: uv run pytest
 
-  # D3's panel: the TypeScript checks and unit tests, then the browser tests against
+  # D3's panel: the TypeScript checks and unit tests, then the browser tests and E8 against
   # a real dr-library serve (about 4 minutes).
   canvas-app:
     runs-on: ubuntu-latest

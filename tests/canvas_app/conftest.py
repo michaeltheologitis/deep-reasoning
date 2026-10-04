@@ -147,3 +147,10 @@ def open_ui(
     yield open_page
     for context in contexts:
         context.close()
+
+
+def write_new(page: Page, name: str, task: str, code: str = "FinalAnswer(1)") -> None:
+    """In Create decomposition: a name, the task card and the step's code."""
+    page.get_by_test_id("dr-name").fill(name)
+    page.get_by_test_id("dr-card-0-task").fill(task)
+    page.get_by_test_id("dr-card-1-code").fill(code)
