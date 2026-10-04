@@ -99,6 +99,7 @@ export const LABELS = {
   attach: "Attach…",
   detach: "Detach",
   remove: "✕",
+  removeTurn: (turn: number) => `Remove turn ${turn}`,
   back: "← Decompositions",
   everyNamespace: "Every namespace's menu",
   notAttached: "Not attached",
