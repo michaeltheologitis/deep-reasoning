@@ -40,7 +40,6 @@ import {
   EXISTS,
   LABELS,
   NAME_REQUIRED,
-  OUTPUT_NOTE,
   RAW_NOTE,
   RELOAD_ENTRY,
   RENAME,
@@ -824,17 +823,14 @@ function CardFields(props: {
         </>
       )}
       {card.kind === "output" && (
-        <>
-          <CodeField
-            label={LABELS.output}
-            language="text"
-            value={card.text}
-            testId={field("output")}
-            describedBy={describedBy}
-            onChange={(text) => props.onChange({ ...card, text })}
-          />
-          <p class="note">{OUTPUT_NOTE}</p>
-        </>
+        <CodeField
+          label={LABELS.output}
+          language="text"
+          value={card.text}
+          testId={field("output")}
+          describedBy={describedBy}
+          onChange={(text) => props.onChange({ ...card, text })}
+        />
       )}
       {card.kind === "raw" && (
         <RawCardFields
