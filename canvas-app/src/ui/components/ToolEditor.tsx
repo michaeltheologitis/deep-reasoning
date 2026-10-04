@@ -16,7 +16,6 @@ import {
   CHECKING,
   DELETE_TOOL_CONFIRM,
   DISCARD_DRAFT,
-  INHERITED_ROW,
   LABELS,
   NAME_FIXED,
   NEW_TOOL_SOURCE,
@@ -28,7 +27,7 @@ import {
   TOOL_LABELS,
   TRY_LABEL,
 } from "../texts";
-import { type ToolDraft, inheritedGrants, toolDraftKey } from "../tools";
+import { type ToolDraft, inheritedNotes, toolDraftKey } from "../tools";
 import type {
   CheckReport,
   Effective,
@@ -202,11 +201,7 @@ export function ToolEditor(props: ToolEditorProps) {
     }
   }
 
-  const inherited = Object.fromEntries(
-    Object.entries(
-      record ? inheritedGrants(record.name, props.effective) : {},
-    ).map(([namespace, source]) => [namespace, INHERITED_ROW(source)]),
-  );
+  const inherited = record ? inheritedNotes(record.name, props.effective) : {};
 
   return (
     <form class="editor tool" onSubmit={(event) => event.preventDefault()}>

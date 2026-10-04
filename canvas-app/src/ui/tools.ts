@@ -2,6 +2,7 @@
 // Canvas's MCP servers.
 
 import type { McpServerInfo } from "../shared/protocol";
+import { INHERITED_ROW } from "./texts";
 import type { Effective, McpGrant, McpSnapshot, ToolRecord } from "./types";
 
 /** deep_reasoner's own names in the REPL; a tool by one of them would hide it (D4 §3.2). */
@@ -119,18 +120,19 @@ export function mcpRows(
   ];
 }
 
-/** namespace → the ancestor it inherits tool's grant from, from GET /effective. */
-export function inheritedGrants(
+/** namespace → "inherited from <ancestor>", for each namespace that inherits tool's grant,
+ * from GET /effective. */
+export function inheritedNotes(
   tool: string,
   effective: readonly Effective[],
 ): Record<string, string> {
-  const inherited: Record<string, string> = {};
+  const notes: Record<string, string> = {};
   for (const view of effective) {
     const found = view.tools.find((t) => t.name === tool);
     if (found && found.source !== view.namespace)
-      inherited[view.namespace] = found.source;
+      notes[view.namespace] = INHERITED_ROW(found.source);
   }
-  return inherited;
+  return notes;
 }
 
 /** The draft's key under D3's drafts.ts prefix: dr-library.draft.tool.<name>, or .new. */

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { McpServerInfo } from "../src/shared/protocol";
 import {
   defaultToolName,
-  inheritedGrants,
+  inheritedNotes,
   mcpRows,
   snapshotOf,
   splitTools,
@@ -167,7 +167,7 @@ describe("splitTools", () => {
   });
 });
 
-describe("inheritedGrants", () => {
+describe("inheritedNotes", () => {
   it("names the ancestor each namespace inherits a grant from", () => {
     const views = [
       effective("root", [["word_count", "root"]]),
@@ -175,9 +175,9 @@ describe("inheritedGrants", () => {
       effective("router.archive", [["word_count", "root"]]),
       effective("course_advisor", [["llm", "course_advisor"]]),
     ];
-    expect(inheritedGrants("word_count", views)).toEqual({
-      router: "root",
-      "router.archive": "root",
+    expect(inheritedNotes("word_count", views)).toEqual({
+      router: "inherited from root",
+      "router.archive": "inherited from root",
     });
   });
 });

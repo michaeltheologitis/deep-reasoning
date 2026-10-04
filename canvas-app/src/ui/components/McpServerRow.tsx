@@ -6,7 +6,6 @@ import { useEffect, useState } from "preact/hooks";
 import { type McpGrantBody, deleteTool, putMcp } from "../api";
 import { type OnBackendLost, attempt } from "../load";
 import {
-  INHERITED_ROW,
   MCP_AS,
   MCP_CHANGED,
   MCP_DISABLED,
@@ -22,7 +21,7 @@ import {
 import {
   type McpRow,
   defaultToolName,
-  inheritedGrants,
+  inheritedNotes,
   snapshotOf,
 } from "../tools";
 import type { Effective, McpSnapshot, NamespaceRecord } from "../types";
@@ -117,11 +116,9 @@ export function McpServerRow(props: McpServerRowProps) {
       base_version: row.grant.version,
     });
 
-  const inherited = Object.fromEntries(
-    Object.entries(
-      row.grant ? inheritedGrants(row.grant.name, props.effective) : {},
-    ).map(([namespace, source]) => [namespace, INHERITED_ROW(source)]),
-  );
+  const inherited = row.grant
+    ? inheritedNotes(row.grant.name, props.effective)
+    : {};
   const note = row.state === "given" ? null : STATE_NOTES[row.state];
   const seen = row.grant?.seen ?? null;
 
