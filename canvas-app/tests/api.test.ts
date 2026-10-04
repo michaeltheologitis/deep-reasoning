@@ -67,11 +67,16 @@ describe("the requests", () => {
       "DELETE",
       "../tools/word_count?base_version=1",
     ],
-  ])("%s is %s %s, relative to the frame", async (_, request, method, url) => {
-    const sent = stubFetch();
-    await request();
-    expect(sent).toEqual([{ url, method, contentType: null, body: undefined }]);
-  });
+  ])(
+    "%s sends its method to its URL, relative to the frame, with no body",
+    async (_, request, method, url) => {
+      const sent = stubFetch();
+      await request();
+      expect(sent).toEqual([
+        { url, method, contentType: null, body: undefined },
+      ]);
+    },
+  );
 
   it.each<[string, () => Promise<unknown>, string, string, string[]]>([
     [
