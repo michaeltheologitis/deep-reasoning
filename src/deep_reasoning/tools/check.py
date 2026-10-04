@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -81,9 +81,8 @@ class CheckReport(BaseModel):
     outcome: Outcome
     message: str
     told: str | None  # deep_reasoner's func(name, value, description).describe()
-    traceback: (
-        str | None
-    )  # raised: the frames in tools/<name>.py and the exception line
+    # raised: the frames in tools/<name>.py and the exception line
+    traceback: str | None
     example: ExampleResult | None
     printed: str  # the last SHOWN_LIMIT characters the tool printed
     seconds: float | None  # loading the file and calling the factory
@@ -247,21 +246,6 @@ def _follow(
     return built | {"example": ExampleResult(expression=example, **fields)}
 
 
-def _argv(name: str, main: Path, report_fd: int, example: str | None) -> Sequence[str]:
-    tried = ("--example", example) if example is not None else ()
-    return [
-        sys.executable,
-        "-m",
-        CHILD,
-        "--report-fd",
-        str(report_fd),
-        "--name",
-        name,
-        *tried,
-        str(main),
-    ]
-
-
 def _build_in_a_child(
     name: str,
     block: Mapping[str, Any],
@@ -284,10 +268,13 @@ def _build_in_a_child(
         (config / "main.yaml").write_text(shapes.canonical_yaml(main))
         printed = folder / "printed.txt"
         read_fd, write_fd = os.pipe()
+        tried = ("--example", example) if example is not None else ()
+        argv = [sys.executable, "-m", CHILD, "--report-fd", str(write_fd)]
+        argv += ["--name", name, *tried, str(config / "main.yaml")]
         with printed.open("wb") as out:
             try:
                 child = subprocess.Popen(
-                    _argv(name, config / "main.yaml", write_fd, example),
+                    argv,
                     cwd=config,
                     env=check_env(os.environ),
                     stdin=subprocess.DEVNULL,
@@ -314,15 +301,8 @@ def check_tool(
     example: str | None = None,
     limits: CheckLimits = DEFAULT_LIMITS,
 ) -> CheckReport:
-    """§3.2's static stage, then §3.3's throwaway process under limits; never raises for
-    anything the tool does.
-
-    shape (D2's validate_tool) → invalid; a reserved name → invalid; an MCP grant's block →
-    invalid; no source: a built-in factory → builtin, else bad_factory; a SyntaxError →
-    syntax. Otherwise materialize a one-tool config in a 0700 temporary folder, run
-    check_child in its own process group with check_env, read its report lines against
-    the limits, kill the group, remove the folder.
-    """
+    """§3.2's static stage, which starts no process, then §3.3's throwaway process under
+    limits; never raises for anything the tool does."""
     try:
         shaped = shapes.validate_tool(name, yaml_text, source)
     except LibraryValidationError as exc:
@@ -367,13 +347,8 @@ def require_check(
     accept_failure: bool,
 ) -> None:
     """§3.5: returns when the PUT may proceed; raises ToolCheckFailed, LibraryBadRequest
-    or LibraryRefused.
-
-    YAML D2 refuses → return (put_tool raises D2's 422); an MCP grant's block → 400; a
-    head that is an MCP grant → 409; canonical block and source equal the head's →
-    return; otherwise check_tool, and refuse unless it can be saved (or saved anyway,
-    when asked).
-    """
+    or LibraryRefused. YAML D2 refuses goes on to D2's own 422, and a change of grants
+    alone (the head's block and source) runs no Check."""
     try:
         shaped = shapes.validate_tool(name, yaml_text, source)
     except LibraryValidationError:
