@@ -109,20 +109,7 @@ def replay(server, recording: Path, prompts: Iterable[str], work: Path) -> list[
     )["id"]
     deadline = time.monotonic() + TIMEOUT_S
     for text in prompts:
-        server.request(
-            "POST",
-            f"/api/conversations/{conversation}/events",
-            {"role": "user", "content": [{"type": "text", "text": text}], "run": True},
-        )
-        time.sleep(0.2)
-        while (
-            status := server.request("GET", f"/api/conversations/{conversation}")[
-                "execution_status"
-            ]
-        ) not in ("finished", "error", "stuck"):
-            assert time.monotonic() < deadline, f"still {status}"
-            time.sleep(0.1)
-        assert status == "finished", status
+        server.ask(conversation, text, deadline)
     events, settled_at = stored_events(server, conversation), time.monotonic()
     while time.monotonic() - settled_at < SETTLE_S:
         time.sleep(0.2)

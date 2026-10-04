@@ -60,6 +60,24 @@ class RunningAgentServer:
     def python(self) -> str:
         return str(self.checkout / ".venv" / "bin" / "python")
 
+    def ask(self, conversation: str, text: str, deadline: float) -> None:
+        """One user message, run; returns once the conversation has finished, by
+        deadline (time.monotonic())."""
+        self.request(
+            "POST",
+            f"/api/conversations/{conversation}/events",
+            {"role": "user", "content": [{"type": "text", "text": text}], "run": True},
+        )
+        time.sleep(0.2)
+        while (
+            status := self.request("GET", f"/api/conversations/{conversation}")[
+                "execution_status"
+            ]
+        ) not in ("finished", "error", "stuck"):
+            assert time.monotonic() < deadline, f"still {status}"
+            time.sleep(0.1)
+        assert status == "finished", status
+
     def request(self, method: str, path: str, body: Any = None) -> Any:
         """JSON in and out; any non-2xx raises urllib's HTTPError."""
         request = urllib.request.Request(
