@@ -3,11 +3,12 @@
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
 linux), installs the .deb and runs this module under xvfb-run. Its tests share one
-first launch and run in order: the launch, a conversation, D3's frame through the
-bridge; then the final part: C1's nested sub-agents and a Stop of one, C2's namespace
-picker, slash menu and header panel with Create decomposition, an MCP server granted in
-D4's Tools tab, and the panel past its first session; then the quit and an offline
-relaunch of setup. No test calls a real model.
+first launch and run in order: the launch; onboarding, which asks no telemetry consent
+and keeps deep_reasoner; the conversation its hello starts; nothing recording consent;
+D3's frame through the bridge; then the final part: C1's nested sub-agents and a Stop
+of one, C2's namespace picker, slash menu and header panel with Create decomposition,
+an MCP server granted in D4's Tools tab, and the panel past its first session; then
+the quit and an offline relaunch of setup. No test calls a real model.
 """
 
 import json
@@ -96,6 +97,10 @@ ECHO_SERVER = Path(__file__).resolve().parents[1] / "mcp" / "servers" / "echo_se
 MCP_QUESTION = "Echo through the e12 server."
 MCP_REPLY = secret("e12-mcp-")
 SESSION_S = 5 * 60  # the bridge's App backend session (C2 renews it before it ends)
+CONSENT_SHOWS_S = 5  # a lazy-loaded consent dialog would be up by then
+CONSENT_STORAGE_KEY = (
+    "openhands-telemetry-consent"  # Canvas's src/services/telemetry.ts
+)
 PLAN = {
     QUESTION: [ENVIRONMENT_CELL, repl(f"FinalAnswer({ANSWER!r})")],
     TREE_QUESTION: [
@@ -268,15 +273,6 @@ def example(name: str, task: str) -> dict:
     }
 
 
-def dismiss_onboarding(page: Page) -> None:
-    """Canvas's first-run telemetry question and onboarding, which would otherwise make
-    an OpenHands profile the default."""
-    consent = page.get_by_test_id("telemetry-consent-form")
-    consent.get_by_role("checkbox").uncheck()
-    page.get_by_test_id("confirm-telemetry-preferences").click()
-    page.get_by_test_id("onboarding-skip").click()
-
-
 def run_ids(app: LaunchedApp) -> set[str]:
     return {path.parent.name for path in (app.data / "runs").glob("*/events.jsonl")}
 
@@ -292,14 +288,41 @@ def worker_environ(app: LaunchedApp) -> str:
     raise AssertionError("no worker.ready in the run log")
 
 
-def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
+def test_the_first_launch_asks_for_no_telemetry_consent(app, browser):
+    """Our build cannot report (decision K), so Canvas has nothing to ask (dr-3, #28).
+    The consent dialog is lazy-loaded; where a build shows it, it is up within a few
+    seconds of the onboarding."""
+    page = window(browser)
+    expect(page.get_by_test_id("onboarding-step-choose-agent")).to_be_visible()
+    page.wait_for_timeout(CONSENT_SHOWS_S * 1000)
+    expect(page.get_by_test_id("telemetry-consent-form")).to_have_count(0)
+
+
+def test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_it(
     app, browser, fake, tmp_path
 ):
+    """Onboarding offers the active profile setup made, first and chosen; keeping it
+    skips the model setup, writes no profile, and its hello starts the conversation
+    with it (dr-3, #29)."""
     point_the_library_at(app, fake, tmp_path)
+    profiles = app.request("GET", "/api/agent-profiles")
     page = window(browser)
-    dismiss_onboarding(page)
-    page.get_by_test_id("chat-input").fill(QUESTION)
-    page.get_by_test_id("submit-button").click()
+    kept = page.get_by_test_id("onboarding-agent-option-active-profile")
+    expect(kept).to_contain_text("deep_reasoner")
+    expect(kept).to_have_attribute("aria-checked", "true")
+    page.get_by_test_id("onboarding-agent-next").click()
+    expect(page.get_by_test_id("onboarding-step-say-hello")).to_be_visible()
+    page.get_by_test_id("onboarding-hello-input").fill(QUESTION)
+    page.get_by_test_id("onboarding-hello-input").press("Enter")
+    page.wait_for_url(re.compile(r".*/conversations/[^/?]+$"))
+    expect(page.get_by_test_id("onboarding-modal")).to_have_count(0)
+    assert app.request("GET", "/api/agent-profiles") == profiles
+
+
+def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
+    app, browser, fake
+):
+    page = window(browser)
     expect(page.get_by_test_id("agent-message").filter(has_text=ANSWER)).to_be_visible()
     assert [call.model for call in fake.calls] == [E12_MODEL, E12_MODEL]
     assert {call.authorization for call in fake.calls} == {f"Bearer {KEY}"}
@@ -317,6 +340,20 @@ def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
     for value in (KEY, app.session_key, app.secret_key):
         assert value not in environ
         assert not [text for text in stored if value in text]
+
+
+def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switch(
+    app, browser
+):
+    page = window(browser)
+    misc = app.request("GET", "/api/settings")["misc_settings"]
+    assert misc.get("app_preferences", {}).get("user_consents_to_analytics") is None
+    assert misc.get("telemetry", {}).get("consent") is None
+    stored = page.evaluate(f"() => localStorage.getItem({CONSENT_STORAGE_KEY!r})")
+    assert stored is None
+    page.goto(CANVAS_URL + "settings/app")
+    expect(page.get_by_test_id("enable-sound-notifications-switch")).to_be_visible()
+    expect(page.get_by_test_id("enable-analytics-switch")).to_have_count(0)
 
 
 def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
