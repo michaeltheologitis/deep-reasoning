@@ -50,6 +50,13 @@ def slug_empty(name: str) -> str:
     return f"'{name}' has no letters or digits, so it cannot be a slash command."
 
 
+def slug_taken(name: str, slug: str, other: str) -> str:
+    return (
+        f"'{name}' would be the slash command /{slug}, which '{other}' already is. Give "
+        "it another name."
+    )
+
+
 def tool_name(name: str) -> str:
     return (
         f"'{name}' is not a tool name: a tool is bound in the REPL under its name, so it "
@@ -66,6 +73,33 @@ def tool_file(name: str, value: str) -> str:
 
 def tool_no_source(name: str) -> str:
     return f"Tool '{name}' names factory_from but no source was sent with it."
+
+
+def not_found(kind: str, name: str) -> str:
+    return f"There is no {kind} '{name}' in the library."
+
+
+def no_revision(rev: int, current: int) -> str:
+    return f"There is no revision {rev}: the library is at revision {current}."
+
+
+def import_load(path: str, detail: str) -> str:
+    return f"{path} is not a dr config deep_reasoner can load: {detail}"
+
+
+def import_collision(path: str, name: str, first: str, second: str) -> str:
+    return (
+        f"{path} defines two different decompositions named '{name}' (in {first} and in "
+        f"{second}). The library keeps one decomposition per name: rename one and import "
+        "again."
+    )
+
+
+def import_tool_file(name: str, value: str, resolved: str) -> str:
+    return (
+        f"Tool '{name}': factory_from '{value}' resolved to {resolved}, which does not "
+        "exist."
+    )
 
 
 def network_fs(path: str, fstype: str) -> str:
