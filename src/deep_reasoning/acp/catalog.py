@@ -3,7 +3,7 @@
 import hashlib
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -29,6 +29,8 @@ class RunSource:
     namespace: str  # becomes cfg.entry_namespace
     client: Mapping[str, Any]  # the config's client block as loaded: a route's upstream
     versions: Mapping[str, Any]  # recorded in run.start
+    # tool name -> its own client block as loaded, for the tools that have one
+    tool_clients: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
 class Catalog(Protocol):
@@ -109,7 +111,7 @@ class ConfigCatalog:
         return CatalogSnapshot(namespaces, cfg.entry_namespace, commands)
 
     def materialize(self, namespace: str, *, run_dir: Path) -> RunSource:
-        """The given path unchanged, its client block, and its sha256."""
+        """The given path unchanged, its client blocks, and its sha256."""
         cfg = load_dr_config(self._path)
         return RunSource(
             config_path=self._path,
@@ -117,5 +119,10 @@ class ConfigCatalog:
             client=cfg.client.model_dump(mode="json"),
             versions={
                 "config_sha256": hashlib.sha256(self._path.read_bytes()).hexdigest()
+            },
+            tool_clients={
+                name: tool["client"]
+                for name, tool in cfg.tools.items()
+                if isinstance(tool.get("client"), Mapping)
             },
         )

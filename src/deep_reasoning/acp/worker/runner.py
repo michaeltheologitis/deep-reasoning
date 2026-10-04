@@ -53,6 +53,18 @@ def as_text(value: Any) -> str:
     return value if isinstance(value, str) else repr(value)
 
 
+def run_config(start: Start) -> Any:
+    """The run's dr config: the file Start names, in Start's namespace, with the
+    route's overrides merged over the main client and over each tool's own client."""
+    cfg = load_dr_config(Path(start.config_path))
+    cfg.entry_namespace = start.namespace
+    cfg.client = cfg.client.model_copy(update=start.client_overrides)
+    for name, overrides in start.tool_client_overrides.items():
+        tool = cfg.tools[name]
+        tool["client"] = {**tool["client"], **overrides}
+    return cfg
+
+
 class Worker:
     """One run across its control messages: built at the first prompt, kept between."""
 
@@ -120,9 +132,7 @@ class Worker:
         """The reasoner, with the decomposition's turns puppeteered when there is one; its
         log context and model alias stay entered for the whole run."""
         start = self._start
-        cfg = load_dr_config(Path(start.config_path))
-        cfg.entry_namespace = start.namespace
-        cfg.client = cfg.client.model_copy(update=start.client_overrides)
+        cfg = run_config(start)
         if prompt.decomposition is not None:
             cfg.task = prompt.task
             registry = build_namespace_registry(cfg)

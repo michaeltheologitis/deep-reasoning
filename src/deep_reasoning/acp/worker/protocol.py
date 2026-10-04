@@ -13,6 +13,8 @@ class Start(BaseModel):
     config_path: str
     namespace: str
     client_overrides: dict[str, Any]  # merged over cfg.client
+    # tool name -> overrides merged over cfg.tools[name]["client"]
+    tool_client_overrides: dict[str, dict[str, Any]] = {}
 
 
 class Prompt(BaseModel):

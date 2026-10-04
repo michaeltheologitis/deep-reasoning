@@ -26,6 +26,12 @@ def test_a_grant_adds_and_removes_variables():
 
 
 def test_the_direct_route_overrides_nothing():
-    grant = DirectRoute().grant(session="s", run="r", upstream={"base_url": "u"})
+    grant = DirectRoute().grant(
+        session="s",
+        run="r",
+        upstream={"base_url": "u"},
+        tool_upstreams={"rag": {"base_url": "v"}},
+    )
     assert grant == RouteGrant()
+    assert grant.tool_client_overrides == {}
     DirectRoute().release("r")

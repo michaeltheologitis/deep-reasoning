@@ -3,7 +3,10 @@
 import fnmatch
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Protocol
+
+NO_TOOL_UPSTREAMS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
 
 @dataclass(frozen=True)
@@ -11,14 +14,21 @@ class RouteGrant:
     client_overrides: Mapping[str, Any] = field(default_factory=dict)
     env_add: Mapping[str, str] = field(default_factory=dict)
     env_remove: frozenset[str] = frozenset()
+    # tool name -> overrides merged over that tool's own client block
+    tool_client_overrides: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
 class ModelRoute(Protocol):
     """Grants each run its client settings and environment; release(run) follows the
-    run's end."""
+    run's end. tool_upstreams holds each tool's own client block, by tool name."""
 
     def grant(
-        self, *, session: str, run: str, upstream: Mapping[str, Any]
+        self,
+        *,
+        session: str,
+        run: str,
+        upstream: Mapping[str, Any],
+        tool_upstreams: Mapping[str, Mapping[str, Any]] = NO_TOOL_UPSTREAMS,
     ) -> RouteGrant: ...
 
     def release(self, run: str) -> None: ...
@@ -38,7 +48,12 @@ class DirectRoute:
     """No overrides: the provider keys stay in the worker's environment."""
 
     def grant(
-        self, *, session: str, run: str, upstream: Mapping[str, Any]
+        self,
+        *,
+        session: str,
+        run: str,
+        upstream: Mapping[str, Any],
+        tool_upstreams: Mapping[str, Mapping[str, Any]] = NO_TOOL_UPSTREAMS,
     ) -> RouteGrant:
         return RouteGrant()
 
