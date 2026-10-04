@@ -2,7 +2,6 @@
 // ../namespaces is the backend's /namespaces through the bridge, and on the standalone page.
 // Bodies carry exactly D2's fields (D2 refuses others with 400) and are always JSON.
 
-import type { McpTransport } from "../shared/protocol";
 import type {
   CheckReport,
   DecompositionRecord,
@@ -12,6 +11,7 @@ import type {
   HistoryEntry,
   Kind,
   McpGrant,
+  McpSnapshot,
   NamespaceRecord,
   Problem,
   ProfileRecord,
@@ -60,14 +60,7 @@ export interface CheckBody {
   example: string | null;
 }
 
-export interface McpGrantBody {
-  server: string;
-  transport: McpTransport;
-  command: string | null;
-  args: string[];
-  url: string | null;
-  env: string[];
-  headers: string[];
+export interface McpGrantBody extends McpSnapshot {
   granted_in: string[];
   base_version: number;
 }

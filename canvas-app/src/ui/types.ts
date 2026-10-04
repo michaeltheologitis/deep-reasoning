@@ -171,9 +171,8 @@ export interface McpSeen {
   told: string;
 }
 
-export interface McpGrant {
-  name: string;
-  version: number;
+/** What a grant stores of a server: its target and its names, never a value. */
+export interface McpSnapshot {
   server: string;
   transport: McpTransport;
   command: string | null;
@@ -181,6 +180,11 @@ export interface McpGrant {
   url: string | null;
   env: string[];
   headers: string[];
+}
+
+export interface McpGrant extends McpSnapshot {
+  name: string;
+  version: number;
   granted_in: string[];
   shim_current: boolean;
   seen: McpSeen | null;

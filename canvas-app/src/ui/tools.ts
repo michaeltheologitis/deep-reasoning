@@ -2,11 +2,10 @@
 // Canvas's MCP servers.
 
 import type { McpServerInfo } from "../shared/protocol";
-import type { McpGrantBody } from "./api";
-import type { Effective, McpGrant, ToolRecord } from "./types";
+import type { Effective, McpGrant, McpSnapshot, ToolRecord } from "./types";
 
 /** deep_reasoner's own names in the REPL; a tool by one of them would hide it (D4 §3.2). */
-export const RESERVED_NAMES: ReadonlySet<string> = new Set([
+const RESERVED_NAMES: ReadonlySet<string> = new Set([
   "FinalAnswer",
   "Func",
   "Var",
@@ -42,8 +41,6 @@ export interface ToolDraft {
   baseVersion: number; // 0 for a new tool
 }
 
-export type McpSnapshot = Omit<McpGrantBody, "granted_in" | "base_version">;
-
 /** The user's own tools, in GET /tools order: every tool that is not an MCP grant. */
 export function splitTools(
   tools: readonly ToolRecord[],
@@ -73,34 +70,11 @@ export function defaultToolName(
   return `${base}_${n}`;
 }
 
-/** What a grant stores of a server: its target and its names, never a value. */
-export function snapshotOf(info: McpServerInfo): McpSnapshot {
-  return {
-    server: info.name,
-    transport: info.transport,
-    command: info.command,
-    args: [...info.args],
-    url: info.url,
-    env: [...info.env],
-    headers: [...info.headers],
-  };
-}
-
-/** The snapshot a grant holds, to resend unchanged. */
-export function grantSnapshot(grant: McpGrant): McpSnapshot {
-  return {
-    server: grant.server,
-    transport: grant.transport,
-    command: grant.command,
-    args: [...grant.args],
-    url: grant.url,
-    env: [...grant.env],
-    headers: [...grant.headers],
-  };
-}
-
-const same = (a: McpSnapshot, b: McpSnapshot) =>
-  JSON.stringify(a) === JSON.stringify(b);
+/** The snapshot of server a grant stores, from Canvas's settings or from the grant itself. */
+export const snapshotOf = (
+  server: string,
+  { transport, command, args, url, env, headers }: Omit<McpSnapshot, "server">,
+): McpSnapshot => ({ server, transport, command, args, url, env, headers });
 
 /** One row per server (§8.6): Canvas's, in its order, then the grants gone from it, by name.
  * Without Canvas's settings (null), the grants alone. */
@@ -108,41 +82,41 @@ export function mcpRows(
   servers: readonly McpServerInfo[] | null,
   grants: readonly McpGrant[],
 ): McpRow[] {
-  const byServer = new Map(grants.map((g) => [g.server, g]));
-  if (servers === null) {
-    return grants.map((grant) => ({
-      server: grant.server,
-      info: null,
-      grant,
-      state: "given",
-      changed: false,
-      oldShim: !grant.shim_current,
-    }));
-  }
-  const rows: McpRow[] = servers.map((info) => {
-    const grant = byServer.get(info.name) ?? null;
-    return {
-      server: info.name,
-      info,
-      grant,
-      state: info.why_not ?? "given",
-      changed: grant !== null && !same(snapshotOf(info), grantSnapshot(grant)),
-      oldShim: grant !== null && !grant.shim_current,
-    };
+  const row = (
+    server: string,
+    info: McpServerInfo | null,
+    grant: McpGrant | null,
+    state: McpRowState,
+  ): McpRow => ({
+    server,
+    info,
+    grant,
+    state,
+    changed:
+      info !== null &&
+      grant !== null &&
+      JSON.stringify(snapshotOf(server, info)) !==
+        JSON.stringify(snapshotOf(server, grant)),
+    oldShim: grant !== null && !grant.shim_current,
   });
+  if (servers === null)
+    return grants.map((g) => row(g.server, null, g, "given"));
+  const byServer = new Map(grants.map((g) => [g.server, g]));
   const listed = new Set(servers.map((s) => s.name));
-  const gone = grants
-    .filter((g) => !listed.has(g.server))
-    .sort((a, b) => a.server.localeCompare(b.server))
-    .map((grant) => ({
-      server: grant.server,
-      info: null,
-      grant,
-      state: "gone" as const,
-      changed: false,
-      oldShim: !grant.shim_current,
-    }));
-  return [...rows, ...gone];
+  return [
+    ...servers.map((info) =>
+      row(
+        info.name,
+        info,
+        byServer.get(info.name) ?? null,
+        info.why_not ?? "given",
+      ),
+    ),
+    ...grants
+      .filter((g) => !listed.has(g.server))
+      .sort((a, b) => a.server.localeCompare(b.server))
+      .map((g) => row(g.server, null, g, "gone")),
+  ];
 }
 
 /** namespace → the ancestor it inherits tool's grant from, from GET /effective. */

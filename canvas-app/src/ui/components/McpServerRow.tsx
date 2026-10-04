@@ -21,13 +21,11 @@ import {
 } from "../texts";
 import {
   type McpRow,
-  type McpSnapshot,
   defaultToolName,
-  grantSnapshot,
   inheritedGrants,
   snapshotOf,
 } from "../tools";
-import type { Effective, NamespaceRecord } from "../types";
+import type { Effective, McpSnapshot, NamespaceRecord } from "../types";
 import { NamespaceChecklist } from "./pickers";
 
 export interface McpServerRowProps {
@@ -66,7 +64,7 @@ export function McpServerRow(props: McpServerRowProps) {
   const [ticking, setTicking] = useState<string[] | null>(null);
   const stored = row.grant?.granted_in.join("\n");
   useEffect(() => setTicking(null), [stored]);
-  const snapshot = row.info ? snapshotOf(row.info) : grantSnapshot(row.grant!);
+  const snapshot = snapshotOf(row.server, row.info ?? row.grant!);
   const toolName = row.grant?.name ?? name;
 
   async function send(body: McpGrantBody): Promise<boolean> {
@@ -91,7 +89,7 @@ export function McpServerRow(props: McpServerRowProps) {
     const sent = await send(
       row.grant
         ? {
-            ...grantSnapshot(row.grant),
+            ...snapshotOf(row.server, row.grant),
             granted_in: grantedIn,
             base_version: row.grant.version,
           }

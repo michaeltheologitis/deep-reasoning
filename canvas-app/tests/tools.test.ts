@@ -145,7 +145,7 @@ describe("mcpRows", () => {
 
 describe("snapshotOf", () => {
   it("is what a grant stores: names, never values", () => {
-    expect(snapshotOf(server("github"))).toEqual({
+    expect(snapshotOf("github", server("github"))).toEqual({
       server: "github",
       transport: "stdio",
       command: "npx",
