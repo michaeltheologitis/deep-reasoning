@@ -1,5 +1,6 @@
 """E10: provider keys reach the worker only as tokens, and a conversation's spend stops at
-its cap, through a real dr-acp over stdio (D5 §2.1, §7.1)."""
+its cap, through a real dr-acp over stdio (D5 §2.1, §7.1); and again with D4's MCP server
+bound (D5 §8.7)."""
 
 import base64
 import json
@@ -9,8 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from deep_reasoning.acp.runlog import PromptEnd, RunEnd, WorkerReady
+from deep_reasoning.acp.runlog import McpStatus, PromptEnd, RunEnd, WorkerReady
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
+from deep_reasoning.library import Library, library_path
 from tests.acp.harness import (
     dr_acp,
     run,
@@ -19,6 +21,8 @@ from tests.acp.harness import (
     write_config,
 )
 from tests.acp.scenarios import repl, scripted
+from tests.mcp.conftest import put_grant
+from tests.mcp.test_acp import SERVERS, forwarded
 
 E10_MODEL = "e10-model"
 # Input $1 and output $2 per million tokens: FakeOpenAI's usage below costs $0.004.
@@ -199,4 +203,85 @@ def test_a_call_past_the_spend_cap_is_refused_and_never_forwarded(tmp_path, home
     assert len(model.calls) == forwarded, "nor after dr-acp restarted"
     assert spend["spent_usd"] <= CAP_USD + CALL_USD
     assert spend["refused"] >= 3
+    assert {c.authorization for c in model.calls} == {f"Bearer {key}"}
+
+
+# What every stdio server gets on top of its settings: mcp's six, and LC_CTYPE, which D4's
+# guard (a Python) adds when it coerces a C locale (PEP 538).
+MCP_INHERITED = {"HOME", "LOGNAME", "PATH", "SHELL", "TERM", "USER", "LC_CTYPE"}
+MCP_PLAN = {
+    "Call the echo server.": [
+        repl("print(echo.env_names())"),
+        repl("FinalAnswer('called')"),
+    ]
+}
+
+
+def environ_of(pid: int | str) -> dict[str, str]:
+    raw = Path(f"/proc/{pid}/environ").read_bytes().decode(errors="replace")
+    return dict(line.split("=", 1) for line in raw.split("\0") if "=" in line)
+
+
+@linux_only
+@pytest.mark.parametrize("named", [False, True], ids=["unnamed", "named"])
+def test_an_mcp_server_gets_a_provider_key_only_when_its_settings_name_it_and_the_worker_never_does(
+    tmp_path, home, work, named
+):
+    key = secret("sk-e10-")
+    secrets_ = {
+        "OPENAI_API_KEY": key,
+        "OH_SECRET_KEY": secret("oh-"),
+        "SESSION_API_KEY": secret("session-"),
+        "OPENHANDS_AUTOMATION_API_KEY": secret("automation-"),
+    }
+    markers = tmp_path / "markers"
+    markers.mkdir()
+    settings = {"ECHO_TOKEN": secret("echo-"), "ECHO_MARKER_DIR": str(markers)}
+    if named:
+        settings["OPENAI_API_KEY"] = key
+
+    async def body():
+        async with FakeOpenAI(scripted(MCP_PLAN)) as model:
+            library = Library.open(library_path(home), starter=False)
+            library.import_config(e10_config(tmp_path / "config", model.base_url))
+            put_grant(
+                library,
+                "echo",
+                ["root"],
+                command=sys.executable,
+                args=[str(SERVERS / "echo_server.py")],
+                env=sorted(settings),
+            )
+            env = scripted_env(**secrets_)
+            async with dr_acp(None, home, env=env, prices=E10_PRICES) as client:
+                root = await client.open_session(work, [forwarded("echo", **settings)])
+                response = await client.ask(root, "Call the echo server.")
+                (run_id,) = run_ids(client.printer.updates)
+                log = client.run_log(run_id)
+                [ready] = [e for e in log if isinstance(e, WorkerReady)]
+                [server_pid] = [marker.name for marker in markers.iterdir()]
+                worker, server = environ_of(ready.pid), environ_of(server_pid)
+                updates = json.dumps(client.printer.updates)
+        return response, log, worker, server, updates, model
+
+    response, log, worker, server, updates, model = run(body())
+    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    [status] = [e for e in log if isinstance(e, McpStatus)]
+    assert [(s.tool, s.state) for s in status.servers] == [("echo", "bound")]
+    assert set(settings) <= set(server) <= set(settings) | MCP_INHERITED
+    token = worker["OPENAI_API_KEY"]
+    assert token != key and token not in server.values()
+    assert (server.get("OPENAI_API_KEY") == key) is named
+    worker_text = "\0".join(f"{k}={v}" for k, v in worker.items())
+    files = [
+        p.read_bytes().decode(errors="replace") for p in home.rglob("*") if p.is_file()
+    ]
+    for value in (*secrets_.values(), settings["ECHO_TOKEN"]):
+        for form in forms(value):
+            assert form not in worker_text
+            assert form not in updates
+            assert not [text for text in files if form in text]
+    for name, value in secrets_.items():
+        if name != "OPENAI_API_KEY":
+            assert value not in server.values(), name
     assert {c.authorization for c in model.calls} == {f"Bearer {key}"}
