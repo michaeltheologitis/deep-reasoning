@@ -37,9 +37,12 @@ jobs:
       - run: uv run pytest -m live -v -rA --basetemp="$RUNNER_TEMP/live"
       # On a failure, every test's dr home is kept: its runs (run log, model calls,
       # deep_reasoner's trace, each MCP server's log, all redacted) and the MCP test's
-      # transcript. They are uploaded only once no file in them holds a secret the job
-      # holds: either model key, or the token that reads deep_reasoner_beta. An empty
-      # value is skipped, since grep would find it in every file.
+      # transcript. They are uploaded only once grep has read every file in them and
+      # found no secret the job holds: either model key, or the token that reads
+      # deep_reasoner_beta. Only grep's exit 1 (read all, found nothing) passes: with
+      # -q it exits 0 on a match even when some file was unreadable, and 2 when it
+      # could not read a file or the folder itself. An empty value is skipped, since
+      # grep would find it in every file.
       - name: No dr home holds a secret
         id: secretless
         if: failure()
@@ -48,10 +51,20 @@ jobs:
         run: |
           for name in OPENAI_API_KEY CLAUDE_CODE_OAUTH_TOKEN DEEP_REASONER_TOKEN; do
             value="$(printenv "$name" || true)"
-            if [ -n "$value" ] && grep -rqF -- "$value" "$RUNNER_TEMP/live"; then
-              echo "::error::a dr home holds $name, so none is uploaded"
-              exit 1
-            fi
+            [ -n "$value" ] || continue
+            status=0
+            grep -rqF -- "$value" "$RUNNER_TEMP/live" || status=$?
+            case "$status" in
+              1) ;;
+              0)
+                echo "::error::a dr home holds $name, so none is uploaded"
+                exit 1
+                ;;
+              *)
+                echo "::error::grep could not read every file of the dr homes (exit $status), so none is uploaded"
+                exit 1
+                ;;
+            esac
           done
       - uses: actions/upload-artifact@v4
         if: failure() && steps.secretless.outcome == 'success'
