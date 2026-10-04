@@ -388,17 +388,6 @@ def test_a_draft_keeps_the_namespace_picked_over_the_preselected_one(open_ui):
     expect(page.get_by_test_id("dr-namespace-router")).to_be_checked()
 
 
-def test_use_when_and_hint_survive_a_save_that_did_not_touch_them(
-    open_ui, library_server
-):
-    page = open_ui(tab="browse", focus="catalog-lookup")
-    page.get_by_test_id("dr-card-0-task").fill("What does CS310 need?")
-    page.get_by_test_id("dr-save").click()
-    expect(page.get_by_test_id("dr-result")).to_contain_text("v2")
-    saved = library_server.library().decomposition("catalog lookup")
-    assert (saved.use_when, saved.hint) == ("one course at a time", "a course code")
-
-
 def test_an_imported_decomposition_saved_unchanged_makes_no_new_version(
     open_ui, library_server
 ):

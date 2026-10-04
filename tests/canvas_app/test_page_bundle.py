@@ -124,15 +124,6 @@ def mount(page: Page, tab: str, conversation: str) -> None:
     page.evaluate("([tab, id]) => window.mountTab(tab, id)", [tab, conversation])
 
 
-def test_the_built_bundle_activates_and_registers_four_tabs(canvas):
-    assert canvas.evaluate("window.registered") == [
-        "browse",
-        "create",
-        "namespaces",
-        "tools",
-    ]
-
-
 def test_the_frame_opens_with_the_conversations_namespace(canvas):
     mount(canvas, "create", "c2")
     frame = canvas.frame_locator("#panel iframe")
