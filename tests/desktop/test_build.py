@@ -253,10 +253,10 @@ def test_the_committed_sdk_pin_is_34c540c_tagged_dr_2():
     assert raw["app"]["uv_version"] == "0.12.23"
 
 
-@pytest.mark.skip(
-    reason="[canvas_fork] is a placeholder until the redone wiring merges into the Canvas "
-    "fork's deep-reasoning and is tagged (D5 §1.2 step 7, §8.6)"
-)
 def test_the_committed_pins_load():
     pins = build.load_pins(ROOT / "desktop" / "pins.toml")
-    assert pins.sdk_fork.commit == SDK_COMMIT
+    assert pins.canvas_fork == build.ForkPin(
+        CANVAS_REPO, "fc87687abb304a839c60171ac8445f306eacd907", "dr-1"
+    )
+    assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2")
+    assert "@" in pins.app.maintainer

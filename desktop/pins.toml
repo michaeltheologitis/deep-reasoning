@@ -3,7 +3,7 @@
 
 [canvas_fork]
 repo = "https://github.com/michaeltheologitis/OpenHands"
-commit = "<40 hex: the redone wiring's merge into deep-reasoning, §8.6>"
+commit = "fc87687abb304a839c60171ac8445f306eacd907"
 tag = "dr-1"
 
 [sdk_fork]
@@ -16,5 +16,5 @@ product_name = "Deep Reasoning"
 app_id = "io.github.michaeltheologitis.deep-reasoning"
 executable_name = "deep-reasoning"
 version = "1.0.0-rc.1"
-maintainer = "<name and email for the .deb; fpm requires an email>"
+maintainer = "Michael Theologitis <michael.theologitis@outlook.com>"
 uv_version = "0.12.23"
