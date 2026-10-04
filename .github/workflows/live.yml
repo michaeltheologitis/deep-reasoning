@@ -37,17 +37,24 @@ jobs:
       - run: uv run pytest -m live -v -rA --basetemp="$RUNNER_TEMP/live"
       # On a failure, every test's dr home is kept: its runs (run log, model calls,
       # deep_reasoner's trace, each MCP server's log, all redacted) and the MCP test's
-      # transcript. It is uploaded only once no file in it holds the model key.
-      - name: No dr home holds the model key
-        id: keyless
+      # transcript. They are uploaded only once no file in them holds a secret the job
+      # holds: either model key, or the token that reads deep_reasoner_beta. An empty
+      # value is skipped, since grep would find it in every file.
+      - name: No dr home holds a secret
+        id: secretless
         if: failure()
+        env:
+          DEEP_REASONER_TOKEN: ${{ secrets.DEEP_REASONER_TOKEN }}
         run: |
-          if grep -rqF -- "$OPENAI_API_KEY" "$RUNNER_TEMP/live"; then
-            echo "::error::a dr home holds the model key, so it is not uploaded"
-            exit 1
-          fi
+          for name in OPENAI_API_KEY CLAUDE_CODE_OAUTH_TOKEN DEEP_REASONER_TOKEN; do
+            value="$(printenv "$name" || true)"
+            if [ -n "$value" ] && grep -rqF -- "$value" "$RUNNER_TEMP/live"; then
+              echo "::error::a dr home holds $name, so none is uploaded"
+              exit 1
+            fi
+          done
       - uses: actions/upload-artifact@v4
-        if: failure() && steps.keyless.outcome == 'success'
+        if: failure() && steps.secretless.outcome == 'success'
         with:
           name: live-dr-homes
           path: ${{ runner.temp }}/live/*/home/
