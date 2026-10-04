@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "dr-library",
+  "display_name": "Library",
+  "version": "0.1.0",
+  "description": "deep_reasoner's decompositions, namespaces and tools, from Show Decompositions at the top right of a conversation.",
+  "entrypoint": "dist/index.js",
+  "contributes": {
+    "conversation_panels": [
+      {
+        "id": "decompositions",
+        "title": "Decompositions",
+        "icon": "panel.svg",
+        "tabs": [
+          {"id": "browse", "title": "Decompositions", "path": "/"},
+          {"id": "create", "title": "Create decomposition", "path": "/create"},
+          {"id": "namespaces", "title": "Namespaces", "path": "/namespaces"},
+          {"id": "tools", "title": "Tools", "path": "/tools"}
+        ]
+      }
+    ]
+  }
+}

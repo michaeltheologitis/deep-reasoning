@@ -1,3 +1,7 @@
+import json
+import re
+from importlib import metadata, resources
+
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -8,6 +12,8 @@ from deep_reasoning.library.ui import UI_HEADERS, UI_ROOT, ui_routes
 
 PORT = 8123
 ORIGIN = f"http://127.0.0.1:{PORT}"
+KEBAB = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
+PACKAGE = resources.files("deep_reasoning.canvas_app")
 
 
 @pytest.fixture
@@ -92,3 +98,33 @@ def test_the_ui_answers_only_its_own_host(library_app):
     response = library_app.get("/ui/", headers={"Host": f"evil.example:{PORT}"})
     assert response.status_code == 403
     assert response.json()["message"] == texts.forbidden_host(PORT)
+
+
+def test_the_manifest_is_valid_and_its_version_is_the_packages():
+    manifest = json.loads(PACKAGE.joinpath("canvas-extension.json").read_text())
+    [panel] = manifest["contributes"]["conversation_panels"]
+    assert manifest["name"] == "dr-library"
+    assert manifest["version"] == metadata.version("deep-reasoning")
+    assert PACKAGE.joinpath(manifest["entrypoint"]).is_file()
+    assert PACKAGE.joinpath(panel["icon"]).is_file()
+    assert panel["id"] == "decompositions"
+    assert panel["title"] == "Decompositions"
+    assert [(tab["id"], tab["path"]) for tab in panel["tabs"]] == [
+        ("browse", "/"),
+        ("create", "/create"),
+        ("namespaces", "/namespaces"),
+        ("tools", "/tools"),
+    ]
+    assert all(
+        KEBAB.fullmatch(i) for i in [panel["id"], *(t["id"] for t in panel["tabs"])]
+    )
+
+
+def test_the_committed_build_is_complete():
+    index = (UI_ROOT / "index.html").read_text()
+    referenced = re.findall(r'(?:src|href)="([^"]+)"', index)
+    assert PACKAGE.joinpath("dist", "index.js").is_file()
+    assert "./assets/app.js" in referenced
+    for reference in referenced:
+        assert reference.startswith("./assets/"), reference
+        assert (UI_ROOT / reference).is_file(), reference

@@ -74,6 +74,7 @@ jobs:
         with:
           name: canvas-app-build
           path: |
+            src/deep_reasoning/canvas_app/dist
             src/deep_reasoning/canvas_app/ui
       - uses: astral-sh/setup-uv@v6
         with:
