@@ -77,6 +77,15 @@ export const snapshotOf = (
   { transport, command, args, url, env, headers }: Omit<McpSnapshot, "server">,
 ): McpSnapshot => ({ server, transport, command, args, url, env, headers });
 
+/** What a grant's block keeps of a server's settings (D4 §4.2), as text to compare: a stdio
+ * server's command, arguments and environment, a remote one's URL and headers. */
+const kept = (s: Omit<McpSnapshot, "server">) =>
+  JSON.stringify(
+    s.transport === "stdio"
+      ? [s.transport, s.command, s.args, s.env]
+      : [s.transport, s.url, s.headers],
+  );
+
 /** One row per server (§8.6): Canvas's, in its order, then the grants gone from it, by name.
  * Without Canvas's settings (null), the grants alone. */
 export function mcpRows(
@@ -93,11 +102,7 @@ export function mcpRows(
     info,
     grant,
     state,
-    changed:
-      info !== null &&
-      grant !== null &&
-      JSON.stringify(snapshotOf(server, info)) !==
-        JSON.stringify(snapshotOf(server, grant)),
+    changed: info !== null && grant !== null && kept(info) !== kept(grant),
     oldShim: grant !== null && !grant.shim_current,
   });
   if (servers === null)
