@@ -209,13 +209,9 @@ def test_the_runtime_lock_matches_uv_lock():
     assert LOCK.read_text() == exported.stdout
 
 
-# What the desktop app ships for (D5 §4.2.4): Linux on x64, and macOS on both halves of
-# the universal app, from macOS 14, the oldest the locked arm64 wheels install on.
-SHIPPED_PLATFORMS = (
-    "x86_64-unknown-linux-gnu",
-    "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
-)
+# What the desktop app ships for (D5 §4.2.4): Linux on x86-64, and macOS on Apple silicon
+# (Michael, 2026-10-04) from macOS 14, the oldest the locked arm64 wheels install on.
+SHIPPED_PLATFORMS = ("x86_64-unknown-linux-gnu", "aarch64-apple-darwin")
 OLDEST_MACOS = "14.0"
 
 
@@ -224,8 +220,8 @@ def test_the_runtime_lock_installs_on_every_platform_the_app_ships_for(
     tmp_path, platform
 ):
     """A dry run of the lock's registry packages for the platform, wheels only: the app
-    builds nothing on the user's machine, which has no compiler to build with (an Intel
-    Mac and cryptography 50, which needs Rust). It reads PyPI's metadata."""
+    builds nothing on the user's machine, which may have no compiler (cryptography's
+    source needs Rust). It reads PyPI's metadata."""
     registry_only = tmp_path / "lock.txt"
     registry_only.write_text(
         "".join(
