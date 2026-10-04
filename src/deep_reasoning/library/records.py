@@ -139,6 +139,16 @@ class FieldError(BaseModel):
     msg: str
 
 
+class ValidationResult(BaseModel):
+    ok: bool
+    message: str | None  # INVALID's text when not ok
+    errors: list[FieldError]
+    warnings: list[str]
+    name: str | None  # the entity's key, when the YAML got far enough to have one
+    slug: str | None  # decompositions: the address to PUT to
+    yaml: str | None  # the canonical form, when ok
+
+
 class LibraryError(Exception):
     code: ClassVar[str] = "error"
     status: ClassVar[int] = 400
@@ -166,6 +176,28 @@ class LibraryValidationError(LibraryError):
 class LibraryNotFound(LibraryError):
     code = "not_found"
     status = 404
+
+
+class LibraryConflict(LibraryError):
+    """A base_version that is not the head's; carries the head (None: it does not exist)."""
+
+    code = "conflict"
+    status = 409
+
+    def __init__(self, message: str, head: Saved | None) -> None:
+        super().__init__(message)
+        self.head = head
+
+    def payload(self) -> dict[str, Any]:
+        head = self.head.model_dump(mode="json") if self.head is not None else None
+        return {**super().payload(), "head": head}
+
+
+class LibraryRefused(LibraryError):
+    """A delete the invariants forbid: root, the default namespace, a parent."""
+
+    code = "refused"
+    status = 409
 
 
 class LibraryImportError(LibraryError):

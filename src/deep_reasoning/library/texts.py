@@ -14,6 +14,7 @@ INLINE_DECOMPOSITIONS = (
     "decompositions=[...] instead."
 )
 NOT_A_MAPPING = "The YAML must be a mapping of keys to values."
+REFUSE_ROOT = "root cannot be deleted: every namespace inherits from it."
 NO_FINAL_ANSWER = "This example never reaches FinalAnswer; the agent will imitate that."
 
 
@@ -36,6 +37,12 @@ def namespace_name(name: str) -> str:
     return (
         f"'{name}' is not a namespace name: use letters, digits, '_' and '-', with '.' "
         "between levels (for example math.geometry)."
+    )
+
+
+def parent_missing(name: str, parent: str) -> str:
+    return (
+        f"Namespace '{name}' needs its parent '{parent}', which is not in the library."
     )
 
 
@@ -75,12 +82,45 @@ def tool_no_source(name: str) -> str:
     return f"Tool '{name}' names factory_from but no source was sent with it."
 
 
+def unknown_decomposition(name: str) -> str:
+    return f"There is no decomposition '{name}' in the library to attach."
+
+
+def listed_twice(name: str, where: str) -> str:
+    return f"'{name}' is listed twice in {where}."
+
+
+def default_missing(name: str) -> str:
+    return f"The default namespace '{name}' is not in the library."
+
+
 def not_found(kind: str, name: str) -> str:
     return f"There is no {kind} '{name}' in the library."
 
 
 def no_revision(rev: int, current: int) -> str:
     return f"There is no revision {rev}: the library is at revision {current}."
+
+
+def conflict_exists(kind: str, name: str, head: int) -> str:
+    return f"{kind.capitalize()} '{name}' already exists, at version {head}."
+
+
+def conflict_stale(kind: str, name: str, head: int, base: int) -> str:
+    return (
+        f"{kind.capitalize()} '{name}' is at version {head}, not {base}: it changed after "
+        f"you opened it. Reload it, or save over it with base_version={head}."
+    )
+
+
+def refuse_default(name: str) -> str:
+    return f"'{name}' is the namespace new conversations start in; choose another one first."
+
+
+def refuse_children(name: str, children: Sequence[str]) -> str:
+    return (
+        f"'{name}' has namespaces under it ({', '.join(children)}); delete them first."
+    )
 
 
 def import_load(path: str, detail: str) -> str:
