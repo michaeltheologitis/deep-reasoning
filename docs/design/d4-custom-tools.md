@@ -28,19 +28,21 @@ sdist.)
 **Merged, after Gate C** (v6, 2026-10-04). Michael accepted D4 at Gate C, and its seven PRs, #27 to #33, merged
 bottom-up into `main` (`cbcad70` … `53c821b`). Each was against the one below it, and #27 against `main`, on D3's top
 PR's head `c60d6d9`, which `main` holds (D3's #19–#26, merged as `1f9fe52`). `main`'s tree at `53c821b` equals #33's
-head `c95e059`, which is this branch's tree at `68ebe81` but for the design and as-built documents, which no PR
-carried, the sdist's exclude of `as_built/`, and two files `main` has newer (`docs/deep-reasoner-contract.md`,
-`tests/acp/test_stop.py`). So this design states the code `main` holds at `53c821b`. What was read beside each PR is
-the table in #33's description, "Gate C: reading beside the PRs", which cites v6 and the as-built document's
-revision 4. What changed since Gate B, each change with its commit, is §6.2's last two groups, B30–B37; the tests
-that carry each property are the table "Which tests carry which property" in the Gate B section, current at
-`68ebe81` (its v6 marks), and §10 maps every test file. The evidence at `68ebe81`: CI
-[run 37186335030](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37186335030), on push, both jobs
-green: **694 passed** (84 deselected), vitest **214 passed, 1 skipped**, the browser tests **76 passed, 1 skipped**;
-`app.js` 167.27 kB, `editor.js` 348.48 kB (run 37184460145, at the same commit, the same). The live tier last ran at
-`3129da9` ([run 37180265916](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37180265916), **7 of
-7**, D4's two among them, B37). No live run is at `68ebe81`: the four commits since change the frame's `mcpRows`,
-tests, and the live job's steps that run only after a failure (B35, B36), none of them code a live test runs.
+head `c95e059`, which is this branch's tree at `68ebe81` but for the design and as-built documents, which no PR carried,
+the sdist's exclude of `as_built/`, and two files `main` has newer (`docs/deep-reasoner-contract.md`,
+`tests/acp/test_stop.py`). So this design states the code `main` holds at `53c821b`. What was read beside each PR is the
+table in #33's description, "Gate C: reading beside the PRs", which cites v6 and the as-built document's revision 4
+(`497d56b`, on `as-built/d4-r4`). What changed since Gate B, each change with its commit, is §6.2's last two groups,
+B30–B37; the tests that carry each property are the table "Which tests carry which property" in the Gate B section,
+current at `68ebe81` (its v6 marks), and §10 maps every test file. The evidence at `68ebe81`: CI [run
+37186335030](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37186335030), on push, both jobs green:
+**694 passed** (84 deselected), vitest **214 passed, 1 skipped**, the browser tests **76 passed, 1 skipped**; `app.js`
+167.27 kB, `editor.js` 348.48 kB (run 37184460145, at the same commit, the same); after the merge, `main`'s push run at
+`53c821b`, [37187128304](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37187128304), is green with
+the same counts, as was every level of the stack (as-built r4 §7.1). The live tier last ran at `3129da9` ([run
+37180265916](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37180265916), **7 of 7**, D4's two among
+them, B37). No live run is at `68ebe81`: the four commits since change the frame's `mcpRows`, tests, and the live job's
+steps that run only after a failure (B35, B36), none of them code a live test runs.
 
 ## Gate B: what to read
 
@@ -2239,12 +2241,14 @@ this table with the built figures, and its v6 note the parts at `68ebe81`. As bu
     merge of `f69bc73` with it (`git merge-tree`) is clean; the merged tree was not built or tested. So once D3 is
     brought onto D2's head, D4 follows: a new head, no D4 behaviour changed, and the Gate B runs are `f69bc73`'s, not
     that head's. *(v6: so it happened. D4 at `68ebe81` carries D3's head `73c6425`, D2's code head `0e0a394` and D1's
-    `f7a91f3` (`01abb88`, `3129da9`); CI ran at `68ebe81` and the live tier at `3129da9` (the Gate C paragraph).
-    `main` now holds D1's, D2's and D3's code through their PR stacks (D3's #19–#26, `1f9fe52`), whose commits are
-    not the task branches' that D4 merged, so a trial merge of `68ebe81` with `main` conflicts in 23 files, 22 of
-    them add/add (D3's frame files and tests, the built files, `uv.lock` and D2's `library/api.py`), as the as-built
-    r3 found at `3129da9` (its #12). The stack did not: #27 sat on D3's top PR head `c60d6d9`, which `main` holds,
-    and #27–#33 merged into `main` as `cbcad70` … `53c821b`, whose tree is #33's head `c95e059`.)*
+    `f7a91f3` (`01abb88`, `3129da9`); CI ran at `68ebe81` and the live tier at `3129da9` (the "Merged" paragraph). D1's,
+    D2's and D3's code reached `main` through their PR stacks (D3's #19–#26, `1f9fe52`), whose commits are not the task
+    branches' that D4 merged, so against `1f9fe52` a trial merge of `68ebe81` conflicted in 23 files, 22 of them add/add
+    (D3's frame files and tests, the built files, `uv.lock` and D2's `library/api.py`), as the as-built r3 found at
+    `3129da9` (its #12). The stack did not: #27 sat on D3's top PR head `c60d6d9`, whose tree is `1f9fe52`'s, and
+    #27–#33 merged into `main` as `cbcad70` … `53c821b`, whose tree is #33's head `c95e059`. Against `53c821b`,
+    `68ebe81` now merges without a conflict, and outside `docs/` and `as_built/` the two differ only in
+    `pyproject.toml`'s sdist exclude and `tests/acp/test_stop.py` (as-built r4 §1.3 #12, §5.1).)*
 
 ---
 
