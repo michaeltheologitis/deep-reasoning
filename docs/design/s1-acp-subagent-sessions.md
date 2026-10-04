@@ -3,7 +3,8 @@
 **TASK-3** · System Designer · code lands in the SDK fork
 [michaeltheologitis/software-agent-sdk](https://github.com/michaeltheologitis/software-agent-sdk), branch
 `feat/acp-subagent-sessions`, as one pull request (v1: cut from `deep-reasoning` at `91430aa`; built stacked on S2's
-`feat/agent-surfaces`, §3.2 B1) · against the approved spec
+`feat/agent-surfaces`, §3.2 B1; *v2.3:* read at Gate C as a stack of seven draft pull requests, #10 to #16, inside
+the fork, the Gate C section) · against the approved spec
 [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012) (S1, §2, C1, §4 E5 and the layers, the
 2026-10-02 amendment, the rulings at design) and D1's wire contract (`deep-reasoning` `f281109`,
 `docs/design/d1-dr-acp.md` §5).
@@ -11,6 +12,44 @@
 and `CLAUDE.md`, so every v1 `file:line` below is also upstream `53a4bc5`'s) · `agent-client-protocol` 0.12.1 (the
 fork's lock) · ACP schema 1.24.1 `schema.unstable.json` (sha256 `6449a87a…be09109e`, the file D1 validates
 against) · pyright 1.1.411 in `standard` mode (the fork's pre-commit).
+
+**Matches the code at `6a05b13`** (v2.3): the top of S1's Gate C stack, seven draft pull requests in the fork, #10 to
+#16 (the Gate C section). Its tree is `2675399`'s, the head of `feat/acp-subagent-sessions` after the literate
+refactor, plus tests only: the agent-swap test race fix (`2f7642c`, the same change as the fork's #17) and three
+restored pins (`049ceb5`, `306731d`, `6a05b13`). S1's own diff is `9277e71..6a05b13`, against the fork's
+`deep-reasoning`: 3,730 lines added and 63 removed, in 43 files. The draft pull request #2, which held the whole
+branch against S2's `feat/agent-surfaces`, is closed as superseded by the stack. The `file:line` references in notes
+marked *(v2.3)* are `6a05b13`'s, which for every source file are `2675399`'s (the top changes three test files only),
+so as-built r3's line numbers hold. v2.3 is committed on `design/s1` and changes only this file.
+
+**Changed by the refactor** (v2.3): S1's fifteen commits in `a3279be..2675399`, each with the as-built r3 divergence
+that reads it (§2, V-1 to V-10) and the sections it touches here. None changes what is stored or sent: the exported
+OpenAPI and the `--subagents` turn's stored events are the same before and after (as-built r3 §3, §4.4).
+
+- `a682f6a` **Each child is held as its latest `ACPSubagentEvent`** (V-4). `_Association` is gone; the held event's
+  `cancellable` is the live grant, and each stored snapshot is a new event (§4.3, A.2).
+- `bf57a3a` **The sub-agent connection always advertises `subagents`** (V-2). `_SubagentInitializeRequest`
+  subclasses `InitializeRequest` with `SerializeAsAny[ClientCapabilities]`, and the bridge makes one `initialize`
+  call for both connection classes (decision B, §3.1 item 3, §4.2, §4.4, A.1).
+- `6b089e5` **`SubagentState` keeps no extra keys** (V-3). A custom state's name is kept; the store never held the
+  rest (§4.2, A.1).
+- `73e47f8` **One warn-once helper** (V-1): `_warn_unannounced(session_id, routing)`, once per session per path
+  (decision C, §4.3, §4.4, E-4, A.3).
+- `fec0b95` **`replaying()` replaces `_load_session`** (V-5): a bridge context manager around upstream's own
+  `conn.load_session(...)` call (§4.3, §4.4, §6, B7, A.3).
+- `d03ec2c` **Shared wire builders** (V-6): eleven functions in the scripted agent build ACP updates for it and for
+  both sub-agent test files (§4.10, A.7).
+- `2fb47b2` **Shared test helpers** (V-6): `tests/conftest.py` gains `subagent_snapshots`, and `wait_until` returns
+  what it waited for (§4.1, §7, §9).
+- `a910ac9`, `6dcde3e`, `ca39def`, `5b17efd`, and the tests cut with `bf57a3a` and `6b089e5`: **88 deterministic
+  cases become 75** (V-7 to V-9), by cuts, merges and renames. The next section's property table says which test
+  carries each property now.
+- `1c66ce2`, `2675399`: docstrings state their own contract (A.2, A.3, A.5). `49dda35`, `ec95abc`: layout only;
+  Appendix A keeps one parameter per line.
+- **Size** (V-10): source 1,394 → 1,302 lines added, tests 2,761 → 2,388.
+
+**Since the refactor, on the stack** (tests only): `2f7642c` on #10, the race fix; `049ceb5` on #10, P7's pin;
+`306731d` and `6a05b13` on #16, P4's and P6′'s pins; each merged upward with merge commits.
 
 **Matches the build at `0cfb6a2`** (v2): S1's five commits on `feat/acp-subagent-sessions` (`13f4571`, `d10c021`,
 `6938ba5`, `57c0925`, `0cfb6a2`), on top of S2's `feat/agent-surfaces` at `6f97bf3`, in the draft pull request
@@ -24,7 +63,280 @@ two merges between: `0f161f8` (the fork's `deep-reasoning`, bringing the fork-on
 head `5e3317f`). `a3279be` is the branch's head and PR #2's; S1's own diff is `5e3317f..a3279be`. The `file:line`
 references in notes marked *(v2.2)* are `a3279be`'s.
 
-## Gate B: what to read
+**Revisions** (newest first; the Gate B reader approved the previous version, so each line says which sentences to
+stop trusting):
+- 2026-10-04 · v2.3 · read beside S1's Gate C stack, #10 to #16, and brought in line with the literate refactor and
+  the stack's top, `6a05b13`, on the Conductor's request, so that Gate C's reviewers read a design that names the
+  code as it now is. Gate B approved v2.2; nothing the refactor did changes what is stored or sent. Stop trusting:
+  the header's "as one pull request" and PR #2 as S1's open draft (now the stack; #2 is closed); decision B's
+  standalone request model and §3.1 item 3's (V-2); §4.2's `extra="allow"`, "anything else kept" and its
+  `initialize` branch (V-3, V-2); §4.3's `_children: dict[str, _Association]`, `_Association`, `_warned` and "set by
+  `_init`" (V-4, V-1, V-5); §4.4's first-table rows for `_init`'s `initialize` and load, and its v2 and v2.2 rows
+  and notes naming `_load_session`, `LoadSessionResponse` and E-4's set and helper (V-2, V-5, V-1); B7's and E-4's
+  v2.2 notes' names for the same (V-5, V-1); the test names and counts in §5.1's "Pinned by" lines, B8, B10, B12 and
+  §7 (V-7; the property table at `6a05b13` replaces them); §5.1 guarantee 9's "pinned by the fixture row" (pacing
+  and a missed wait point are unpinned, V-8); §8's "each cherry-pickable onto `main`", its draft PR onto `main` and
+  "whether the fixes fold", B14's reading of spec §4 layer 3, and §11 items 3 and 4's upstream PR (the stack is
+  internal and based on the fork's `deep-reasoning`; nothing goes to `main` or upstream); A.1's `SubagentState`,
+  `_SubagentInitializeRequest` and `initialize` docstring; A.2's `_Association`, `_merge` and `before_update`
+  docstring; A.3's warn-once members, `unstable_session_update`'s parameter type and docstring, and
+  `_load_session`; A.5's `LocalConversation.cancel_acp_session` docstring; A.7's list of S1's additions (the
+  builders). Moved: these revision lines, the build notes, where this file lives and the reading guide, from the end
+  of the Gate B section to above the Gate C section. Added: the header's v2.3 paragraphs ("Matches the code at
+  `6a05b13`", "Changed by the refactor"); the Gate C section; the section after it (the evidence at the refactored
+  head and on each level, the property table at `6a05b13`, the restored pins, what stays unpinned, the counts and
+  the size); the Gate B section's banner; v2.3 notes in decisions B and C, §3.1 items 3, 8 and 16, B7, B8, B10, B12,
+  B14, B16, B17, E-4, §4.1 to §4.4, §4.10, §5.1, §6, §7, §8, §9, §10 and §11, §11 item 16, and Appendix A's
+  preface. The Gate B section is otherwise as approved; its test names are `a3279be`'s.
+- 2026-10-03 · v2.2 · the fixes made on v2.1's rulings, at `a3279be`. Stop trusting: the Gate B section's
+  evidence, its size and its "Before Gate B: one fix" (now built; the runs at `0cfb6a2` are superseded by CI and the
+  live run at `a3279be`); B2's "Not built" (the profile fixture is built); B5's in-flight replayed entries and the
+  E-1 to E-4 bullets' present tense about the code (each is now built, its note says where); B14's "did not run in
+  CI" and B17's open guard runs; §5.1 guarantee 7's exception, the E-1 non-guarantee and the profile-fixture
+  non-guarantee; §11 items 8, 9, 11, 13 and 14. Added without changing earlier sentences: the header's v2.2
+  paragraph, §4.1's, §4.4's, §7.4's and §8's v2.2 notes, §7's new tests, and Appendix A.3's new members.
+- 2026-10-03 · v2.1 · reconciled with the as-built document (`as_built/s1-acp-subagent-sessions.md`, `17ab4d5`)
+  and its four uncovered edges ruled, at the Conductor's request. Stop trusting: §5.1 guarantee 7's "nothing
+  `session/load` replays is stored", which fails in one case until E-2's fix lands; B17's list of what was not
+  checked (the Cartographer ran most of it). Added without changing earlier sentences: §3.2's map to the as-built's
+  D-1 to D-13, the details it had that §3.2 lacked (B10, B12, B14, B17), and "Edges the build left open, ruled"
+  (E-1 to E-4, and D-1 against C1's Stop rule); the Gate B section's "Before Gate B" paragraph and its notes on the
+  guards and D1's goldens; decision C's and §4.3's notes on unannounced sessions; §5.1's new non-guarantees; §6's
+  measured interleaving; §11 items 13–15.
+- 2026-10-03 · v2 · brought in line with the build at `0cfb6a2`, after Proof Green. Stop trusting: the header's
+  branch point, and every "if S1 lands first" clause, here and in §4, §7, §8 and §9 (S2 landed first and S1 is
+  stacked on it, B1); decision H's and §2's "cancellable or active" (active only, B3); §4.3's `_warned` and its
+  replay sentence (B5, B7); §4.4's rows for `_start_acp_server`, `_init`'s load and root id, `session_update`, and
+  its "unchanged" `_finalize_successful_turn` (B1, B4, B7); §4.6's single home for the opt-in (B2); §4.7's
+  allowlist count and §4.9's file list (B2, B15); §4.10's serving paragraph, the order of the `--subagents` run and
+  "answering nothing more" (B1, B9, B10); §5 rule 7 (B3); §7's file names, test names and the route tests' mocked
+  service, and §7.4's assertions (B12, B13); §8's branch, commit contents and guard results (B1, B14); §3.1 item
+  16's size (B16); §11 items 1, 2 and 5 (resolved). Added without changing earlier sentences: this Gate B section;
+  §3.2; §5 rule 10 and §5.1 (what C1 and D5 may rely on); §6's note on timestamps; §11 items 8–12; Appendix A's new
+  members. §3.1 (v1's §3) keeps every item as written, each with a v2 note on whether it still holds; the Conductor
+  accepted them at design (spec, "Rulings at design, 2026-10-02" (3)). Every change is listed, with its reason, in
+  §3.2.
+- 2026-10-02 · v1 · first full-depth version, aligned before its first commit with S2's design (deep-reasoning
+  `design/s2` `9e32261`, `docs/design/s2-agent-surfaces.md`) on three shared pieces, at the Conductor's request:
+  one ordered emitter for events that arrive outside a turn (`ACPAgent._on_session_event`,
+  `LocalConversation._emit_event_from_any_thread`, S2 §4.3), one scripted test agent at
+  `tests/fixtures/acp/scripted_agent.py` (S2 Appendix C), and one route module, `acp_router.py` (S2 §4.7).
+  Whichever PR lands first creates each; the other uses it.
+
+**Build notes.** In this container `uv` is 0.8.17, which cannot parse the fork's `exclude-newer = "7 days"`
+(`pyproject.toml:7`); run every check in the fork with `uvx uv@latest` (0.12.22 works), for example
+`OPENHANDS_SUPPRESS_BANNER=1 uvx uv@latest run pytest tests/sdk/agent/test_acp_subagents.py`. The probes v1 cites
+ran in a scratch virtualenv with `agent-client-protocol` 0.12.1 and pyright 1.1.411, not in the fork's environment.
+
+**Where this file lives, and why nothing trips over it.** `docs/design/` on deep-reasoning's `design/s1` branch,
+not in the fork: the fork's branches carry only code upstream would accept, and upstream keeps PR-only design
+notes in `.pr/`, which its own workflow deletes. deep-reasoning has no docs site, no package and no test runner
+on this branch; on D1's branch pytest is pointed at `tests/` only and the sdist excludes `docs/` (D1 §8.5), so this
+file is never collected, built or shipped. The PR split leaves it behind. *(v2.3: the split made seven pull requests,
+#10 to #16, and neither this file nor the as-built document, `as_built/s1-acp-subagent-sessions.md` on this same
+branch, is in any of them.)*
+
+**Reading guide.** Gate B: the Gate B section (*v2.3:* below the two Gate C sections). C1's designer: §5 and §5.1 (what
+is stored, how to read it, and what C1 may rely on) and §4.5. S2's designer: §9 (every place S1 and S2 touch the same
+code). D5's designer: §5.1, §4.6 (the opt-in), §4.10 (the scripted agent that replays D1's recordings) and §7.4 (the
+live tier). The Implementer, the Cartographer and the Refactorer read everything; §3.2 is what the build changed, and
+Appendix A is the signature reference, every block valid, ruff-formatted Python or TypeScript, plus the scripted agent's
+command line. *(v2.3)* Gate C's reviewers start at the Gate C section, next: which PR holds what, its lines, and which
+sections to read beside it. The section after it says what changed since Gate B and which test carries each property at
+`6a05b13`; §1 to §11 and Appendix A name the code as it is there. The Gate B section, after those two, is history.
+
+## Gate C: reading beside the PRs (v2.3)
+
+The code is read as a stack of seven semantic PRs, tests included; this doc is the reference beside them. Where the
+two differ, that is a finding to raise, not a reading to choose. The stack is open in
+michaeltheologitis/software-agent-sdk as draft PRs, bottom-up, each based on the level below it (2026-10-04). They are
+internal drafts inside the fork: the bottom one, #10, is based on the fork's `deep-reasoning` at `9277e71`, which is
+S2's stack merged (`69c00ca`, whose tree is S2's `d938c90`) plus the fork's #17, the agent-swap test race fix. Nothing
+in the stack goes to the fork's `main` or upstream, so §8's draft onto `main` and its cherry-picks, and spec §4 layer
+3's draft PR, are steps not taken. Each level was cut by idea from S1's net diff `d938c90...2675399` as one commit; the
+race fix and the three restored pins were added on #10 and #16 and merged upward, so the top, #16, has `6a05b13`'s
+tree exactly. Every level's checks are green: 27 each, with upstream's "Validate PR description" skipped on a draft.
+This doc and the as-built document (`as_built/s1-acp-subagent-sessions.md`, r3, the Cartographer's) are both on
+deep-reasoning's `design/s1`, and neither is in any PR. Review comments and their status are in the Conductor's
+[review ledger](https://app.notion.com/p/3ef62fb222378141a6f9e98a358c04bc).
+
+**v1's five commits are seven levels** (§8). Commit 1 is #10 and commit 2 is #11. Commit 3 is cut three ways: the
+bridge (#12), the opt-in on settings and profiles (#13), and the transcript player (#16). Commit 4 is #14, with the
+live stop test and `--cancel-wait`, which v1 had put in commit 3. Commit 5 is #15. The transcript player sits at the
+top so that it can be dropped alone: only our projects replay recordings, but four upstream-shaped tests depend on it,
+one of them the only test that reconnects a real second connection. It needs #10 to #12 and nothing from #13 to #15.
+
+| Level | PR | What it holds | Lines added (removed) | Read beside | Reading |
+|---|---|---|---|---|---|
+| 1 | [#10](https://github.com/michaeltheologitis/software-agent-sdk/pull/10) carry ACP's unstable sub-agent updates past agent-client-protocol 0.12.1 | `acp_unstable.py`: the four models, `SubagentClientSideConnection`, `route_unstable_updates`. Four wire builders in the scripted agent (`text`, `subagent`, `said`, `message`). `test_acp_unstable.py`, 7 cases, P7's pin among them | 456: 222 of code, 234 of tests (28 the builders). GitHub shows 462 (4): #10's diff also holds `2f7642c`, the race fix in S2's `test_local_conversation_acp_config_option.py`, the same change `9277e71` carries | Decision B, §3.1 item 3, §4.2, §7.1, §8 ("When the library catches up"), §11 item 3, A.1, A.7 (the four builders); *v2.3:* `bf57a3a` (V-2), `6b089e5` (V-3), the shim row of the property table. As-built r3: §4.1, §7.2 (`test_acp_unstable.py`), §2 V-2 and V-3, §8 (P7) | 1.5 h |
+| 2 | [#11](https://github.com/michaeltheologitis/software-agent-sdk/pull/11) add sub-agent session events; keep child tool calls apart from the root's | `event/acp_subagent.py` (the three kinds), `ACPToolCallEvent`'s two fields, the exports, the visualizer's entries, the resume transcript's skip, `RemoteEventsList`'s key, the weak-schema allowlist; the event, dedup and resume-transcript tests | 356 (8): 232 of code and allowlist (18 the allowlist), 124 of tests | Decisions D, E and F, §3.1 items 1, 2, 4, 12 and 15, §4.5, §4.7 ("The OpenAPI ratchet"), §4.8, §5 rules 1 to 9, §5.1, A.4, B15. As-built r3: §3 "Events", §5, §7.2 (the event, dedup and resume-transcript rows), §8 (`test_root_tool_call_event_is_stored_as_before`, P3, P3b) | 1.2 h |
+| 3 | [#12](https://github.com/michaeltheologitis/software-agent-sdk/pull/12) route and persist ACP sub-agent sessions in the bridge (opt-in `acp_subagents`) | `acp_subagents.py`; `acp_agent.py`'s hunks (the opt-in field, the connection swap, the diversion, child tool calls, the three close-outs, the seed, `replaying()`, the turn-end flush, the trace); `--subagents` and seven more builders in the scripted agent; `tests/conftest.py`'s helpers; `test_acp_subagents.py`'s 33 bridge units and 5 conversation cases, the schema test in `test_acp_router.py`, the live tree test; S1's line in `acp-live-tests` | 1,657 (48): 553 of code and CI (the router 299, the bridge +252 −43, the job 2), 1,104 of tests (141 the scripted agent, 119 the live tree test) | §1.1, §1.2, decisions A, C, G, H, J and K (`--subagents`), §2, §3.1 items 2, 6, 7 and 14, §4.3, §4.4, §4.6 (the agent's field), §4.10 (`--subagents`), §5 rule 10, §6, §7.2, §7.4 (the tree test), §11 items 6, 7 and 15, A.2, A.3 (all but the cancel members), A.7 (`--subagents`); B3, B4, B5, B7, B9, B11, B12, B13, E-1, E-2, E-4 and D-1; *v2.3:* `a682f6a` (V-4), `73e47f8` (V-1), `fec0b95` (V-5), `d03ec2c` and `2fb47b2` (V-6), V-9. As-built r3: §1, §2 V-1, V-4, V-5, V-6, V-9 and its paragraph on r1's D-1, D-3, D-7 and D-11, §4.2 to §4.5, §7.2 (`test_acp_subagents.py`), §7.3, §7.5 (the tree test), §8 (P1, P8, P10) | 5.5 h |
+| 4 | [#13](https://github.com/michaeltheologitis/software-agent-sdk/pull/13) carry the `acp_subagents` opt-in through agent settings and profiles | `ACPAgentSettings.acp_subagents` and `create_agent()`'s forwarding; `ACPAgentProfile.acp_subagents`, the resolver's and the seed's lines; the v7 settings and v2 profile baselines; the resolver tests | 97: 19 of code, 78 of tests (27 the baselines) | Decision A (its v2 note), §4.6, §5.1 guarantee 8, A.5 (the settings and profile fields), B2. As-built r3: §3 "The opt-in", §2's paragraph on r1's D-2, §6 (`Persisted settings`), §7.2 (the resolver row), §7.6, §8 (P2) | 20 min |
+| 5 | [#14](https://github.com/michaeltheologitis/software-agent-sdk/pull/14) cancel one ACP sub-agent session | The route and `CancelACPSessionResponse` in `acp_router.py`, `EventService.cancel_acp_session`, `LocalConversation.cancel_acp_session`, `ACPAgent.cancel_acp_session`, `_acancel_acp_session` and the 2 s bound; `--cancel-wait`; the five cancel cases in `test_acp_subagents.py`, the route's five, the service's two, the cross test, the live stop test | 500 (9): 138 of code, 362 of tests (24 the scripted agent, 70 the live stop test) | Decisions H and I, §2 ("Stop on one child"), §3.1 items 5, 9 and 14, §4.7, §4.10 (`child-b`, `--cancel-wait`), §5 rule 6, §5.1 guarantee 6, §6 ("Cancel"), §7.3 (the route, service and cross rows), §7.4 (the stop test), A.3 (`cancel_acp_session`, `_acancel_acp_session`, `_ACP_SUBAGENT_CANCEL_TIMEOUT`), A.5 (the conversation, service and route), B6, B13, E-3; *v2.3:* `5b17efd`, V-8 (the route's 200 is reached by the cross test alone). As-built r3: §3 "Python calls" and "REST", §4.5 (E-3), §7.2 (the route, service and cross rows), §7.3 (the cancel rows), §7.5 (the stop test), §2 V-8, §8 (P9, the merged cancel tests) | 1.7 h |
+| 6 | [#15](https://github.com/michaeltheologitis/software-agent-sdk/pull/15) read ACP sub-agent events and cancel one sub-agent session (TypeScript client) | The three event types and their guards, `ACPToolCallEvent`'s two fields, `cancelAcpSession` twice, `CancelAcpSessionResponse`, `ACP_SETTINGS_KEYS`, `ACPAgentProfile.acp_subagents?`, the exports, the endpoint-audit entry and the type budget; the client's 5 tests | 252 (2): 139 of code and configuration (27 the audit and the budget), 113 of tests | §3.1 item 10, §4.9, §5 rule 6, §11 item 4, A.6, B2 (the profile field), B15. As-built r3: §3 "TypeScript", §2's paragraph on r1's D-12, §7.2 (the TypeScript row), §8 (the TypeScript row) | 50 min |
+| 7 | [#16](https://github.com/michaeltheologitis/software-agent-sdk/pull/16) replay recorded ACP transcripts through the scripted agent | The transcript player (`_Wait` to `play_transcript`, `--transcript`, `--transcript-interval-ms`, `--wait-timeout`, `run()`'s branch); `test_scripted_transcript_replays_a_recording[full, outgoing-only]`, the reconnect ordering test, and two restored pins: the opt-off test's `[--transcript]` case (P4) and `test_transcript_exits_non_zero_when_a_wait_point_outlasts_the_wait_timeout` (P6′) | 423 (7): all tests, 253 of them the scripted agent | Decision K, §3.1 item 8, §4.10 (the transcript player), §5 rule 10, §5.1 guarantee 9, §10 item 6, §11 items 12 and 15, A.7 (`plan_transcript` to `play_transcript`), B8, B10, B11, the Gate B section's paragraph on D1's golden recordings; *v2.3:* `6dcde3e`, the unpinned list in the next section. As-built r3: §2's paragraph on r1's D-6 and D-8, §2 V-8, §3 "The scripted agent", §7.3 (the transcript and reconnect rows), §7.4, §8 (P4, P5, P6, P6′) | 1.4 h |
+
+Lines are each PR's own diff against its base's head (`git diff --numstat`, two dots, which equals GitHub's view for
+#11 to #16), split into tests (`tests/`, the scripted agent and the persisted baselines with them, and the
+TypeScript `__tests__/`) and the rest. They sum to 3,741 added and 74 removed, about 12.5 h at ≈300 lines an hour,
+against the spec's ≈5 h. The net diff `9277e71..6a05b13` is 3,730 and 63, because higher levels rewrite 11 lines that
+lower levels add (an import, docstrings, a test's signature). Code, CI and client configuration are 1,302 lines at
+every count; tests are 2,428, the refactor's 2,388 plus 40 of restored pins. The reading column is the lines added
+at ≈300 an hour; the sections beside each level add to it.
+
+**The sections to read beside each PR** were listed by the PR Splitter against v2.2 and as-built r2, and are in each
+PR's body in that form. v2.3 renumbers nothing here (it adds this section and the next beside the numbered ones),
+so those references hold. The entries marked *v2.3* add the refactor's commits, and the sections that describe a
+level's code but were missing from its list are added without a mark (§1.1, §1.2, §3.1's items, §11's items, §2's
+"Stop on one child", §6's "Cancel" and §5.1's guarantees). As-built r3 renumbered r2's, so this table gives r3's
+numbers, which r4 keeps: r2's §2.1 to §2.5 are r3's §2 (V-1 to V-10, then one paragraph on r1's D-1 to D-13); r2's
+§7.2 (E5 through a conversation), §7.3 (D1's golden recordings) and §7.4 (the live tier) are r3's §7.3, §7.4 and
+§7.5; r2's §7.5 ("Shim", "Events", "Consumers", "Route", "Service", "TypeScript") is r3's §7.2, one row per test file;
+and r3's §8, what the refactor took out of the tests, is new.
+
+**Three places to read with care.**
+
+- **#12 is large, and was kept whole**: 1,657 lines added, about 5.5 h, 44% of the stack. Its 551 lines of code are
+  one mechanism: every update passes the bridge's diversion (§4.4), and every child event leaves through the
+  conversation's one emitter (decision G, §6). A level for reconnect handling, or for child tool calls, alone would
+  need intermediate code that nobody reviews, and would take the end-to-end tests away from the claim they prove (the
+  PR's notes). Of its 1,104 lines of tests, about 460 feed the bridge wire updates directly; the rest drive a real
+  `LocalConversation` against the scripted agent, one real agent-server run whose events validate against the
+  published schema, and the live tree test; 141 are the scripted agent's `--subagents` run. Read §4.3 with
+  `acp_subagents.py`, then §4.4 with `acp_agent.py`'s hunks, then `test_acp_subagents.py` from the top.
+- **The cancel grant is checked in #12 and used in #14.** `check_cancel` and its two errors sit in #12, whose tests
+  pin the grant (an announcement grants it, a replay never does, a new connection withdraws it); the call that uses
+  them is #14's.
+- **Files that arrive in parts.** The scripted agent grows over four levels: four builders in #10; seven more and
+  `--subagents` in #12, where `child-b` always completes; `--cancel-wait` in #14; the transcript player in #16.
+  `test_acp_subagents.py` grows over three (#12, #14, and #16, which also adds the opt-off test's `[--transcript]`
+  case), the live file over two (the tree test in #12, the stop test in #14), and `test_acp_router.py`'s additions
+  over two (the schema test in #12, the route's cases in #14). And #10 holds the race fix, 6 lines added and 4 removed in S2's
+  test file, which have nothing to do with S1.
+
+**For any PR:** its tests, file by file, are §7, with its v2.3 notes; which test carries which property is the next
+section's table, at `6a05b13`; what changed since Gate B, each change with its commit, is the header's "Changed by the
+refactor".
+
+| Module | Section |
+|---|---|
+| `sdk/agent/acp_unstable.py` | §4.2, decision B, A.1 |
+| `sdk/agent/acp_subagents.py` | §4.3, A.2 |
+| `sdk/agent/acp_agent.py` | §4.4 and §6; decisions A, C and G to J; A.3 |
+| `sdk/event/acp_subagent.py`, `acp_tool_call.py`, `__init__.py` | §4.5, §5, A.4 |
+| `sdk/conversation/impl/remote_conversation.py`, `sdk/event/resume_transcript.py`, `sdk/conversation/visualizer/default.py` | §4.8 |
+| `sdk/settings/model.py`, `sdk/profiles/` | §4.6, A.5 |
+| `sdk/conversation/impl/local_conversation.py`, `agent_server/event_service.py`, `agent_server/acp_router.py` | §4.7, A.5 |
+| `clients/typescript/` | §4.9, A.6 |
+| `tests/fixtures/acp/scripted_agent.py` | §4.10, A.7 |
+| the weak-schema allowlist, `tests.yml`, the client's audit and type budget | §4.7, B15, §7.3 |
+
+## After Gate B: the refactor and the stack (v2.3)
+
+What changed since Gate B, commit by commit, is the header's "Changed by the refactor"; each change is folded into
+the sections it names, with a *(v2.3)* note. This section is the evidence, the tests and the size.
+
+**The evidence.**
+
+- **At `2675399`, the refactored head** (PR #2, now closed): CI's 28 checks, 27 green and "Validate PR description"
+  skipped; [Run tests 37170487023](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37170487023):
+  `sdk-tests` 6,749 passed, `agent-server-tests` 2,425, `cross-tests` 497, `acp-live-tests` 25 passed and 4 skipped,
+  S1's two live tests among the skipped. The live tier, deep-reasoning's `fork-live.yml`,
+  [run 37171079147](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37171079147) with `sdk_ref`
+  `2675399`: 2 of 2 passed in 48.26 s, against dr-acp on gpt-6-luna. The exported OpenAPI is byte-identical at
+  `a3279be` and `2675399`, and the OpenAPI ratchet passes with 65 allowlisted locations (as-built r3 §6, §7).
+- **On the stack**, each level's checks, 27 green each; the `Run tests` runs are #10
+  [37174876576](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37174876576), #11
+  [37175595431](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37175595431), #12
+  [37175597225](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37175597225), #13
+  [37175598478](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37175598478), #14
+  [37175599887](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37175599887), #15
+  [37175601521](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37175601521) and #16
+  [37175602976](https://github.com/michaeltheologitis/software-agent-sdk/actions/runs/37175602976). Each level runs
+  the suites its own diff touches (upstream's change detection), so a level that touches no agent-server file shows
+  `agent-server-tests` green with its pytest step skipped. At #12, `agent-server-tests` passed 2,418 and `sdk-tests`
+  6,739; at #14, 2,425 and 6,747; at the top, #16, `sdk-tests` passed 6,752, `2675399`'s 6,749 plus the three
+  restored cases, and `cross-tests` 497. The top differs from `2675399` in three test files, not the live file, so
+  the live run at `2675399` stands for it.
+
+**Which tests carry which property, at `6a05b13`.** Each test's name states the property it pins. Python files are in
+the SDK fork under `tests/sdk/agent/` unless a path is given; TypeScript ones under `clients/typescript/src/__tests__/`;
+`[…]` is a parametrization; the level that adds each test is in brackets. *Gone* names a Gate B test that no longer
+exists and where its property went (as-built r3 §8); *restored* marks the three pins added back on the stack.
+
+| Property | Tests |
+|---|---|
+| **E5 · The stored events rebuild the agent's tree** | `test_acp_subagents.py::test_scripted_run_stores_the_scripted_tree` [#12] (the scripted run through a real `LocalConversation`; its tree reader places a child by its spawning cell only, so §5 rule 2's fallbacks are exercised by no test, V-9), `::test_scripted_transcript_replays_a_recording[full, outgoing-only]` [#16]; the routing units `::test_announcement_stores_parent_cell_and_cancel_grant`, `::test_parent_tool_call_id_survives_meta_without_it`, `::test_child_is_never_reparented_nor_its_own_parent`, `::test_child_tool_calls_are_keyed_by_session_and_tool_call_id`, `::test_omitted_field_keeps_value_and_null_clears_it[10 patches]`, `::test_unannounced_session_follows_the_root_path_with_one_warning`, `::test_unstable_updates_on_an_unannounced_session_stay_under_that_session` [#12]; **live:** `test_acp_subagents_live.py::test_live_agent_tree_is_well_formed` [#12] |
+| **E5 · No child text reaches the root's answer** | `test_acp_subagents.py::test_child_text_never_reaches_the_root_answer` [#12]; **live:** the tree test. *Gone:* `test_scripted_run_keeps_child_text_out_of_the_answer` (`a910ac9`) |
+| **E5 · The stored events break no client** | `tests/agent_server/test_acp_router.py::test_stored_sub_agent_events_validate_against_the_event_schema` [#12]; `tests/sdk/event/test_acp_subagent_events.py::test_subagent_events_round_trip_through_json[4 events]` [#11]; `event-types.test.ts › ACP sub-agent session events › each guard recognises only its own kind` [#15]. *Gone:* the TypeScript `sub-agent event shapes accept stored events` (`a910ac9`) |
+| **Old conversations load unchanged, and with the opt-in off nothing changes** | `tests/sdk/event/test_acp_subagent_events.py::test_legacy_acp_tool_call_event_loads_without_session_fields` [#11] (and so the model's `meta` default, P3b); `test_acp_subagents.py::test_subagents_off_stores_only_root_work_through_the_stock_connection[--subagents]` [#12], `[--transcript]` [#16] (the stock connection class, `initialize` equal to the library's own serialization, only the root's cell, no `acp_session_id`, no new kinds); upstream's suites and its conformance probe. *Gone:* `test_subagents_off_uses_the_stock_connection_and_initialize` and `test_scripted_run_with_subagents_off_stores_only_root_work[…]` (merged into the test above, `a910ac9`); `test_initialize_without_subagent_capabilities_is_the_library_call` (cut with its branch, `bf57a3a`); `test_root_tool_call_event_is_stored_as_before` (`a910ac9`), so the bridge leaving a root call's `meta` unset is unpinned (P3; the cut test built the event itself, so it never pinned that) |
+| **A child's own text and reasoning are stored per segment, in order; directed messages whole** | `test_acp_subagents.py::test_child_text_is_stored_per_segment_in_transcript_order`, `::test_usage_never_splits_a_text_segment`, `::test_chunked_message_is_stored_whole_at_the_next_boundary`, `::test_message_upsert_replaces_content_and_keeps_participants` [#12]; *restored:* `test_acp_unstable.py::test_session_message_with_a_non_text_block_reaches_the_callback_whole` [#10] (P7) |
+| **A child's cost is on its association and never added** | `test_acp_subagents.py::test_child_cost_is_stored_on_its_association_when_it_changes` (renamed from `…_is_on_its_association_and_never_booked_to_the_conversation`, its booking assertion left to the next test, `ca39def`), `::test_scripted_run_books_only_the_roots_cost`, `::test_child_usage_leaves_root_usage_sync_and_context_window_alone` [#12]; **live:** the tree test |
+| **Child traffic after the parent's turn is stored, and every child event takes one ordered path** | `test_acp_subagents.py::test_child_traffic_between_turns_reaches_the_emitter_in_order`, `::test_child_events_go_to_the_session_emitter_and_root_events_to_the_turn`, `::test_child_events_without_an_emitter_are_dropped_with_a_debug_line`, `::test_turn_end_force_completes_only_root_tool_calls`, `::test_aborted_turn_fails_child_tool_calls_with_their_session`, `::test_child_call_open_across_aborted_turns_is_failed_once_and_the_agents_report_wins` [#12] |
+| **Cancel one child** | `test_acp_subagents.py::test_cancel_acp_session_reaches_the_child_without_waiting_for_the_state_lock` (merged from `…_reaches_the_child_and_its_cancelled_state_is_stored` and `…_does_not_wait_for_the_state_lock`, `a910ac9`), `::test_cancel_acp_session_refuses_a_child_without_a_grant`, `::test_cancel_acp_session_refuses_unknown_and_root_sessions`, `::test_cancel_acp_session_without_a_live_connection_is_refused`, `::test_cancel_acp_session_for_an_idle_child_that_keeps_its_grant_is_sent` [#14]; the route on a real agent-server, `tests/agent_server/test_acp_router.py::test_a_cancel_for_an_unknown_conversation_is_not_found`, `::test_a_cancel_for_an_unknown_session_is_not_found`, `::test_a_cancel_for_a_child_without_a_grant_is_a_conflict`, `::test_a_cancel_on_a_conversation_that_is_not_acp_is_a_bad_request`, `::test_a_cancel_the_agent_does_not_take_in_time_times_out` [#14]; `tests/agent_server/test_event_service.py::test_cancel_acp_session_runs_off_the_event_loop` (now module functions, and it pins that the loop keeps running while the cancel blocks, `5b17efd`), `::test_cancel_acp_session_on_an_inactive_service_is_refused` [#14]; `tests/cross/test_remote_conversation_live_server.py::test_acp_subagent_sessions_over_live_server` [#14], the route's only test of its 200 and body (P9); `api-clients.test.ts › ACP sub-agent sessions › …` (3) [#15]; **live:** `test_acp_subagents_live.py::test_live_agent_stops_one_subagent_and_its_branch` [#14]. *Gone:* the route's `test_a_cancel_reaches_the_child_and_its_cancelled_state_is_stored` (`a910ac9`) |
+| **After `session/load`, associations are kept and controls stay off until fresh state arrives** | `test_acp_subagents.py::test_replay_is_neither_stored_nor_grants_cancel`, `::test_new_connection_withdraws_cancel_and_unconfirms_state`, `::test_partial_patch_after_reconnect_keeps_the_stored_title` (both also pin that no snapshot keeps a stored event's `parent_id`, P1, V-4), `::test_replayed_child_calls_are_never_tracked_nor_failed_later` [#12]; `::test_a_reconnect_snapshot_is_later_than_the_childs_earlier_events` [#16], a second real connection, and the one test that catches `replaying()` leaving its flag set (P10) |
+| **The shim, and the tripwire that deletes it** | `test_acp_unstable.py::test_acp_library_rejects_subagent_update`, `::test_acp_library_has_no_subagents_capability` (the tripwires), `::test_initialize_puts_subagents_capability_on_the_wire` (the whole `initialize` the agent receives), `::test_unstable_updates_reach_the_callback_in_wire_order`, `::test_stable_updates_still_reach_the_library_router`, `::test_malformed_unstable_update_is_dropped_with_a_warning` [#10]; *restored:* `::test_session_message_with_a_non_text_block_reaches_the_callback_whole` [#10] (P7). *Gone:* `test_patch_fields_tell_omitted_from_null` (the merge table's `title-null` pins it, P8, `a910ac9`); `test_custom_state_is_kept_whole` (cut with `extra="allow"`, `6b089e5`; a custom state's name is the merge table's `state-custom`); `test_message_content_keeps_non_text_blocks_typed` (`a910ac9`, restored as P7's test); `test_initialize_without_subagent_capabilities_is_the_library_call` (above) |
+| **One opt-in per agent, off by default**, on the agent's settings and its agent profile | `tests/sdk/profiles/test_resolver.py::test_acp_profile_carries_the_subagents_opt_in_to_the_agent[False, True]` (it builds the agent, so it also pins `create_agent()`'s forwarding, P2), `::test_acp_seeded_profile_keeps_the_subagents_opt_in` [#13]; the v7 settings and v2 profile baselines, loaded by the `Persisted settings` guard and by `tests/cross/test_check_persisted_settings_compat.py::test_collect_fixture_cases_and_validate_current_repo_fixtures` [#13]; `acp-providers.test.ts › … › forwards the sub-agent opt-in` [#15]. *Gone:* `tests/sdk/test_settings.py::test_acp_create_agent_forwards_subagents` (`a910ac9`) |
+| **The other SDK consumers** (§4.8) | `tests/sdk/agent/test_acp_dedup_and_truncation.py::…::test_remote_events_merge_child_and_root_calls_separately`, `tests/sdk/event/test_resume_transcript.py::…::test_resume_transcript_skips_child_tool_calls`, `tests/sdk/event/test_acp_subagent_events.py::test_subagent_events_visualize_their_essentials[3 kinds]`, `::test_unconfirmed_state_is_shown_as_such` [#11] |
+| **The ordering C1 relies on** (§5 rule 10) | `test_acp_subagents.py::test_a_childs_stored_timestamps_never_decrease_in_log_order`, `::test_a_spawning_cells_started_event_precedes_its_whole_subtree` [#12], `::test_a_reconnect_snapshot_is_later_than_the_childs_earlier_events` [#16]; over REST, the cross test [#14] |
+| **The fixture C1 and D5 reuse** (§4.10) | `test_acp_subagents.py::test_scripted_transcript_replays_a_recording[full, outgoing-only]` [#16]; *restored:* `::test_subagents_off_stores_only_root_work_through_the_stock_connection[--transcript]` (P4: without `subagents` the player sends no other session's update) and `::test_transcript_exits_non_zero_when_a_wait_point_outlasts_the_wait_timeout` (P6′) [#16]; every E5 test runs `--subagents`. *Gone:* `test_transcript_interval_paces_the_replay` and `test_transcript_wait_point_that_is_never_reached_exits_non_zero` (`6dcde3e`) |
+
+**The three restored pins.** As-built r3 §8 found three properties whose only test the refactor had cut; each is pinned
+again, and each new test was mutation-checked by the Implementer (its report on the task row; not re-run here):
+
+- **P7**, `049ceb5` on #10: `test_session_message_with_a_non_text_block_reaches_the_callback_whole` sends a
+  `session_message` holding a text and an image block over the wire and needs both blocks, typed, at the callback.
+  Without that parse the shim drops such a message whole, its text included.
+- **P4**, `306731d` on #16: `test_subagents_off_stores_only_root_work_through_the_stock_connection[--transcript]` plays
+  a recording to a client that did not advertise `subagents`; a player that played every update would store the
+  child's tool call as root work.
+- **P6′**, `6a05b13` on #16: `test_transcript_exits_non_zero_when_a_wait_point_outlasts_the_wait_timeout` starts the
+  agent with `--wait-timeout 0.2`, never sends `initialize`, and needs a non-zero exit within 10 s.
+
+**What stays unpinned.** Three properties of the transcript player have no test:
+
+- **Pacing (P5).** `--transcript-interval-ms` sleeps before each update a transcript sends (B8, which C1 asked for),
+  and no test passes the flag. The cut test did not pin it either: at `a3279be`, with the flag ignored, it still
+  passed (as-built r3 §8).
+- **A missed wait point raising (P6).** `TranscriptPlayer.play` raises `TimeoutError` at a wait point the client never
+  reaches. If it returned instead, the script would still exit non-zero, through another error (as-built r3 §8), so
+  P6′'s test passes either way: it pins the exit, not its cause.
+- **The unstable half of the conformance rule.** Without `subagents` the player must also skip the three unstable
+  updates. No conversation can see whether it does: with the opt-in off the bridge uses the stock connection, whose
+  library router drops those updates whatever the player sends. P4's case pins the other half, that no update for
+  another session is sent.
+
+Also unpinned, at Gate B or since the refactor (as-built r3 §8, §10): the bridge leaving a root call's `meta` unset
+(P3); §5 rule 2's fallback placements (V-9); a child call's absence from the turn's trace (B4); and paths read but not
+run: a notification without `sessionId`, an emitter's exception swallowed per event, `flush_all`'s loop body, and
+`initialize` given other capabilities (V-2). Two properties have one test each: the route's 200 and its body, the
+cross test (P9); `replaying()` clearing its flag through a real connection, the reconnect test (P10).
+
+**Counts.** At `6a05b13` S1 adds **78** deterministic Python cases, **5** TypeScript cases and **2** live tests:
+`a3279be`'s 88, 6 and 2, less the refactor's cuts (88 → 75, 6 → 5), plus the three restored. The 78: 48 in
+`test_acp_subagents.py` (33 bridge units, 15 through a conversation), 7 in `test_acp_unstable.py`, 9 in
+`test_acp_subagent_events.py`, 6 in `test_acp_router.py`, 2 in `test_event_service.py`, 3 in `test_resolver.py`, and
+one each in the cross, dedup and resume-transcript files. By level: #10 7, #11 11, #12 39 and the live tree test, #13
+3, #14 13 and the live stop test, #15 the 5 TypeScript cases, #16 5.
+
+**Size.** S1's diff against the base each version was built on (`git diff --numstat`):
+
+| | `a3279be` (Gate B), against `5e3317f` | `2675399` (the refactor), against `d938c90` | `6a05b13` (the stack's top), against `9277e71` |
+|---|---|---|---|
+| Source: code, CI and client configuration | +1,394 −51 | +1,302 −54 | +1,302 −54 |
+| Tests, with the scripted agent and the baselines | +2,761 −5 | +2,388 −9 | +2,428 −9 |
+| **Total** | **+4,155 −56, 43 files; about 14 h** | **+3,690 −63, 43 files; about 12.3 h** | **+3,730 −63, 43 files; about 12.4 h** |
+
+Of the 1,302 lines of source, 1,143 are Python product code (`acp_agent.py` +294 −43, the router 299, the shim 222),
+112 TypeScript and 47 CI and client configuration; of the 2,428 of tests, 1,658 are deterministic Python tests, 188
+the live file, 442 the scripted agent, 113 TypeScript and 27 the baselines. The stack's seven levels add 3,741 between
+them, about 12.5 h at Gate C, against the spec's ≈1.5k lines and ≈5 h.
+
+## Gate B: what to read (approved at v2.2, kept as history)
+
+*(v2.3)* This section is Gate B's, approved at v2.2: its evidence, size and test names are `a3279be`'s, before the
+literate refactor. Gate C reads the two sections above; the property table at `6a05b13` replaces this one's. The
+revision lines, build notes, file location and reading guide that ended this section are above it now.
 
 **About 55 minutes, in this order.** The codebase stays closed. The Gate B set is this doc, S1's as-built document
 (`as_built/s1-acp-subagent-sessions.md`, the Cartographer's, on deep-reasoning's `as-built/s1` and on this branch) and the runs
@@ -133,60 +445,6 @@ native golden recordings (`c8d7fbb`) through `--transcript` into the bridge: 9 o
 states equal the recordings' (as-built §7.3; its own comparator, not D1's `testing.tree()`; costs not compared). §7
 maps every test file.
 
-**Revisions** (newest first; the Gate B reader approved the previous version, so each line says which sentences to
-stop trusting):
-- 2026-10-03 · v2.2 · the fixes made on v2.1's rulings, at `a3279be`. Stop trusting: the Gate B section's
-  evidence, its size and its "Before Gate B: one fix" (now built; the runs at `0cfb6a2` are superseded by CI and the
-  live run at `a3279be`); B2's "Not built" (the profile fixture is built); B5's in-flight replayed entries and the
-  E-1 to E-4 bullets' present tense about the code (each is now built, its note says where); B14's "did not run in
-  CI" and B17's open guard runs; §5.1 guarantee 7's exception, the E-1 non-guarantee and the profile-fixture
-  non-guarantee; §11 items 8, 9, 11, 13 and 14. Added without changing earlier sentences: the header's v2.2
-  paragraph, §4.1's, §4.4's, §7.4's and §8's v2.2 notes, §7's new tests, and Appendix A.3's new members.
-- 2026-10-03 · v2.1 · reconciled with the as-built document (`as_built/s1-acp-subagent-sessions.md`, `17ab4d5`)
-  and its four uncovered edges ruled, at the Conductor's request. Stop trusting: §5.1 guarantee 7's "nothing
-  `session/load` replays is stored", which fails in one case until E-2's fix lands; B17's list of what was not
-  checked (the Cartographer ran most of it). Added without changing earlier sentences: §3.2's map to the as-built's
-  D-1 to D-13, the details it had that §3.2 lacked (B10, B12, B14, B17), and "Edges the build left open, ruled"
-  (E-1 to E-4, and D-1 against C1's Stop rule); the Gate B section's "Before Gate B" paragraph and its notes on the
-  guards and D1's goldens; decision C's and §4.3's notes on unannounced sessions; §5.1's new non-guarantees; §6's
-  measured interleaving; §11 items 13–15.
-- 2026-10-03 · v2 · brought in line with the build at `0cfb6a2`, after Proof Green. Stop trusting: the header's
-  branch point, and every "if S1 lands first" clause, here and in §4, §7, §8 and §9 (S2 landed first and S1 is
-  stacked on it, B1); decision H's and §2's "cancellable or active" (active only, B3); §4.3's `_warned` and its
-  replay sentence (B5, B7); §4.4's rows for `_start_acp_server`, `_init`'s load and root id, `session_update`, and
-  its "unchanged" `_finalize_successful_turn` (B1, B4, B7); §4.6's single home for the opt-in (B2); §4.7's
-  allowlist count and §4.9's file list (B2, B15); §4.10's serving paragraph, the order of the `--subagents` run and
-  "answering nothing more" (B1, B9, B10); §5 rule 7 (B3); §7's file names, test names and the route tests' mocked
-  service, and §7.4's assertions (B12, B13); §8's branch, commit contents and guard results (B1, B14); §3.1 item
-  16's size (B16); §11 items 1, 2 and 5 (resolved). Added without changing earlier sentences: this Gate B section;
-  §3.2; §5 rule 10 and §5.1 (what C1 and D5 may rely on); §6's note on timestamps; §11 items 8–12; Appendix A's new
-  members. §3.1 (v1's §3) keeps every item as written, each with a v2 note on whether it still holds; the Conductor
-  accepted them at design (spec, "Rulings at design, 2026-10-02" (3)). Every change is listed, with its reason, in
-  §3.2.
-- 2026-10-02 · v1 · first full-depth version, aligned before its first commit with S2's design (deep-reasoning
-  `design/s2` `9e32261`, `docs/design/s2-agent-surfaces.md`) on three shared pieces, at the Conductor's request:
-  one ordered emitter for events that arrive outside a turn (`ACPAgent._on_session_event`,
-  `LocalConversation._emit_event_from_any_thread`, S2 §4.3), one scripted test agent at
-  `tests/fixtures/acp/scripted_agent.py` (S2 Appendix C), and one route module, `acp_router.py` (S2 §4.7).
-  Whichever PR lands first creates each; the other uses it.
-
-**Build notes.** In this container `uv` is 0.8.17, which cannot parse the fork's `exclude-newer = "7 days"`
-(`pyproject.toml:7`); run every check in the fork with `uvx uv@latest` (0.12.22 works), for example
-`OPENHANDS_SUPPRESS_BANNER=1 uvx uv@latest run pytest tests/sdk/agent/test_acp_subagents.py`. The probes v1 cites
-ran in a scratch virtualenv with `agent-client-protocol` 0.12.1 and pyright 1.1.411, not in the fork's environment.
-
-**Where this file lives, and why nothing trips over it.** `docs/design/` on deep-reasoning's `design/s1` branch,
-not in the fork: the fork's branches carry only code upstream would accept, and upstream keeps PR-only design
-notes in `.pr/`, which its own workflow deletes. deep-reasoning has no docs site, no package and no test runner
-on this branch; on D1's branch pytest is pointed at `tests/` only and the sdist excludes `docs/` (D1 §8.5), so this
-file is never collected, built or shipped. The PR split leaves it behind.
-
-**Reading guide.** Gate B: the section above. C1's designer: §5 and §5.1 (what is stored, how to read it, and what
-C1 may rely on) and §4.5. S2's designer: §9 (every place S1 and S2 touch the same code). D5's designer: §5.1, §4.6
-(the opt-in), §4.10 (the scripted agent that replays D1's recordings) and §7.4 (the live tier). The Implementer,
-the Cartographer and the Refactorer read everything; §3.2 is what the build changed, and Appendix A is the
-signature reference, every block valid, ruff-formatted Python or TypeScript, plus the scripted agent's command line.
-
 ---
 
 ## 1 · What S1 changes
@@ -259,8 +517,8 @@ bullets). These are the next layer down.
 | # | Decision | Why | Rejected |
 |---|---|---|---|
 | A | **One opt-in gates everything**: `ACPAgent.acp_subagents` / `ACPAgentSettings.acp_subagents`, default `False`. Off: the stock `ClientSideConnection`, the stock `initialize(protocol_version=1)` call, today's routing, and no new fields written. | Claude Code, Codex and Gemini run exactly as today while ACP's draft is unstable; every upstream test that patches `acp_agent.ClientSideConnection` or spies `ClientSideConnection.initialize` (the conformance probe, `test_acp_conformance.py`) keeps working untouched. *(v2, B2: the field is also on `ACPAgentProfile`, forwarded by the profile resolver and carried back by the seed, because Canvas starts conversations from the active agent profile.)* | Routing by session for every agent: a behaviour change for providers that never asked for it. |
-| B | **The shim is a `ClientSideConnection` subclass** that wraps its connection's handler and sends `initialize` with a standalone request model carrying `subagents`. It needs one targeted pyright suppression, because 0.12.1 marks the class `@final` (verified). | The fewest lines that keep every message in arrival order, keep the library's router for everything stable, and put the capability on the wire. | (1) Connection observers (`Connection(..., observers=)`, public): the router still raises and logs an exception per unstable update, and every incoming message is deep-copied. (2) Rewriting unstable updates into an extension method in the stdout filter: in order and public, but it hides a protocol message behind a fake one. (3) Re-implementing `ClientSideConnection` from `Connection` and `build_client_router`: duplicates ~250 library lines. (4) Subclassing `InitializeRequest` with a narrower field type: fails pyright's variable-override check (verified). |
-| C | **A session is a child iff it was announced** (a `subagent_update` on this connection, or a child recorded in this conversation's history). Traffic for any other non-root session follows today's root path, with one WARNING per session id. | The RFD makes announcement-before-traffic the agent's obligation; routing by announcement keeps every existing bridge test (which sends updates under arbitrary session ids) valid. | Treating every non-root id as a child: an unannounced id has no parent to place it under. *(v2.1, E-4: the root path is for stable updates, which reached the root before S1; the three unstable updates on such a session stay under its id, so a child announced there is "could not be placed".)* |
+| B | **The shim is a `ClientSideConnection` subclass** that wraps its connection's handler and sends `initialize` with a standalone request model carrying `subagents`. It needs one targeted pyright suppression, because 0.12.1 marks the class `@final` (verified). *(v2.3, V-2, `bf57a3a`: the request model is no longer standalone. `_SubagentInitializeRequest` subclasses `InitializeRequest` and declares `client_capabilities` as `SerializeAsAny[ClientCapabilities] \| None`, a wider type than the parent's, so pyright accepts it and serialization keeps the subclass's `subagents`; and the connection's `initialize` always advertises `subagents` unless given other capabilities, so the bridge makes one call for both connection classes. The wire is unchanged, as-built r3 §2.)* | The fewest lines that keep every message in arrival order, keep the library's router for everything stable, and put the capability on the wire. | (1) Connection observers (`Connection(..., observers=)`, public): the router still raises and logs an exception per unstable update, and every incoming message is deep-copied. (2) Rewriting unstable updates into an extension method in the stdout filter: in order and public, but it hides a protocol message behind a fake one. (3) Re-implementing `ClientSideConnection` from `Connection` and `build_client_router`: duplicates ~250 library lines. (4) Subclassing `InitializeRequest` with a narrower field type: fails pyright's variable-override check (verified). |
+| C | **A session is a child iff it was announced** (a `subagent_update` on this connection, or a child recorded in this conversation's history). Traffic for any other non-root session follows today's root path, with one WARNING per session id. | The RFD makes announcement-before-traffic the agent's obligation; routing by announcement keeps every existing bridge test (which sends updates under arbitrary session ids) valid. | Treating every non-root id as a child: an unannounced id has no parent to place it under. *(v2.1, E-4: the root path is for stable updates, which reached the root before S1; the three unstable updates on such a session stay under its id, so a child announced there is "could not be placed".)* *(v2.3, V-1, `73e47f8`: both paths warn through one helper, `_warn_unannounced(session_id, routing)`, once per session per path, so a session that sends stable and unstable updates draws two WARNINGs.)* |
 | D | **One persisted snapshot per association change**: `ACPSubagentEvent` carries the whole merged association (the RFD's patch rules already applied). | Consumers keep the latest per session; nobody re-implements "omitted keeps, `null` clears, an object replaces" in TypeScript. | Persisting raw patches. |
 | E | **The root is `None` in persisted routing fields** (`acp_session_id`, `parent_session_id`); message participants are stored verbatim. | Mirrors the spec's "`acp_session_id` absent = root"; survives the bridge falling back to a fresh ACP session after a failed `session/load`, when the root's id changes but its children stay under the root. | Storing the root's ACP id everywhere: a fallback session would orphan every earlier child. |
 | F | **A child's own streamed text is persisted per segment**, as a third event kind, `ACPSessionTextEvent` (a divergence, §3.1 item 1; accepted at design, v2). | D1 sends each child's reasoning and its Stop acknowledgement as `agent_thought_chunk` on the child's session; the RFD models a child as a full transcript. Without it, both are dropped. | Dropping child text (spec reading); merging it into the root (today's bug). |
@@ -378,7 +636,10 @@ own interfaces", approved by Michael ('commit', 'yes'). Each item's v2 note says
    verified), so the class line carries `# pyright: ignore[reportGeneralTypeIssues]` with a one-line reason.
    Subclassing `InitializeRequest` with the capability subclass also fails (`reportIncompatibleVariableOverride`,
    verified), so the request model is a small standalone model. Both verified to put `subagents` on the wire.
-   *(v2: holds; `acp_unstable.py:143–157`, and pre-commit's pyright passes with that one suppression.)*
+   *(v2: holds; `acp_unstable.py:143–157`, and pre-commit's pyright passes with that one suppression.)* *(v2.3, V-2:
+   the suppression holds, `acp_unstable.py:140`; the request model is now a subclass of `InitializeRequest` after
+   all, widening `client_capabilities` to `SerializeAsAny[ClientCapabilities] | None` rather than narrowing it,
+   which pyright accepts, `:129–134`.)*
 4. **`ACPToolCallEvent.acp_session_id` and `meta` are written only with the opt-in on.** The spec says the event
    gains them; populating `meta` for every agent would change Claude Code's stored events (its adapter puts tool
    output in `_meta`), against decision A. *(v2: holds; with the opt-in off both are `None`, so the stored dump
@@ -399,7 +660,8 @@ own interfaces", approved by Michael ('commit', 'yes'). Each item's v2 note says
 8. **The generic fixture is S2's scripted test agent** (`tests/fixtures/acp/scripted_agent.py`) with S1's flags,
    one of which replays JSONL transcripts in D1's recording format (§4.10). Canvas (C1, C2) and D5 run it by path
    from a checkout of the SDK fork at the pinned tag. *(v2: holds; S2 created the script, B1, and S1 added one
-   more flag, `--transcript-interval-ms`, B8.)*
+   more flag, `--transcript-interval-ms`, B8.)* *(v2.3: and eleven wire builders its tests share, V-6; at Gate C the
+   transcript player is its own level, #16, at the top of the stack.)*
 9. **The cancel route lives in S2's new `acp_router.py`**, on its `conversation_acp_router` (prefix
    `/conversations/{conversation_id}/acp`), not in `conversation_router.py`. *(v2: holds; S2 created the
    module, B1.)*
@@ -436,7 +698,8 @@ own interfaces", approved by Michael ('commit', 'yes'). Each item's v2 note says
 16. **Size:** about 1.8k lines with tests, not the spec's 1.5k: the third kind (+60), the fixture's sub-agent and
     transcript modes (+180), the extra consumers (+60), the TS hand-written types (+60). If S1 lands before S2,
     it also carries the shared emitter and the fixture's skeleton (about +120 more), which S2 then does not.
-    *(v2: superseded by B16: 4,030 lines added; S2 carried the shared pieces.)*
+    *(v2: superseded by B16: 4,030 lines added; S2 carried the shared pieces.)* *(v2.3: 3,730 at `6a05b13`, after the
+    refactor; the section after the Gate C section.)*
 
 ### 3.2 Changed by the build (v2)
 
@@ -452,6 +715,9 @@ B15, D-13 B16, and its §2.5 rows are B6, B7 and §4.2's note. Its §4.5 edges a
 (E-1 to E-4).
 
 *(v2.2)* The rulings are built, at `a3279be`: each E-item and B2, B5, B14, B16 and B17 carry a note saying where.
+
+*(v2.3)* The literate refactor changed the names some of these entries give (the header's "Changed by the
+refactor"); B7, B8, B10, B12, B14, B16, B17 and E-4 carry a note. Behaviour is as these entries state it.
 
 **Where S1 sits**
 
@@ -544,12 +810,19 @@ like the root's, and only the emission knows about the replay. *Pinned by:*
   `_merge`, `_snapshot`, `_message`, `_message_event`, `_flush`, `_text_of` and the module's `_parent_tool_call_id`.
   `LocalConversation.cancel_acp_session` and `ACPAgent.cancel_acp_session` land in commit 3, not 4 (§8). *Why:* none
   recorded; this design's reading: the Code Guide's three levels of indentation, in `session_update` and `_init`.
+  *(v2.3: `_load_session` is gone; the bridge's context manager `replaying(root_session_id)` sets the root's id and
+  `replaying` around upstream's own `conn.load_session(...)` call (`acp_agent.py:1648–1662`, `:3602`; V-5,
+  `fec0b95`). The warn-once set is `_warned_unannounced: set[tuple[str, str]]` (`:1455`), behind one helper,
+  `_warn_unannounced(session_id, routing)` (`:1678`; V-1, `73e47f8`). The router's `_merge` takes the child's id, and
+  `_snapshot` builds each stored event from the held one (V-4). At Gate C the cancel methods are in #14, the route's
+  level, and the grant check they call is in #12.)*
 
 **The fixture** (§4.10, A.7)
 
 - **B8. `--transcript-interval-ms MS`.** A sleep of `MS` before each `session/update` a transcript sends (default
   0); `TranscriptPlayer` takes it as `interval_s`. *Why:* C1 §9.1 item 2, so E6's fan-out arrives at 60 events/s
-  (16 ms) instead of in one burst. *Pinned by:* `test_transcript_interval_paces_the_replay`.
+  (16 ms) instead of in one burst. *Pinned by:* `test_transcript_interval_paces_the_replay`. *(v2.3: cut in
+  `6dcde3e`; pacing is unpinned (P5), and the cut test did not catch an ignored flag either, as-built r3 §8.)*
 - **B9. The `--subagents` run, as built.** Three differences from v1's list, none with a recorded reason:
   `child-a`'s thought arrives as two chunks (`Reading `, `part A.`) and is stored as one segment; the grandchild is
   announced, answers and turns idle while `cell-a1` is open, and `cell-a1` completes after it; and the root's run
@@ -564,7 +837,9 @@ like the root's, and only the emission knows about the replay. *Pinned by:*
   request would hold the bridge until its own timeout, and a transcript the player cannot read must fail loudly.
   *(v2.1)* All nine of D1's native golden recordings hold only the three shapes the player infers (as-built D-8).
   *Pinned by:* `test_transcript_wait_point_that_is_never_reached_exits_non_zero` pins the wait timeout; these edges
-  are unpinned.
+  are unpinned. *(v2.3: that test was cut in `6dcde3e` and the wait timeout pinned again on #16 (`6a05b13`) by
+  `test_transcript_exits_non_zero_when_a_wait_point_outlasts_the_wait_timeout`, P6′; that the timeout raises (P6),
+  and these edges, are unpinned.)*
 
 **How the tests prove it** (§7)
 
@@ -606,7 +881,8 @@ like the root's, and only the emission knows about the replay. *Pinned by:*
 
   Counts: 84 deterministic Python cases, 6 TypeScript cases, 2 live. *Why:* none recorded; this design's reading:
   each change tests through the real boundary (a socket, a server, a conversation) where v1 planned a patch or a
-  mock, as the Code Guide prefers.
+  mock, as the Code Guide prefers. *(v2.3: 88 deterministic Python cases at `a3279be`; 75 after the refactor and 78
+  at `6a05b13`, with 5 TypeScript and 2 live; the property table at `6a05b13` gives each test's name now.)*
 - **B13. The live tier, as built** (§7.4, §11 item 2). The file, marker, variables and two test names are v1's.
   `test_live_agent_tree_is_well_formed` asserts that at least one child has a parent other than the root; that
   every child's parent is the root or a known child; that every `parent_tool_call_id` names a stored call of its
@@ -639,7 +915,9 @@ like the root's, and only the emission knows about the replay. *Pinned by:*
   all ran on PR #2 at `a3279be`, green; the version bump guard's SDK API breakage step runs only on a version change.
   The OpenAPI ratchet has no pull-request trigger in the fork (it would start ghcr image pushes the fork cannot
   write); run locally at `a3279be`, it passes, S2's `13e5904` having cleared its pointer. The Gate B section has the
-  runs.)*
+  runs.)* *(v2.3: no draft onto `main` was opened and none will be. The Gate C stack is seven internal drafts, #10 to
+  #16, the bottom one based on the fork's `deep-reasoning`; nothing goes to `main` or upstream, so spec §4 layer 3's
+  draft onto `main` is a step not taken. Upstream's guards ran on every level, through `1f2b52d`'s triggers.)*
 - **B15. Upstream's guard data.** The weak-schema allowlist gains three entries, one per `meta`
   (`ACPSessionMessageEvent`, `ACPSubagentEvent`, `ACPToolCallEvent`, each at
   `…/properties/meta/anyOf/0/additionalProperties`); v1 allowed for `-Input`/`-Output` twins as well, and PR #2
@@ -661,7 +939,9 @@ like the root's, and only the emission knows about the replay. *Pinned by:*
   spec's ≈5 h. Michael rules on it at Gate B (the Gate B section). *(v2.2: at `a3279be`, `git diff --numstat
   5e3317f..a3279be`: 4,155 added and 56 removed in 43 files; the fixes added 125: 30 of code in `acp_agent.py`
   (+317 −40 in all), 80 of tests in `test_acp_subagents.py` (1,241 lines), and the 15-line profile fixture. About 14 h
-  at Gate C.)*
+  at Gate C.)* *(v2.3: after the refactor, 3,690 added and 63 removed against `d938c90`; at `6a05b13`, 3,730 and 63
+  against `9277e71`, about 12.4 h; `acp_agent.py` +294 −43, `test_acp_subagents.py` 1,046 lines. The section after
+  the Gate C section has the table, and the Gate C section each level's lines.)*
 
 **Unverified**
 
@@ -675,7 +955,9 @@ like the root's, and only the emission knows about the replay. *Pinned by:*
   started from an agent profile with the opt-in through a real agent-server; and the paths read but not run: a
   notification without `sessionId`, a message's `_meta` and non-text blocks, masking of `meta`, and E-4.
   *(v2.2: the guards now run in CI at `a3279be`, B14, and E-4 is pinned; still unverified: each commit green on its
-  own, and the two local runs the Conductor reports, the SDK API breakage step and the OpenAPI ratchet.)*
+  own, and the two local runs the Conductor reports, the SDK API breakage step and the OpenAPI ratchet.)* *(v2.3: each
+  level of the Gate C stack is green on its own, in CI, for the suites its diff touches; the SDK API breakage step
+  still runs only on a version change, and nothing ran it at `2675399` or on the stack.)*
 
 **Edges the build left open, ruled (v2.1)**
 
@@ -745,7 +1027,10 @@ B" means the Implementer changes the code and adds the test, and CI and the live
   `_unannounced_unstable_sessions` (`acp_agent.py:1455, 1639`), since the two paths route differently, so a session
   that sends both stable and unstable updates can draw two warnings, one per path.
   `test_child_is_never_reparented_nor_its_own_parent` now counts only the router's three refusals, as its
-  self-announcing session also draws this warning. Pinned by that test.)*
+  self-announcing session also draws this warning. Pinned by that test.)* *(v2.3, V-1, `73e47f8`: the two sets and
+  `_warn_once_for_unannounced_unstable_traffic` are one set of `(session, routing)` pairs, `_warned_unannounced`, and
+  one helper, `_warn_unannounced(session_id, routing)` (`acp_agent.py:1455`, `:1678–1687`); still one WARNING per
+  session per path, each naming the session by its fingerprint.)*
 - **D-1 (B3) against C1's Stop rule.** After a reconnect, a finished dr-acp child keeps its stored `cancellable:
   true` (it gets no reconnect snapshot), and the route answers 409 for it (no live grant). C1's rule already keeps
   Stop off it: decision I enables Stop "only for a running or waiting child whose latest snapshot is live and
@@ -796,6 +1081,14 @@ marked *(v2)* are files v1 did not list.
 `tests/sdk/persisted_settings_baselines/v2/agent_profile_acp_subagents.json` of 15 lines (B2); the other rows are as
 above. In all, 4,155 added and 56 removed, in 43 files.
 
+*(v2.3)* At `6a05b13`, against `9277e71`: the shim 222, the router 299, `acp_agent.py` +294 −43, the events 158 (with
+`acp_tool_call.py` +9 and `__init__.py` +8), the other SDK consumers +76 −8, the agent-server +77 −1, the TypeScript
+client +112 −2 and +27 of its configuration, CI +20; the scripted agent +442 −4, the Python tests +1,846 −5 (the live
+file 188, `test_acp_subagents.py` 1,046), the TypeScript tests +113, the baselines 27. Two rows change: S1 also edits
+`tests/conftest.py` (+11 −4: `subagent_snapshots`, and `wait_until` returns what it waited for, V-6), and no longer
+touches `tests/sdk/test_settings.py`, whose one test was cut (`a910ac9`). In all, 3,730 added and 63 removed, in 43
+files; the Gate C section gives each level's share.
+
 ### 4.2 The shim — `acp_unstable.py`
 
 Everything that exists only because agent-client-protocol 0.12.1 does not know schema 1.24.1's sub-agent types.
@@ -808,14 +1101,17 @@ and the `_meta` salvage validator are the library's own); content blocks use 0.1
 discriminated union; and the five-way state union collapses into one tolerant `SubagentState` (`state: str`,
 `extra="allow"`), which keeps an agent-specific or future state whole, as the RFD requires of clients. Each update
 model carries its `sessionUpdate` literal as the discriminator, and pydantic's `model_fields_set` tells an omitted
-field from an explicit `null`, which the RFD's patch rules need (verified on 0.12.1 with pydantic 2).
+field from an explicit `null`, which the RFD's patch rules need (verified on 0.12.1 with pydantic 2). *(v2.3, V-3,
+`6b089e5`: `SubagentState` has the library's base config, which ignores unknown keys, so a custom state's name is
+kept and its other keys are not. The store never held them: the router reads only `state` and `stopReason`, and the
+stored events are identical before and after, as-built r3 §2. Nothing read them, the commit's reason.)*
 
 | Model | Fields (wire names) |
 |---|---|
 | `SubagentCapabilities` | `_meta` |
 | `SessionCancelCapabilities` | `_meta` |
 | `SubagentSessionCapabilities` | `cancel`, `_meta` |
-| `SubagentState` | `state`, `stopReason`, `_meta`, anything else kept |
+| `SubagentState` | `state`, `stopReason`, `_meta` (*v2.3:* other keys ignored, V-3) |
 | `SubagentUpdate` | `sessionUpdate = "subagent_update"`, `sessionId`, `title`, `description`, `capabilities`, `state`, `_meta` |
 | `SessionMessage` | `sessionUpdate = "session_message"`, `messageId`, `senderSessionId`, `recipientSessionId`, `content` (list), `_meta` |
 | `SessionMessageChunk` | `sessionUpdate = "session_message_chunk"`, `messageId`, `senderSessionId`, `recipientSessionId`, `content` (one block), `_meta` |
@@ -840,7 +1136,13 @@ advertises; serialized with the library's own `serialize_params` it is `{"auth":
 - `initialize(protocol_version, client_capabilities=None, client_info=None, **kwargs)`: when
   `client_capabilities` is a `SubagentClientCapabilities`, sends `initialize` through `acp.utils.request_model`
   with the standalone `_SubagentInitializeRequest`, whose `clientCapabilities` is declared as the subclass, so
-  serialization keeps `subagents`; otherwise it is `super().initialize(...)`, the library's call.
+  serialization keeps `subagents`; otherwise it is `super().initialize(...)`, the library's call. *(v2.3, V-2,
+  `bf57a3a`: it always sends through `request_model`, with `client_capabilities or SUBAGENT_CLIENT_CAPABILITIES`, as
+  `_SubagentInitializeRequest(InitializeRequest)`, whose `client_capabilities` is
+  `SerializeAsAny[ClientCapabilities] | None` (`acp_unstable.py:129–134`, `:158–177`). So this connection advertises
+  `subagents` by itself, the bridge calls `conn.initialize(protocol_version=1)` for both connection classes (§4.4),
+  and the library's call is reached only through the stock connection, with the opt-in off. Given other
+  capabilities it sends those, whole; no caller does, and no test drives that branch.)*
 
 Probed for this design on 0.12.1 (2026-10-02, `scratchpad/s1probe/shim2.py`): the capability arrives at the
 agent; nine interleaved stable and unstable updates arrive at the client in wire order; `fields_set` separates
@@ -858,16 +1160,23 @@ holds state across calls.
 
 | Field | Meaning |
 |---|---|
-| `root_session_id` | the root's ACP id on this connection; set by `_init` before `session/load` (the prior id) and after the session is resolved |
-| `replaying` | `True` from just before `session/load` until it returns |
-| `_children: dict[str, _Association]` | every known child: seeded from history or announced on this connection |
+| `root_session_id` | the root's ACP id on this connection; set by `_init` before `session/load` (the prior id) and after the session is resolved *(v2.3, V-5: before `session/load` by the bridge's `replaying(prior_session_id)`; after `session/new` by `_init`)* |
+| `replaying` | `True` from just before `session/load` until it returns *(v2.3: set and cleared by `replaying()`, in a `finally`)* |
+| `_children: dict[str, _Association]` | every known child: seeded from history or announced on this connection *(v2.3, V-4: `dict[str, ACPSubagentEvent]`, each child's latest snapshot, below)* |
 | `_pending: dict[str, _Pending]` | per session (root included), at most one open segment: a text run or a chunked message |
 | `_messages: dict[tuple[str, str], _Message]` | resolved directed messages, keyed `(transcript session, messageId)` |
-| `_warned: set[str]` | unannounced session ids already warned about *(v2, B7: built as the bridge's `_unannounced_sessions`, since the bridge is what warns)* |
+| `_warned: set[str]` | unannounced session ids already warned about *(v2, B7: built as the bridge's `_unannounced_sessions`, since the bridge is what warns; v2.3, V-1: the bridge's `_warned_unannounced: set[tuple[str, str]]`, one entry per session and path)* |
 
 `_Association` holds `parent_session_id` (`None` = root), `parent_tool_call_id`, `title`, `description`,
 `state`, `stop_reason`, `cancel_granted` (a grant received live on this connection), `cost`, `cost_currency`,
 `meta`.
+
+*(v2.3, V-4, `a682f6a`)* There is no `_Association`: the router holds each child as its latest `ACPSubagentEvent`
+(`acp_subagents.py:76`), the stored kind itself, whose `cancellable` is the live grant. A merge or a cost change is
+a `model_copy` of the held event (`:237`, `:189`). Each snapshot stored is a new event built from the held one
+without its `id`, `timestamp` and `parent_id` (`_PER_EVENT_FIELDS`, `:35`; `_snapshot`, `:239–243`), so it gets its
+own id and time and never keeps a stored event's place in the conversation's tree (as-built r3's P1, now pinned).
+The fields, the merge rules and what is stored are as below.
 
 **Routing.**
 
@@ -930,7 +1239,8 @@ parent, title, description, meta, `parent_tool_call_id` and cost, and leaves `st
 empty. It returns, for each child whose latest stored snapshot had `cancellable` true or a `state` other than
 `None` and `"idle"` (*v2, B3:* only the second: a `state` other than `None` and `"idle"`), a copy of that snapshot with `source="environment"`, `state=None`, `stop_reason=None`,
 `cancellable=False`. Partial patches after a reconnect therefore merge onto the stored association instead of
-blanking its title.
+blanking its title. *(v2.3, V-4: it holds each stored snapshot with `state`, `stop_reason` and `cancellable`
+cleared, `acp_subagents.py:80–93`.)*
 
 ### 4.4 The bridge — `acp_agent.py`, hunk by hunk
 
@@ -992,6 +1302,25 @@ root's calls only.)*
 `_cancel_inflight_tool_calls` (`:3820`) marks a child entry `failed_by_abort` once its synthetic failure is stored and
 skips it after (E-1); `unstable_session_update` (`:1620`) calls `_warn_once_for_unannounced_unstable_traffic`
 (`:1639`), with its own set `_unannounced_unstable_sessions` (`:1455`) (E-4).
+
+*(v2.3)* At `6a05b13` (the same lines as `2675399`), three rows of the tables above read differently, and the
+rest hold at new lines. **Imports** (`:104–115`): `ACPSessionNotCancellableError`, `ACPSessionNotFoundError` and
+`ACPSubagentSessions`; `SessionMessage`, `SubagentClientSideConnection`, `SubagentUpdate` and `UnstableSessionUpdate`;
+no `SUBAGENT_CLIENT_CAPABILITIES`, `SessionMessageChunk` or `LoadSessionResponse`. **`_init`'s `initialize`**
+(`:3478`): one call, `conn.initialize(protocol_version=1)`, for both connection classes, since the shim's connection
+advertises `subagents` itself (V-2). **`_init`'s load** (`:3602–3607`): upstream's own `conn.load_session(...)` call
+under `with client.replaying(prior_session_id):`, the bridge's context manager (`:1648–1662`), which with the
+opt-in on sets the root's id and `replaying` and clears the flag in a `finally`, and with it off does nothing (V-5);
+`ACPAgent._load_session` is gone. The rest: the bridge's `__init__` `:1399`, its new attributes `:1450–1457` (one
+warn-once set, `_warned_unannounced`, V-1); `reset()` `:1459`; `_mask_tool_call_entry` `:1538`, which now says it
+masks `meta`; the new bridge methods `:1602–1712` (`unstable_session_update` `:1602`, `emit_subagent_events` `:1626`,
+`flush_subagent_text` `:1643`, `replaying` `:1649`, `_child_session` `:1664`, `_warn_unannounced` `:1678`,
+`_route_child_update` `:1689`); `session_update` `:1725`, S2's recorder first (`:1738`), S1's diversion
+`:1753–1761`; the tool-call branches `:1798`, `:1825–1828`; `_emit_tool_call_event` `:1870`; `ACPAgent.acp_subagents`
+`:2217`; `_launch_acp_session` `:3286–3304`, the seed at `:3304`; the connection `:3451`; the root id after
+`session/new` `:3659`; `_cancel_inflight_tool_calls` `:3795`, `failed_by_abort` `:3821`, `:3842`;
+`_flush_inflight_tool_calls_as_completed` `:3852`; the turn-end flush `:4085`; `trace.finish_turn` `:4199–4206`;
+`cancel_acp_session` `:5036`, `_acancel_acp_session` `:5065`, `_ACP_SUBAGENT_CANCEL_TIMEOUT` `:202`.
 
 ### 4.5 Persisted events — `event/acp_subagent.py`, `event/acp_tool_call.py`
 
@@ -1191,6 +1520,14 @@ request stops the script before it serves, asking for the client's lines.)*
 
 *(v2, B8)* **`--transcript-interval-ms MS`** sleeps `MS` before each `session/update` the transcript sends
 (default 0), so a replay can arrive at a set rate: C1's E6 load case plays its fan-out at 60 events/s (16 ms).
+*(v2.3: no test passes it, P5; the section after the Gate C section.)*
+
+*(v2.3, V-6, `d03ec2c`)* **Wire builders.** The script's ACP updates are built by eleven module functions, which
+both sub-agent test files import instead of writing JSON by hand: `text`, `subagent`, `announce`, `idle`,
+`tool_call`, `tool_done`, `thought`, `said`, `usage`, `message` and `message_chunk` (`scripted_agent.py:305–386`,
+A.7). The `--subagents` run they build is the one above, unchanged on the wire (as-built r3 §4.4). At Gate C the
+script arrives in parts: four builders in #10, the rest and `--subagents` in #12, `--cancel-wait` in #14, and the
+transcript player with its three flags in #16.
 
 ---
 
@@ -1243,7 +1580,10 @@ Stated as what the SDK fork guarantees from the commit that carries S1 (`0cfb6a2
 fixes, and every tag cut after it), for
 an ACP agent run with `acp_subagents` on. C1 (deep-reasoning `design/c1` `88f5c43`, its §9.1) and D5 (`design/d5`
 `8086afb`, its §8.2 and §9) may rely on everything here and on nothing else about S1. C1 has no code yet; D5 has its
-`fork-live.yml` on `ci/fork-live`. Each guarantee names what pins it.
+`fork-live.yml` on `ci/fork-live`. Each guarantee names what pins it. *(v2.3: every guarantee holds at `6a05b13`,
+the stack's top, and the refactor changed none. The "Pinned by" lines name `a3279be`'s tests; where a test was
+cut, merged or renamed, a v2.3 note names what pins the guarantee now, from the property table after the Gate C
+section.)*
 
 Guarantees:
 
@@ -1260,17 +1600,24 @@ Guarantees:
    as before S1. *Pinned by:* `test_scripted_run_stores_the_scripted_tree`,
    `test_scripted_transcript_replays_a_recording[…]`, `test_parent_tool_call_id_survives_meta_without_it`,
    `test_child_tool_calls_are_keyed_by_session_and_tool_call_id`, `test_root_tool_call_event_is_stored_as_before`.
+   *(v2.3: the last was cut, `a910ac9`. A root call's stored shape is pinned by
+   `test_legacy_acp_tool_call_event_loads_without_session_fields` (the model's defaults, P3b) and by the opt-off
+   conversation test (no `acp_session_id`); that the bridge leaves a root call's `meta` unset with the opt-in on is
+   unpinned, P3. And `test_scripted_run_stores_the_scripted_tree` places a child by its spawning cell only (V-9), so
+   rule 2's fallbacks, the first message and then the position, are exercised by no test.)*
 3. **Ordering** is rule 10. *Pinned by:* `test_a_childs_stored_timestamps_never_decrease_in_log_order`,
    `test_a_reconnect_snapshot_is_later_than_the_childs_earlier_events`,
    `test_a_spawning_cells_started_event_precedes_its_whole_subtree`.
 4. **The root's answer.** The turn's `FinishAction` holds the root's text alone; a child's text and thoughts are
    only in `ACPSessionTextEvent`s, one per run of one kind. *Pinned by:*
    `test_scripted_run_keeps_child_text_out_of_the_answer`, `test_child_text_is_stored_per_segment_in_transcript_order`.
+   *(v2.3: the first was cut, `a910ac9`; the bridge unit `test_child_text_never_reaches_the_root_answer` pins it.)*
 5. **State and cost** are rules 4 and 5: `state` is the agent's string, `null` when unconfirmed; `cost` is the
    child's latest reported cumulative cost, `null` when unknown; the conversation's metrics book the root's cost
    only. *Pinned by:* `test_omitted_field_keeps_value_and_null_clears_it[…]`,
    `test_child_cost_is_on_its_association_and_never_booked_to_the_conversation`,
-   `test_scripted_run_books_only_the_roots_cost`.
+   `test_scripted_run_books_only_the_roots_cost`. *(v2.3: the second is
+   `test_child_cost_is_stored_on_its_association_when_it_changes`, `ca39def`, which leaves the booking to the third.)*
 6. **Cancel.** `POST /api/conversations/{conversation_id}/acp/sessions/{session_id}/cancel` (TypeScript:
    `ConversationClient.cancelAcpSession(conversationId, sessionId)` and `RemoteConversation.cancelAcpSession(sessionId)`,
    which URL-encode the id) answers 200 `{"session_id": …, "requested": true}` only after a `session/cancel` naming
@@ -1279,7 +1626,8 @@ Guarantees:
    which includes an agent with the opt-in off), 409 with the spec's sentence (the root, no live connection, no live
    grant), 400 (not an ACP agent) or 504 (not written within 2 s). It never takes the conversation's state lock, so it
    works mid-turn under `run()` and `arun()`. Its outcome is only the agent's next snapshot. *Pinned by:* the cancel
-   rows of the Gate B table.
+   rows of the Gate B table. *(v2.3: the cancel row of the property table at `6a05b13`. The route's 200 and its body
+   are reached by one test, the cross test, since the route's own success test was cut, P9.)*
 7. **Freshness.** On each new connection, each child whose last stored state was active gets one
    `source: "environment"` snapshot (`state: null`, `cancellable: false`), stored before any event of that child
    from the new connection; no grant survives a connection, and nothing `session/load` replays is stored again or grants
@@ -1289,19 +1637,29 @@ Guarantees:
    turn, §3.2 E-2, ruled a bug to fix before Gate B; the guarantee is the design's, and E-2's test pins it once fixed.
    The flag itself is pinned by units only: no test drives a real replay of sub-agent traffic, B17.)* *(v2.2: the
    exception is fixed in `d74940b` and pinned by `test_replayed_child_calls_are_never_tracked_nor_failed_later`; the
-   guarantee holds without exception at `a3279be`.)*
+   guarantee holds without exception at `a3279be`.)* *(v2.3: `replaying()` sets and clears the flag, V-5; the
+   reconnect test is the one test that catches it left set, P10.)*
 8. **The opt-in.** `acp_subagents` on `ACPAgent`, `ACPAgentSettings` and `ACPAgentProfile`, default `false`,
    forwarded by `create_agent()`, the profile resolver and the seed; a stored `true` survives validation at settings
    schema 7; `ACP_SETTINGS_KEYS` and the TypeScript `ACPAgentProfile` keep it. With it off, nothing S1 adds is sent or
    stored. *Pinned by:* the opt-in rows of the Gate B table. *(v2.2: and a stored profile with `acp_subagents: true`
-   survives validation at profile schema 2, pinned by the persisted-settings guard's new fixture.)*
+   survives validation at profile schema 2, pinned by the persisted-settings guard's new fixture.)* *(v2.3: the opt-in
+   row of the property table at `6a05b13`; `create_agent()`'s forwarding is pinned by the resolver test, which builds
+   the agent, since `test_acp_create_agent_forwards_subagents` was cut, P2.)*
 9. **The scripted agent.** `tests/fixtures/acp/scripted_agent.py` at the pinned commit runs by path with only
    `agent-client-protocol` and the standard library: `--subagents` plays §4.10's run with its ids (`child-a`,
    `child-a-1`, `child-b`, `child-c`; cells `cell-1`, `cell-a1`, `cell-b1`, `cell-c1`), `--cancel-wait` holds
    `child-b`, `--transcript PATH` replays full and agent-outgoing-only JSONL recordings with §4.10's wait points,
    `--transcript-interval-ms` paces them, and `--wait-timeout` exits non-zero at a missed wait point. When the client
    did not advertise `subagents`, it sends neither the unstable updates nor any update for another session.
-   *Pinned by:* the fixture row of the Gate B table, and every E5 test, which runs it.
+   *Pinned by:* the fixture row of the Gate B table, and every E5 test, which runs it. *(v2.3: not all of it. At
+   `6a05b13` the transcript replay is pinned by `test_scripted_transcript_replays_a_recording[full, outgoing-only]`,
+   the non-zero exit past `--wait-timeout` by
+   `test_transcript_exits_non_zero_when_a_wait_point_outlasts_the_wait_timeout` (P6′, restored), and "no update for
+   another session" by the opt-off test's `[--transcript]` case (P4, restored).
+   Three parts hold in the code, read, and no test pins them: the pacing of `--transcript-interval-ms` (P5); that a
+   missed wait point raises, rather than the script failing some other way (P6); and that the unstable updates
+   are not sent without `subagents`, which no conversation can see, since the stock connection drops them anyway.)*
 10. **The live tier's interface**, for D5's `fork-live.yml`: `tests/sdk/agent/test_acp_subagents_live.py`, marker
     `acp_live`, runs only with both `OPENHANDS_ACP_LIVE_AGENT_COMMAND` (shell-split) and
     `OPENHANDS_ACP_LIVE_SUBAGENTS_PROMPT` set, and the prompt must make the agent spawn a sub-agent with a child of
@@ -1324,7 +1682,8 @@ Not guaranteed:
   stopped.
 - *(v2.1, E-4)* A home for unstable updates on a session never announced: they are stored under that session's id,
   so a child announced there is "could not be placed" (rule 2) and a message there belongs to no rendered transcript.
-  *(v2.2: the bridge warns once per such session, `562c31d`.)*
+  *(v2.2: the bridge warns once per such session, `562c31d`.)* *(v2.3: once per session per path, through one
+  helper, V-1.)*
 - Content other than text: the non-text blocks of directed messages and of a child's text are not stored.
 - Child events still queued when the conversation closes, or emitted after it: S2's emitter drops them (§11 item 6).
 - When a chunked message or a text run is stored: at its session's next boundary (§4.3) or at the end of the
@@ -1386,7 +1745,9 @@ is taken.
 
 **Replay boundary.** `replaying` is set and cleared on the portal around `await conn.load_session(...)`; by the
 FIFO argument, every replayed notification has been handled before `load_session` returns, so nothing replayed
-leaks out of the flag, and every notification after the response is live.
+leaks out of the flag, and every notification after the response is live. *(v2.3, V-5: the bridge's
+`replaying(prior_session_id)` context manager sets the flag, and the root's id, and clears the flag in a `finally`,
+around upstream's own `conn.load_session(...)` call, on the portal as before.)*
 
 ---
 
@@ -1403,20 +1764,27 @@ through the emitter's worker, so a test that reads `state.events` after `run()` 
 are there (a polling helper with a 5 s limit), never on a sleep. *(v2: the helper's default limit is 10 s, and
 the cancel tests allow 15–30 s for the announcement and the idle snapshot.)*
 
+*(v2.3)* The tables below name the tests v1 planned and v2 and v2.2 added; the refactor cut, merged or renamed
+some (V-7, `a910ac9`, `6dcde3e`, `ca39def`, `5b17efd`, `bf57a3a`, `6b089e5`), and the stack restored three. Each row
+that changed says how; the property table after the Gate C section is the reference at `6a05b13`, 78 deterministic
+Python cases. The polling helper is now shared, `tests/conftest.py`'s `wait_until`, which returns what it waited
+for, beside `subagent_snapshots`, each child's latest stored snapshot (V-6, `2fb47b2`).
+
 ### 7.1 The shim and its tripwire — `tests/sdk/agent/test_acp_unstable.py`
 
 | Test | Pins |
 |---|---|
 | `test_acp_library_rejects_subagent_update` | **The tripwire.** `acp.schema.SessionNotification.model_validate` of a minimal `subagent_update` raises `ValidationError`. Its failure message: "agent-client-protocol now parses ACP's sub-agent updates: delete openhands/sdk/agent/acp_unstable.py, use the library's types and capability, re-run the ACP conformance probes against Claude Code, Codex and Gemini, and bump agent-client-protocol in openhands-sdk/pyproject.toml." |
 | `test_acp_library_has_no_subagents_capability` | The second tripwire: `"subagents" not in ClientCapabilities.model_fields`. |
-| `test_initialize_puts_subagents_capability_on_the_wire` | An agent-side tap sees `{"auth": {}, "subagents": {}}`. |
-| `test_initialize_without_subagent_capabilities_is_the_library_call` | `super().initialize` path: no `subagents` on the wire. |
+| `test_initialize_puts_subagents_capability_on_the_wire` | An agent-side tap sees `{"auth": {}, "subagents": {}}`. *(v2.3: the whole `initialize` params, from a call with no capabilities, V-2.)* |
+| `test_initialize_without_subagent_capabilities_is_the_library_call` | `super().initialize` path: no `subagents` on the wire. *(v2.3: cut with its branch, `bf57a3a`; the opt-off conversation test pins the stock `initialize`.)* |
 | `test_unstable_updates_reach_the_callback_in_wire_order` | Nine interleaved stable/unstable updates arrive in order. |
 | `test_stable_updates_still_reach_the_library_router` | `agent_message_chunk` on a child id arrives as `AgentMessageChunk`. |
 | `test_malformed_unstable_update_is_dropped_with_a_warning` | A `subagent_update` without `sessionId`: no callback, one WARNING. |
-| `test_patch_fields_tell_omitted_from_null` | `fields_set` contains `title` for `"title": null`, not for an omitted title. |
-| *(v2)* `test_custom_state_is_kept_whole` | `{"state": "_reviewing", "x": 1}` keeps its state and its extra key. |
-| *(v2)* `test_message_content_keeps_non_text_blocks_typed` | A `session_message` with a text and an image block parses both, typed. |
+| `test_patch_fields_tell_omitted_from_null` | `fields_set` contains `title` for `"title": null`, not for an omitted title. *(v2.3: cut, `a910ac9`; the merge table's `title-null` case pins it, P8.)* |
+| *(v2)* `test_custom_state_is_kept_whole` | `{"state": "_reviewing", "x": 1}` keeps its state and its extra key. *(v2.3: cut with `extra="allow"`, `6b089e5`; the extra key is no longer kept, V-3, and the merge table's `state-custom` case pins the state's name.)* |
+| *(v2)* `test_message_content_keeps_non_text_blocks_typed` | A `session_message` with a text and an image block parses both, typed. *(v2.3: cut, `a910ac9`, and restored on #10, `049ceb5`, as the next row.)* |
+| *(v2.3)* `test_session_message_with_a_non_text_block_reaches_the_callback_whole` | P7: a `session_message` with a text and an image block, sent over the wire, reaches the callback with both blocks typed; without the parse the shim drops the message whole, its text included. |
 
 ### 7.2 The router and the bridge — `tests/sdk/agent/test_acp_subagents.py`
 
@@ -1454,50 +1822,64 @@ below instead).
 `test_unstable_updates_on_an_unannounced_session_stay_under_that_session` (E-4);
 `test_child_is_never_reparented_nor_its_own_parent` now counts only the router's three refusals.
 
+*(v2.3)* At `6a05b13` these are 24 tests, 33 cases with the merge table's ten, all in #12: the list above with E-1's,
+E-2's and E-4's, less the stock-connection test (merged below), and with the cost test renamed
+`test_child_cost_is_stored_on_its_association_when_it_changes`, its booking assertion left to
+`test_scripted_run_books_only_the_roots_cost` (`ca39def`). They feed the bridge wire updates built with the scripted
+agent's builders (V-6).
+
 **E5 in the fork**, through a real `LocalConversation` and an `ACPAgent(acp_command=[sys.executable,
 <repo>/tests/fixtures/acp/scripted_agent.py, "--subagents", …], acp_subagents=True)`, or `--transcript` with a
 hand-written transcript, no network:
 
 | Test | Pins (E5's nulls) |
 |---|---|
-| `test_scripted_run_stores_the_scripted_tree` | Rebuilding the tree from stored events with §5's rules gives exactly the transcript's parent links, placements, per-session tool calls, messages and costs. |
-| `test_scripted_run_keeps_child_text_out_of_the_answer` | The `FinishAction` text is the root's alone. |
+| `test_scripted_run_stores_the_scripted_tree` | Rebuilding the tree from stored events with §5's rules gives exactly the transcript's parent links, placements, per-session tool calls, messages and costs. *(v2.3, V-9: its tree reader places a child by its spawning cell only, and any other placement fails the comparison; every expected tree places by cell, so rule 2's fallbacks are exercised by no test.)* |
+| `test_scripted_run_keeps_child_text_out_of_the_answer` | The `FinishAction` text is the root's alone. *(v2.3: cut, `a910ac9`; the bridge unit `test_child_text_never_reaches_the_root_answer` pins it.)* |
 | *(v2)* `test_scripted_run_books_only_the_roots_cost` | The conversation's accumulated cost is the root's 0.0011, not the children's added. |
 | `test_stored_events_validate_against_the_agent_server_event_schema` | Every stored event validates against the `Event` schema in `build_public_openapi()`, so any OpenAPI-typed client parses them. *(v2, B12: built as `tests/agent_server/test_acp_router.py::test_stored_sub_agent_events_validate_against_the_event_schema`, on a real server's REST page.)* |
 | `test_scripted_run_with_subagents_off_stores_only_root_work` | Off: no new kinds, no `acp_session_id`; the conforming agent sent no child traffic. *(v2: `[--subagents, --transcript]`; also asserts `initialize` carried no `subagents`.)* |
 | *(v2)* `test_subagents_off_uses_the_stock_connection_and_initialize` | Off: the conversation's connection is the library's `ClientSideConnection`, and `initialize`'s params on the wire equal the library's own `InitializeRequest(protocol_version=1, client_capabilities=ClientCapabilities())`. |
-| `test_cancel_acp_session_reaches_the_child_and_its_cancelled_state_is_stored` | With `--cancel-wait 30` and `run()` in a thread, the test thread retries `cancel_acp_session("child-b")` until it stops raising `ACPSessionNotFoundError` (the announcement has been handled; under a synchronous `run()` the events themselves are stored only after the step, §6); S2's request log shows `session/cancel` for `child-b`; afterwards `child-b`'s cell is stored failed and its idle/cancelled snapshot follows. |
+| *(v2.3)* `test_subagents_off_stores_only_root_work_through_the_stock_connection[--subagents, --transcript]` | The two rows above, merged (`a910ac9`): the stock connection class, `initialize` equal to the library's own serialization, only the root's `cell-1`, no `acp_session_id`, no new kinds. `[--subagents]` is #12's; `[--transcript]`, which the merge had dropped, is restored on #16 (`306731d`, P4): the player sends no other session's update to a client that did not advertise `subagents`. |
+| `test_cancel_acp_session_reaches_the_child_and_its_cancelled_state_is_stored` *(v2.3: merged with `…_does_not_wait_for_the_state_lock` into `test_cancel_acp_session_reaches_the_child_without_waiting_for_the_state_lock`, `a910ac9`, which keeps both tests' assertions)* | With `--cancel-wait 30` and `run()` in a thread, the test thread retries `cancel_acp_session("child-b")` until it stops raising `ACPSessionNotFoundError` (the announcement has been handled; under a synchronous `run()` the events themselves are stored only after the step, §6); S2's request log shows `session/cancel` for `child-b`; afterwards `child-b`'s cell is stored failed and its idle/cancelled snapshot follows. |
 | `test_scripted_transcript_replays_an_outgoing_only_recording` | A transcript of agent lines only (the shape of D1's golden files) replays into the same stored tree as its hand-written source. *(v2: `test_scripted_transcript_replays_a_recording[full, outgoing-only]`.)* |
 | `test_cancel_acp_session_refuses_a_child_without_a_grant` | `child-c`: `ACPSessionNotCancellableError`; the request log shows no `session/cancel`. |
 | `test_cancel_acp_session_refuses_unknown_and_root_sessions` | 404- and 409-class errors respectively. |
 | `test_cancel_acp_session_without_a_live_connection_is_refused` | Before `init_state`: `ACPSessionNotCancellableError`. |
 | `test_cancel_acp_session_does_not_wait_for_the_state_lock` | During a sync `run()` (state lock held for the turn) the cancel returns within 2 s. *(v2: the call that succeeded began while the run's thread held the state lock, and the run then finishes.)* |
-| *(v2)* `test_transcript_interval_paces_the_replay` | `--transcript-interval-ms 50`: the run takes at least 50 ms per update (B8). |
-| *(v2)* `test_transcript_wait_point_that_is_never_reached_exits_non_zero` | `--wait-timeout 0.2` with no client: the script exits non-zero. |
+| *(v2)* `test_transcript_interval_paces_the_replay` | `--transcript-interval-ms 50`: the run takes at least 50 ms per update (B8). *(v2.3: cut, `6dcde3e`; pacing is unpinned, P5.)* |
+| *(v2)* `test_transcript_wait_point_that_is_never_reached_exits_non_zero` | `--wait-timeout 0.2` with no client: the script exits non-zero. *(v2.3: cut, `6dcde3e`; restored as the next row.)* |
+| *(v2.3)* `test_transcript_exits_non_zero_when_a_wait_point_outlasts_the_wait_timeout` | P6′, on #16 (`6a05b13`): the agent started with `--transcript` and `--wait-timeout 0.2`, never sent `initialize`, exits non-zero within 10 s. That the exit comes from the wait point raising is unpinned, P6. |
 | *(v2)* `test_a_childs_stored_timestamps_never_decrease_in_log_order` | §5 rule 10 (a), for all four children of the scripted run. |
 | *(v2)* `test_a_reconnect_snapshot_is_later_than_the_childs_earlier_events` | A second connection to the same conversation: one `environment` snapshot, for the child left running, later than its earlier events and no later than its next. |
 | *(v2)* `test_a_spawning_cells_started_event_precedes_its_whole_subtree` | §5 rule 10 (b), for all four children. |
 | *(v2.2)* `test_cancel_acp_session_for_an_idle_child_that_keeps_its_grant_is_sent` | E-3: after `child-b` is idle, the cancel is sent and answered, and nothing new is stored for `child-b`. |
 
+*(v2.3)* At `6a05b13` the conversation tests are 13, 15 cases: in #12 the tree, the cost, the opt-off test's
+`[--subagents]` and two ordering tests; in #14 the five cancel tests; in #16 the transcript replay's two cases, the
+opt-off test's `[--transcript]`, the wait-timeout test and the reconnect test, which drives a recording so that a
+child stays open across two agent processes.
+
 ### 7.3 Everything else
 
 | File | Tests |
 |---|---|
-| `tests/sdk/event/test_acp_subagent_events.py` | `test_subagent_events_round_trip_through_json` · `test_legacy_acp_tool_call_event_loads_without_session_fields` · `test_root_tool_call_event_is_stored_as_before` (`exclude_none` dump has no new keys) · *(v2)* `test_subagent_events_visualize_their_essentials[…]` · `test_unconfirmed_state_is_shown_as_such` |
+| `tests/sdk/event/test_acp_subagent_events.py` | `test_subagent_events_round_trip_through_json` · `test_legacy_acp_tool_call_event_loads_without_session_fields` · `test_root_tool_call_event_is_stored_as_before` (`exclude_none` dump has no new keys) · *(v2)* `test_subagent_events_visualize_their_essentials[…]` · `test_unconfirmed_state_is_shown_as_such` *(v2.3: 9 cases, in #11; the root-call test was cut, `a910ac9`, P3)* |
 | `tests/sdk/event/test_resume_transcript.py` | `test_resume_transcript_skips_child_tool_calls` |
 | `tests/sdk/agent/test_acp_dedup_and_truncation.py` | `test_remote_events_merge_child_and_root_calls_separately` |
-| `tests/sdk/test_settings.py` | `test_acp_create_agent_forwards_subagents` |
+| `tests/sdk/test_settings.py` | `test_acp_create_agent_forwards_subagents` *(v2.3: cut, `a910ac9`, and S1 no longer touches this file; the resolver test builds the agent, P2)* |
 | *(v2)* `tests/sdk/profiles/test_resolver.py` | `test_acp_profile_carries_the_subagents_opt_in_to_the_agent[False, True]` · `test_acp_seeded_profile_keeps_the_subagents_opt_in` (B2) |
 | *(v2.2)* `tests/sdk/persisted_settings_baselines/v2/agent_profile_acp_subagents.json` | picked up by the `Persisted settings` guard and the same cross test (B2) |
 | `tests/sdk/persisted_settings_baselines/v7/agent_settings_acp_subagents.json` | picked up by the existing compat check *(v2: `tests/cross/test_check_persisted_settings_compat.py::test_collect_fixture_cases_and_validate_current_repo_fixtures`, in CI's `cross-tests`)* |
 | `tests/sdk/conversation/local/test_local_conversation_event_emitter.py` (only if S1 lands before S2, which then owns these tests) | S2's emitter tests (S2 §4.10): an event emitted from the ACP thread during a synchronous `run()` does not deadlock and lands after the step; events keep submission order; events emitted after `close()` are dropped *(v2: S2's, B1; S1 adds none)* |
-| `tests/agent_server/test_acp_router.py` (S2's file) | `test_cancel_acp_session_success` · `…_conversation_not_found` · `…_unknown_session_returns_404` · `…_not_cancellable_returns_409` · `…_non_acp_returns_400` · `…_timeout_returns_504` (upstream's style: a mocked event service). *(v2, B12: against a real agent-server and the scripted agent: `test_a_cancel_reaches_the_child_and_its_cancelled_state_is_stored` · `test_a_cancel_for_an_unknown_conversation_is_not_found` · `test_a_cancel_for_an_unknown_session_is_not_found` · `test_a_cancel_for_a_child_without_a_grant_is_a_conflict` · `test_a_cancel_on_a_conversation_that_is_not_acp_is_a_bad_request` · `test_a_cancel_the_agent_does_not_take_in_time_times_out` · `test_stored_sub_agent_events_validate_against_the_event_schema`)* |
-| `tests/agent_server/test_event_service.py` | `test_cancel_acp_session_runs_off_the_event_loop` · *(v2)* `test_cancel_acp_session_on_an_inactive_service_is_refused` |
+| `tests/agent_server/test_acp_router.py` (S2's file) | `test_cancel_acp_session_success` · `…_conversation_not_found` · `…_unknown_session_returns_404` · `…_not_cancellable_returns_409` · `…_non_acp_returns_400` · `…_timeout_returns_504` (upstream's style: a mocked event service). *(v2, B12: against a real agent-server and the scripted agent: `test_a_cancel_reaches_the_child_and_its_cancelled_state_is_stored` · `test_a_cancel_for_an_unknown_conversation_is_not_found` · `test_a_cancel_for_an_unknown_session_is_not_found` · `test_a_cancel_for_a_child_without_a_grant_is_a_conflict` · `test_a_cancel_on_a_conversation_that_is_not_acp_is_a_bad_request` · `test_a_cancel_the_agent_does_not_take_in_time_times_out` · `test_stored_sub_agent_events_validate_against_the_event_schema`)* *(v2.3: 6 cases; the first was cut, `a910ac9`, so the route's 200 is the cross test's alone, P9; the schema test is in #12, the route's five in #14)* |
+| `tests/agent_server/test_event_service.py` | `test_cancel_acp_session_runs_off_the_event_loop` · *(v2)* `test_cancel_acp_session_on_an_inactive_service_is_refused` *(v2.3: module functions now, out of `TestEventServiceCancelACPSession`; the first pins that the event loop keeps running while the cancel blocks, not a thread id, `5b17efd`)* |
 | `tests/cross/test_remote_conversation_live_server.py` | `test_acp_subagent_sessions_over_live_server`: a real server, the scripted agent with `--subagents --cancel-wait 30`, events read over REST and WebSocket, the cancel route end to end (the agent-server AGENTS.md asks for one such test per endpoint addition) |
 | `clients/typescript/src/__tests__/api-clients.test.ts` | `ConversationClient.cancelAcpSession posts to the session cancel endpoint` · `… encodes the session id` · `RemoteConversation.cancelAcpSession posts for its conversation` |
 | `clients/typescript/src/__tests__/acp-providers.test.ts` | `forwards the sub-agent opt-in` |
-| `clients/typescript/src/__tests__/event-types.test.ts` | `sub-agent event shapes accept stored events` · *(v2)* `each guard recognises only its own kind` |
+| `clients/typescript/src/__tests__/event-types.test.ts` | `sub-agent event shapes accept stored events` · *(v2)* `each guard recognises only its own kind` *(v2.3: the first was cut, `a910ac9`; the client has 5 tests, all in #15)* |
 | *(v2)* `.github/workflows/tests.yml` | S1's live file joins upstream's `acp-live-tests` job, which skips it without its variables |
+| *(v2.3)* `tests/conftest.py` | no tests: `subagent_snapshots` and `wait_until`, shared by the sub-agent files and the live file (V-6) |
 
 ### 7.4 The live tier (Gate B)
 
@@ -1534,6 +1916,10 @@ Spec §4 layer 5: "S1, S2: through the SDK's own tests, with `dr-acp` behind the
   The S1 step runs `dr-acp --config docs/configs/advising/main.yaml --home <temp>` with the prompt "/compare-departments
   Which department is lighter for a first-year student, CS or STAT?". Run 37141960911 passed 2 of 2 at `0cfb6a2`, the
   Gate B section.)* *(v2.2: run 37147706623 passed 2 of 2 at `a3279be`, in 41.3 s; it supersedes the first.)*
+  *(v2.3: run 37171079147 passed 2 of 2 at `2675399`, in 48.26 s; the live file is unchanged since, and the stack's
+  top differs from `2675399` in three other test files only. The refactor moved the file's helpers to
+  `tests/conftest.py`, so both tests poll every 0.02 s instead of 0.1 s; their assertions are as above. At Gate C
+  the tree test is in #12 and the stop test in #14.)*
 
 ---
 
@@ -1552,7 +1938,12 @@ unstable updates on a session never announced`, and `a3279be` `test(profiles): a
 fixture with the sub-agent opt-in`; between them, two merges, `0f161f8` (the fork's `deep-reasoning`) and `2114d23`
 (S2's `5e3317f`). Upstream's main-only guards now run on PR #2 through the fork-only `1f2b52d` and passed at
 `a3279be`; the OpenAPI ratchet passes locally, B14. Whether the fixes fold into the commits they mend is the PR
-split's call, at Gate C.)*
+split's call, at Gate C.)* *(v2.3: the branch then took the literate refactor, fourteen commits and `2675399` (the
+header's "Changed by the refactor"), with S2's refactor merged at `3fb8f8d` and S2's `d938c90` at `cd6cb23`. For
+Gate C its net diff was cut by idea into seven levels, one commit each, #10 to #16 (the Gate C section), so the
+fixes sit in the levels whose code they mend: E-1, E-2 and E-4 in #12, E-3's test in #14, the profile fixture in
+#13. Each level is green on its own in CI. Nothing is cherry-picked onto `main`: the stack is internal to the fork,
+its bottom based on `deep-reasoning`, and nothing goes upstream. PR #2 is closed as superseded.)*
 
 1. `feat(acp): carry ACP's unstable sub-agent types past agent-client-protocol 0.12.1` — `acp_unstable.py`,
    `test_acp_unstable.py` (with the tripwire).
@@ -1579,17 +1970,24 @@ placeholder for Michael. No issue or pull request is opened on any upstream repo
 michaeltheologitis/software-agent-sdk#2, against `feat/agent-surfaces`, not a cherry-pick onto `main`, so the guards
 that run only for pull requests to `main` did not run in CI; PR #2's description reports them run locally and
 passing. Its `HUMAN:` field is the placeholder, as planned. Pre-commit and the endpoint audit ran in CI, green.)*
+*(v2.3: no branch is cherry-picked onto `main` and no draft is opened there. The guards run on each level of the
+Gate C stack instead, through the fork-only `1f2b52d`'s pull-request triggers, and are green on all seven; each
+level's description uses upstream's template with its `HUMAN:` field left as the placeholder.)*
 
 **Upstream merges** (spec Q1 (a)): our conflicts sit in `acp_agent.py`'s `session_update`, `_start_acp_server`
 and tool-call close-out hunks of §4.4 (≈100 lines in upstream's busiest file); everything else is new files or
 appended lines. *(v2: `acp_agent.py` is +287 −40, B16, and the start hunk is in S2's `_launch_acp_session`, B1.)*
+*(v2.3: +294 −43 at `6a05b13`; the load hunk is now one `with client.replaying(...)` line around upstream's own call,
+V-5.)*
 
 **When the library catches up** (the tripwire fails): delete `acp_unstable.py`; import `SubagentUpdate`,
 `SessionMessage`, `SessionMessageChunk` and the capability from `acp.schema`; replace the connection subclass
 with the library's own routing (the bridge's `unstable_session_update` becomes three `isinstance` branches in
 `session_update`); bump the pin; re-run `pytest -m acp_live tests/sdk/agent/test_acp_conformance.py` for Claude
 Code, Codex and Gemini, because the bump changes the library they all go through. `acp_subagents.py`, the events,
-the route and the client stay.
+the route and the client stay. *(v2.3, V-2: the bridge's one `initialize` call
+then has to pass the library's capability itself when the opt-in is on, since today the shim's connection adds it,
+`acp_agent.py:3478`.)*
 
 ---
 
@@ -1600,7 +1998,10 @@ landing order: the out-of-turn emitter (rows 6–7), the scripted test agent (ro
 (row 9). Everything else is textual neighbourhood, with the rule that lets either PR land first. *(v2, B1: S2
 landed first, and S1 is stacked on it. Rows 6, 7 (the emitter), 9 and 13 are S2's code, used by S1 unchanged; row
 4's `_start_acp_server` is S2's wrapper around `_launch_acp_session`, where S1's lines sit; row 3's order holds,
-S2's recorder first at `acp_agent.py:1725`. The other rows hold as written.)*
+S2's recorder first at `acp_agent.py:1725`. The other rows hold as written.)* *(v2.3: at `6a05b13` S2's recorder is
+at `acp_agent.py:1738`, still first; row 15 gains one shared file, `tests/conftest.py`, where S1 adds
+`subagent_snapshots` beside S2's helpers and makes `wait_until` return what it waited for (V-6); and S2's stack is
+merged into the fork's `deep-reasoning` (`69c00ca`), the base of S1's.)*
 
 | # | Place (`53a4bc5`) | S1 | S2 | Rule |
 |---|---|---|---|---|
@@ -1656,7 +2057,9 @@ tree with `testing.tree` (E5's second half), and hosts or absorbs §7.4's live w
 guarantees in §5.1. What they asked of S1 and got: the opt-in on the agent profile (C1 §9.1 item 1, D5 §8.2: B2,
 without the profile fixture), transcript pacing (C1 §9.1 item 2: B8), the ordering facts as contract (C1 §9.1
 item 3: §5 rule 10, B11), and reconnect snapshots for active children only (C1 §9.1 item 4: B3). D5's
-`fork-live.yml` exists on `ci/fork-live` and ran S1's live tier, B13.)*
+`fork-live.yml` exists on `ci/fork-live` and ran S1's live tier, B13.)* *(v2.3: of those, the transcript pacing C1
+asked for exists and is unpinned (P5, the section after the Gate C section); the rest hold and are pinned at
+`6a05b13`. The live tier ran again at `2675399`, run 37171079147, 2 of 2.)*
 
 ---
 
@@ -1670,10 +2073,12 @@ item 3: §5 rule 10, B11), and reconnect snapshots for active children only (C1 
    absorbed by D5's cross-repo CI. It also needs `dr-acp` runnable (D1's Implementer) and D1's live config path.
    *(v2: resolved. D5 §7.4's `fork-live.yml`, on `ci/fork-live` over D1's `c8d7fbb`; run 37141960911, B13.)*
 3. **The `@final` suppression** (§3.1 item 3) is the one line upstream may push back on; the fallback is decision B's
-   alternative (1), observers, at the cost of a logged exception per sub-agent update.
+   alternative (1), observers, at the cost of a logged exception per sub-agent update. *(v2.3: no upstream PR is
+   opened; the stack is internal to the fork, so this stands only if the work is ever offered upstream.)*
 4. **Whether the TypeScript commit rides the same upstream PR** (client-ahead, allowlisted) or follows the server's
    release as its own PR. The spec says one PR; upstream's own flow would split it. *(v2: it rides PR #2 as its fifth
-   commit; the question stands for upstream.)*
+   commit; the question stands for upstream.)* *(v2.3: it is its own level, #15, inside the fork; nothing goes
+   upstream.)*
 5. **The shared pieces' landing order** (§9 rows 6, 9, 13): whichever of S1 and S2 is built first creates the
    emitter, `acp_router.py` and the scripted agent to the other's specification. The Conductor sequences the two
    Implementers so they do not both create them on parallel branches; if they do, the second rebases onto the
@@ -1685,17 +2090,19 @@ item 3: §5 rule 10, B11), and reconnect snapshots for active children only (C1 
    the source (≤ 2 per second per dirty child). If E6's 50-child run shows the store as the bottleneck, add a
    per-child minimum interval in the router; the contract does not change.
 8. *(v2)* **Rule on the size** (B16): 4,030 lines added against v1's ≈1.8k and the spec's ≈1.5k; about 13.5 h at
-   Gate C against ≈5 h. *(v2.2: 4,155 added at `a3279be`, about 14 h.)*
+   Gate C against ≈5 h. *(v2.2: 4,155 added at `a3279be`, about 14 h.)* *(v2.3: 3,730 at `6a05b13`, after the
+   refactor and the restored pins, about 12.4 h; the stack's levels add 3,741, about 12.5 h.)*
 9. *(v2)* **Run upstream's main-only guards in CI** (B14): REST API breakage, persisted-settings compatibility and
    the TypeScript client's CI ran only locally. A draft PR of S1's commits (on S2's) against the fork's `main`, as
    spec §4 layer 3 asks, would run them. The Conductor decides whether that comes before Gate B or before
    anything goes upstream. *(v2.1: the Cartographer ran them here; all pass but the ratchet's S2 pointer, item 13.)*
    *(v2.2: resolved. The fork-only `1f2b52d` runs them on pull requests into the fork's branches; all green on PR #2
-   at `a3279be`, B14.)*
+   at `a3279be`, B14.)* *(v2.3: and on each level of the Gate C stack; nothing goes to `main` or upstream.)*
 10. *(v2)* **The Python `RemoteConversation` cache can reorder** (PR #2's notes): `RemoteEventsList` merges an ACP
     call's `started` and terminal events in place, which can reorder its cache when child traffic interleaves; the
     stored log and the REST page are in order (`test_acp_subagent_sessions_over_live_server` checks the REST log).
-    Named as a follow-up by the build; C1 reads events through Canvas's own client, not this cache.
+    Named as a follow-up by the build; C1 reads events through Canvas's own client, not this cache. *(v2.3: still a
+    follow-up, named again in #11's notes.)*
 11. *(v2)* **A persisted agent-profile fixture for the opt-in** (B2), which C1 and D5 asked for: not committed, so
     upstream's profile-compatibility check does not pin `ACPAgentProfile.acp_subagents`. About 12 lines, beside
     `tests/sdk/persisted_settings_baselines/v2/agent_profile_default.json`, if wanted. *(v2.2: resolved; built in
@@ -1715,7 +2122,13 @@ item 3: §5 rule 10, B11), and reconnect snapshots for active children only (C1 
     and pinned at `a3279be`, and CI and the live tier passed there.)*
 15. *(v2.1)* **A `session/load` replay of sub-agent traffic is never driven end to end** (B17): a transcript mode that
     answers `session/load` with a replay would let E-2's fix be pinned through a real conversation too; the unit
-    test of E-2 is enough for Gate B.
+    test of E-2 is enough for Gate B. *(v2.3: still so; the reconnect test's `session/load` is refused by the player,
+    so the bridge falls back to `session/new`.)*
+16. *(v2.3)* **What the refactor left unpinned** (the section after the Gate C section): three properties of the
+    transcript player, its pacing (P5), a missed wait point raising (P6) and the unstable half of its conformance rule,
+    which no conversation can see. P4, P6′ and P7, whose only tests the refactor cut, are pinned again on the stack.
+    Whether the three are worth a test is the Conductor's call at Gate C: the first two are a test fixture's own
+    behaviour, and the third needs a client that reads the wire, not a conversation.
 
 ---
 
@@ -1724,7 +2137,13 @@ item 3: §5 rule 10, B11), and reconnect snapshots for active children only (C1 
 Every block is valid, ruff-formatted Python (line length 88, upstream's setting) or TypeScript. Bodies are `...`
 where §4 describes them. Excerpts of existing classes show only what S1 adds. *(v2: every block is the build's at
 `0cfb6a2`, one field or parameter per line wherever there are several; B7 lists what changed from v1. v2.2: A.3
-adds the members the fixes added at `a3279be`.)*
+adds the members the fixes added at `a3279be`.)* *(v2.3: every block is the code's at `6a05b13`, the stack's top, after
+the literate refactor: A.1's `SubagentState`, `_SubagentInitializeRequest` and `initialize` (V-3, V-2); A.2 without
+`_Association`, with `_PER_EVENT_FIELDS` and `_merge` taking the child's id (V-4); A.3's one warn-once set and
+helper, `unstable_session_update`'s alias, and `replaying()` in place of `_load_session` (V-1, V-6, V-5); A.5's
+`LocalConversation.cancel_acp_session` docstring; A.7's wire builders (V-6). Comments marked `(v2.3, …)` say which.
+Blocks keep one field and one parameter per line, so their layout differs from the code where `49dda35` joined
+short signatures onto one line; each Python block parses and passes `ruff format --check` at 88 columns.)*
 
 ### A.1 `openhands-sdk/openhands/sdk/agent/acp_unstable.py` (the shim)
 
@@ -1755,13 +2174,14 @@ from acp.schema import (
     EmbeddedResourceContentBlock,
     ImageContentBlock,
     Implementation,
+    InitializeRequest,
     InitializeResponse,
     ResourceContentBlock,
     StopReason,
     TextContentBlock,
 )
 from acp.utils import request_model
-from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import Field, SerializeAsAny, TypeAdapter, ValidationError
 
 from openhands.sdk.logger import get_logger
 
@@ -1795,10 +2215,9 @@ class SubagentSessionCapabilities(ACPModel):
     field_meta: Annotated[dict[str, Any] | None, Field(alias="_meta")] = None
 
 
+# (v2.3, V-3) The library's base config: unknown keys are ignored.
 class SubagentState(ACPModel):
-    """running, idle, requires_action, unknown, or a custom state kept whole."""
-
-    model_config = ConfigDict(extra="allow")
+    """running, idle, requires_action, unknown, or a custom state."""
 
     state: str
     stop_reason: Annotated[StopReason | None, Field(alias="stopReason")] = None
@@ -1871,14 +2290,14 @@ SUBAGENT_CLIENT_CAPABILITIES: Final = SubagentClientCapabilities(
 )
 
 
-class _SubagentInitializeRequest(ACPModel):
-    protocol_version: Annotated[int, Field(alias="protocolVersion")]
+# (v2.3, V-2) A subclass after all: the wider type serializes a subclass whole.
+class _SubagentInitializeRequest(InitializeRequest):
+    """Serializes a capabilities subclass whole, so ``subagents`` reaches the wire."""
+
     client_capabilities: Annotated[
-        SubagentClientCapabilities,
+        SerializeAsAny[ClientCapabilities] | None,
         Field(alias="clientCapabilities"),
-    ]
-    client_info: Annotated[Implementation | None, Field(alias="clientInfo")] = None
-    field_meta: Annotated[dict[str, Any] | None, Field(alias="_meta")] = None
+    ] = None
 
 
 # ClientSideConnection is @final in agent-client-protocol 0.12.1; this subclass
@@ -1887,7 +2306,7 @@ class SubagentClientSideConnection(
     ClientSideConnection,  # pyright: ignore[reportGeneralTypeIssues]
 ):
     """A ClientSideConnection that hands ACP's unstable sub-agent updates to a
-    callback ahead of the library's router, and can advertise ``subagents``."""
+    callback ahead of the library's router, and advertises ``subagents``."""
 
     def __init__(
         self,
@@ -1905,8 +2324,8 @@ class SubagentClientSideConnection(
         client_info: Implementation | None = None,
         **kwargs: Any,
     ) -> InitializeResponse:
-        """Send ``initialize`` typed with ``SubagentClientCapabilities`` when given
-        one, so ``subagents`` reaches the wire; otherwise the library's call."""
+        """Send ``initialize``, advertising ``subagents`` unless given other
+        capabilities."""
         ...
 
 
@@ -1962,6 +2381,10 @@ from openhands.sdk.event import (
 from openhands.sdk.event.types import SourceType
 
 
+# (v2.3, V-4) Each stored snapshot is a new event: its own id and time, no parent yet.
+_PER_EVENT_FIELDS = {"id", "timestamp", "parent_id"}
+
+
 class ACPSessionNotFoundError(LookupError):
     """No sub-agent session with this id is known on the ACP connection."""
 
@@ -1969,20 +2392,6 @@ class ACPSessionNotFoundError(LookupError):
 class ACPSessionNotCancellableError(RuntimeError):
     """The session cannot be cancelled now: no live connection, the root session,
     or no current ``cancel`` grant from the agent."""
-
-
-@dataclass
-class _Association:
-    parent_session_id: str | None
-    parent_tool_call_id: str | None = None
-    title: str | None = None
-    description: str | None = None
-    state: str | None = None
-    stop_reason: str | None = None
-    cancel_granted: bool = False
-    cost: float | None = None
-    cost_currency: str | None = None
-    meta: dict[str, Any] | None = None
 
 
 @dataclass
@@ -2001,7 +2410,11 @@ class _Message:
 
 
 class ACPSubagentSessions:
-    """Routing, merge, segments, cost and cancel grants for one ACP connection."""
+    """Routing, merge, segments, cost and cancel grants for one ACP connection.
+
+    A child's association is held as its latest ``ACPSubagentEvent``, whose
+    ``cancellable`` is the live grant; each snapshot stored is a new event.
+    """
 
     root_session_id: str | None
     replaying: bool
@@ -2052,8 +2465,7 @@ class ACPSubagentSessions:
     ) -> list[Event]: ...
 
     def before_update(self, session_id: str) -> list[Event]:
-        """Flush ``session_id``'s open segment; called before any update for it
-        that is not a text chunk, a message chunk or a usage update."""
+        """Flush ``session_id``'s open segment, ahead of an update that ends it."""
         ...
 
     def flush_all(self) -> list[Event]: ...
@@ -2062,10 +2474,11 @@ class ACPSubagentSessions:
         """Raise unless the agent granted ``cancel`` for this child, live."""
         ...
 
-    # (v2, B7) The private helpers the build added.
+    # (v2, B7) The private helpers the build added; (v2.3, V-4) _merge takes the
+    # child's id and replaces its held event with a merged copy.
     def _merge(
         self,
-        association: _Association,
+        child: str,
         update: SubagentUpdate,
     ) -> None:
         """Apply ACP's patch rules: omitted keeps, null clears, a value replaces."""
@@ -2108,22 +2521,21 @@ def _parent_tool_call_id(meta: dict[str, Any] | None) -> str | None:
 class _OpenHandsACPBridge:
     """Excerpt: the new members only."""
 
+    # None without sub-agent sessions: every update takes the root's path.
     subagents: ACPSubagentSessions | None
-    # The conversation's emitter (ACPAgent._on_session_event), set per connection.
+    # Receives every sub-agent event, in order; unset, they are dropped.
     on_session_event: Callable[[Event], None] | None
-    # (v2, B7) Session ids already warned about as never announced.
-    _unannounced_sessions: set[str]
-    # (v2.2, E-4) The same for unstable updates, which keep their own session.
-    _unannounced_unstable_sessions: set[str]
+    # (v2.3, V-1) (session, routing) pairs already warned about as never announced.
+    _warned_unannounced: set[tuple[str, str]]
 
     def __init__(self, *, subagents: bool = False) -> None: ...
 
     def unstable_session_update(
         self,
         session_id: str,
-        update: SubagentUpdate | SessionMessage | SessionMessageChunk,
+        update: UnstableSessionUpdate,
     ) -> None:
-        """The shim's callback: route one unstable update; never awaits."""
+        """Route one unstable sub-agent update; never awaits, so it keeps wire order."""
         ...
 
     def emit_subagent_events(self, events: Sequence[Event]) -> None:
@@ -2135,7 +2547,30 @@ class _OpenHandsACPBridge:
         """Submit every open child segment; runs on the ACP loop after a prompt."""
         ...
 
-    def _child_session(self, session_id: str) -> str | None: ...
+    # (v2.3, V-5) Replaces ACPAgent._load_session.
+    @contextlib.contextmanager
+    def replaying(self, root_session_id: str) -> Generator[None]:
+        """Around ``session/load`` of ``root_session_id``: the history it replays
+        is neither stored again nor lets an old ``cancel`` grant authorize
+        anything."""
+        ...
+
+    def _child_session(self, session_id: str) -> str | None:
+        """``session_id`` when it is an announced child, else None.
+
+        A session that is neither the root nor a child is warned about once;
+        its traffic follows the root's path, as without the opt-in.
+        """
+        ...
+
+    # (v2.3, V-1) Replaces the two sets and the unstable path's own helper.
+    def _warn_unannounced(
+        self,
+        session_id: str,
+        routing: str,
+    ) -> None:
+        """Warn, once per session and routing, of a session never announced."""
+        ...
 
     # (v2, B7)
     def _route_child_update(
@@ -2146,13 +2581,6 @@ class _OpenHandsACPBridge:
         """Store a child's text, usage or other non-tool update; False for a
         tool call, which takes the shared tool-call path. A replayed update,
         a tool call included, is neither stored nor tracked."""
-        ...
-
-    # (v2.2, E-4)
-    def _warn_once_for_unannounced_unstable_traffic(self, session_id: str) -> None:
-        """Warn once for a session that is neither the root nor an announced
-        child: its unstable updates stay under its own id, so a child it
-        announces cannot be placed."""
         ...
 
 
@@ -2190,19 +2618,8 @@ class ACPAgent(AgentBase):
         """
         ...
 
-    async def _acancel_acp_session(self, session_id: str) -> None: ...
-
-    # (v2, B7)
-    async def _load_session(
-        self,
-        conn: ClientSideConnection,
-        client: _OpenHandsACPBridge,
-        session_id: str,
-        working_dir: str,
-        mcp_servers: list[_ACPMcpServer],
-    ) -> LoadSessionResponse:
-        """``session/load``; the history it replays is neither stored again nor
-        lets an old ``cancel`` grant authorize anything."""
+    async def _acancel_acp_session(self, session_id: str) -> None:
+        """Check the live grant and send ``session/cancel``; on the ACP loop."""
         ...
 ```
 
@@ -2337,14 +2754,13 @@ class ACPAgentProfile(AgentProfileBase):
 
 class LocalConversation(BaseConversation):
     """Excerpt: S1's method. S2's emitter, ``_emit_event_from_any_thread``, its
-    executor and its wiring are S2's Appendix A.4, built by whichever lands
-    first."""
+    executor and its wiring are S2's (its Appendix A.4)."""
 
     def cancel_acp_session(self, session_id: str) -> None:
         """Cancel one ACP sub-agent session's current work.
 
-        Unlike ``switch_acp_model`` this takes no state lock: it must work while
-        a synchronous ``run()`` holds the lock for the whole turn.
+        Takes no state lock, so it works while ``run()`` holds the lock for a
+        whole turn.
 
         Raises:
             ValueError: the conversation's agent is not an ``ACPAgent``.
@@ -2513,10 +2929,13 @@ The command line S1 adds (S2's flags and `SCRIPTED_ACP_LOG` unchanged, S2 Append
 | `--wait-timeout SECONDS` | `30` | a transcript wait point's limit; past it the script exits non-zero |
 
 *(v2)* As built, S1 adds the functions and classes below to S2's script; `serve` is S2's (B1), shown because S1
-calls it for both modes.
+calls it for both modes. *(v2.3, V-6: and the eleven wire builders, which both sub-agent test files import; each
+returns one ACP update, or for `text` one content block, as JSON. `CONTEXT_WINDOW` is S2's. At Gate C the first
+four are in #10, the rest with `--subagents` in #12, and `plan_transcript` to `play_transcript` in #16.)*
 
 ```python
 DEFAULT_WAIT_TIMEOUT_S: Final[float] = 30.0
+ROOT_CELL = "cell-1"
 
 
 def add_subagent_arguments(parser: argparse.ArgumentParser) -> None:
@@ -2542,6 +2961,73 @@ async def serve(
 def advertises_subagents(initialize_params: dict[str, Any]) -> bool:
     """Whether the client's raw ``initialize`` params advertise ``subagents``."""
     ...
+
+
+# (v2.3, V-6) Wire updates, as an ACP agent sends them.
+def text(value: str) -> dict[str, Any]: ...
+
+
+def subagent(
+    child: str,
+    **fields: Any,
+) -> dict[str, Any]: ...
+
+
+def announce(
+    child: str,
+    *,
+    cell: str | None = ROOT_CELL,
+    cancel: bool = True,
+    **fields: Any,
+) -> dict[str, Any]: ...
+
+
+def idle(
+    child: str,
+    stop_reason: str = "end_turn",
+) -> dict[str, Any]: ...
+
+
+def tool_call(
+    call_id: str,
+    **fields: Any,
+) -> dict[str, Any]: ...
+
+
+def tool_done(
+    call_id: str,
+    status: str = "completed",
+    **fields: Any,
+) -> dict[str, Any]: ...
+
+
+def thought(value: str) -> dict[str, Any]: ...
+
+
+def said(value: str) -> dict[str, Any]: ...
+
+
+def usage(
+    cost: float | None = None,
+    size: int = CONTEXT_WINDOW,
+) -> dict[str, Any]: ...
+
+
+def message(
+    message_id: str,
+    sender: str,
+    recipient: str,
+    value: str,
+    **fields: Any,
+) -> dict[str, Any]: ...
+
+
+def message_chunk(
+    message_id: str,
+    sender: str,
+    recipient: str,
+    value: str,
+) -> dict[str, Any]: ...
 
 
 async def play_subagent_run(
