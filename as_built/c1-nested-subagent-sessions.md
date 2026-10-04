@@ -1,621 +1,433 @@
-# C1 · Sub-agent sessions nested in the chat, as built
+# C1 · Sub-agent sessions nested in the chat, as built (r2)
 
-**TASK-4** · Cartographer · the code at `9d75806`, head of `feat/acp-subagent-sessions` in the Canvas fork
-[michaeltheologitis/OpenHands](https://github.com/michaeltheologitis/OpenHands) (draft PR #4 into `wiring/dr-1` at
-`9881d24`; C1 is `git diff 9881d24 9d75806`: sixteen commits of its own and no merges) · checked against the design at
-`88f5c43` (`docs/design/c1-nested-subagent-sessions.md` v2, the head of `design/c1` when this branch was cut; a v3 is
-being written elsewhere and I did not read it) · agent-server and TypeScript client from the SDK fork's tag `dr-1`
-(`cef3b24`) · Node 22.22 and npm 10.9 in this sandbox, Node 24.15 and npm 11.12 in CI · 2026-10-04.
+**TASK-4** · Cartographer · r2, for Gate C · the code at `2c0e743`, head of `feat/acp-subagent-sessions` in the Canvas
+fork [michaeltheologitis/OpenHands](https://github.com/michaeltheologitis/OpenHands) (draft PR #4 into `wiring/dr-1`
+at `9881d24`; C1 is `9881d24..2c0e743`: 38 commits, no merges) · checked against design v3 (`8772b90`,
+`docs/design/c1-nested-subagent-sessions.md` on `design/c1`), Michael's six Gate B rulings and his instruction "fold
+the cost toggle into C1 now" · replaces r1 (`d16d3df`, the code at `9d75806` against design v2) · Node 22.22 and npm
+10.9 here, Node 24.15 and npm 11.12 in CI · 2026-10-04.
 
-**Where this file lives.** On deep-reasoning's branch `as-built/c1`, cut from `design/c1` at `88f5c43`. C1's code is
-in the Canvas fork, whose branches carry only upstream-shaped code, so no document of ours goes there. This branch
-holds `AGENTS.md`, `CLAUDE.md` and `docs/` only: no `pyproject.toml`, no docs site, no test runner, so nothing builds
-or collects `as_built/` and there is nothing to wire. [run: `git ls-tree -r HEAD`]
+**Where this file lives.** deep-reasoning's branch `as-built/c1-r2`, cut from `design/c1` at `9bb15be`. That branch
+holds `AGENTS.md`, `CLAUDE.md`, `docs/` and `as_built/` only: nothing builds or collects `as_built/`, so there is
+nothing to wire. [run: `git ls-tree -r HEAD`]
 
 **Evidence marks.** Every claim carries one.
-- **[run]**: executed in this sandbox, never in the shared checkout: a detached worktree of `9d75806` (and one of
-  `9881d24`, C1's base, for comparison) using the C1 checkout's installed `node_modules`. C1's 12 Vitest files at head
-  and the 8 of them that exist at base; `npm run typecheck`; ESLint and Prettier on C1's files; the translation check;
-  one behavioural probe test and 23 hand mutation probes, each one temporary edit, reverted (§6.4); an in-memory
-  `git merge-tree` against C2's branch.
-- **[CI]**: read from GitHub's records through the GitHub MCP tools, with full job logs downloaded: CI run
-  [37171885463](https://github.com/michaeltheologitis/OpenHands/actions/runs/37171885463) and live run
-  [37171891707](https://github.com/michaeltheologitis/OpenHands/actions/runs/37171891707) at `9d75806`, the live runs
-  37164950255, 37166999500 and 37171444972, and the tail of 37162417280.
-- **[read]**: read in the code, **not executed**. Weaker than [run]; §7 lists the read claims that matter.
+- **[run]**: executed here, in detached scratch worktrees of the Canvas fork at `2c0e743` and `4db661f` (and, for one
+  check each, `9881d24`, `94b4bae`, `ba1c1d2`, a local merge of C1 with C2 and a local commit of C1's diff on
+  deep-reasoning; none pushed): `npm ci` and `npm run make-i18n` first; C1's 13 Vitest files; typecheck, ESLint,
+  Prettier and the translation check; the Refactorer's DOM probe and expect-counter at both commits; 27 mutation
+  probes, one temporary edit each, reverted, the tree clean after each (§7); `git merge-tree` trial merges.
+- **[CI]**: read from GitHub with `gh run view --log` (REST): CI
+  [37184716626](https://github.com/michaeltheologitis/OpenHands/actions/runs/37184716626) and the live tier
+  [37184736932](https://github.com/michaeltheologitis/OpenHands/actions/runs/37184736932) at `2c0e743`; for
+  comparison CI 37177982694 and live 37177985083 at `4db661f`.
+- **[read]**: read in the code, **not executed**. Weaker than [run]; §8 lists the read claims that matter.
 
-Nothing here ran a paid model, the `claude` CLI or a live test. The live tier is reported from CI.
+No paid model, no `claude` CLI and no Playwright test ran here; nothing was dispatched. The live tier is CI's.
 
-**Reading order.** §2 first (the divergences), then §1 and §3–§4 as the map, §4.6–§4.7 for what C1 relies on and who
-relies on C1, §6 for the runs and the mutation probes, §7 for what I could not verify.
+**Reading order.** §1 (what moved since Gate B), §2 (divergences), §3 (the design's stale lines), then §5 for D5 and
+C2, §6–§7 for the measurements and probes, §8 for what is unverified. §4 is the route into the code.
 
 ---
 
-## 1 · What exists
+## 1 · What moved since Gate B
 
-An ACP agent that runs sub-agent sessions (S1's events, stored by the dr-1 agent-server) now shows each child inside
-the tool call that spawned it, recursively, instead of one flat list. Each spawning call's card gets a collapsed
-summary line ("3 sub-agents · 2 done · 1 running") that expands to one row per child: status, title, the first line
-of its answer, its own tool-call count, its latest cost, and Stop when the agent granted `cancel`. An expanded row
-shows the child's task, its thoughts, text, messages and calls, and its own children the same way. Calls made inside
-a child leave the root's flow. On reopening, the chat loads older pages until every visible child can be placed.
-Agents without sub-agent sessions render as before. No production line names deep_reasoner or dr-acp or reads `meta`;
-`_meta` appears only in type comments and, as the wire's `_meta.openhands.parentToolCallId`, in the transcripts; two
-test comments name dr-acp ("A finished dr-acp child keeps its grant"). [run: grep of the added lines; read; each
-path run by the tests of §6.5, and the whole in the live tier, §6.3]
+Three steps follow r1's `9d75806`, all on the same branch, none a merge [run: `git log`]:
+
+| Step | Commits | What |
+|---|---|---|
+| Rulings 5 and 6 | `94b4bae`, `ba1c1d2` (ruling 5); `b4f6354` (ruling 6) | D-2 fixed test-first; C5, C7, C9 pinned |
+| The cost setting | `dfde47e`, `4db661f` | sub-agent costs hidden unless an App setting shows them (D-14) |
+| The literate refactor | `6fafd62` … `2c0e743`, 17 commits | types from the client, a keys module, `replaceEqualDeep`, `upsert`, a scan, the anchor rule moved into the interleave, five exports made private, test helpers, reordering (D-15 to D-21) |
+
+**The six rulings, as built.**
+
+| Ruling | At `2c0e743` |
+|---|---|
+| 1 · size accepted | The refactor took C1's code and tests from 5,369 lines added to 5,147 (−222, −4.1%). Production is 2,034, below Gate B's 2,069; unit and end-to-end tests are 3,113, above Gate B's 2,965 (§6.3). [run] |
+| 2 · keep ✓/■ | `Check` and `Square` with `subagent-done-icon` and `subagent-stopped-icon` (`subagent-row.tsx:87–100`), still outside SUB-011 (`specs/acp-subagent-sessions.md:39–48`). [run: `marks a %s / %s child …`] |
+| 3 · E6 at 1,203 events, null 1 s | `SCROLL_LATENCY_LIMIT_MS = 1_000` (`mock-llm-acp-subagents.spec.ts:46`, asserted at `:348`); `writeFanoutTranscript` unchanged since `5b89471` but for its doc comment [run: `git diff 4db661f 2c0e743`]; the live run stored 1,203 ACP events, worst scroll 43 ms (§6.2) [CI] |
+| 4 · one-transcript smoke replay | `.github/workflows/mock-llm-e2e.yml` unchanged since `9d75806`; `:104` still names `fallback-placement.jsonl` alone [run: `git diff`; CI: the job's environment] |
+| 5 · fix D-2 test-first | `94b4bae` adds `sets apart only the child whose own parent is missing, not the children it spawns` (`subagent-index.test.ts:545`) and `nests a child spawned inside an unplaced child under it, in one block` (`messages-subagents.test.tsx:146`); both fail at `94b4bae` and pass at `ba1c1d2` [run]. The fix is one line: an unknown session fails the ancestry walk only when it is the child's own parent (`subagent-placement.ts:157`, `if (!record) return current !== parent;`), which is design §4.4 rule 1. Probe D2 restores the old walk; both tests fail [run] |
+| 6 · pin C5, C7, C9 | `b4f6354`: `shows a child's task to its own child only as that child's task` (`subagent-block.test.tsx:251`), `keeps a root call where it started when a child's task lands before it ends` (`messages-subagents.test.tsx:108`), `follows sub-agent content into view as it grows without new root items` (`chat-interface.test.tsx:1077`). Each was written against code that already behaved so; probes C5, C7 and C9 each now fail exactly that test [run] |
+
+**What the refactor did not change.** The Refactorer's DOM probe renders 16 states of the tree (every status, costs
+hidden and shown, a three-level transcript, depth past 6, the root's flow with anchors, fallbacks and unplaced
+blocks, Stop ready, stopping, withheld and confirmed, the read-only view, the switch off and on). Its normalized
+markup is byte-identical at `4db661f` and `2c0e743`, and identical to the Refactorer's own baseline and final files.
+No test name was lost except the three of D-21, and no surviving test makes fewer `expect()` calls. [run: §6.4]
+
+---
+
+## 2 · Divergences from design v3 and the rulings
+
+r1's D-1 to D-13 were against v2; v3 absorbed them as its §3.2 B1–B17. At `2c0e743` B16 (r1's D-2) is fixed and
+B17's three behaviours are pinned (§1); the others stand as v3 records them. Below are the divergences from v3 that
+r1 could not see, numbered on from r1. The changelog holds no entry for TASK-4, so no `drift:` line to compare.
+[read: Notion query of the Changelog]
+
+### 2.1 Behaviour a user sees
+
+**D-14 · Sub-agent costs are hidden unless an App setting shows them.** Design §1.2, §2 items 5 and 7, decision J,
+§4.6 (`SubagentRow`), §4.7 ("Cost"), SUB-006 and §4.12: every row shows its child's latest cost. Built (`dfde47e`):
+`useShowSubagentCosts()` (`subagent-cost-preference.ts:22–28`) is `useSyncExternalStore` over the localStorage key
+`openhands-show-subagent-costs` read as `=== "true"`, subscribed to `storage` (other tabs) and to an event its one
+writer, `writeShowSubagentCosts` (`:31–37`), dispatches in the same tab; `SubagentRow` formats a cost only when it is
+on (`subagent-row.tsx:43, 53–55`). The switch, `SubagentCostsSwitch`
+(`features/settings/app-settings/subagent-costs-switch.tsx`), is upstream's `SettingsSwitch` with test id
+`show-subagent-costs-switch`, below the Getting Started switch on `/settings/app` (`routes/app-settings.tsx:230`).
+Its label is a 33rd key, `SETTINGS$SHOW_SUBAGENT_COSTS`, placed after `SETTINGS$SHOW_GETTING_STARTED_CHECKLIST`
+(`translation.json:42366`), not in the `SUBAGENTS$` block §4.10 and §8 row 5 describe. SUB-006 is reworded and
+SUB-011 lists the switch (`specs/acp-subagent-sessions.md:24–25, 48`). Frontend only: no agent-server setting. The
+shared-conversation view reads the viewer's own setting like the live chat; nothing in §4.9 or the code treats it
+apart [read]. Live 2 now waits until the agent-server stored `child-x`'s cost, asserts the row shows none, turns the
+switch on on the settings page, reloads and asserts `$0.0004` (`mock-llm-acp-subagents.spec.ts:137–161`) [read; CI:
+passed]. *Reason:* Michael's instruction, folded from TASK-15; the commit's own: Canvas shows a conversation's cost
+only on demand. *Pinned by:* `subagent-costs-switch.test.tsx` (`is off by default and shows sub-agent costs while
+on`, `keeps sub-agent costs shown across a reload`) and `subagent-block.test.tsx › … › shows each child's latest
+cost and never a sum when costs are shown`; probes K1, K2, K3, K5 are caught. Another tab's change (the `storage`
+listener) is not pinned: probe K4 survives (§7). [run]
+
+### 2.2 Structure and signatures (the refactor)
+
+**D-15 · The three event types come from the TypeScript client.** Design §4.2: "Canvas keeps its own agent-server
+event types … and does not import the client's; C1 follows that convention", and A.1 declares three interfaces.
+Built (`1635097`): `acp-subagent-event.ts:16–22`, each `Client<Name> & BaseEvent`, 22 lines instead of 99. The fields
+are the client's, with A.1's names and optionality (`dist/events/types.d.ts:142–172` of the `dr-1` tarball) [read];
+`source` is Canvas's `SourceType` (`"agent" | "user" | "environment" | "hook"`) on all three, where A.1 has
+`"agent" | "environment"` and `"agent"`; the per-field JSDoc is gone. Typecheck is clean [run]. *Reason (commit):* the
+pinned client already exports all three, and Canvas already takes `AgentErrorEvent` and `ConversationErrorEvent` from
+it. *Consequence:* C1 now needs five client exports, not A.7's two (§5.1); on the stock npm client C1 does not
+typecheck (§5.3).
+
+**D-16 · Keys and timestamp order have their own module.** A.3 and §4.3 put `ROOT_SESSION`, `SessionRef`,
+`toSessionRef`, `compareTimestamps`, `toolCallKey`, `messageKey` and `routeKey` in `subagent-index.ts`. Built
+(`4f5fb18`): `src/utils/subagents/subagent-keys.ts` (48 lines, no imports); the index imports `placeSubagents`, and
+placement imports only types from the index. *Reason (commit):* placement imported the keys from the fold while the
+fold imported placement. [read]
+
+**D-17 · Structural sharing through react-query's `replaceEqualDeep`.** §4.4's rule holds (equal lists, summaries
+and the pending list keep their identity); the mechanism is `replaceEqualDeep` from `@tanstack/react-query`
+(`subagent-placement.ts:1, 78–81, 87, 215`) in place of the six `same*`/`reuseList` helpers; `reuseMap` stays for
+Maps. The pure placement module now imports react-query, as `src/utils/cache-utils.ts` already does. *Reason
+(commit):* the same sharing react-query applies to every query result, a public export. Probes R1–R3 are caught.
+[run; read]
+
+**D-18 · A transcript item's place is found by scanning back from the end.** §4.3's table: "insertion by binary
+search (upper bound)". Built (`ea988b2`, `subagent-index.ts:375–377`): the same position in a sorted transcript, after
+every item at or before `at`; one step for an item newer than the rest. Probes R7 and R8 are caught. [run]
+
+**D-19 · `interleaveSubagentAnchors(items, anchors, toolCalls)`.** A.6 (v3): an optional `startOf?: ItemStart`
+defaulting to the first event's timestamp, with `Messages` passing the call's `firstAt`. Built (`ed44161`):
+`toolCalls` is a required third argument and the function dates an ACP call by its record's `firstAt` itself
+(`main-flow-anchors.ts:30–38, 45–49`); `ItemStart` and the default are gone. The rule is v3's B5. Probe C7 is caught.
+[run]
+
+**D-20 · Smaller changes**, none changing what a user sees [read unless marked]:
+
+| Design v3 | Built at `2c0e743` |
+|---|---|
+| A.3: `TranscriptItem` has three variants | two: `{kind: "tool_call" \| "message"; key; at}` and the text item (`subagent-index.ts:61–73`, `dfd5ab8`) |
+| A.3: `SubagentSummary` interface in the index; A.5 exports `EMPTY_SUBAGENT_SUMMARY` | `Record<SubagentStatusCategory \| "total", number>` in `subagent-status.ts:15`; the empty constant is gone (`f507374`) |
+| §4.3: three "latest" rules, one per record kind | one `upsert` (`subagent-index.ts:307–313`) for snapshots, calls and messages (`dfd5ab8`); probes R4–R6 caught [run] |
+| B5: placement fields compared as one joined string (`subagent-index.ts:241` at `9d75806`) | `JSON.stringify` of the same nine fields (`:326–341`, `4f5fb18`); probe R14 (`String(...)`) survives: no test tells the two apart, and for the values S1 writes they agree [run] |
+| §4.3: "A call that changed nothing returns `index` itself" | still so; the check compares each record map with the index's (`:179–182`) instead of asking each draft map whether it was written; a write always copies, so the two agree (`dfd5ab8`) |
+| A.7: the refusal text reads the client error's body | through upstream's `getApiErrorBody` (`use-cancel-acp-session.ts:27`, `7df5ab0`); same toast; probe R15 caught [run] |
+| A.6: `renderKeyOf`, `SUBAGENT_COUNT_I18N_KEY` exported; A.9: `SCRIPTED_ACP_PROFILE`, `deleteScriptedAcpAgent`, `startConversation` exported | all five private (`messages.tsx:42`, `subagent-labels.ts:10`, `acp-subagents.ts:43, 92, 112`; `77b602b`, `1b88117`) |
+| A.9's helper list | adds `scriptedAcpRuns()` (`acp-subagents.ts:127–157`: `start` configures the scripted agent with `acp_subagents: true`, routes the session key, starts and records a conversation; `cleanUp` deletes them and restores the mock LLM's profile), `showSubagentCosts` (`:234`, D-14), `COLLAPSED_TOGGLES` (`:229`); `StoredEvent` gains `cost` |
+| §4.11 (v3): `@spec` tags in implementation code for SUB-004 and SUB-008 only | also SUB-006 (`subagent-cost-preference.ts:20`) [run: grep] |
+
+Two reorder commits claim to move lines unchanged: `2c0e743`'s placement file holds the same lines before and after
+as a multiset; `c4ddd0c`'s index differs only in its new module comment and `draftOf` turned into a function
+declaration, as its message says [run: sorted-line diff].
+
+### 2.3 The tests and the pull request
+
+**D-21 · Two tests dropped, one moved, seven added since Gate B.** Dropped (`58ee89f`): `useEventStore › sub-agent
+index › an older page does not override a newer snapshot` and `sub-agents under the call that spawned them › hides
+each child's cost unless costs are shown`; the commit's reason is that other tests pin each. Probes R4 and R5 (the
+newest-wins and earliest-`firstAt` rules broken) still fail five and four index tests, and K1 and K2 fail the switch
+tests [run]. Moved (`edb963e`): `groups children whose parent session is missing by that parent`, from
+`anchorsForParent ›` to `unplacedGroups ›`, with the same one `expect()`. Added: the two of ruling 5, the three of
+ruling 6, the switch's two; `shows each child's latest cost and never a sum` is renamed `… when costs are shown`.
+C1's cases: 237 passing and 1 todo in 13 files, against 125 and 1 todo in the 8 of them that exist at `9881d24`, so
+**C1 adds 112 cases** (106 at Gate B) [run]; CI's 8,228 passing is Gate B's 8,222 plus six [CI].
+
+**D-22 · Thirty-eight commits in PR #4.** v3 §3.2 B14 recorded sixteen; the PR now carries 38, no merges, still into
+`wiring/dr-1`, draft, mergeable (`clean`) [run: `git log`; read: REST `pulls/4`]. That each commit is green alone is
+not shown; CI ran on pushed heads (green at `b4f6354`, `4db661f` and `2c0e743` since Gate B) [CI].
+
+---
+
+## 3 · Design v3's stale lines (line numbers of `8772b90`)
+
+Each line below describes `9d75806` or an earlier plan and is no longer true at `2c0e743`. Lines v3 itself marks as
+v2's plan (§6.1, §6.2 tables) are not listed.
+
+| Lines | Says | At `2c0e743` |
+|---|---|---|
+| 17–25 | "Matches the build at `9d75806`": sixteen commits, +5,647 −44 in 51 files | 38 commits; +5,778 −44 in 56 files [run: `git diff --numstat`] |
+| 44–120 | six things to rule on, with recommendations | ruled; as built in §1 |
+| 46–57, 481–483, 712–747 (B15), 791–830 (§4.1) | sizes and per-file lines at `9d75806` | §6.3; new files `subagent-keys.ts` (48), `subagent-cost-preference.ts` (37), `subagent-costs-switch.tsx` (22) and its test (76), `app-settings.tsx` +3; `acp-subagent-event.ts` 22 |
+| 127–188 | the evidence: CI and live at `9d75806`, Stryker | §6.1, §6.2; Stryker not rerun |
+| 210 | `› groups children whose parent session is missing …` under `anchorsForParent` | under `unplacedGroups ›` (D-21) |
+| 211 | `use-event-store.test.ts › … › an older page does not override a newer snapshot` | dropped (D-21) |
+| 231, 159 | SUB-006 pinned by `shows each child's latest cost and never a sum`; Live 2 shows `$0.0004` | renamed `… when costs are shown`; the switch tests; Live 2 turns the setting on first (D-14) |
+| 251–259 | "Not pinned by any test": B16, C5, C7, C9 | all four pinned (§1); the property table lacks those five tests and the switch's two |
+| 340, 355, 383 (J), 410–412, 421–422, 429–431, 989–992, 1059–1062, 1165, 1614 | each row shows its latest cost | hidden unless the setting is on (D-14) |
+| 557–562, 2231–2245 | `startOf?: ItemStart`, optional third argument | `toolCalls`, required; no `ItemStart` (D-19) |
+| 563–567, 2247–2250, 2259–2260, 2092–2093 | `renderKeyOf`, `SUBAGENT_COUNT_I18N_KEY`, `EMPTY_SUBAGENT_SUMMARY`, `ItemStart` exported; `compareTimestamps` from `subagent-index.ts` | private or gone; `compareTimestamps` in `subagent-keys.ts` (D-16, D-20) |
+| 568–569, 896–898 | `placementFieldsOf`, `subagent-index.ts:241`, a joined string | `:326–341`, JSON (D-20) |
+| 677–678 | helper exports `SCRIPTED_ACP_PROFILE`, `deleteScriptedAcpAgent`, `startConversation` | private; `scriptedAcpRuns`, `showSubagentCosts`, `COLLAPSED_TOGGLES` exported (D-20) |
+| 698–708 (B14), 1468–1472 | sixteen commits, "ten more, through `9d75806`" | 38 (D-22) |
+| 751–765 (B16), 945–947 | the build diverges from §4.4 rule 1 | fixed, rule 1 as written (§1) |
+| 766–783 (B17) | C5, C7, C9 unpinned | pinned (§1) |
+| 837–843 | Canvas declares its own event types, not the client's; `source` is `"agent" \| "environment"` | the client's types (D-15) |
+| 850–854, 901, 1821–1851 | the keys live in `subagent-index.ts` | `subagent-keys.ts` (D-16) |
+| 864 | transcript insertion by binary search | a scan from the end (D-18) |
+| 1017–1024 | `interleaveSubagentAnchors(renderedItems, anchors)` with the optional rule | D-19 |
+| 1125–1130, 1132–1152 | 32 keys, all in one block after `EVENT_GROUP$COLLAPSE` | 33; `SETTINGS$SHOW_SUBAGENT_COSTS` elsewhere (D-14) |
+| 1172–1178, 1186–1204 | SUB-011 and §4.12 without the switch; spec file 47 lines; tags SUB-004 and SUB-008 only | the switch is in SUB-011; 48 lines; SUB-006 tagged too |
+| 1234–1238, 1637–1639 | E6 at `9d75806`: 138.6 ms; "five runs … 70.2 to 323.5 ms" | 43 ms at `2c0e743`, 74.8 ms at `4db661f` (§6.2) |
+| 1252–1256 | "C1 adds four Vitest files"; CI ran 769 | five (`subagent-costs-switch.test.tsx`); CI ran 770 |
+| 1339–1341, 1371, 1377–1382, 1446–1448 | runs at `9d75806`; Live 2's assertion list | runs at `2c0e743`; Live 2 adds the setting (D-14) |
+| 1518–1529, 1557–1560 | C2 at `64b5a8b`/`f4c7ae5`; nine shared files; C2's `getSdkHttpServerErrorReason` | C2 at `a1ec3d1`, eight shared files; both read `exception` through `getApiErrorBody` (§5.3) |
+| 1548–1551 | C1 needs `cancelAcpSession` and `CancelAcpSessionResponse` from the client | and the three event types (D-15) |
+| 1667–1783 (A.1) | three interfaces, `source` as above | three intersections (D-15) |
+| 1878–1896, 1924–1934, 2046, 2256 | `TranscriptItem`'s three variants; `SubagentSummary` in the index | D-20 |
+| 2392–2417 (A.9) | the private helpers as exports; `StoredEvent` without `cost` | D-20 |
+
+---
+
+## 4 · The map at `2c0e743`
+
+The architecture is r1's (§4 there) and v3's; the route into the code, with the refactor's moves:
 
 ```text
-agent-server (dr-1) ── REST page / WebSocket frame, the same events
+agent-server (dr-1) ── REST page / WebSocket frame
    ▼
-useEventStore.addEvent(s)            one set per event or page; dedupe by id first
-   ├─ events, eventIds, uiEvents     uiEvents' ACP merge key is now (session, tool_call_id)
-   └─ subagents = foldSubagentEvents(subagents, newEvents)        utils/subagents/subagent-index.ts
-        records by key: children · toolCalls · messages · firstMessageTo · transcripts · stats
-        placement (only when dirty) = placeSubagents(records, previous)   utils/subagents/subagent-placement.ts
-          byCell · byAnchor · pending · cellSummaries · needsOlderHistory
+useEventStore.addEvent(s) ── subagents = foldSubagentEvents(subagents, new events)   stores/use-event-store.ts
+   utils/subagents/subagent-keys.ts       ROOT_SESSION, toolCallKey, messageKey, routeKey, compareTimestamps
+   utils/subagents/subagent-index.ts      records (157–192 fold; 220–304 four steps; 307–313 upsert;
+                                          326–341 placement fields; 363–379 placeItem; 382–399 answer)
+   utils/subagents/subagent-placement.ts  placeSubagents (34–100), anchorsForParent, unplacedGroups,
+                                          hasPlaceableAncestry (148–163), replaceEqualDeep sharing
+   utils/subagents/subagent-status.ts     categories, SubagentSummary, Stop rules, cost format
    ▼
-ChatInterface ── needsOlderHistory → forced older-page loads until it clears or a page fails
-   └─ <SubagentHistoryContext value={!hasMoreOlderEvents}> Messages(uiEvents ∩ shouldRenderEvent)
-        ├─ root ACP call → AcpToolCallCell = today's card + SubagentBlock(cellKey)
-        │     SubagentBlock → SubagentRow(child) → SubagentTranscript → AcpToolCallCell(child call) …  recursion
-        ├─ children placed without a spawning call → SubagentRow, interleaved by time
-        └─ UnplacedSubagents (history complete, parent session missing)
-   Stop → useCancelAcpSession → EventService.cancelAcpSession → ConversationClient.cancelAcpSession
-        → POST /api/conversations/{id}/acp/sessions/{session}/cancel; success shown only by the child's next snapshot
-shared-conversation route: the same components over useStaticSubagentSource(its events), read-only (no Stop)
+ChatInterface ── backfill while needsOlderHistory; scroll-follow on subagents.version (chat-interface.tsx:426–457, 483–497)
+   └─ Messages ── interleaveSubagentAnchors(items, anchors, toolCalls); UnplacedSubagents   messages.tsx:100–212
+        AcpToolCallCell → SubagentBlock → SubagentRow → SubagentTranscript → AcpToolCallCell …
+        SubagentRow reads useShowSubagentCosts() (subagent-cost-preference.ts) ◄── /settings/app switch
+   Stop → useCancelAcpSession (refusal via getApiErrorBody) → EventService.cancelAcpSession → client
 ```
 
-[read; the store, fold, placement, render and Stop paths run by the tests of §6.5]
+[read; each path run by C1's 13 Vitest files, §6.4, and in the live tier, §6.1]
 
-| Part | Commits | Lines |
-|---|---|---|
-| events, guards, call keys; `handleEventForUI`, typing indicator, transcript export | `3f0fea8` | in the totals below |
-| the index, placement and status in the event store | `b76b7ad` | |
-| nesting: cell, block, row, transcript, unplaced, root anchors, render keys, shared view, strings, `specs/` | `08fb2cc` | |
-| Stop: service method, mutation, button | `67e3cdb` | |
-| history backfill and scroll-follow in `ChatInterface` | `81d810e` | |
-| end-to-end specs, helpers, transcripts, workflow step | `85e9899` | |
-| after the six | `e49d19a` tooltip placement · `9c23e8d` memoized transcript entries · `15f66c5` probe and pointer · `1135e87` replay's LLM profile · `dee08db` status icons · `ed8a7fc` aborted-turn test · `98a43ab` SUB-011 tag · `5b89471` E6 load · `09da5a1` mutation-found tests · `9d75806` a test's typing | |
-
-In all, **+5,647 −44 in 51 files** [run: `git diff --numstat 9881d24 9d75806`]:
-
-| Kind | Lines | Files |
-|---|---|---|
-| production TypeScript (`src/`, no tests, no translations) | +2,069 −28 | 28 |
-| unit tests (`__tests__/`, `src/**/*.test.ts`, two helpers) | +1,953 −16 | 14 |
-| end-to-end: specs +453, helpers +511, transcripts +48 | +1,012 | 5 |
-| translations (`src/i18n/translation.json`, 32 keys × 15 languages) | +544 | 1 |
-| upstream product spec (`specs/acp-subagent-sessions.md`) | +47 | 1 |
-| workflow step +21, e2e skill guide +1 | +22 | 2 |
-
-Production by part: the three pure modules 881 (`subagent-index.ts` 502, `subagent-placement.ts` 241,
-`subagent-status.ts` 138); the nine component files 780 (`subagent-transcript.tsx` 202, `subagent-row.tsx` 130,
-`stop-subagent-button.tsx` 103, `subagent-block.tsx` 85, `subagent-labels.ts` 80, `subagent-source.ts` 56,
-`main-flow-anchors.ts` 55, `unplaced-subagents.tsx` 40, `acp-tool-call-cell.tsx` 29); types and guards 142; changed
-consumers, the service method and the mutation 266. [run: `git diff --numstat`]
+**Where the complexity sits.** Still in the fold and placement: 440 + 48 + 218 + 139 = 845 lines with status,
+against 881 at Gate B. The fold's four steps share `upsert`; the dirty rules (a new call key or a newly loaded start;
+a message that is new or moved earlier; a text run that opens a transcript; a snapshot whose nine placement fields
+changed) decide when placement recomputes. The components are thin readers of the index; `SubagentTranscript` (204)
+is the largest. [read]
 
 ---
 
-## 2 · Divergences from the design (`88f5c43`)
+## 5 · Who C1 relies on, and who relies on C1
 
-The changelog holds no entry for TASK-4, so no `drift:` line; every item below was found from the code. All sixteen of
-C1's commits were made after the design (`88f5c43`, 2026-10-02 19:12; C1's commits 2026-10-03 21:45 to 2026-10-04
-02:42). "Design §x" cites `88f5c43`. The brief named nine known divergences; the last paragraph of §2.3 says where each
-landed. [run: Notion query of the Changelog; `git log`]
+### 5.1 What C1 relies on
 
-### 2.1 Behaviour a user or a consumer sees
+As r1 §4.6 and v3 §9, with three changes [read unless marked]:
+- **The `dr-1` client** (1.50.1 from the release tarball) now supplies five things: `ACPSubagentEvent`,
+  `ACPSessionMessageEvent`, `ACPSessionTextEvent` (D-15), `CancelAcpSessionResponse` and
+  `ConversationClient.cancelAcpSession`. [run: typecheck clean against it; fails without it, §5.3]
+- **Upstream Canvas**, beyond r1's list: `getApiErrorBody` (`src/utils/api-error-message.ts:11`), `SettingsSwitch`,
+  the App settings route, and `replaceEqualDeep` from `@tanstack/react-query`.
+- **S1** is still pinned at `dr-1` (`cef3b24`). S1 has since merged into the SDK fork's `deep-reasoning` after its own
+  refactor (Changelog, 2026-10-04 04:48); whether that build stores the same shapes C1 reads I did not check (§8).
 
-**D-1 · A refused Stop shows a 5xx's reason from `exception`, without its status prefix.** Design §4.7 and A.7: the
-toast shows `getApiErrorMessage(error, fallback)`, "which is S1's `detail`", for the 409, 504 and 404 alike. The
-agent-server answers every 5xx `HTTPException` with `{"detail": "Internal Server Error", "exception": "<status>:
-<reason>"}` (`_http_exception_handler`, `api.py:671–714` at `cef3b24`) [read], so `getApiErrorMessage`
-(`src/utils/api-error-message.ts:24–38`) would show "Internal Server Error" for S1's 504. Built, `refusalReason`
-(`src/hooks/mutation/use-cancel-acp-session.ts:16–34`) reads `detail` for a 4xx and `exception` for a 5xx, strips a
-leading `NNN: `, and shows "Could not stop the sub-agent." (§4.10's key for a refusal without `detail`) for an error
-with neither, a network failure included. The toast for S1's 504 therefore reads "ACP server
-did not accept the cancel for n2 within 2s." Reason: commit `67e3cdb`. C2's branch reads the same field through its
-own helper, `getSdkHttpServerErrorReason` (`src/api/agent-server-compatibility.ts:235` on `feat/agent-surfaces`, C2's
-as-built D-2); the two branches carry separate implementations of the rule. [run: `shows the server's reason when a
-cancel is refused` ×3, including the 504 case, and probe C3, which the 504 case catches; read: the handler]
+### 5.2 D5 (design v2, deep-reasoning `design/d5` at `9ee36f6`, §7.5 and §8.4)
 
-**D-2 · A child whose parent is placed apart is itself placed apart, under a block that says its loaded parent is
-missing.** Design §4.4 rule 1: a child is pending on `parent-session` when its parent `P` "is neither the root nor a
-known child", or its ancestry loops. Built, `hasPlaceableAncestry` (`src/utils/subagents/subagent-placement.ts:40–54,
-147–156`) walks the whole chain to the root and fails if any ancestor is unknown, recording the child's own parent as
-`missingId`. So with `child-o` announced on a session `ghost` that is not in the conversation and `child-p` spawned in
-`child-o`'s loaded call `co1`: the design places `child-p` in `byCell[(child-o, co1)]`, inside `child-o`'s row; the
-build makes it pending, and once history is complete `UnplacedSubagents` shows two blocks, `ghost: [child-o]` and
-`child-o: [child-p]`, the second reading "1 sub-agent could not be placed: its parent session child-o is not in this
-conversation." while `child-o` is shown in the block above. Like any pending child, this keeps `needsOlderHistory`
-true, so the chat loads older pages until none remain. No test covers a subtree under an unplaced child; the only
-ancestry test is the loop. No reason recorded. [run: an uncommitted probe test printing the index and the rendered
-blocks; read: the walk]
-
-**D-3 · The smoke replay plays one transcript.** Design §6.3: in the fork's CI the replay spec "plays C1's three
-transcripts and the generated fan-out's file as a smoke check". Built, the workflow sets `OH_ACP_REPLAY_TRANSCRIPTS`
-to `fallback-placement.jsonl` alone (`.github/workflows/mock-llm-e2e.yml:104`), so the replay spec runs one test.
-`nested-stop.jsonl` is played only by the main spec, which presses Stop; the fan-out is written to a temporary
-directory inside its test. Reason: none recorded beyond commit `85e9899` ("replays the fallback-placement transcript as
-a smoke check"). My reading, not run: `nested-stop.jsonl` holds a wait point for `session/cancel` that the replay spec
-never sends, and S1's player exits non-zero on a wait point never reached (S1's as-built §7.2). [CI: the live log's
-environment and its test list; read: the transcripts]
-
-**D-4 · Status icons, with test ids outside the contract.** Design §2 and §4.7 draw ✓ for done and ■ for stopped. The
-build had a spinner and words only until `dee08db`, which adds lucide's `Check` and `Square` beside the label
-(`src/components/conversation-events/chat/subagents/subagent-row.tsx:77–96`) with `data-testid` `subagent-done-icon`
-and `subagent-stopped-icon`; the running spinner reuses upstream's `spinner-icon`. Waiting, limited, refused,
-unconfirmed and other show the label alone. The icons are the design's; the three test ids are in neither §4.12 nor
-`SUB-011` (`specs/acp-subagent-sessions.md:39–47`), so the stable-id contract does not cover them. The call cards,
-root and child, keep upstream's own result mark (`getACPToolCallResult` in `generic-event-message-wrapper.tsx:82–90`,
-unchanged); the row's mark is the child's state, not a call's. [run: `marks a %s / %s child with %s beside its status`
-×5]
-
-**D-5 · Both end-to-end specs always skip under the Docker config.** Design §6.3 and §10 item 5: the spec skips there
-"unless `SCRIPTED_ACP_AGENT_CONTAINER` names a mounted copy". Built, both skip whenever `MOCK_LLM_DOCKER_MODE` is
-`"true"` (`tests/e2e/mock-llm/conversations/mock-llm-acp-subagents.spec.ts:87–90`, `mock-llm-acp-replay.spec.ts:43–46`);
-no variable names a mounted copy. The e2e skill guide says so (`.agents/skills/e2e-testing/references/guide.md:52`).
-No reason recorded. [read]
-
-**D-6 · In the root's flow, a call's place is its first event's time, which the design's rule does not give.** Design
-§4.6 and A.6: an anchor goes before the first rendered item "that starts after it (an item's start is its first
-event's timestamp)", `interleaveSubagentAnchors(items, anchors)`. A completed call's item holds only its terminal event
-(the started one is replaced in `uiEvents`), so by that rule the call would start at its completion. Built, the
-function takes a third parameter, `startOf` (`main-flow-anchors.ts:21–35`), and `Messages` passes the call's `firstAt`
-from the index (`messages.tsx:105–134`, comment: "A call's item starts when the call did, not when its terminal event
-replaced it"). The two rules order a row differently only when its anchor falls between a root call's start and its
-completion: the design's puts the row before that call, the build's after it. No test pins it: probe C7, which restores
-the design's rule, survives the messages tests (§6.4), and the live tier's fallback order (`cell-1, child-m, …`, with
-`child-m`'s task sent after `cell-1` completes) is the same under both rules. No reason recorded beyond the comment.
-[read; run: probe C7]
-
-### 2.2 Signatures and small behaviours
-
-None of these changes what §2.1 describes. [read unless marked]
-
-| Design | Built |
+| D5 names | At `2c0e743` |
 |---|---|
-| A.5 `SubagentStatus {category, reported, stale}` | adds `lastKnown: SubagentStatusCategory \| null`, the last confirmed active category of an unconfirmed child (`subagent-status.ts:23–27, 87–94`); "running · last known" is built from it (`subagent-labels.ts:51–63`). Behaviour as §4.7's table [run: status and block tests] |
-| §4.1's file list | adds `subagent-labels.ts` (80: `statusLabel`, `summaryLabel`, `MAX_INDENTED_DEPTH = 6`, the plural key names) and the test helper `__tests__/helpers/english-translations.ts` (21: a `t` that renders the real English strings, plural by `count`) |
-| A.3, A.4, A.5 exports | also `compareTimestamps` (string comparison of ISO timestamps, `subagent-index.ts:27–30`), `NO_SUBAGENT_ANCHORS`, `EMPTY_SUBAGENT_SUMMARY`; `nestedIndentClass` from `subagent-block.tsx:20` |
-| A.6 `renderKeyOf(event): string` | `string \| undefined` (an event without an id), `messages.tsx:41–45` |
-| §4.10: 31 keys | 32: adds `SUBAGENTS$STATUS_OTHER` ("other"), so the summary counts unknown states as "N other"; one block after `EVENT_GROUP$COLLAPSE` as designed; no `eslint-disable` needed for the separator, which is a module constant [run: key count; translation check] |
-| §4.7 cost: `USD` → `$0.0004`, else `0.0004 EUR` | and no currency → `0.0004` (`subagent-status.ts:115`) [run: status test] |
-| §4.8 item 1: the scroll container is wrapped in `SubagentHistoryContext` | only `<Messages>` is wrapped (`chat-interface.tsx:613–618`), which is the only reader |
-| §4.6 transcript: "To/From {name}", the name the child's title or "the main agent" | a known child without a title is named by its session id (`subagent-transcript.tsx:118–120`) |
-| §4.3: a text item marks placement dirty when it opens the transcript of an unannounced session | any item that opens a transcript marks it dirty (`subagent-index.ts:263–271, 348–353, 384–391`); placement then recomputes and finds nothing new |
-| §4.6 `SubagentBlock`: a toggle with `aria-expanded`, `aria-controls` | also `title` "Show sub-agents" / "Hide sub-agents" |
-| §4.7 withheld Stop: tooltip "on hover where Stop would be" | `StyledTooltip placement="left"` (`stop-subagent-button.tsx:72–75`, `e49d19a`: the default placement covered the Stop of the row above in the live run) |
-| §5: rows memoized on their own record | also each transcript entry (task, call, message, text) memoized on its own record (`9c23e8d`, `subagent-transcript.tsx:54–145`) |
-| A.9 helpers | adds `SCRIPTED_ACP_PROFILE` (`scripted-acp-subagents`), `deleteScriptedAcpAgent`, `startConversation`, `readStoredEvents`, `waitForTurnsToEnd`; `ScrollProbeResult.scrolls`; a scroll still unpainted when the run ends counts as its latency (`15f66c5`). `readRenderedSubagentTree` gives a row in an unplaced block the block's missing parent id as its parent (`acp-subagents.ts:218–246`), which is what `readStoredSubagentTree` reads for it |
-| §6.2: the service test with MSW on the route; the backfill test with MSW answering the events search | the service test mocks the client class (`vi.mock("@openhands/typescript-client/clients")`, the file's existing pattern); the backfill test spies `EventService.searchEvents` and asserts its `timestampLt` arguments (`chat-interface.test.tsx`) [run] |
-| §4.1: "Three hand-written transcripts" (§6.3 lists two and the generated one) | two: `nested-stop.jsonl` (31 lines, with client lines as wait points) and `fallback-placement.jsonl` (17, outgoing only) |
+| SUB-011's test ids and data attributes | all 16 ids and 8 attributes are written in `src/` exactly as `specs/acp-subagent-sessions.md:39–48` lists them [run: grep]; the DOM probe renders them [run] |
+| `show-subagent-costs-switch`, off by default, on `/settings/app` | `subagent-costs-switch.tsx`, `app-settings.tsx:230`; off by default [run: switch test, probe K1]; the live test reaches it at `/settings/app` [CI] |
+| `OH_ACP_REPLAY_TRANSCRIPTS`, the replay spec's path | read at `acp-subagents.ts:104–110`, split on `path.delimiter`; `tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts` unchanged in path; one test per path [read; CI: Live 1] |
+| `expandAllSubagents`, `readRenderedSubagentTree` as in-page DOM reads | exported, `:242`, `:265`; both `page.evaluate` over SUB-011 selectors (`COLLAPSED_TOGGLES`, `:229`) [read] |
+| `readStoredSubagentTree` | exported, `:306` [read] |
+| `showSubagentCosts` (§7.5, "as C1's … does") | exported, `:234` [read; CI] |
+| `SCRIPTED_ACP_AGENT` (the variable), `MOCK_LLM_PYTHON`, `npm run build:app` | `:38`; `playwright.mock-llm.config.ts:62`; `package.json:105` [read] |
 
-### 2.3 The pull request, the proof and size
+The brief also named `REPLAY_TRANSCRIPTS` and `configureScriptedAcpAgent`; D5's design does not name them, but both
+exist, exported, with A.9's signatures (`:104`, `:55`) [read; typecheck]. Nothing D5 names was renamed or made
+private; the three helpers made private (D-20) are not in D5.
 
-**D-7 · Sixteen commits in one PR into the wiring branch, not six cherry-pickable commits with a draft on `main`.**
-Design §7: six commits, "each green on its own and cherry-pickable onto `main`", and a never-merged draft PR on the
-fork's `main` to run upstream's guards. Built: PR #4 (`feat/acp-subagent-sessions` → `wiring/dr-1`). Its first six
-commits carry the design's six titles word for word, in order; ten follow. I did not check any commit alone or
-cherry-pick onto `main` (§7). The upstream checks that ran are CI's lint, test, build, build:lib and package check;
-no PR-description check appears among PR #4's nine check runs, and its `HUMAN:` section is empty. [CI; run: `git
-log`]
+**A gap in what `canvas-replay` will prove** [read]. The replay spec asserts only `readRenderedSubagentTree(page)`
+equals `readStoredSubagentTree(request, id)` (`mock-llm-acp-replay.spec.ts:73–75`); neither side is required to be
+non-empty. If the agent-server stored no sub-agent events for a recording (the opt-in lost after the profile check at
+`acp-subagents.ts:80`, or a recording without children), both trees are `[]` and the test passes. In C1's own
+dispatch the main spec would catch a lost opt-in ("2 sub-agents · 2 running" never appears); D5's job runs the replay
+spec alone.
 
-**D-8 · The full mock-LLM suite never ran on the branch.** Design §7: upstream's guards include "by dispatch, the
-mock-LLM end-to-end workflow". All five `mock-llm-e2e.yml` runs on `feat/acp-subagent-sessions` were dispatches with
-the fork-only `specs` input set to C1's two spec files, each running the same six tests. The design's live tier (§6.6 row 5)
-is exactly that run, and it is green at the head (§6.3). [CI: the five runs]
+### 5.3 C2 and the fork's `deep-reasoning`
 
-**D-9 · Mutation testing covered the three pure modules, by Stryker's command runner; components were not mutated.**
-Design §6.5: `npm run test:mutation:diff` on the branch; a survivor in the three modules "gets a test", and survivors
-in components "are reviewed and either killed or named in the as-built document". The Implementer reports Stryker on
-`subagent-index`, `subagent-placement` and `subagent-status` only, with the command runner because Stryker's Vitest
-runner stopped applying mutants after a worker restart: 134 of 599 alive (77.6%) before `09da5a1`, 89.3% after, 64
-survivors. The arithmetic holds (465/599, 535/599); I did not rerun it, and no committed file lists the 64. No run
-mutated a component. My 23 hand probes (§6.4) cover the three modules and seven component and consumer files: 18
-caught, 5 survived. [read: commit `09da5a1`, the brief; run: the probes]
+**C2.** PR #3's head is `feat/agent-surfaces` at `a1ec3d1`, not `feat/agent-commands-panels-options` [run: `git
+ls-remote`; read: REST `pulls/3`]. The two branches share eight files (r1 counted nine; C2 no longer touches
+`type-guards.ts`): `events/index.ts`, `openhands-event.ts`, `translation.json`, `event-service.api.ts` and its test,
+`should-render-event.test.ts`, `transcript-export/index.test.ts` and the e2e guide. `git merge-tree 2c0e743 a1ec3d1`
+conflicts in one hunk, both branches' new first export line in `src/types/agent-server/core/events/index.ts` (the
+Refactorer's finding, confirmed); everything else merges. Resolved by keeping both lines alphabetically, the merge
+typechecks, its translations are complete, C1's 13 files pass (241 and 1 todo, C2 adding cases to the shared files)
+and C2's 25 changed test files pass (518) [run: a local merge commit in a scratch worktree, never pushed]. Both
+branches now read a 5xx's reason through upstream's `getApiErrorBody` (C1 `use-cancel-acp-session.ts:27`, C2
+`app-backend-session-keeper.ts:76`); C2's `getSdkHttpServerErrorReason` no longer exists, and C2 also takes its
+`ACPSessionControlsEvent` type from the client [read].
 
-**D-10 · `@spec` tags sit in implementation code for SUB-004 and SUB-008 only.** Design §4.11 ("code and tests carry
-`// @spec SUB-00N` above the block that implements or pins each") and upstream's `AGENTS.md` ("Tag implementation code
-and tests"). Built: implementation tags at `should-render-event.ts:142` (SUB-004) and `chat-interface.tsx:487`
-(SUB-008); every ID from SUB-001 to SUB-011 is tagged in at least one test, SUB-010 and SUB-011 once each (the E6 test,
-the e2e helpers). [run: grep]
-
-**D-11 · E6's load was lighter than the design's until `5b89471`.** Design §5: about 1,100 events, per child "an
-announcement, a task, ~5 text runs, 10 call events, an answer, an idle snapshot and cost snapshots". The generated
-fan-out first sent no child text and one cost report per child (753 ACP events in the live run at `ed8a7fc`); since
-`5b89471` each cell starts with a thought and ends with a cumulative cost report, 24 stored events per child and 1,203
-in all (`acp-subagents.ts:320–428`). That is the design's load case, slightly above its estimate, not a heavier one.
-Both loads are measured in §6.2. [CI; read]
-
-**D-12 · Size: 1.6 times the estimate.** Design §3 item 6: ≈1.4k production, ≈1.0k Vitest, ≈0.6k Playwright with
-helpers and transcripts, ≈0.5k translations (≈3.5k). Built (§1): 2.07k, 1.95k (14 files, 106 new cases), 1.01k, 0.54k
-(5.65k with the spec file and workflow). Production is 1.5 times, unit tests 2.0, end-to-end 1.7, translations 1.0.
-The largest overruns against §4.1's per-file figures: `subagent-index.ts` 502 against 230, `subagent-placement.ts`
-241 against 150, `subagent-transcript.tsx` 202 against 110, `subagent-status.ts` 138 against 70, `messages.tsx` +75
-against +35, the mutation hook 67 against 35, and `subagent-labels.ts` 80 unplanned; `subagent-index.test.ts` alone is
-666. [run]
-
-**D-13 · Every test the design names exists; some are renamed or merged, and more were added.** Renamed:
-`places a child in the tool call that spawned it, in announcement order`; `builds the same index from a page in any
-order, each event once`; `shows the last known state without a spinner after a reconnect` (it still asserts no Stop);
-`rejects with the server's refusal as the client raised it` (the 409 case); `nests sub-agents in a shared
-conversation, read-only`. `renders root ACP tool calls as before` is an assertion inside `hides tool calls made inside
-a sub-agent session`. `shows the server's reason when a cancel is refused` is three cases (409, 504, no body). Added
-beyond the design: the five icon cases, `leaves sub-agent snapshots, messages and text to the sub-agent tree`, the
-aborted-turn case (`ed8a7fc`), and `09da5a1`'s +250 lines of index and status tests on keys, order across folds,
-identity and unconfirmed snapshots. The shared-view test's file-wide `Messages` mock was rewritten to expose the
-context values (`data-read-only`, `data-history-complete`, `data-subagents-in-cells`), so that view's nesting is
-tested through the context, not rendered rows. [run: test names diffed between head and base]
-
-**Where the nine known items landed.** The Stop refusal text: D-1. No Stop for an idle child still marked
-`cancellable: true`: **not a divergence**; design §4.7's table gives idle children no control and decision I says
-Stop is enabled only for a running or waiting child (`subagent-status.ts:63–67, 97–105`;
-`stop-subagent-button.tsx:98–102`) [run: `offers Stop only for a running child that granted cancel`, its `n4`];
-it matters because S1's reconnect leaves idle dr-acp children `cancellable: true` (S1's as-built D-1).
-`SubagentStatus.lastKnown`: §2.2. `subagent-labels.ts` and `english-translations.ts`: §2.2. The ✓/■ icons and their
-test ids: D-4. The smoke replay: D-3. E6's load: D-11. Sixteen commits: D-7. PR #4's base: D-7.
-
-**Not divergences.** Decisions A–M as written (the index as derived state in the store, folded in the same `set` and
-reset with it; records by key and transcripts by reference; timestamp order with arrival ties, never `seq`; placement
-that waits for history; anchors interleaved in `Messages`; child calls kept in `uiEvents` and hidden by
-`shouldRenderEvent`; call keys in `handleEventForUI`, the typing indicator, the index and render keys; render keys by
-call; Stop never optimistic; costs never added; a context defaulting to the store with a read-only source for the
-shared view; no capability flag and no `minimumAgentServer` change, still `1.47.0`; no virtualization and no
-`content-visibility`). Design §3 items 1–5 and 7–10. §4.2's types and the four guards, field for field. §4.3's keys
-(joined with `\u0000`), maps, "latest" rules, copy-on-write and identity. §4.5's consumers. §4.8's backfill with
-`{ force }`, a failure flag reset per conversation, and scroll-follow on `subagents.version`. §4.9's shared view.
-§4.11's eleven IDs in upstream's format. Every test id and data attribute of §4.12. §8's placement rules for the files
-C2 shares (§4.7). [run for the behaviours the tests of §6.5 name; read for the rest]
+**The fork's `deep-reasoning` (`7c12afb`, C3 merged).** `git merge-tree 2c0e743 7c12afb` conflicts in nine files:
+`config/defaults.json`, five launcher scripts and three of their tests. None is C1's: it is exactly the set
+`9881d24` (`wiring/dr-1`) conflicts in against `7c12afb`, C1's base carrying the pre-split C3 and the dr-1 wiring; and
+`deep-reasoning` touches none of C1's 56 files since `02b7ac7` [run]. C1's own diff (`9881d24..2c0e743`) applied onto
+`7c12afb` merges cleanly (one auto-merge, the workflow), but does not typecheck: 10 errors, six naming a missing
+client export or method (the three event types, `CancelAcpSessionResponse` twice, `cancelAcpSession`) and four in
+code that reads those types (`subagent-index.ts:233–234`, upstream's `conversation-websocket-context.tsx:906`), which
+I read as following from them; `deep-reasoning` alone has none [run]. Its stock `@openhands/typescript-client` 1.50.1 and null
+`sources` lack S1. So C1 lands on `deep-reasoning` only with the redone wiring (D5 §8.6), which must bring a client
+with S1's types and an agent-server and scripted agent with S1; without `sources` the workflow step falls back to
+upstream's SDK at `v1.50.1` (`mock-llm-e2e.yml:91–94`) [read].
 
 ---
 
-## 3 · The public surface, from the code
+## 6 · Runs and measurements
 
-**Event types and guards** (`src/types/agent-server/core/events/acp-subagent-event.ts`, joined to `OpenHandsEvent`
-after `ACPToolCallEvent`): `ACPSubagentEvent`, `ACPSessionMessageEvent`, `ACPSessionTextEvent`; `ACPToolCallEvent`
-gains optional `acp_session_id` and `meta`. Every field S1 may leave unset is optional. Guards
-`isSubagentToolCallEvent` (an ACP call whose `acp_session_id` is a string), `isACPSubagentEvent`,
-`isACPSessionMessageEvent`, `isACPSessionTextEvent`, directly after `isACPToolCallEvent`. `meta` is typed and never
-read. [read; run: typecheck]
+### 6.1 The runs at `2c0e743`
 
-**The index** (`src/utils/subagents/subagent-index.ts`): `ROOT_SESSION = ""`, `toSessionRef`, `toolCallKey`,
-`messageKey`, `routeKey`, `compareTimestamps`; the record, placement and index types of design A.3; `EMPTY_SUBAGENT_INDEX`,
-`foldSubagentEvents(index, events)`, `buildSubagentIndex(events)`. **Placement** (`subagent-placement.ts`):
-`placeSubagents(records, previous) → {placement, needsOlderHistory}`, `anchorsForParent`, `unplacedGroups`,
-`NO_SUBAGENT_ANCHORS`. **Status** (`subagent-status.ts`): `getSubagentStatus → {category, reported, stale,
-lastKnown}`, `canStopSubagent`, `isStopWithheld`, `formatSubagentCost`, `summarizeSubagents`. [read; run: their tests]
+| Run | Conditions | Result |
+|---|---|---|
+| CI [37184716626](https://github.com/michaeltheologitis/OpenHands/actions/runs/37184716626) | `pull_request`; ubuntu (Node 24.15.0, npm 11.12.1) 8 min 27 s; windows `npm ci` and build only, 1 min 43 s; `live-e2e` skipped as upstream's matrix does | green. Lint: typecheck, ESLint 0 errors and 376 warnings, none in any of C1's 56 files; Prettier clean. Vitest **770 files passed, 1 skipped; 8,228 passed, 1 skipped, 7 todo** in 379 s; build, build:lib, `npm pack --dry-run` green [CI] |
+| live [37184736932](https://github.com/michaeltheologitis/OpenHands/actions/runs/37184736932) | `workflow_dispatch` of `mock-llm-e2e.yml`, `specs` = C1's two spec files; the stack from `config/defaults.json` (`cef3b24`); scripted agent at `.tmp/sdk/…/scripted_agent.py`; `OH_ACP_REPLAY_TRANSCRIPTS` = `fallback-placement.jsonl`; mock LLM, no paid model | **6 passed** (1.6 min; job 3 min 3 s), 1 worker: the replay of `fallback-placement.jsonl`; nests; stops one and its branch; same tree after reloading; fallback placement and orphans; E6 [CI] |
+| for comparison, `4db661f` | CI 37177982694; live 37177985083, same inputs | green; 6 passed (1.7 min) [CI] |
 
-**Components and state** (`src/components/conversation-events/chat/subagents/`): `AcpToolCallCell {event, depth}`,
-`SubagentBlock {cellKey, depth}`, `SubagentRow {sessionId, depth}` (memo), `SubagentTranscript`, `StopSubagentButton
-{sessionId, title}`, `UnplacedSubagents`, `interleaveSubagentAnchors(items, anchors, startOf?)`; `SubagentSourceContext`
-(default: the `useEventStore` hook itself, which satisfies `{getState, subscribe}`), `SubagentHistoryContext` (default
-`true`), `useSubagents(selector)` over `useSyncExternalStore`, `useStaticSubagentSource(events)`. `renderKeyOf` in
-`messages.tsx`. `EventState.subagents` in the event store. `EventService.cancelAcpSession(conversationId, sessionId,
-conversationUrl?, sessionApiKey?)`; `useCancelAcpSession()` (toast disabled globally, its own error toast). [read;
-run: the component tests]
-
-**Requests Canvas makes for C1.** One new: `POST {runtime}/api/conversations/{id}/acp/sessions/{session}/cancel`
-through the client, which URL-encodes the session id, on the conversation's runtime URL with its session key
-[read: the dr-1 tarball's `conversation-client.js:221–225`; run: service test; CI: the live Stop test waits for this
-request]. The backfill uses the existing older-page loader (`useLoadOlderEvents`, `timestamp__lt`) [run: backfill
-test].
-
-**What the user sees.** Under a spawning call's card, a summary toggle "N sub-agents · a done · b running · …" (the
-parts in the order done, running, waiting, stopped, limited, refused, unconfirmed, other; zero parts omitted; a spinner
-while any child runs), collapsed; while the call's start is not loaded and older history remains, "Loading earlier
-sub-agent activity…". Expanded, one row per child in announcement order: chevron, ✓ / ■ / spinner, status ("running",
-"waiting for action", "done", "stopped", "stopped at a limit", "refused", "not confirmed since reconnecting",
-"running · last known", or the reported string), title (or "Sub-agent <id>"), "depth N" past depth 6, the answer's
-first line in quotes, "N tool calls", then outside the toggle the cost and Stop. Stop reads "Stop", then "Stopping…"
-(disabled) after a 200 until the child's own idle snapshot removes it; withheld, it is shown disabled with "This agent
-cannot stop a single sub-agent. Stop ends the whole turn." on hover. An expanded row shows "Task" and the parent's first
-message (else the child's description), then its calls, thoughts (collapsed, as the root's), text, "To/From <name>"
-messages and anchored children, by time. Children whose parent session is missing sit in their own bordered block at
-the end of the chat, one per missing parent. Every string is in all 15 languages. [run: component tests; CI: the live
-tier]
-
-**Stable test ids** (`SUB-011`, `specs/acp-subagent-sessions.md:39–47`): `acp-tool-call` (`data-acp-tool-call-id`,
-`data-acp-session-id` absent for the root, `data-acp-tool-call-status`), `subagent-block` (`data-subagent-count`),
-`subagent-block-toggle`, `subagent-row` (`data-acp-session-id`, `data-subagent-status`, `data-subagent-stale`),
-`subagent-row-toggle`, `subagent-title`, `subagent-status`, `subagent-answer`, `subagent-tool-calls`, `subagent-cost`,
-`subagent-stop` (`data-subagent-stop`: `ready`, `stopping`, `withheld`), `subagent-transcript`, `subagent-task`,
-`subagent-unplaced` (`data-missing-parent-session-id`), `subagent-loading-earlier`. Outside the contract:
-`subagent-done-icon`, `subagent-stopped-icon`, `spinner-icon` (D-4). [read; run: the tests that select them]
-
-**End-to-end hooks** (`tests/e2e/mock-llm/utils/acp-subagents.ts`): `SCRIPTED_ACP_AGENT` (from the variable of that
-name), `configureScriptedAcpAgent(request, {flags, subagents})` (saves profile `scripted-acp-subagents` with
-`agent_kind: "acp"`, `acp_server: "custom"`, the shell-quoted command and `acp_subagents`, checks the opt-in survived,
-activates it), `REPLAY_TRANSCRIPTS` (from `OH_ACP_REPLAY_TRANSCRIPTS`, split on `path.delimiter`),
-`expandAllSubagents`, `readRenderedSubagentTree`, `readStoredSubagentTree`, `writeFanoutTranscript`,
-`probeScrollResponsiveness`, and the five helpers of §2.2. The workflow step fetches
-`tests/fixtures/acp` sparse and shallow from `config/defaults.json`'s `sources` (else the released SDK tag) into
-`.tmp/sdk` and exports both variables. [read; CI: the step's environment]
-
----
-
-## 4 · Structure and seams
-
-### 4.1 The fold (`subagent-index.ts`; where most of the complexity sits)
-
-`foldSubagentEvents` builds one draft per call: six copy-on-write maps (`writableMap` copies a map on its first write
-in the fold), the transcripts already copied in this fold, and the sessions whose answer may have changed. Each event
-not marked `isFromPlanningAgent` goes to one of four steps, each returning whether placement must be recomputed:
-
-- **Snapshot.** `latest` is the event if its timestamp is at least the held one's (an equal timestamp arrived later and
-  wins); `lastConfirmed` likewise but only for `source !== "environment"`; `firstAt` the earlier. An unchanged record
-  returns early. Placement is dirty when any of nine fields differs: `firstAt`, the parent session and call, state,
-  stop reason, grant, source, and the last confirmed state and stop reason; a cost-only snapshot changes one record
-  and nothing else.
-- **Tool call.** Upserted under `toolCallKey(acp_session_id, tool_call_id)`, root and child alike; `startLoaded` turns
-  true on a `pending` or `in_progress` event and stays. A new key or a newly loaded start is dirty. A child's call also
-  places a `tool_call` item in that child's transcript (moved earlier if an older page brings an earlier event) and,
-  when new, adds one to its count.
-- **Message.** Upserted under `messageKey(transcript, message_id)`; a new message, or one moved earlier, may become the
-  first message of its route (the child's task) and is placed in its transcript's items; always dirty then.
-- **Text.** Placed in its child's transcript; dirty only when it opens the transcript.
-
-Items are inserted after every item at or before their `at` (binary search), so equal timestamps keep arrival order.
-After the loop, each child's answer is recomputed for the sessions touched: the newest `message` item in its
-transcript that it sent and whose recipient is not one of its own children. If no map was written, the same index is
-returned; otherwise placement is recomputed only when dirty, and `version` increments. [read; run: 37 index cases,
-probes I1–I6]
-
-`ChatInterface` reads `version` for scroll-follow and `needsOlderHistory` for the backfill; every component reads its
-own slice through `useSubagents`, so a cost snapshot re-renders one row and a child's new call re-renders that child's
-transcript list and the one entry it adds. [read]
-
-### 4.2 Placement and history (`subagent-placement.ts`, `chat-interface.tsx`)
-
-`placeSubagents` walks the children in `firstAt` order: a child whose ancestry does not reach the root through known
-children is pending `parent-session` (D-2); otherwise its fallback anchor is the parent's first message to it, else its
-announcement; a named spawning call that is loaded puts it in `byCell`, an unloaded one makes it pending `parent-call`
-with that fallback, and no named call puts the fallback in `byAnchor[parent]`. Lists, summaries and maps equal to the
-previous placement keep their identity, and an unchanged placement is returned as the previous object.
-`needsOlderHistory` is true while any child is pending, any `byCell` call's start is unloaded, or any transcript belongs
-to a session with no snapshot. At render time, pending children render nothing until history is complete; then
-`parent-call` children join their parent's flow at their fallback (`anchorsForParent`) and `parent-session` children
-go to `UnplacedSubagents`, grouped by missing parent. [read; run: placement cases, probes P1–P4]
-
-**The backfill.** An effect in `ChatInterface` calls the existing `maybeLoadOlder(target, {force: true})` while
-`needsOlderHistory` holds and no backfill page has failed, re-run on `needsOlderHistory`, the failure flag,
-`hasMoreOlderEvents` and `allConversationEvents.length`: each landed page chains the next; a failed page sets the flag
-(reset when the conversation changes) and its message goes to the chat's existing `setErrorMessage`. `force` skips only the "near the top or
-no overflow" check; one load at a time and scroll restoration are upstream's. The bottom-following effect also depends
-on `subagents.version`. Bound: the chain stops when the cell's start and the pending parents are in, or when no older
-page remains; an orphan (D-2, or any child of a session not in the conversation) keeps it going to the conversation's
-start. [read; run: the two backfill tests; CI: the reload test of §6.3]
-
-### 4.3 Rendering
-
-`EventMessage`'s ACP branch renders `AcpToolCallCell` at depth 0: the unchanged `GenericEventMessageWrapper` (its
-`isLastMessage` prop, now always `false`, is unused by the wrapper) inside a `div` carrying the cell's test id and data
-attributes, then a `SubagentBlock` for the call's key. The block selects its `byCell` list, its summary and its call's
-`startLoaded`; it renders nothing without children. A row selects its record, stats and answer; collapsed, it mounts
-nothing below its header. The transcript merges items and anchored children by `at` (items first on a tie); each entry
-selects its own record. Recursion is through `AcpToolCallCell` for a child's calls. Indentation (a left rule) stops at
-depth 6. In the root's flow, `Messages` selects the root's anchors, the pending list and the `toolCalls` map,
-interleaves rows into its rendered items (D-6), keys ACP singles by call key, and ends with `UnplacedSubagents`;
-`Messages`' memo comparator is unchanged and already re-renders it on every appended event. [read; run: messages and
-block tests, probes C4–C7]
-
-### 4.4 Stop
-
-`StopSubagentButton` renders nothing in a read-only source or for an unknown child; `StopControl` when
-`canStopSubagent` (latest snapshot from the agent, state running or requires_action, `cancellable === true`);
-`WithheldStop` when the same holds without the grant; nothing otherwise. A click calls the mutation with the active
-conversation's id, runtime URL and session key; on success the control shows "Stopping…" and stays disabled while it is
-mounted, which ends when the child's own snapshot makes `canStopSubagent` false. The mutation never touches the index.
-A refusal toasts D-1's reason and the control returns to "Stop". [read; run: the five Stop tests; CI: the live Stop
-test]
-
-### 4.5 Where the complexity sits
-
-In the fold and placement (881 lines with status, 37 + 33 test cases): the "latest" and `firstAt` rules under pages that
-arrive out of order, the dirty rules that keep cost snapshots cheap, the answer rule, and identity reuse. The components
-are thin readers of the index, except `SubagentTranscript` (the merge and the message naming) and the backfill's
-interplay with upstream's scroll restoration (design §10 item 4's race, unchanged). [read]
-
-### 4.6 What C1 relies on
-
-- **S1, through `dr-1` (`cef3b24`).** The three event kinds and `ACPToolCallEvent.acp_session_id` as S1 stores them,
-  with `exclude_none` storage, so unset fields arrive absent (`conversation/event_store.py:225` at `cef3b24`) [read]; `cancellable`
-  is a `bool` defaulting to `False` (`event/acp_subagent.py:62–65`), so it is always present [read]. Placement relies on
-  S1 §5 rules 1–2 and on its rule 10's ordering (per child, timestamps never decrease in log order and a reconnect
-  snapshot is later than its child's earlier events; a spawning cell's started event is earlier than its subtree),
-  which the backfill's stopping criterion and "latest" both assume; S1's as-built runs the three ordering tests [read:
-  S1's as-built §4.4]. From the client tarball (version string 1.50.1): `ConversationClient.cancelAcpSession` and
-  `CancelAcpSessionResponse` [run: typecheck; read: tarball]. The cancel route's statuses and the 409 `detail`
-  shown verbatim; the 504's reason through upstream's 5xx `exception` format (D-1) [read]. `acp_subagents` on
-  `ACPAgentProfile`, which `configureScriptedAcpAgent` writes and reads back [CI: the live tier]. The scripted agent
-  by path with `--transcript`, `--transcript-interval-ms` (16 for E6) and `--wait-timeout` (120 for `nested-stop`)
-  (`scripted_agent.py:704–708` at `cef3b24`) [read; CI]. S1's router registering a child announced on an unknown
-  session under that session, which the orphan case needs: the live tier shows `child-o` under `ghost` [CI].
-- **C3 and the wiring, through `wiring/dr-1`.** `config/defaults.json`'s `sources` naming the SDK fork at `cef3b24`,
-  which C3's launcher installs as the mock stack's agent-server and which the workflow step reads for the scripted
-  agent; the client tarball pin. C1 changes neither file. [read]
-- **Upstream Canvas.** `useLoadOlderEvents` (`hasMore`, `loadOlder`, `timestamp__lt` pages), `maybeLoadOlder` and the
-  scroll restoration, `GenericEventMessageWrapper`, `CollapsibleThinking`, `StyledTooltip`, `displayErrorToast`,
-  `isSdkHttpError`, `getAgentServerClientOptions`, the mock-LLM harness (`playwright.mock-llm.config.ts`, its helpers)
-  and the fork-only `specs` dispatch input (`9881d24`). [read]
-
-### 4.7 Who relies on C1, and on what
-
-- **D5, deep-reasoning's desktop app** (its design is not in my ground; what follows is what C1 offers it, from C1's
-  design §6.4 and §9.4 and the code). The replay hook: `mock-llm-acp-replay.spec.ts`, one test per path in
-  `OH_ACP_REPLAY_TRANSCRIPTS` (`path.delimiter`-separated; skipped when empty or under Docker), each configuring the
-  scripted agent with `--transcript <path>` and `acp_subagents: true`, starting one conversation, waiting for one
-  `FinishAction`, expanding everything and comparing the rendered tree with the stored one; it needs `SCRIPTED_ACP_AGENT`,
-  `MOCK_LLM_PYTHON`, a built `build/` and Chromium, and sets the mock LLM profile once through the API (`1135e87`). The
-  comparison covers parent session, spawning call and each child's own tool-call ids; not state, cost or text. Commit
-  `1135e87` reports all ten of D1's dr-acp goldens rendering as stored against the dr-1 agent-server; that run is the
-  Implementer's and is not in CI (§7). The stable test ids of `SUB-011` and the helpers `expandAllSubagents` and
-  `readRenderedSubagentTree`, which take a Playwright `Page`; the icon test ids are not part of the contract (D-4).
-  [read]
-- **C2** shares nine files with C1 over `wiring/dr-1`: `events/index.ts`, `openhands-event.ts`, `type-guards.ts`,
-  `translation.json`, `event-service.api.ts` and its test, `should-render-event.test.ts`, `transcript-export/index.test.ts`
-  and the e2e guide. C1 follows design §8's rules where it lands (export, union members and guards directly after the
-  ACP tool-call ones; its key block after `EVENT_GROUP$COLLAPSE`; `cancelAcpSession` after `respondToConfirmation`). An
-  in-memory merge of `9d75806` with C2's head conflicts in one hunk, both branches' new export line at the top of
-  `events/index.ts`, against both C2's Gate B commit `64b5a8b` and its current `61b9bdc`; the other eight files merge
-  cleanly. C2 does not use C1's shared helper or workflow step (its live tier runs its own mock ACP agent). D-1's
-  5xx rule exists on both branches separately. [run: `git merge-tree`; read]
-- **S1's as-built §5** described C1 as designed, not built; its C1 paragraph checked stored shapes against C1's design.
-  [read]
-
----
-
-## 5 · Wiring
-
-PR #4 is a draft, `feat/acp-subagent-sessions` → `wiring/dr-1`, 16 commits, +5,647 −44 in 51 files, labelled
-`type: feat`, mergeable (`clean`). Its nine check runs at `9d75806`: CI's `test-and-build (ubuntu)` (lint, test, build,
-build:lib, package contents), `test-and-build (windows)` (install and app build; lint, test, library and package
-skipped), `prepare-test-matrix`, `live-e2e` skipped, two pairs of `pr-title` jobs, and the `mock-llm-e2e` dispatch, all
-green. The PR body reports the runs at `9d75806`. [CI] `wiring/dr-1` is the fork's C3 plus the dr-1 wiring
-(`69d2a6a` agent-server source and client pin, `32bc76e`, `9881d24` the `specs` input), all fork-only and not C1's.
-Upstream's product spec gains `specs/acp-subagent-sessions.md` (SUB-001 to SUB-011, each checked); the e2e skill guide
-gains one paragraph on the scripted agent; `test-mapping.json` is unchanged, since the specs sit under
-`conversations/`. [read]
-
----
-
-## 6 · Tests and runs, as measured
-
-### 6.1 The runs
-
-| Run | Commit | Conditions | Result |
-|---|---|---|---|
-| CI [37171885463](https://github.com/michaeltheologitis/OpenHands/actions/runs/37171885463) | `9d75806` | `pull_request`; ubuntu-24.04 full checks; windows app build only; Node 24.15.0, npm 11.12.1 | green. Lint 0 errors, 376 warnings, none in a file C1 touches; Prettier clean; test **769 files passed, 1 skipped; 8,222 passed, 1 skipped, 7 todo** in 413 s; build, build:lib and package contents green [CI] |
-| live tier [37171891707](https://github.com/michaeltheologitis/OpenHands/actions/runs/37171891707) | `9d75806` | `workflow_dispatch` of `mock-llm-e2e.yml` with `specs` = C1's two spec files; ubuntu-24.04; Playwright 1.63.0 Chromium; uv 0.12.23; the mock LLM in a Python 3.12.3 venv with `openhands-sdk` 1.50.1; agent-server from `sources` (`cef3b24`) [read]; scripted agent fetched from the same source; no paid model | **6 passed** (1.7 min), 1 worker; E6 line in §6.2 [CI] |
-| earlier live runs | `15f66c5`, `ed8a7fc`, `5b89471`, `09da5a1` | the same, runs 37162417280, 37164950255, 37166999500, 37171444972 | 6 passed each [CI] |
-| here: C1's 12 Vitest files | `9d75806` | Node 22.22, 4 CPUs, load average 13–17, beside other agents | **231 passed, 1 todo** in 39 s; the 8 files that exist at the base: 125 passed, 1 todo; **C1 adds 106 cases, all passing, and removes none** [run] |
-| here: typecheck, lint, format, translations | `9d75806` | `npm run typecheck`; `npx eslint` on C1's 30 `.ts`/`.tsx` files under `src/` (upstream lints `src` only); `npx prettier --check` on all 45 of C1's `.ts`/`.tsx` files; `check-translation-completeness.cjs` | `tsc` clean; ESLint 0 problems; Prettier clean; every key in every language [run] |
-
-I did not run the full Vitest suite, the builds or any Playwright test here; CI's runs are the record. Reproduce the unit
-part with `npm ci && npm run make-i18n && npx vitest run <the 12 files>`, and the live tier with
-`gh workflow run mock-llm-e2e.yml --ref feat/acp-subagent-sessions -f specs="tests/e2e/mock-llm/conversations/mock-llm-acp-subagents.spec.ts tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts"`.
-[read]
+Reproduce: `gh workflow run mock-llm-e2e.yml --ref feat/acp-subagent-sessions -f specs="tests/e2e/mock-llm/conversations/mock-llm-acp-subagents.spec.ts tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts"`.
+I did not dispatch it: nothing in the read raised a doubt the run had not answered.
 
 ### 6.2 E6 (spec §4, design §5): 50 children × 5 calls at 60 events/s
 
-Conditions: the generated transcript (`writeFanoutTranscript`, 50 children, 5 cells each) played by the scripted agent
-with `--transcript-interval-ms 16`; an in-page interval clicks every collapsed block and row toggle every 100 ms, so
-every child is expanded as it appears; `probeScrollResponsiveness` scrolls the chat container every 250 ms and records,
-per scroll, the time from when it was due to the next animation frame, plus long tasks; it stops when the turn's
-`FinishAction` is stored. The rate is the count of stored events whose kind starts with `ACP` (C1's four kinds and S2's
-`ACPSessionControlsEvent`) over their first-to-last timestamp span. The test asserts worst latency < 1,000 ms (E6's
-null), more than 10 scrolls, the summary "50 sub-agents · 50 done", and the rendered tree equal to the stored one with
-50 children. There is no stock-Canvas arm: the null is the baseline. [read: the spec and helper]
+Conditions as r1 §6.2 and design §6.3: the generated fan-out, unchanged since `5b89471`; every block and row expanded
+as it appears; a scroll every 250 ms, latency from when it was due to the next frame; null 1,000 ms; no stock-Canvas
+arm.
 
-| Run | Commit | Load | ACP events, span, rate | Worst scroll latency | Long tasks | Scrolls |
-|---|---|---|---|---|---|---|
-| 37164950255 | `ed8a7fc` | before `5b89471`: no child text, one cost per child | 753 in 12.5 s, 60.5/s | **323.5 ms** | one, 72 ms | 47 |
-| 37166999500 | `5b89471` | a thought and a cost per cell | 1,203 in 19.8 s, 60.7/s | **149.8 ms** | none | 75 |
-| 37171444972 | `09da5a1` | the same | 1,203 in 19.8 s, 60.6/s | **101.3 ms** | none | 75 |
-| 37171891707 | `9d75806` | the same | 1,203 in 19.7 s, 61.1/s | **138.6 ms** | none | 76 |
+| Run | Commit | ACP events, span, rate | Worst scroll | Long tasks | Scrolls |
+|---|---|---|---|---|---|
+| 37177985083 | `4db661f` (rulings, cost setting) | 1,203 in 19.7 s, 61.1/s | **74.8 ms** | none | 77 |
+| 37184736932 | `2c0e743` (after the refactor) | 1,203 in 19.6 s, 61.4/s | **43 ms** | none | 79 |
 
-All four pass the null by a factor of 3 or more [CI: the E6 log lines]. The lighter load's run measured the highest
-latency; the runs are single samples on shared GitHub runners, and `9c23e8d` (memoized transcript entries) precedes all
-four. The tail of 37162417280 (`15f66c5`) does not include its E6 line. [CI]
+Both pass the null by a factor of 13 or more [CI: the E6 log lines]. Gate B's three runs on this load (`5b89471`,
+`09da5a1`, `9d75806`, one production code) measured 101.3 to 149.8 ms (r1 §6.2); these are single samples on
+shared runners, and the refactor's hot-path changes (D-17, D-18) are not isolated by them.
 
-### 6.3 The live tier, test by test (run 37171891707) [CI]
+### 6.3 Size, on the Refactorer's counting
 
-1. `mock-llm-acp-replay.spec.ts`: `nests fallback-placement.jsonl as the agent-server stored it`.
-2. `nests each sub-agent under the call that spawned it`: `nested-stop.jsonl` with `--wait-timeout 120`; the summary
-   reads "2 sub-agents · 2 running" while the transcript waits; the stored tree is `child-x`, `child-y`, `child-z`;
-   after expanding, the rendered tree equals the stored one (three levels); the root's own cards are `cell-1` alone;
-   `child-x` shows `$0.0004`.
-3. `stops one sub-agent and its branch`: opened with the pointer; `child-y`'s Stop is `withheld`, `aria-disabled`, and
-   its tooltip is the spec's sentence; `child-x`'s is `ready`; clicking sends `POST …/acp/sessions/child-x/cancel`;
-   `child-x` and `child-z` turn `stopped`, `cell-x1` turns `failed`, `child-y` turns `done`, and no Stop remains.
-4. `shows the same tree after reloading`: after the turn ends, a reload shows "2 sub-agents · 1 done · 1 stopped", the
-   tree equals the stored one, no Stop, the root's `NESTED_STOP_DONE` is visible, and `child-y`'s answer appears only
-   inside rows.
-5. `places sub-agents without a spawning call and shows orphans apart`: the flow reads `cell-1, child-m, child-a,
-   child-g, cell-2`, then the unplaced block for `ghost` with `child-o`.
-6. `stays responsive while 50 sub-agents with 5 tool calls each stream in`: §6.2.
+Lines added in `git diff --unified=0 --no-renames 9881d24...<rev>`; production is `src/` without tests and
+translations, unit is `__tests__/` and `src/**/*.test.*`, end to end is `tests/e2e/`. Reproduced with the
+Refactorer's `count.py`; my per-file output equals its `lines-before.txt` (`4db661f`) and `lines-head.txt`
+(`2c0e743`) line for line [run].
 
-### 6.4 Mutation probes [run]
+| | `9d75806` (Gate B) | `4db661f` | `2c0e743` | refactor |
+|---|---|---|---|---|
+| production | 2,069 | 2,139 | **2,034** | −105 |
+| unit tests | 1,953 | 2,186 | **2,078** | −108 |
+| end to end | 1,012 | 1,044 | **1,035** | −9 |
+| code and tests | 5,034 (4,551 non-blank) | 5,369 (4,848) | **5,147 (4,659)** | −222 (−189) |
+| translations, `specs/`, workflow, guide | 613 | 631 | 631 | 0 |
+| `--numstat` total | +5,647 −44, 51 files | +6,000 −44, 55 | +5,778 −44, 56 | the 17 commits: +603 −825 in 24 files |
 
-Each probe is one edit in my worktree of `9d75806`, the named test files run, then `git checkout` of the file; the copy
-was clean after every probe. Stryker's 64 survivors (D-9) are not listed anywhere committed, so I cannot say which of
-these overlap them.
+Where it moved [run]: `subagent-index.ts` 502 → 440 plus `subagent-keys.ts` 48; `subagent-placement.ts` 241 → 245
+(ruling 5) → 218; `acp-subagent-event.ts` 99 → 22; `main-flow-anchors.ts` 55 → 69 and `messages.tsx` +75 → +69
+(D-19); the cost setting 62 (preference 37, switch 22, route 3) and 4 in the row. Tests: `subagent-index.test.ts`
+666 → 682 → 630, `subagent-block.test.tsx` 411 → 461 → 420, the store test 60 → 40, `chat-interface.test.tsx`
++132 → +184, `messages-subagents.test.tsx` 168 → 207, the switch test 76. End to end: helpers 511 → 520 → 550,
+main spec 361 → 384 → 359, replay spec 92 → 78. At ≈300 lines an hour, Gate C reads the 5,147 lines in about 17 h,
+as at Gate B.
 
-| Probe | Edit | Result |
+### 6.4 The DOM probe and the expect-counter, rerun
+
+The Refactorer's `dom-probe.test.tsx`, `freeze.sh` (pointed at my worktrees), `vitest.freeze.config.ts`,
+`count-assertions.ts` and `compare.py`, with C1's 13 test files [run]:
+
+| | `4db661f` (my baseline) | `2c0e743` |
 |---|---|---|
-| I1 | equal timestamps: the held snapshot wins (`>= 0` → `> 0`) | caught: `takes the later arrival of two snapshots with one timestamp` |
-| I2 | a started event no longer sets `startLoaded` | caught by 4, e.g. `needs older history until every spawning call's start is loaded` |
-| I3 | `latest.state` dropped from the placement-dirty fields | **survived** (55 passed), and equivalent for what S1 writes: a confirmed snapshot's new state also changes `lastConfirmed.state`, which stays in the list, and an `environment` snapshot changes `source` or carries `state: null` (S1 writes reconnect snapshots with no state). It would differ only for two consecutive `environment` snapshots with different non-null states [read: the fold; S1's as-built D-1] |
-| I4 | a child's answer may be its task to its own child | caught: `counts a child's own calls and takes its answer from its newest message outside its children` |
-| I5 | transcript ties placed before equal timestamps | caught: `orders a child's transcript by first event, ties by arrival` |
-| I6 | planning-agent events folded | caught: `ignores events from the planning agent` |
-| P1 | anchors left in announcement order (no sort by `at`) | caught by 2 placement cases |
-| P2 | an unannounced session's transcript no longer needs older history | caught: `needs older history for a transcript whose session was never announced in the loaded pages` |
-| P3 | fallbacks shown while history is incomplete | caught: `anchorsForParent > adds the fallbacks …` |
-| P4 | the announcement outranks the parent's message as fallback | caught by 4 placement cases |
-| S1 | Stop offered when `cancellable` is absent (`=== true` → `!== false`) | **survived** (51 passed): the fixture helper `child()` always writes the field (default `false`), and S1 always stores it (§4.6), so no test and no dr-1 event reaches the difference |
-| S2 | a stale active child shows its last state instead of unconfirmed | caught by 4 status and block cases |
-| S3 | `max_turn_requests` no longer reads as limited | caught: `reads idle / max_turn_requests as limited` |
-| S4 | a cost without a currency hidden | caught: `formats 0.0004 null as 0.0004` |
-| C1 | Stop shown in a read-only view | caught: `never offers Stop in a read-only view` |
-| C2 | no "Stopping…" after a 200 | caught: `asks to cancel and waits for the child's own cancelled state` |
-| C3 | a 5xx reason keeps its `504: ` prefix | caught: the 504 refusal case |
-| C4 | "Loading earlier…" shown once history is complete | caught: `says earlier activity is loading while the cell's start is missing` |
-| C5 | a child's task to its own child also shown as a "To …" message in the parent's transcript | **survived** (23 passed in the block and messages tests): no test expands a child that has a child of its own and checks its messages; the live tier compares tree shape only |
-| C6 | ACP render key back to the event id (decision H) | caught: `keeps sub-agents expanded when the spawning call completes` |
-| C7 | a root call's item starts at its current (terminal) event, the design's rule (D-6) | **survived** (5 passed): the messages tests never anchor a child between a call's start and its completion |
-| C8 | a failed backfill page no longer stops the chain | caught: `stops loading older pages after a failure` |
-| C9 | scroll-follow no longer depends on `subagents.version` | **survived** (28 passed, 1 todo): no test checks that a chat pinned to the bottom follows sub-agent content that grows without new root items; jsdom has no layout |
+| tests (13 files + the probe's 9) | 248 passed, 1 todo | 246 passed, 1 todo |
+| `expect()` calls | 528 | 524 |
+| DOM (16 states, normalized) | 147,235 bytes | byte-identical |
 
-In all, 18 caught and 5 survived. Of the survivors, I3 is equivalent for anything S1 writes and S1's mutant is
-unreachable through dr-1; C5, C7 and C9 change what a user sees, in cases no test states.
+`compare.py base head`: removed the three names of D-21, added the moved one; no test with fewer `expect()` calls;
+none failing. My baseline equals the Refactorer's `baseline-dom.json`, and my head equals its `placeorder-dom.json`.
+The probe renders the same fixture events at both commits: `7f78727` changed the test helper's `message()` default
+transcript, and every probe message either names its transcript or is the root's, which the change leaves as it was
+[read]. The probe does not cover `ChatInterface` (backfill, scroll) or the e2e helpers.
 
-### 6.5 The deterministic tests C1 adds (106 cases in 12 files, all passing) [run]
+### 6.5 Local checks at `2c0e743`
 
-- **The three pure modules, 70.** `subagent-index.test.ts` 37: parent links from the latest snapshot; placement in the
-  spawning call in announcement order (also when an older page brings an earlier child); keys per session for calls,
-  messages and routes; fallbacks to the parent's message, else the announcement, moving when an earlier task arrives;
-  latest and last-confirmed rules across pages and equal timestamps; a child known only from reconnects never
-  confirmed; message upserts; transcript order with arrival ties and every entry kept across folds; the aborted-turn
-  case; counts and the answer rule; pending on a missing parent session and on a missing named call, then placed when
-  the call's page arrives; the three `needsOlderHistory` conditions, with `pending` and `in_progress` both counting as
-  a start; identity of unchanged records, transcripts, stats, lists, summaries, placement and index; no placement for a
-  cost-only snapshot, a recomputed summary on a state change; non-ACP events and planning-agent events; the parent
-  loop; `buildSubagentIndex` over a shuffled, duplicated page; `anchorsForParent`; `unplacedGroups`.
-  `subagent-status.test.ts` 33, table-driven: every row of §4.7's status table, `canStopSubagent` and
-  `isStopWithheld` over state × grant × source, costs for null, USD, EUR and no currency, summaries.
-- **Components, 23.** `subagent-block.test.tsx` 18 against the real event store: the collapsed summary; three levels
-  of nesting; costs never summed; the last known state; the five icon cases; task first and answer last; the loading
-  line; Stop offered, withheld with its tooltip, sent and "Stopping…" until the child's cancelled snapshot, three
-  refusals, none read-only. `messages-subagents.test.tsx` 5: the root's flow only; a child anchored at the root's
-  message; orphans apart once history is complete; no sub-agent markup for agents without sessions; a block staying
-  expanded when its call completes.
-- **Consumers, 13.** Event store 3 (fold per event and per page, an older page not overriding, the reset); backfill 2;
-  `should-render-event` 2; service 2; `handleEventForUI`, typing indicator, transcript export and the shared view 1
-  each.
-
-Plus the six live-tier tests of §6.3.
+`npm run typecheck` clean; ESLint on C1's 34 changed `src/` TypeScript files, 0 problems; Prettier on its 50 `.ts`/`.tsx`
+files, clean; translation completeness, every key in every language; C1's 13 Vitest files, 237 passed and 1 todo
+[run]. The full suite, the builds and Playwright did not run here; CI's are the record.
 
 ---
 
-## 7 · What I could not verify
+## 7 · What no test pins: mutation probes
 
-1. **Each commit alone, and cherry-picks onto `main`** (D-7): not checked.
-2. **Stryker's numbers** (D-9): the Implementer's; I did not rerun Stryker, and its 64 survivors are not listed in any
-   committed file. My probes are 23 hand edits, not a mutation score.
-3. **The ten-golden replay** (`1135e87`): the Implementer's local run of D1's recordings through the replay spec; no CI
-   run plays them, and I ran no Playwright test. Whether D5's jobs have run against `9d75806` I did not check.
-4. **Playwright, builds and the full Vitest suite here**: not run; CI's records only. The live log does not print which
-   SDK ref the scripted agent was fetched from; `cef3b24` is read from `config/defaults.json`.
-5. **D-3's reason** (why `nested-stop.jsonl` is not replayed) is my inference from the transcript and S1's as-built,
-   not run.
-6. **The Docker config, Cloud runtimes and Electron**: C1 skips the first (D-5); Stop on a Cloud runtime and the
-   backfill against Cloud's event history are read only (design §10 item 6); nothing ran in the desktop app.
-7. **Scroll behaviour**: the backfill's scroll restoration and design §10 item 4's race are read; jsdom has no layout,
-   and E6 measures latency, not position. Nothing pins scroll-follow on sub-agent growth (probe C9 survived).
-8. **The restart path** (`source: "environment"` snapshots from a real agent-server restart): unit-tested with fixture
-   events; no live run restarts the agent-server.
-9. **E6 off GitHub's runners**: four single samples on `ubuntu-24.04`; not measured on a desktop.
+Each probe is one exact edit in my worktree of `2c0e743`, then C1's 13 Vitest files (238 cases), then `git checkout`
+of the file; `git status` was empty after every one, and is now [run]. The first six repeat r1's survivors and D-2;
+the rest target what the refactor and the cost setting touched.
 
-If this document resists shortening, the part that resists is §2: the build follows the design's architecture
-closely, and what differs is spread thin across the refusal text, one placement rule, the proof's shape and the size,
-each of which a Gate B reader may want to rule on.
+| Probe | Edit | Result | What it shows |
+|---|---|---|---|
+| C5 | drop the "own child" check in `TranscriptMessage` (`subagent-transcript.tsx:118`) | caught (1): `shows a child's task to its own child only as that child's task` | ruling 6 holds |
+| C7 | a root call starts at its terminal event (`main-flow-anchors.ts:37`) | caught (1): `keeps a root call where it started …` | ruling 6 holds |
+| C9 | scroll-follow without `subagentsVersion` (`chat-interface.tsx:457`) | caught (1): `follows sub-agent content into view …` | ruling 6 holds |
+| D2 | the ancestry walk fails on any unknown ancestor (`subagent-placement.ts:157`) | caught (2): the two of ruling 5 | ruling 5 holds |
+| I3 | `latest.state` out of the placement fields | survived | as r1: equivalent for what S1 writes |
+| S1 | Stop when `cancellable` is absent (`=== true` → `!== false`) | survived | as r1: unreachable, S1 always stores the field |
+| R1 | no `replaceEqualDeep` for `byCell`/`byAnchor` lists | caught (2): `keeps every unchanged record, transcript, cell list and summary`, `keeps the placement when recomputing it changes nothing` | D-17's sharing is pinned |
+| R2 | no `replaceEqualDeep` for `pending` | caught (1): `keeps the placement when recomputing it changes nothing` | pinned |
+| R3 | no `replaceEqualDeep` for summaries | caught (2), the same two | pinned |
+| R4 | `upsert`: the last arrival wins whatever its time | caught (5), e.g. `keeps the newest snapshot when an older page arrives later` | the dropped store test's rule is still pinned |
+| R5 | `upsert`: `firstAt` never moves earlier | caught (4), e.g. `orders a child's transcript by first event, ties by arrival` | pinned |
+| R6 | a tie goes to the held event (`>= 0` → `> 0`) | caught (1): `takes the later arrival of two snapshots with one timestamp` | pinned |
+| R7 | the scan puts an item before equal timestamps | caught (1): `orders a child's transcript by first event, ties by arrival` | D-18 pinned |
+| R8 | no scan: every item appended | caught (1), the same | pinned |
+| R9 | the interleave keys a call without its session | survived | equivalent: only root calls reach the root's flow |
+| R10 | an anchor at a tie goes before the item (`< 0` → `<= 0`) | survived | not pinned; differs only when an anchor's time equals a root item's start exactly |
+| R11 | placement never recomputed for a known child's change | caught (1): `recomputes the summary when a child's state changes` | pinned |
+| R12 | `parent_tool_call_id` out of the placement fields | survived | **not pinned**: a later snapshot that only names (or changes) a child's spawning call would leave it at its fallback until another fold marks placement dirty. Unreachable for dr-acp, which names the call at announcement (D1 §5.4); reachable for a generic agent [read] |
+| R13 | `lastConfirmed.state` out of the placement fields | survived | not pinned; reachable only when a page brings a confirmed snapshot between two loaded ones without moving `firstAt`, which contiguous pages do not [read] |
+| R14 | the fields as `String([...])`, not JSON | survived | equivalent for every value S1 writes (D-20) |
+| R15 | a 5xx shows `detail`, not `exception` | caught (1): the 504 refusal case | pinned |
+| R16 | `toolCallKey` ignores the session | caught (3), e.g. `keeps tool calls of different sessions with the same id apart` | pinned |
+| K1 | costs on by default (`=== "true"` → `!== "false"`) | caught (2): both switch tests | D-14's default is pinned |
+| K2 | the row ignores the setting | caught (1): `is off by default and shows sub-agent costs while on` | pinned |
+| K3 | the writer does not tell this tab | caught (1), the same | pinned |
+| K4 | no `storage` listener: another tab's change ignored | survived | **not pinned**: the commit's "follows other tabs" has no test |
+| K5 | the switch writes the opposite value | caught (2) | pinned |
+| E1 | `scriptedAcpRuns().start` with `subagents: false` | **not run** (no Playwright here, and a dispatch runs only pushed code) | by reading: the main spec fails at "2 sub-agents · 2 running"; the replay spec passes, both trees empty (§5.2) |
+| E3 | `cleanUp` without `ensureMockLLMAgentProfile` | **not run** | by reading: no assertion follows in C1's dispatch; a full mock-LLM run would start later suites on the scripted profile |
+
+In all, 27 run: 19 caught, 8 survived. Of the survivors I3, S1, R9 and R14 are equivalent or unreachable for what S1
+writes; R10, R12, R13 and K4 change behaviour in cases no test states, R12 and K4 in cases a user can reach.
+
+---
+
+## 8 · What I could not verify
+
+1. **Playwright, the builds and the full Vitest suite here**: CI's records only. The scripted-agent mutants E1 and E3
+   are read, not run.
+2. **Each of the 38 commits alone** (D-22): CI ran on pushed heads; I ran ruling 5's two at `94b4bae` and `ba1c1d2`
+   only.
+3. **The merged S1** (SDK fork `deep-reasoning`, after its refactor): C1 was run only against `dr-1` (`cef3b24`).
+   Whether the merged S1 stores the shapes and order C1 reads, and whether its client exports the five names of
+   §5.1, is not checked; the redone wiring will decide it.
+4. **D5's `canvas-replay` on D1's ten recordings**: still only `1135e87`'s report; no run at `2c0e743`.
+5. **The Refactorer's report**: its directory holds scripts, logs and baselines, not a report text; the modules that
+   moved (D-15 to D-21) and the property-table rows that changed (§3) are mine, from the commits.
+6. **The cost setting in the shared view and across tabs**: read only (D-14, K4).
+7. **Stryker**: not rerun since Gate B; the components were never mutated by it. My probes are 27 hand edits, not a
+   score.
+8. **E6 off GitHub's runners**, and scroll position (jsdom has no layout): as r1.
