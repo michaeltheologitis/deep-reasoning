@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import acp.schema
+import pytest
 from starlette.testclient import TestClient
 
 from deep_reasoning.acp import texts
@@ -79,22 +80,37 @@ def root_texts(client, session: str) -> list[str]:
     ]
 
 
-async def converse(
-    home, work, tmp, plan, prompts, *, setup=None, servers=(), namespace=None
-):
-    """One conversation: the Library set up, dr-acp started, each prompt asked in turn."""
-    async with FakeOpenAI(scripted(plan)) as model:
-        lib = library(home, model.base_url, tmp)
-        if setup:
-            setup(lib)
-        async with dr_acp(None, home) as client:
-            session = await client.open_session(work, servers)
-            if namespace:
-                await client.conn.set_config_option(
-                    config_id="namespace", session_id=session, value=namespace
-                )
-            responses = [await client.ask(session, p) for p in prompts]
-        return client, session, responses, model
+def outcome(response) -> str:
+    return response.field_meta["deep_reasoner"]["outcome"]
+
+
+@pytest.fixture
+def converse(home, work, tmp_path):
+    """converse(plan, prompts, …) → (client, session, responses, model): the Library set up,
+    dr-acp started, each prompt asked in turn. echo_in grants echo to those namespaces and
+    forwards its server; otherwise setup(lib) and servers say what there is."""
+
+    async def talk(plan, prompts, setup, servers, namespace):
+        async with FakeOpenAI(scripted(plan)) as model:
+            setup(library(home, model.base_url, tmp_path))
+            async with dr_acp(None, home) as client:
+                session = await client.open_session(work, servers)
+                if namespace:
+                    await client.conn.set_config_option(
+                        config_id="namespace", session_id=session, value=namespace
+                    )
+                responses = [await client.ask(session, p) for p in prompts]
+            return client, session, responses, model
+
+    def conversation(
+        plan, prompts, *, echo_in=None, setup=None, servers=(), namespace=None
+    ):
+        if echo_in is not None:
+            setup = lambda lib: put_grant(lib, "echo", echo_in)
+            servers = [forwarded("echo", ECHO_TOKEN="t")]
+        return run(talk(plan, prompts, setup or (lambda lib: None), servers, namespace))
+
+    return conversation
 
 
 def test_dr_acp_advertises_http_and_sse(home):
@@ -110,25 +126,17 @@ def test_dr_acp_advertises_http_and_sse(home):
     }
 
 
-def test_a_granted_server_is_bound_and_a_cell_calls_it(home, work, tmp_path):
+def test_a_granted_server_is_bound_and_a_cell_calls_it(converse):
     plan = {
         "Say hi": [
             repl("print(echo.echo('hi from echo'))"),
             repl("FinalAnswer('done')"),
         ]
     }
-    client, _, [response], model = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Say hi through echo."],
-            setup=lambda lib: put_grant(lib, "echo", ["router"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-        )
+    client, _, [response], model = converse(
+        plan, ["Say hi through echo."], echo_in=["router"]
     )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    assert outcome(response) == "answered"
     (run_id,) = run_ids(client.printer.updates)
     [status] = kinds(client, run_id, "mcp.status")
     assert [(s.tool, s.state, s.count) for s in status.servers] == [
@@ -139,46 +147,32 @@ def test_a_granted_server_is_bound_and_a_cell_calls_it(home, work, tmp_path):
     assert status.servers[0].told in asked(model)
 
 
-def test_a_forwarded_server_no_grant_names_is_never_started(home, work, tmp_path):
+def test_a_forwarded_server_no_grant_names_is_never_started(converse, tmp_path):
     markers = tmp_path / "markers"
     markers.mkdir()
     plan = {"Anything": [repl("FinalAnswer('done')")]}
-    client, _, [response], _ = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Anything at all."],
-            servers=[forwarded("echo", ECHO_MARKER_DIR=str(markers), ECHO_TOKEN="t")],
-        )
-    )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    echo = forwarded("echo", ECHO_MARKER_DIR=str(markers), ECHO_TOKEN="t")
+    client, _, [response], _ = converse(plan, ["Anything at all."], servers=[echo])
+    assert outcome(response) == "answered"
     (run_id,) = run_ids(client.printer.updates)
     assert kinds(client, run_id, "mcp.status") == []
     assert list(markers.iterdir()) == []
 
 
-def crashing(home, work, tmp_path):
-    plan = {"Carry on": [repl("FinalAnswer('carried on')")]}
-    return run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Carry on without it."],
-            setup=lambda lib: put_grant(lib, "wiki", ["router"]),
-            servers=[forwarded("wiki", "crash_server.py", CRASH_TOKEN=CRASH_SECRET)],
-        )
+@pytest.fixture
+def crashed(converse):
+    """A conversation whose granted wiki server crashes at start, printing its token."""
+    return converse(
+        {"Carry on": [repl("FinalAnswer('carried on')")]},
+        ["Carry on without it."],
+        setup=lambda lib: put_grant(lib, "wiki", ["router"]),
+        servers=[forwarded("wiki", "crash_server.py", CRASH_TOKEN=CRASH_SECRET)],
     )
 
 
-def test_a_server_that_crashes_at_start_is_reported_and_the_run_answers(
-    home, work, tmp_path
-):
-    client, session, [response], _ = crashing(home, work, tmp_path)
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+def test_a_server_that_crashes_at_start_is_reported_and_the_run_answers(crashed):
+    client, session, [response], _ = crashed
+    assert outcome(response) == "answered"
     notice = texts.mcp_failed(
         "wiki", 'McpError: Connection closed; it printed: "invalid token [redacted]"'
     )
@@ -186,8 +180,8 @@ def test_a_server_that_crashes_at_start_is_reported_and_the_run_answers(
     assert said == [notice + "\n\n", "carried on"]
 
 
-def test_server_secrets_never_reach_the_run_log_or_the_transcript(home, work, tmp_path):
-    client, _, _, _ = crashing(home, work, tmp_path)
+def test_server_secrets_never_reach_the_run_log_or_the_transcript(home, crashed):
+    client, _, _, _ = crashed
     (run_id,) = run_ids(client.printer.updates)
     assert CRASH_SECRET not in (home / "runs" / run_id / "events.jsonl").read_text()
     assert CRASH_SECRET not in b"".join(client.lines).decode()
@@ -197,8 +191,8 @@ def test_server_secrets_never_reach_the_run_log_or_the_transcript(home, work, tm
     )
 
 
-def test_the_notice_replays_on_load(home, work, tmp_path):
-    client, session, _, _ = crashing(home, work, tmp_path)
+def test_the_notice_replays_on_load(home, work, crashed):
+    client, session, _, _ = crashed
     notice = root_texts(client, session)[0]
 
     async def load():
@@ -212,19 +206,9 @@ def test_the_notice_replays_on_load(home, work, tmp_path):
     assert notice in root_texts(again, session)
 
 
-def test_the_seen_cache_is_written_for_bound_servers(home, work, tmp_path):
+def test_the_seen_cache_is_written_for_bound_servers(home, converse):
     plan = {"Look": [repl("FinalAnswer('looked')")]}
-    client, _, _, _ = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Look around."],
-            setup=lambda lib: put_grant(lib, "echo", ["router"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-        )
-    )
+    client, _, _, _ = converse(plan, ["Look around."], echo_in=["router"])
     (run_id,) = run_ids(client.printer.updates)
     [status] = kinds(client, run_id, "mcp.status")
     seen = read_seen(home, "echo")
@@ -283,7 +267,7 @@ def test_no_stdio_server_outlives_a_closed_session(home, work, tmp_path):
 
 
 def test_a_tool_saved_through_the_api_is_built_and_called_in_the_next_conversation(
-    home, work, tmp_path
+    converse,
 ):
     def save_through_the_api(lib):
         api = TestClient(
@@ -307,20 +291,16 @@ def test_a_tool_saved_through_the_api_is_built_and_called_in_the_next_conversati
             repl("FinalAnswer('4')"),
         ]
     }
-    client, _, [response], model = run(
-        converse(
-            home, work, tmp_path, plan, ["Count the words."], setup=save_through_the_api
-        )
+    client, _, [response], model = converse(
+        plan, ["Count the words."], setup=save_through_the_api
     )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    assert outcome(response) == "answered"
     (run_id,) = run_ids(client.printer.updates)
     assert outputs(client, run_id)[0].strip() == "4"
     assert "- `word_count(text: str) -> int`" in asked(model)
 
 
-def test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on(
-    home, work, tmp_path
-):
+def test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on(converse):
     plan = {
         "Break it": [
             repl("echo.crash()"),
@@ -329,20 +309,10 @@ def test_a_server_that_crashes_mid_run_fails_the_call_and_the_run_goes_on(
         ],
         "And then": [repl("FinalAnswer('still here')")],
     }
-    client, session, responses, _ = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Break it.", "And then?"],
-            setup=lambda lib: put_grant(lib, "echo", ["router"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-        )
+    client, session, responses, _ = converse(
+        plan, ["Break it.", "And then?"], echo_in=["router"]
     )
-    assert [r.field_meta["deep_reasoner"]["outcome"] for r in responses] == [
-        "answered"
-    ] * 2
+    assert [outcome(r) for r in responses] == ["answered"] * 2
     (run_id,) = run_ids(client.printer.updates)
     stopped = shim.SERVER_STOPPED.format(
         server="echo", detail="McpError: Connection closed", name="echo"
@@ -375,7 +345,7 @@ def test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadli
 
     client, session, started_at_new, response = run(body())
     assert started_at_new == []
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    assert outcome(response) == "answered"
     (run_id,) = run_ids(client.printer.updates)
     [ready] = kinds(client, run_id, "worker.ready")
     [status] = kinds(client, run_id, "mcp.status")
@@ -384,68 +354,41 @@ def test_session_new_does_not_wait_and_the_first_answer_waits_at_most_the_deadli
     assert root_texts(client, session)[0] == texts.mcp_no_answer("silent", 2) + "\n\n"
 
 
-def test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt(
-    home, work, tmp_path
-):
+def test_a_server_granted_elsewhere_is_not_in_this_agents_repl_or_prompt(converse):
     plan = {"Look": [repl("print('echo' in dir())"), repl("FinalAnswer('looked')")]}
-    client, _, [response], model = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Look for echo."],
-            setup=lambda lib: put_grant(lib, "echo", ["course_advisor"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-        )
+    client, _, [response], model = converse(
+        plan, ["Look for echo."], echo_in=["course_advisor"]
     )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    assert outcome(response) == "answered"
     (run_id,) = run_ids(client.printer.updates)
     assert outputs(client, run_id)[0].strip() == "False"
     assert "echo(tool" not in asked(model)
 
 
-def test_a_sub_agent_spawned_into_a_granted_namespace_gets_it(home, work, tmp_path):
+def test_a_sub_agent_spawned_into_a_granted_namespace_gets_it(converse):
     plan = {
         "Delegate": [
             repl("FinalAnswer(subagent('Use echo there.', namespace='course_advisor'))")
         ],
         "Use echo there": [repl("FinalAnswer(echo.echo('from the advisor'))")],
     }
-    client, session, [response], _ = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Delegate to the advisor."],
-            setup=lambda lib: put_grant(lib, "echo", ["course_advisor"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-        )
+    client, session, [response], _ = converse(
+        plan, ["Delegate to the advisor."], echo_in=["course_advisor"]
     )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    assert outcome(response) == "answered"
     assert root_texts(client, session)[-1] == "from the advisor"
 
 
-def test_a_grant_reaches_a_child_namespace(home, work, tmp_path):
+def test_a_grant_reaches_a_child_namespace(converse):
     plan = {"Echo": [repl("FinalAnswer(echo.echo('in the archive'))")]}
-    client, session, [response], _ = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Echo from the archive."],
-            setup=lambda lib: put_grant(lib, "echo", ["router"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-            namespace="router.archive",
-        )
+    client, session, [response], _ = converse(
+        plan, ["Echo from the archive."], echo_in=["router"], namespace="router.archive"
     )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    assert outcome(response) == "answered"
     assert root_texts(client, session)[-1] == "in the archive"
 
 
-def test_handing_a_server_to_an_ungranted_namespace_is_refused(home, work, tmp_path):
+def test_handing_a_server_to_an_ungranted_namespace_is_refused(converse):
     plan = {
         "Hand": [
             repl(
@@ -454,18 +397,8 @@ def test_handing_a_server_to_an_ungranted_namespace_is_refused(home, work, tmp_p
             repl("FinalAnswer('refused')"),
         ]
     }
-    client, _, [response], _ = run(
-        converse(
-            home,
-            work,
-            tmp_path,
-            plan,
-            ["Hand echo over."],
-            setup=lambda lib: put_grant(lib, "echo", ["router"]),
-            servers=[forwarded("echo", ECHO_TOKEN="t")],
-        )
-    )
-    assert response.field_meta["deep_reasoner"]["outcome"] == "answered"
+    client, _, [response], _ = converse(plan, ["Hand echo over."], echo_in=["router"])
+    assert outcome(response) == "answered"
     (run_id,) = run_ids(client.printer.updates)
     refusal = shim.HANDOFF_REFUSED.format(
         server="echo",
