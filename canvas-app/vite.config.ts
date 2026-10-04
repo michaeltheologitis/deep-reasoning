@@ -1,4 +1,5 @@
-// The frame UI → ../src/deep_reasoning/canvas_app/ui/, and vitest's configuration.
+// The frame UI → ../src/deep_reasoning/canvas_app/ui/, and vitest's configuration. The tool
+// editor's CodeMirror is a chunk of its own, assets/editor.js, loaded only by the tool editor.
 import { defineConfig } from "vitest/config";
 
 const LIBRARY_PATHS = [
@@ -10,7 +11,11 @@ const LIBRARY_PATHS = [
   "/effective",
   "/decompositions",
   "/tools",
+  "/mcp",
 ];
+// Everything the "editor" chunk holds: CodeMirror, its dependencies, and our editor module.
+const EDITOR_CHUNK =
+  /node_modules\/(@codemirror|@lezer|style-mod|w3c-keyname|crelt)\/|src\/ui\/editor\//;
 
 export default defineConfig(({ command }) => ({
   base: command === "build" ? "./" : "/ui/",
@@ -22,8 +27,10 @@ export default defineConfig(({ command }) => ({
       input: { app: "index.html" },
       output: {
         entryFileNames: "assets/app.js",
+        chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/[name][extname]",
-        inlineDynamicImports: true,
+        inlineDynamicImports: false,
+        manualChunks: (id) => (EDITOR_CHUNK.test(id) ? "editor" : undefined),
       },
     },
   },

@@ -131,8 +131,33 @@ describe("mountTab", () => {
       cap: "7",
       focus: null,
       theme: THEME,
+      mcp: null,
     });
     expect(container.textContent).toBe("");
+  });
+
+  it("reads Canvas's MCP servers for the Tools tab only", async () => {
+    const settings = {
+      agent_settings: {
+        mcp_config: { github: { command: "npx", env: { T: "**********" } } },
+      },
+    };
+    const fake = fakeHost((call) =>
+      call.path === "/api/settings" ? settings : agentServer(call),
+    );
+    mountTab(fake.host, "tools", context("c1", "tools").mountContext);
+    mountTab(fake.host, "create", context("c1").mountContext);
+    await settle();
+    const framed = fake.frames.map((f) => frameParams(f.iframe.src));
+    const tools = framed.find((p) => p.tab === "tools");
+    const create = framed.find((p) => p.tab === "create");
+    expect(tools?.mcp?.map((s) => [s.name, s.env])).toEqual([
+      ["github", ["T"]],
+    ]);
+    expect(create?.mcp).toBeNull();
+    expect(
+      fake.agentServer.calls.filter((c) => c.path === "/api/settings"),
+    ).toHaveLength(1);
   });
 
   it("mounts each conversation with its own namespace", async () => {

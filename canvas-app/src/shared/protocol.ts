@@ -42,6 +42,22 @@ export const THEME_TOKENS: readonly string[] = Object.keys(DEFAULT_THEME);
 export const MAX_THEME_VALUE_LENGTH = 200;
 export const DEFAULT_SPEND_CAP = "5";
 
+export type McpTransport = "stdio" | "http" | "sse";
+export const MCP_TRANSPORTS: readonly McpTransport[] = ["stdio", "http", "sse"];
+
+/** One server of Canvas's MCP settings, as the Tools tab needs it: never a secret's value. */
+export interface McpServerInfo {
+  name: string; // the key in Canvas's MCP settings
+  transport: McpTransport;
+  command: string | null;
+  args: string[];
+  url: string | null;
+  env: string[]; // names only
+  headers: string[]; // names only
+  forwarded: boolean; // enabled, and in the deep_reasoner profile's mcp_server_refs (or refs null)
+  why_not: "disabled" | "not_in_profile" | null;
+}
+
 export interface FrameParams {
   tab: TabId;
   /** Canvas's origin; null on the standalone page. */
@@ -56,6 +72,8 @@ export interface FrameParams {
   focus: string | null;
   /** Token → value; only values that pass isSafeThemeValue. */
   theme: Readonly<Record<string, string>>;
+  /** D4: Canvas's MCP servers, for the Tools tab; null when unread or unreadable. */
+  mcp: readonly McpServerInfo[] | null;
 }
 
 export type FrameMessage =
@@ -108,6 +126,7 @@ export function frameSearch(params: FrameParams): string {
   if (params.focus) search.set("focus", params.focus);
   if (Object.keys(params.theme).length > 0)
     search.set("theme", JSON.stringify(params.theme));
+  if (params.mcp !== null) search.set("mcp", JSON.stringify(params.mcp));
   return `?${search.toString()}`;
 }
 
@@ -135,6 +154,37 @@ function theme(value: string | null): Record<string, string> {
   }
 }
 
+const isStrings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((v) => typeof v === "string");
+const isText = (value: unknown): value is string | null =>
+  value === null || typeof value === "string";
+
+function isMcpServerInfo(value: unknown): value is McpServerInfo {
+  const server = value as Record<string, unknown> | null;
+  return (
+    typeof server?.name === "string" &&
+    (MCP_TRANSPORTS as readonly unknown[]).includes(server.transport) &&
+    isText(server.command) &&
+    isStrings(server.args) &&
+    isText(server.url) &&
+    isStrings(server.env) &&
+    isStrings(server.headers) &&
+    typeof server.forwarded === "boolean" &&
+    [null, "disabled", "not_in_profile"].includes(server.why_not as string)
+  );
+}
+
+/** A JSON list of servers; entries of another shape are dropped; anything else is null. */
+function mcp(value: string | null): McpServerInfo[] | null {
+  if (value === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(isMcpServerInfo) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Tolerant: an unknown or missing value takes its default, so a bad URL still shows a page.
  * On the standalone page (no parent window) parent is always null. */
 export function readFrameParams(
@@ -152,6 +202,7 @@ export function readFrameParams(
     cap: cap !== null && CAP.test(cap) ? cap : DEFAULT_SPEND_CAP,
     focus: query.get("focus") || null,
     theme: theme(query.get("theme")),
+    mcp: mcp(query.get("mcp")),
   };
 }
 

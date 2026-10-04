@@ -4,6 +4,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter
 
+from deep_reasoning.mcp.wire import McpServerSpec
+
 
 class Start(BaseModel):
     op: Literal["start"] = "start"
@@ -15,6 +17,9 @@ class Start(BaseModel):
     client_overrides: dict[str, Any]  # merged over cfg.client
     # tool name -> overrides merged over cfg.tools[name]["client"]
     tool_client_overrides: dict[str, dict[str, Any]] = {}
+    mcp_servers: list[
+        McpServerSpec
+    ] = []  # D4: the forwarded servers the run's MCP blocks name
 
 
 class Prompt(BaseModel):

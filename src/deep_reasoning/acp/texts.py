@@ -3,7 +3,10 @@
 A constant is a sentence without fields; a function returns the sentence with its fields.
 """
 
+from collections.abc import Sequence
 from typing import Literal
+
+from deep_reasoning.mcp.wire import McpServerStatus
 
 ROOT_STOPPED = (
     "Stopped. The run was ended and its REPL state is gone: deep_reasoner cannot cancel a "
@@ -135,6 +138,39 @@ def stopped_by_user(
             f" Its running siblings {named} in this run_all were stopped with it (A3)."
         )
     return sentence
+
+
+def mcp_no_answer(server: str, seconds: float) -> str:
+    return (
+        f"⚠ MCP server '{server}' did not answer within {seconds:g} s; its tools are not "
+        "bound in this conversation."
+    )
+
+
+def mcp_failed(server: str, detail: str) -> str:
+    return (
+        f"⚠ MCP server '{server}' could not be started ({detail}); its tools are not "
+        "bound in this conversation."
+    )
+
+
+def mcp_not_enabled(server: str, namespaces: Sequence[str]) -> str:
+    return (
+        f"⚠ MCP server '{server}' is granted to {', '.join(namespaces)} in the Library, "
+        "but this conversation was not given it: enable it in Canvas's MCP settings. Its "
+        "tools are not bound."
+    )
+
+
+def mcp_notice(status: McpServerStatus) -> str | None:
+    """The notice for no_answer, failed and not_enabled; None otherwise."""
+    if status.state == "no_answer":
+        return mcp_no_answer(status.server, status.seconds or 0)
+    if status.state == "failed":
+        return mcp_failed(status.server, status.detail or "")
+    if status.state == "not_enabled":
+        return mcp_not_enabled(status.server, status.granted)
+    return None
 
 
 # The key proxy (D5 §6): each is the message of an HTTP error the worker's client reads.

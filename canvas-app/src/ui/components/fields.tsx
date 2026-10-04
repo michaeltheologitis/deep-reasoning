@@ -87,6 +87,8 @@ export function ConfirmRow(props: {
   confirm: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** The confirming button's test id; dr-confirm-yes when absent. */
+  confirmTestId?: string;
 }) {
   return (
     <div class="confirm" role="alertdialog" data-testid="dr-confirm">
@@ -94,7 +96,7 @@ export function ConfirmRow(props: {
       <button
         type="button"
         class="danger"
-        data-testid="dr-confirm-yes"
+        data-testid={props.confirmTestId ?? "dr-confirm-yes"}
         onClick={props.onConfirm}
       >
         {props.confirm}

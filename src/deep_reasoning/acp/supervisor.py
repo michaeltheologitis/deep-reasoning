@@ -6,6 +6,8 @@ import os
 import signal
 import subprocess
 import sys
+from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -18,6 +20,7 @@ from deep_reasoning.acp.route import ModelRoute, worker_env
 from deep_reasoning.acp.runlog import (
     RUN_EVENT,
     Home,
+    McpStatus,
     Mode,
     PromptEnd,
     PromptStart,
@@ -30,6 +33,7 @@ from deep_reasoning.acp.runlog import (
 )
 from deep_reasoning.acp.wire import READER_LIMIT, Outbox
 from deep_reasoning.acp.worker.protocol import Close, Prompt, Start, Stop
+from deep_reasoning.mcp.wire import McpServerSpec, remember_seen
 
 if TYPE_CHECKING:
     from deep_reasoning.acp.session import Session
@@ -65,6 +69,7 @@ class RunHandle:
         self._outbox = outbox
         self._heartbeat_s = heartbeat_s
         self._log = log
+        self._home = home
         self._worker_log = home.run_dir(run_id) / "worker.log"
         self._sending = asyncio.Lock()  # one RunEvent's updates go out together
         self._ended = asyncio.Event()
@@ -92,6 +97,7 @@ class RunHandle:
         outbox: Outbox,
         mode: Mode,
         heartbeat_s: float,
+        mcp_servers: Sequence[McpServerSpec] = (),
     ) -> "RunHandle":
         """Create the run's log and worker, and start its pump and heartbeat.
 
@@ -101,7 +107,9 @@ class RunHandle:
         deep_reasoning.acp.worker --control-fd C --events-fd E, pass_fds=(C, E),
         start_new_session=True, stdin=DEVNULL, stdout and stderr to runs/<run>/worker.log,
         cwd=session.cwd, env=worker_env(os.environ, grant); send
-        Start(client_overrides=..., tool_client_overrides=..., ...) from the grant.
+        Start(client_overrides=..., tool_client_overrides=... from the grant,
+        mcp_servers=..., ...). The pump remembers the tools of each server a live
+        mcp.status says is bound (D4 §4.7).
         """
         handle = cls(
             run_id=run_id,
@@ -150,6 +158,7 @@ class RunHandle:
                     name: dict(overrides)
                     for name, overrides in grant.tool_client_overrides.items()
                 },
+                mcp_servers=list(mcp_servers),
             )
         )
         handle._pump = asyncio.create_task(handle._pump_events(reader))
@@ -208,12 +217,23 @@ class RunHandle:
                 )
                 continue
             logged = await self._log_and_send(ev)
+            if isinstance(logged, McpStatus):
+                self._remember(logged)
             if isinstance(logged, PromptEnd):
                 self._last_prompt_end = logged
                 if logged.outcome not in ENDS_WITH_ITS_PROMPT:
                     self._answer_prompt(logged)
         code = await self._process.wait()
         await self._end(self._end_reason(), code)
+
+    def _remember(self, status: McpStatus) -> None:
+        """D4 §4.7: what each bound server told the agent, for the Tools tab."""
+        try:
+            remember_seen(
+                self._home.root, self.run_id, status.servers, datetime.now(UTC)
+            )
+        except OSError:
+            logger.exception("dr_acp.mcp_seen_failed", run=self.run_id)
 
     def _end_reason(self) -> RunEndReason:
         """The first that applies: the front asked; the last prompt failed; a crash."""
