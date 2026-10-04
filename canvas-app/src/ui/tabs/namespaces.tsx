@@ -41,7 +41,7 @@ import type {
   ToolRecord,
 } from "../types";
 import { type Attempt, attempt, resolved, useLoaded } from "../load";
-import { parseYaml, stringifyYaml } from "../yaml";
+import { stringifyYaml } from "../yaml";
 import type { TabProps } from "./props";
 
 const RUN_SETTINGS = "run-settings";
@@ -74,11 +74,6 @@ async function loadLibrary(): Promise<Library> {
     getDecompositions(),
   ]);
   return { namespaces, profile, tools, decompositions };
-}
-
-function documentOf(yaml: string): Document {
-  const value = parseYaml(yaml);
-  return value && typeof value === "object" ? { ...(value as Document) } : {};
 }
 
 function without(document: Document, key: string): Document {
@@ -287,7 +282,7 @@ function NamespaceDetail(props: {
   const [editing, setEditing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const namespace = library.namespaces.find((n) => n.name === name)!;
-  const document = documentOf(namespace.yaml);
+  const document = namespace.data;
   const isDefault = library.profile.default_namespace === name;
 
   async function save(next: Document) {
@@ -319,7 +314,7 @@ function NamespaceDetail(props: {
 
   async function makeDefault() {
     const profile = {
-      ...documentOf(library.profile.yaml),
+      ...library.profile.data,
       entry_namespace: name,
     };
     await props.write(() =>
@@ -817,7 +812,7 @@ function DecompositionsField(props: {
 function RunSettings(props: { profile: ProfileRecord; write: Write }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [newKey, setNewKey] = useState("");
-  const document = documentOf(props.profile.yaml);
+  const document = props.profile.data;
   const keys = Object.keys(document).filter((key) => key !== "entry_namespace");
   const modeOf = (key: string) => (TEXT_SETTINGS.has(key) ? "text" : "yaml");
 
