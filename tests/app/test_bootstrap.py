@@ -14,12 +14,10 @@ REPO = "https://github.com/michaeltheologitis/deep-reasoning"
 _spec = importlib.util.spec_from_file_location("build", ROOT / "desktop" / "build.py")
 build = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(build)
-ACCESS_LINE = (
+# deep-reasoning is public, so a fetch that fails means the network.
+UNREACHABLE_LINE = (
     "✗ Could not fetch github.com/michaeltheologitis/deep-reasoning: check that this "
-    "computer is online, and that your git credentials can read it. It is private: ask "
-    "Michael for read access, then sign git in for https (gh auth login, or an SSH key "
-    'and git config --global url."git@github.com:".insteadOf "https://github.com/") and '
-    "restart. Nothing was installed."
+    "computer is online, then restart. Nothing was installed."
 )
 
 
@@ -48,13 +46,13 @@ def test_no_git_says_how_to_install_it(stubs, tmp_path):
     assert stubs.calls("uvx") == []
 
 
-def test_an_unreadable_deep_reasoning_says_so_and_keeps_uvx_status(stubs):
+def test_an_unreachable_deep_reasoning_says_so_and_keeps_uvx_status(stubs):
     done = bootstrap(stubs, STUB_UVX_FROM_EXIT="2", STUB_GIT_LS_REMOTE_EXIT="128")
-    assert (done.returncode, done.stdout) == (2, ACCESS_LINE + "\n")
+    assert (done.returncode, done.stdout) == (2, UNREACHABLE_LINE + "\n")
     assert stubs.argvs("git")[-1] == ["ls-remote", REPO, "HEAD"]
 
 
-def test_dr_apps_own_failure_passes_through_without_the_access_line(stubs):
+def test_dr_apps_own_failure_passes_through_without_the_fetch_line(stubs):
     done = bootstrap(stubs, STUB_UVX_FROM_EXIT="12", STUB_GIT_LS_REMOTE_EXIT="128")
     assert (done.returncode, done.stdout) == (12, "")
     assert stubs.argvs("git") == [["--version"]]

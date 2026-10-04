@@ -11,6 +11,6 @@ fi
 uvx --from "$1" dr-app setup --repo "$2" --commit "$3"
 status=$?
 if [ "$status" -ne 0 ] && { [ "$status" -lt 10 ] || [ "$status" -gt 19 ]; } && ! git ls-remote "$2" HEAD >/dev/null 2>&1; then
-  echo "✗ Could not fetch ${2#https://}: check that this computer is online, and that your git credentials can read it. It is private: ask Michael for read access, then sign git in for https (gh auth login, or an SSH key and git config --global url.\"git@github.com:\".insteadOf \"https://github.com/\") and restart. Nothing was installed."
+  echo "✗ Could not fetch ${2#https://}: check that this computer is online, then restart. Nothing was installed."
 fi
 exit "$status"

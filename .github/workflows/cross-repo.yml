@@ -53,8 +53,8 @@ jobs:
   # E12's skeleton flow (D5 §7.5): the Linux packages built from the pins, the .deb
   # installed, and the app launched with a fresh HOME under Xvfb and driven over its
   # DevTools port. The model is FakeOpenAI in the test, so no model is called. The app's
-  # setup reads deep-reasoning (this commit) and deep_reasoner_beta with git, as a
-  # user's would, through the runner's insteadOf lines.
+  # setup fetches deep-reasoning (this commit, public) and deep_reasoner_beta (private,
+  # through the runner's insteadOf line) with git, as a user's would.
   desktop-e2e:
     needs: has-d5
     if: needs.has-d5.outputs.present == 'true'
@@ -71,10 +71,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - name: Read access to deep_reasoner_beta and deep-reasoning (private)
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-          git config --global url."https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}".insteadOf "https://github.com/${{ github.repository }}"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
       - name: Build the Linux packages
         run: uv run desktop/build.py linux

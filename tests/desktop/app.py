@@ -60,8 +60,8 @@ def free_port() -> int:
 @contextmanager
 def fresh_home() -> Iterator[Path]:
     """An empty HOME, short enough for deep_reasoner's Claude sockets, holding the
-    runner's git config: the insteadOf lines that let setup read the private
-    repositories, as a user's own credentials would. Its git keeps no credentials:
+    runner's git config: the insteadOf line that lets setup read the private
+    deep_reasoner_beta, as a user's own credentials would. Its git keeps no credentials:
     a system helper (the macOS runner's osxkeychain) has no keychain under this
     HOME, and its store waits on a dialog no one answers."""
     with tempfile.TemporaryDirectory(prefix="e12-", dir="/tmp") as short:
