@@ -75,16 +75,16 @@ Moved by collaborators, or by D5's own progress [read, except where marked]:
 1. **Check 8 on a reused `--work`.** `fork_cache` refetches with `git fetch --filter=blob:none origin deep-reasoning`
    into a bare clone that has no fetch refspec, so the fetch moves only `FETCH_HEAD`, and `refs/heads/deep-reasoning`
    stays as first cloned [run: §5.4's probe]. With the default `--work`, `<repo>/.desktop-work`, which persists, a pin
-   to a commit merged into a fork's branch after the first local check is refused as "not on its deep-reasoning
+   to a commit merged into a fork's branch after that clone is refused as "not on its deep-reasoning
    branch". CI starts each job with a fresh `--work`, so no CI run is affected. Not fixed (my brief).
 2. **The default suite needs the network.** `test_the_runtime_lock_installs_on_every_platform_the_app_ships_for`
    (two cases: Linux x86-64, macOS 14 arm64) dry-runs the lock against PyPI's metadata, and carries no marker [read;
    run].
 3. **Two default-suite tests restate the committed pins:** `test_the_committed_sdk_pin_is_34c540c_tagged_dr_2` (and
    `uv_version`) and `test_the_committed_pins_load` (both forks). A pin bump edits them [read].
-4. **A `setup.json` whose `v` is not 1** raises `ValueError`, which `main()` does not catch: a traceback and exit 1,
-   below the 10–19 band in which the bootstrap trusts `dr-app` to have explained itself, so the bootstrap also
-   checks deep-reasoning's readability [read].
+4. **A `setup.json` whose `v` is not 1** raises `ValueError`, which `main()` does not catch: a traceback and exit 1.
+   That is outside the 10–19 band in which the bootstrap trusts `dr-app` to have explained itself, so the bootstrap
+   then asks git whether deep-reasoning is readable, and says nothing more when it is [read].
 5. **Setup is silent while git waits on a credential dialog.** The macOS smoke's 15-minute hang (§5.3) was a keychain
    dialog under the test's fresh HOME; the fix (`269c7af`) is in the test, which gives that HOME an empty credential
    helper. The splash says nothing while setup waits (TASK-39) [read; CI].
