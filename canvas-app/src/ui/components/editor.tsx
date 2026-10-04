@@ -738,6 +738,8 @@ export function CardList(props: CardListProps) {
   );
 }
 
+/** One card: its text areas (dr-card-<index>-<field>, each described by D2's errors for the card)
+ * and, for a raw card, its role. */
 function CardFields(props: {
   card: Card;
   index: number;
@@ -746,105 +748,69 @@ function CardFields(props: {
 }) {
   const { card, index } = props;
   const errorsId = `dr-card-${index}-errors`;
-  const describedBy = props.errors?.length ? errorsId : undefined;
-  const field = (name: string) => `dr-card-${index}-${name}`;
+  const field = (
+    name: string,
+    label: string,
+    value: string,
+    edit: (value: string) => Card,
+  ) => (
+    <CodeField
+      label={label}
+      language={name === "code" ? "python" : "text"}
+      value={value}
+      testId={`dr-card-${index}-${name}`}
+      describedBy={props.errors?.length ? errorsId : undefined}
+      onChange={(next) => props.onChange(edit(next))}
+    />
+  );
   return (
     <div class={`card ${card.kind}`} data-testid={`dr-card-${index}`}>
-      {card.kind === "task" && (
-        <CodeField
-          label={LABELS.task}
-          language="text"
-          value={card.text}
-          testId={field("task")}
-          describedBy={describedBy}
-          onChange={(text) => props.onChange({ ...card, text })}
-        />
-      )}
+      {card.kind === "task" &&
+        field("task", LABELS.task, card.text, (text) => ({ ...card, text }))}
       {card.kind === "step" && (
         <>
-          <CodeField
-            label={LABELS.think}
-            language="text"
-            value={card.think}
-            testId={field("think")}
-            describedBy={describedBy}
-            onChange={(think) =>
-              props.onChange({
-                ...card,
-                think,
-                thinkLayout: think.includes("\n") ? "block" : card.thinkLayout,
-              })
-            }
-          />
-          <CodeField
-            label={LABELS.code}
-            language="python"
-            value={card.code}
-            testId={field("code")}
-            describedBy={describedBy}
-            onChange={(code) => props.onChange({ ...card, code })}
-          />
+          {field("think", LABELS.think, card.think, (think) => ({
+            ...card,
+            think,
+            thinkLayout: think.includes("\n") ? "block" : card.thinkLayout,
+          }))}
+          {field("code", LABELS.code, card.code, (code) => ({ ...card, code }))}
         </>
       )}
-      {card.kind === "output" && (
-        <CodeField
-          label={LABELS.output}
-          language="text"
-          value={card.text}
-          testId={field("output")}
-          describedBy={describedBy}
-          onChange={(text) => props.onChange({ ...card, text })}
-        />
-      )}
+      {card.kind === "output" &&
+        field("output", LABELS.output, card.text, (text) => ({
+          ...card,
+          text,
+        }))}
       {card.kind === "raw" && (
-        <RawCardFields
-          card={card}
-          index={index}
-          describedBy={describedBy}
-          onChange={props.onChange}
-        />
+        <>
+          <p class="note">{RAW_NOTE}</p>
+          <label class="role">
+            role{" "}
+            <select
+              value={card.role}
+              data-testid={`dr-card-${index}-role`}
+              onChange={(event) =>
+                props.onChange({
+                  ...card,
+                  role: event.currentTarget.value as RawCard["role"],
+                })
+              }
+            >
+              {(ROLES.includes(card.role) ? ROLES : [...ROLES, card.role]).map(
+                (role) => (
+                  <option value={role}>{role}</option>
+                ),
+              )}
+            </select>
+          </label>
+          {field("raw", card.role, card.content, (content) => ({
+            ...card,
+            content,
+          }))}
+        </>
       )}
       <FieldErrors id={errorsId} testId={errorsId} errors={props.errors} />
     </div>
-  );
-}
-
-function RawCardFields(props: {
-  card: RawCard;
-  index: number;
-  describedBy?: string;
-  onChange: (card: RawCard) => void;
-}) {
-  const { card } = props;
-  const roles = ROLES.includes(card.role) ? ROLES : [...ROLES, card.role];
-  return (
-    <>
-      <p class="note">{RAW_NOTE}</p>
-      <label class="role">
-        role{" "}
-        <select
-          value={card.role}
-          data-testid={`dr-card-${props.index}-role`}
-          onChange={(event) =>
-            props.onChange({
-              ...card,
-              role: event.currentTarget.value as RawCard["role"],
-            })
-          }
-        >
-          {roles.map((role) => (
-            <option value={role}>{role}</option>
-          ))}
-        </select>
-      </label>
-      <CodeField
-        label={card.role}
-        language="text"
-        value={card.content}
-        testId={`dr-card-${props.index}-raw`}
-        describedBy={props.describedBy}
-        onChange={(content) => props.onChange({ ...card, content })}
-      />
-    </>
   );
 }
