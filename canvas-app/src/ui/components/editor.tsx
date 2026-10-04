@@ -103,32 +103,21 @@ const failed = (error: LibraryError): Outcome => ({
   errors: error.errors,
 });
 
+/** The editor's state before any change: the record as saved, or a new decomposition. */
 function fresh(record: DecompositionRecord | null): Stored {
-  if (record === null) {
-    return {
-      draft: {
-        mode: "cards",
-        name: "",
-        useWhen: "",
-        hint: "",
-        cards: newDecompositionCards(),
-        yaml: "",
-        baseVersion: 0,
-      },
-      attached: [],
-    };
-  }
   return {
     draft: {
       mode: "cards",
-      name: record.name,
-      useWhen: record.use_when ?? "",
-      hint: record.hint ?? "",
-      cards: messagesToCards(record.data.messages),
+      name: record?.name ?? "",
+      useWhen: record?.use_when ?? "",
+      hint: record?.hint ?? "",
+      cards: record
+        ? messagesToCards(record.data.messages)
+        : newDecompositionCards(),
       yaml: "",
-      baseVersion: record.version,
+      baseVersion: record?.version ?? 0,
     },
-    attached: [...record.namespaces],
+    attached: [...(record?.namespaces ?? [])],
   };
 }
 
