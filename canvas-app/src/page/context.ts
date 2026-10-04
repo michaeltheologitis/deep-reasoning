@@ -1,6 +1,13 @@
-// What only Canvas can read, for the frame's URL: the conversation's namespace, the spend cap, the theme.
+// What only Canvas can read, for the frame's URL: the conversation's namespace, the spend cap, the theme,
+// and (D4) Canvas's MCP servers.
 
-import { DEFAULT_SPEND_CAP, THEME_TOKENS, safeTheme } from "../shared/protocol";
+import {
+  DEFAULT_SPEND_CAP,
+  type McpServerInfo,
+  type McpTransport,
+  THEME_TOKENS,
+  safeTheme,
+} from "../shared/protocol";
 import type { AgentServerRequest } from "./host";
 
 export interface ConversationNamespace {
@@ -15,6 +22,7 @@ interface ConfigOption {
 }
 
 const PROFILE_PATH = "/api/agent-profiles/deep_reasoner";
+const SETTINGS_PATH = "/api/settings";
 const DECIMAL = /^\d+(\.\d+)?$/;
 /** The events search matches an event's module-qualified class name, not the kind in its JSON. */
 const ACP_SESSION_CONTROLS_EVENT_KIND =
@@ -96,4 +104,103 @@ export function readTheme(element: Element): Record<string, string> {
       ]),
     ),
   );
+}
+
+type Entry = Record<string, unknown>;
+
+const isEntry = (value: unknown): value is Entry =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const nonEmpty = (value: unknown): value is string =>
+  typeof value === "string" && value !== "";
+
+/** stdio with a command, sse with a URL and transport "sse", else http with a URL (the bridge's
+ * own rule); null when it has neither. */
+function transportOf(server: Entry): McpTransport | null {
+  if (nonEmpty(server.command)) return "stdio";
+  if (!nonEmpty(server.url)) return null;
+  return server.transport === "sse" ? "sse" : "http";
+}
+
+/** The names of the headers the bridge sends for a server's auth (the SDK's to_http_headers):
+ * none for "none" and OAuth, which it does not forward. */
+function authHeaderNames(auth: unknown): string[] {
+  if (!isEntry(auth)) return [];
+  switch (auth.strategy) {
+    case "bearer":
+    case "basic":
+      return ["Authorization"];
+    case "api_key":
+      return [nonEmpty(auth.header_name) ? auth.header_name : "Authorization"];
+    case "header":
+      return isEntry(auth.headers) ? Object.keys(auth.headers) : [];
+    default:
+      return [];
+  }
+}
+
+/** Each server of Canvas's MCP settings: its target, and the names (never the values) of its
+ * environment variables and of the headers it is sent, its auth's included; forwarded when
+ * enabled and in refs (null: all). */
+export function mcpServersFromSettings(
+  mcpConfig: Readonly<Record<string, unknown>>,
+  refs: readonly string[] | null,
+): McpServerInfo[] {
+  return Object.entries(mcpConfig).flatMap(([name, value]) => {
+    const server = isEntry(value) ? value : {};
+    const transport = transportOf(server);
+    if (transport === null) return [];
+    const why_not =
+      server.enabled === false
+        ? ("disabled" as const)
+        : refs !== null && !refs.includes(name)
+          ? ("not_in_profile" as const)
+          : null;
+    return [
+      {
+        name,
+        transport,
+        command: transport === "stdio" ? (server.command as string) : null,
+        args: Array.isArray(server.args)
+          ? server.args.filter((a): a is string => typeof a === "string")
+          : [],
+        url: transport === "stdio" ? null : (server.url as string),
+        env: isEntry(server.env) ? Object.keys(server.env) : [],
+        headers: [
+          ...new Set([
+            ...(isEntry(server.headers) ? Object.keys(server.headers) : []),
+            ...authHeaderNames(server.auth),
+          ]),
+        ],
+        forwarded: why_not === null,
+        why_not,
+      },
+    ];
+  });
+}
+
+/** Canvas's settings, read without X-Expose-Secrets (every secret comes back redacted), and the
+ * deep_reasoner profile's mcp_server_refs; either request failing → null. */
+export async function readMcpServers(
+  request: AgentServerRequest,
+): Promise<McpServerInfo[] | null> {
+  try {
+    const [settings, profile] = await Promise.all([
+      request<{ agent_settings?: { mcp_config?: unknown } }>({
+        path: SETTINGS_PATH,
+      }),
+      request<{ profile?: { mcp_server_refs?: unknown } }>({
+        path: PROFILE_PATH,
+      }),
+    ]);
+    const config = settings.agent_settings?.mcp_config;
+    const refs = profile.profile?.mcp_server_refs;
+    return mcpServersFromSettings(
+      isEntry(config) ? config : {},
+      Array.isArray(refs)
+        ? refs.filter((r): r is string => typeof r === "string")
+        : null,
+    );
+  } catch {
+    return null;
+  }
 }

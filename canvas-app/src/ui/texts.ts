@@ -109,6 +109,7 @@ export const TOOLS_RISK =
   "Tools and MCP servers run as you, with your files and network: your tools inside the agent's process, a stdio MCP server as a program started for each conversation that can use it. Check runs your code too. Add only code and servers you trust.";
 export const YOUR_TOOLS = "Your tools";
 export const NEW_TOOL = "+ New tool";
+export const MCP_SERVERS = "MCP servers (from Canvas's settings)";
 export const CHECKING = "Checking… (building your tool in a separate process)";
 export const SAVING_CHECKING = "Checking and saving…";
 export const CHECK_BUILT = (seconds: string) =>
@@ -126,6 +127,27 @@ export const TRY_LABEL =
 export const PRINTED = "It printed:";
 export const NAME_FIXED =
   "how the agent calls it: a Python name, fixed once saved";
+export const MCP_AS = (name: string) => `as ${name}`;
+export const MCP_SEEN = (count: number, date: string) =>
+  `${count} tools, as the conversation of ${date} saw them`;
+export const MCP_NOT_SEEN =
+  "Its tools are listed here after the first conversation that starts it.";
+export const MCP_DISABLED =
+  "Disabled in Canvas's MCP settings: not started until you enable it there.";
+export const MCP_NOT_IN_PROFILE =
+  "Not given to the deep_reasoner agent: its profile lists other MCP servers.";
+export const MCP_GONE = "Granted, but no longer in Canvas's MCP settings.";
+export const REMOVE = "Remove";
+export const MCP_CHANGED =
+  "Canvas's settings for this server changed since it was granted; an export still has the old ones.";
+export const MCP_SHIM_OLD = "Granted by an older deep-reasoning.";
+export const UPDATE = "Update";
+export const MCP_SETTINGS_UNKNOWN =
+  "Canvas's MCP settings could not be read; showing the servers already granted.";
+export const MCP_NAME_TAKEN = (name: string) =>
+  `A tool named '${name}' exists: choose another name.`;
+export const MCP_EXPORT_NOTE =
+  "An export keeps each server's command, arguments and URL, never its environment or header values: under dr each is read from an environment variable (env names as they are; a header from SERVER_HEADER).";
 export const NEW_TOOL_SOURCE = `from deep_reasoner import Func
 
 

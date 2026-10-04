@@ -404,6 +404,23 @@ fieldset.choices input,
   margin: 4px 0;
 }
 
+.mcp {
+  border-top: 1px solid var(--oh-border-subtle);
+  padding: 6px 0;
+}
+
+.mcp-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.mcp-head .as input {
+  width: 12em;
+  margin-left: 4px;
+}
+
 .help summary,
 .seen summary {
   cursor: pointer;

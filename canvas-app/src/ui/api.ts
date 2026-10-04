@@ -11,6 +11,7 @@ import type {
   HistoryEntry,
   Kind,
   McpGrant,
+  McpSnapshot,
   NamespaceRecord,
   Problem,
   ProfileRecord,
@@ -57,6 +58,11 @@ export interface CheckBody {
   yaml: string;
   source: string | null;
   example: string | null;
+}
+
+export interface McpGrantBody extends McpSnapshot {
+  granted_in: string[];
+  base_version: number;
 }
 
 export interface Written<T> {
@@ -193,3 +199,5 @@ export const deleteTool = (name: string, baseVersion: number) =>
 export const checkTool = async (name: string, body: CheckBody) =>
   (await call<CheckReport>("POST", `${at("tools", name)}/check`, body)).data;
 export const getMcp = () => read<McpGrant[]>("../mcp");
+export const putMcp = (name: string, body: McpGrantBody) =>
+  write<McpGrant>(at("mcp", name), body);

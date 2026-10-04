@@ -3,11 +3,36 @@ import { describe, expect, it } from "vitest";
 import {
   type FrameParams,
   MAX_THEME_VALUE_LENGTH,
+  type McpServerInfo,
   frameSearch,
   isFrameMessage,
   readFrameParams,
 } from "../src/shared/protocol";
 
+const SERVERS: McpServerInfo[] = [
+  {
+    name: "github",
+    transport: "stdio",
+    command: "npx",
+    args: ["-y", "@modelcontextprotocol/server-github"],
+    url: null,
+    env: ["GITHUB_PERSONAL_ACCESS_TOKEN"],
+    headers: [],
+    forwarded: true,
+    why_not: null,
+  },
+  {
+    name: "postgres",
+    transport: "http",
+    command: null,
+    args: [],
+    url: "https://db.lab.example/mcp",
+    env: [],
+    headers: ["Authorization"],
+    forwarded: false,
+    why_not: "disabled",
+  },
+];
 const FULL: FrameParams = {
   tab: "create",
   parent: "http://localhost:8000",
@@ -20,6 +45,7 @@ const FULL: FrameParams = {
     "font-family": '"SF Pro", sans-serif',
     "--oh-radius": "8px",
   },
+  mcp: SERVERS,
 };
 const BARE: FrameParams = {
   tab: "browse",
@@ -29,6 +55,7 @@ const BARE: FrameParams = {
   cap: "5",
   focus: null,
   theme: {},
+  mcp: null,
 };
 
 describe("the frame's URL", () => {
@@ -36,6 +63,7 @@ describe("the frame's URL", () => {
     ["every parameter", FULL],
     ["none but the defaults", BARE],
     ["a cap that is off", { ...FULL, cap: "off", started: false }],
+    ["Canvas with no MCP servers", { ...BARE, tab: "tools" as const, mcp: [] }],
   ])("round-trips %s", (_, params) => {
     expect(readFrameParams(frameSearch(params), false)).toEqual(params);
   });
@@ -48,6 +76,17 @@ describe("the frame's URL", () => {
     ["an unknown tab", "?tab=history", { tab: "browse" }],
     ["a cap that is not a number", "?cap=abc", { cap: "5" }],
     ["a theme that is not JSON", "?theme=%7Bnope", { theme: {} }],
+    ["MCP servers that are not JSON", "?mcp=%7Bnope", { mcp: null }],
+    [
+      "MCP servers that are not a list",
+      `?mcp=${encodeURIComponent('{"name": "x"}')}`,
+      { mcp: null },
+    ],
+    [
+      "an MCP server without its fields",
+      `?mcp=${encodeURIComponent(JSON.stringify([{ name: "x" }, SERVERS[0]]))}`,
+      { mcp: [SERVERS[0]] },
+    ],
     [
       "a theme that is a list",
       `?theme=${encodeURIComponent("[1]")}`,

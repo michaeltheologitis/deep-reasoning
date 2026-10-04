@@ -8,7 +8,12 @@ import {
   isFrameMessage,
 } from "../shared/protocol";
 import { ensureBackend } from "./backend";
-import { readConversationNamespace, readSpendCap, readTheme } from "./context";
+import {
+  readConversationNamespace,
+  readMcpServers,
+  readSpendCap,
+  readTheme,
+} from "./context";
 import type {
   CanvasExtensionAppBackendError,
   CanvasExtensionDispose,
@@ -99,13 +104,14 @@ export function mountTab(
     closeFrame();
     show(container, LOADING);
     const request = host.agentServer.request;
-    const [backend, conversation, cap] = await Promise.all([
+    const [backend, conversation, cap, mcp] = await Promise.all([
       ensureBackend(request, controller.signal, (sentence) =>
         show(container, sentence),
       ),
       readConversationNamespace(request, context.conversationId),
       readSpendCap(request),
-    ]).catch(() => [null, null, null] as const);
+      tab === "tools" ? readMcpServers(request) : null,
+    ]).catch(() => [null, null, null, null] as const);
     if (controller.signal.aborted || backend === null || cap === null) return;
     if (!backend.ok)
       return show(container, backend.message, true, () => void run());
@@ -118,6 +124,7 @@ export function mountTab(
       cap,
       focus,
       theme: readTheme(container),
+      mcp,
     };
     container.replaceChildren();
     disposeFrame = host.appBackend.mountFrame(container, {
