@@ -15,12 +15,17 @@ from typing import Any
 
 from deep_reasoner.config import build_client, load_cli_config
 from deep_reasoner.primitives import Func
-from deep_reasoner.tools.base import load_tool_factory
 from deep_reasoner.v2.cli import V2Config
 from deep_reasoner.v2.messages import func
 
 from deep_reasoning.library.shapes import tool_file
 from deep_reasoning.tools import texts
+from deep_reasoning.tools._upstream_standin import (
+    ToolBuildError,
+    ToolImportFailed,
+    ToolNotFunc,
+    build_tool,
+)
 from deep_reasoning.tools.check import SHOWN_LIMIT
 
 Say = Callable[..., None]
@@ -38,47 +43,28 @@ def _frames(exc: BaseException, path: Path, shown: str) -> str:
     return (text + "".join(traceback.format_exception_only(exc)))[-SHOWN_LIMIT:]
 
 
-def _load(name: str, block: dict[str, Any], path: Path, cfg: Any, say: Say) -> Any:
-    """load_tool_factory, a failure classified by its cause (§8.1); None when it failed."""
+def _build(name: str, cfg: Any, say: Say) -> Func | None:
+    """The tool, as make_tools builds it; None when it failed, each way told apart (§8.1)."""
+    block = cfg.tools[name]
+    path = (Path(cfg.config_path).parent / block["factory_from"]).resolve()
     try:
-        return load_tool_factory(
-            name, block.get("factory", name), block["factory_from"], cfg.config_path
-        )
-    except ValueError as exc:
-        cause = exc.__cause__
-        if cause is None:
-            say("failed", outcome="bad_factory", message=str(exc))
-        elif isinstance(cause, ImportError):
+        return build_tool(name, block, build_client(cfg.client), cfg.config_path)
+    except ToolImportFailed as exc:
+        if isinstance(exc.__cause__, ImportError):
             say("failed", outcome="import_failed", message=str(exc))
         else:
-            shown = _frames(cause, path, tool_file(name))
+            shown = _frames(exc.__cause__, path, tool_file(name))
             say("failed", outcome="raised", message=str(exc), traceback=shown)
-        return None
-
-
-def _build(name: str, cfg: Any, say: Say) -> Func | None:
-    """The tool, as make_tools builds a factory_from block; None when it failed."""
-    block = cfg.tools[name]
-    factory = block.get("factory", name)
-    params = {k: v for k, v in block.items() if k not in ("factory", "factory_from")}
-    path = (Path(cfg.config_path).parent / block["factory_from"]).resolve()
-    build = _load(name, block, path, cfg, say)
-    if build is None:
-        return None
-    say("loaded")
-    try:
-        built = build(build_client(cfg.client), params)
+    except ToolNotFunc as exc:
+        say("failed", outcome="not_func", message=str(exc))
+    except ToolBuildError as exc:
+        say("failed", outcome="bad_factory", message=str(exc))
     except Exception as exc:  # noqa: BLE001 -- whatever the tool raises is the report
+        factory = block.get("factory", name)
         message = texts.factory_raised(name, factory, type(exc).__name__, str(exc))
         shown = _frames(exc, path, tool_file(name))
         say("failed", outcome="raised", message=message, traceback=shown)
-        return None
-    if not isinstance(built, Func):
-        type_name = type(built).__name__
-        message = texts.not_func(name, factory, block["factory_from"], type_name)
-        say("failed", outcome="not_func", message=message)
-        return None
-    return built
+    return None
 
 
 def _try(expression: str, name: str, value: Any) -> dict[str, Any]:

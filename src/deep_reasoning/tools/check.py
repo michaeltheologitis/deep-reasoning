@@ -34,6 +34,7 @@ from deep_reasoning.library.records import (
 from deep_reasoning.mcp.grants import is_mcp_tool
 from deep_reasoning.mcp.wire import MCP_FACTORY
 from deep_reasoning.tools import texts
+from deep_reasoning.tools._upstream_standin import UnknownToolFactory
 
 Outcome = Literal[
     "built",
@@ -336,9 +337,7 @@ def check_tool(
     if source is None:
         if factory == "llm" or factory in TOOL_BUILDERS:
             return _report("builtin", texts.builtin(factory))
-        return _report(
-            "bad_factory", texts.unknown_factory(factory, name, TOOL_BUILDERS)
-        )
+        return _report("bad_factory", str(UnknownToolFactory(factory, name)))
     try:
         compile(source, shapes.tool_file(name), "exec")
     except SyntaxError as exc:

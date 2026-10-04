@@ -3,8 +3,6 @@
 A constant is a sentence without fields; a function returns the sentence with its fields.
 """
 
-from collections.abc import Iterable
-
 BUILT = "builds"
 
 
@@ -18,26 +16,6 @@ def reserved_name(name: str) -> str:
 
 def syntax(name: str, line: int | None, message: str) -> str:
     return f"tool '{name}': tools/{name}.py line {line}: {message}"
-
-
-def unknown_factory(factory: str, alias: str, known: Iterable[str]) -> str:
-    """make_tools' own sentence (deep_reasoner v2/cli.py), copied."""
-    return (
-        f"Unknown tool factory {factory!r} for {alias!r}. "
-        f"Known: {sorted(known)}. "
-        f"A factory of your own is reached with factory_from: <a .py file, "
-        f"relative to this config>."
-    )
-
-
-def not_func(alias: str, factory: str, factory_from: str, type_name: str) -> str:
-    """make_tools' own sentence (deep_reasoner v2/cli.py), copied."""
-    return (
-        f"tool {alias!r}: {factory} in {factory_from} returned "
-        f"{type_name}, not a Func. A tool factory returns "
-        f"Func(value, description=…) — the registry reads its `.value` "
-        f"(what the REPL binds) and `.description` (what the agent is told)."
-    )
 
 
 def factory_raised(name: str, factory: str, type_name: str, message: str) -> str:

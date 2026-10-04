@@ -15,13 +15,11 @@ from pathlib import Path
 
 import pytest
 import yaml
-from deep_reasoner.config import build_client, load_cli_config
-from deep_reasoner.tools.base import TOOL_BUILDERS
-from deep_reasoner.v2.cli import V2Config, make_tools
 
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import shapes
 from deep_reasoning.tools import check, texts
+from deep_reasoning.tools._upstream_standin import UnknownToolFactory
 from deep_reasoning.tools.check import (
     CHECK_MODEL_URL,
     DEFAULT_LIMITS,
@@ -143,8 +141,10 @@ def test_a_factory_that_returns_no_func_fails_check_in_deep_reasoners_words():
         False,
         False,
     )
-    assert report.message == texts.not_func(
-        "word_count", "make", "tools/word_count.py", "function"
+    assert report.message == (
+        "tool 'word_count': make in tools/word_count.py returned function, not a Func. "
+        "A tool factory returns Func(value, description=…) — the registry reads its "
+        "`.value` (what the REPL binds) and `.description` (what the agent is told)."
     )
 
 
@@ -296,7 +296,7 @@ def test_an_unknown_built_in_factory_is_refused_in_deep_reasoners_words(no_proce
         False,
         False,
     )
-    assert report.message == texts.unknown_factory("ragg", "notes", TOOL_BUILDERS)
+    assert report.message == str(UnknownToolFactory("ragg", "notes"))
 
 
 def test_an_mcp_grant_is_not_checked_as_a_tool_of_your_own(no_process):
@@ -449,26 +449,3 @@ def test_the_temporary_folder_is_removed(tmp_path, monkeypatch, fixture):
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     check_tool("word_count", "factory: make", source(fixture), limits=QUICK)
     assert list(tmp_path.iterdir()) == []
-
-
-def test_not_func_and_unknown_factory_sentences_equal_make_tools(tmp_path):
-    config = materialized(tmp_path, "word_count", "factory: make", source("not_func"))
-    unknown = tmp_path / "unknown.yaml"
-    unknown.write_text(
-        yaml.safe_dump(
-            {
-                "client": {"base_url": CHECK_MODEL_URL},
-                "tools": {"notes": {"factory": "ragg"}},
-            }
-        )
-    )
-    said = []
-    for main in (config / "main.yaml", unknown):
-        cfg = load_cli_config(main, schema=V2Config)
-        with pytest.raises(ValueError) as raised:
-            make_tools(cfg, build_client(cfg.client))
-        said.append(str(raised.value))
-    assert said == [
-        texts.not_func("word_count", "make", "tools/word_count.py", "function"),
-        texts.unknown_factory("ragg", "notes", TOOL_BUILDERS),
-    ]
