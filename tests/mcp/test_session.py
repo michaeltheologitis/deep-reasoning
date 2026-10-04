@@ -63,6 +63,19 @@ def config(
     return load_dr_config(directory / "main.yaml")
 
 
+def rooted(tmp_path: Path, **blocks: dict):
+    """A config granting each of these MCP blocks to root, its only namespace."""
+    return config(tmp_path / "config", {"root": {"tools": list(blocks)}}, blocks)
+
+
+def abandon(session) -> None:
+    """Every Server of session is abandoned, and SESSION cleared."""
+    for built in (session or {}).values():
+        if isinstance(built.value, shim.Server):
+            built.value._connection.abandon()
+    shim.SESSION = None
+
+
 @pytest.fixture
 def run_dir(tmp_path: Path) -> Path:
     path = tmp_path / "runs" / "run-1"
@@ -74,10 +87,7 @@ def run_dir(tmp_path: Path) -> Path:
 def opened():
     """Every Server that open_session connected is abandoned after the test."""
     yield
-    for built in (shim.SESSION or {}).values():
-        if isinstance(built.value, shim.Server):
-            built.value._connection.abandon()
-    shim.SESSION = None
+    abandon(shim.SESSION)
 
 
 @pytest.fixture(scope="module")
@@ -108,10 +118,7 @@ def grants(tmp_path_factory):
     statuses = open_session(cfg, specs, run_dir=run)
     session = dict(shim.SESSION)
     yield {s.tool: s for s in statuses}, session, markers
-    for built in session.values():
-        if isinstance(built.value, shim.Server):
-            built.value._connection.abandon()
-    shim.SESSION = None
+    abandon(session)
 
 
 def test_only_granted_and_reachable_servers_are_started(grants):
@@ -189,11 +196,7 @@ def test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline(
     tmp_path, run_dir, opened
 ):
     names = ("one", "two", "three")
-    cfg = config(
-        tmp_path / "config",
-        {"root": {"tools": list(names)}},
-        {n: mcp_block(n, connect_timeout_s=1.5) for n in names},
-    )
+    cfg = rooted(tmp_path, **{n: mcp_block(n, connect_timeout_s=1.5) for n in names})
     started = time.monotonic()
     statuses = open_session(
         cfg, [spec(n, "hang_server.py") for n in names], run_dir=run_dir
@@ -207,9 +210,7 @@ def test_servers_connect_at_once_and_a_silent_one_is_given_up_at_the_deadline(
 def test_a_server_that_exits_at_start_is_failed_with_its_stderr_redacted(
     tmp_path, run_dir, opened, printed
 ):
-    cfg = config(
-        tmp_path / "config", {"root": {"tools": ["wiki"]}}, {"wiki": mcp_block("wiki")}
-    )
+    cfg = rooted(tmp_path, wiki=mcp_block("wiki"))
     secret = spec(
         "wiki", "crash_server.py", CRASH_TOKEN="crash-secret-value", **printed
     )
@@ -252,11 +253,7 @@ NOT_A_SCHEMA = {"ODD_PROPERTIES": '{"anything": "string"}'}
 def test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind(
     tmp_path, run_dir, opened, wiki, fields, in_the_way, error
 ):
-    cfg = config(
-        tmp_path / "config",
-        {"root": {"tools": ["wiki", "echo"]}},
-        {"wiki": mcp_block("wiki", **fields), "echo": mcp_block("echo")},
-    )
+    cfg = rooted(tmp_path, wiki=mcp_block("wiki", **fields), echo=mcp_block("echo"))
     if in_the_way:
         (run_dir / in_the_way).mkdir()
     script, env = wiki
@@ -275,9 +272,7 @@ def test_a_server_open_session_cannot_bind_fails_alone_and_the_others_bind(
 def test_a_tool_whose_properties_take_any_value_or_none_is_bound_and_told_so(
     tmp_path, run_dir, opened
 ):
-    cfg = config(
-        tmp_path / "config", {"root": {"tools": ["odd"]}}, {"odd": mcp_block("odd")}
-    )
+    cfg = rooted(tmp_path, odd=mcp_block("odd"))
     [status] = open_session(cfg, [spec("odd", "odd_server.py")], run_dir=run_dir)
     assert status.state == "bound"
     assert "\n  odd.odd(anything: Any = …, nothing: Never = …) -> str" in status.told
@@ -308,11 +303,7 @@ def test_a_namespace_registry_deep_reasoner_refuses_fails_the_build_as_it_would_
 def test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_redacted(
     tmp_path, run_dir, opened
 ):
-    cfg = config(
-        tmp_path / "config",
-        {"root": {"tools": ["loud"]}},
-        {"loud": mcp_block("loud", connect_timeout_s=10)},
-    )
+    cfg = rooted(tmp_path, loud=mcp_block("loud", connect_timeout_s=10))
     loud = spec("loud", "loud_server.py", LOUD_TOKEN="loud-secret-value")
     [status] = open_session(cfg, [loud], run_dir=run_dir)
     assert status.state == "bound"
@@ -329,11 +320,7 @@ def test_a_server_that_prints_more_than_a_pipe_holds_answers_and_its_log_is_reda
 def test_a_server_given_up_is_ended_within_three_seconds(tmp_path, run_dir, opened):
     markers = tmp_path / "markers"
     markers.mkdir()
-    cfg = config(
-        tmp_path / "config",
-        {"root": {"tools": ["silent"]}},
-        {"silent": mcp_block("silent", connect_timeout_s=1)},
-    )
+    cfg = rooted(tmp_path, silent=mcp_block("silent", connect_timeout_s=1))
     silent = spec("silent", "hang_server.py", ECHO_MARKER_DIR=str(markers))
     [status] = open_session(cfg, [silent], run_dir=run_dir)
     assert status.state == "no_answer"
