@@ -15,6 +15,7 @@ dependencies = [
     "uvicorn>=0.30",
     # deep_reasoner imports IPython.display at module level but declares it only in its dev group.
     "ipython",
+    "mcp>=1.28,<2",
 ]
 
 [project.scripts]
@@ -53,4 +54,5 @@ markers = [
 addopts = "-m 'not live and not browser'"
 
 [tool.ruff]
-extend-exclude = ["docs"]
+# docs: design notes; tests/mcp/fixtures: a stored shim, frozen as the Library holds it.
+extend-exclude = ["docs", "tests/mcp/fixtures"]
