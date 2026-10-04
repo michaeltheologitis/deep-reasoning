@@ -195,14 +195,16 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
   const yamlField = useRef<HTMLDivElement>(null);
   const { draft } = stored;
   const text = draftYaml(draft);
+  const validateDraft = () =>
+    attempt(
+      () => validate({ kind: "decomposition", yaml: text }),
+      onBackendLost,
+    );
 
   useEffect(() => {
     let current = true;
     const timer = setTimeout(async () => {
-      const result = await attempt(
-        () => validate({ kind: "decomposition", yaml: text }),
-        onBackendLost,
-      );
+      const result = await validateDraft();
       if (current && result.ok) setValidation(result.value);
     }, VALIDATE_AFTER_MS);
     return () => {
@@ -270,10 +272,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
     if (draft.mode === "cards" && draft.name.trim() === "")
       return setOutcome({ kind: "name-required" });
     setBusy(true);
-    const result = await attempt(
-      () => validate({ kind: "decomposition", yaml: text }),
-      onBackendLost,
-    );
+    const result = await validateDraft();
     setBusy(false);
     if (!result.ok) {
       if (result.error) setOutcome(failed(result.error));
@@ -313,10 +312,7 @@ export function DecompositionEditor(props: DecompositionEditorProps) {
 
   async function viewYaml() {
     if (yamlView !== null) return setYamlView(null);
-    const result = await attempt(
-      () => validate({ kind: "decomposition", yaml: text }),
-      onBackendLost,
-    );
+    const result = await validateDraft();
     const canonical = result.ok ? result.value.yaml : null;
     setYamlView(
       canonical ??
