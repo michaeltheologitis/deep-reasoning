@@ -135,3 +135,41 @@ def stopped_by_user(
             f" Its running siblings {named} in this run_all were stopped with it (A3)."
         )
     return sentence
+
+
+# The key proxy (D5 §6): each is the message of an HTTP error the worker's client reads.
+BAD_TOKEN = "The key proxy does not know this token."
+
+
+def cap_reached(spent: float, cap: float) -> str:
+    return (
+        f"The key proxy refused this model call: this conversation has spent "
+        f"${spent:.2f} of its ${cap:.2f} cap. Start a new conversation, or raise the cap "
+        "(--spend-cap-usd in the deep_reasoner agent profile's arguments)."
+    )
+
+
+def unpriced(model: str, home: str) -> str:
+    return (
+        f"The key proxy refused a call to '{model}': its price is unknown, so the spend "
+        f"cap cannot bound it. Add it to {home}/prices.yaml (input and output USD per "
+        "million tokens), then send your message again."
+    )
+
+
+def not_a_model_call(paths: str, method: str, rest: str) -> str:
+    return (
+        f"The key proxy forwards only model calls ({paths}); {method} /{rest} was "
+        "refused."
+    )
+
+
+def bad_body(rest: str, mib: int) -> str:
+    return (
+        f"The key proxy forwards to /{rest} only a JSON object of at most {mib} MiB; "
+        "this body was refused."
+    )
+
+
+def upstream_unreachable(host: str, error: str) -> str:
+    return f"The key proxy could not reach {host}: {error}."

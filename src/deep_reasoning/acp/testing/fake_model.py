@@ -24,7 +24,8 @@ EMBEDDING = [0.5, 0.5, 0.5, 0.5]
 class FakeCall:
     started: float  # time.time() when the request arrived
     model: str
-    messages: Messages
+    messages: Messages  # [] for an embeddings call
+    authorization: str | None = None  # the request's Authorization header
 
 
 def token_usage(messages: Messages, reply: str) -> dict[str, Any]:
@@ -48,9 +49,9 @@ class FakeOpenAI:
     """POST /v1/chat/completions and /v1/embeddings on 127.0.0.1, as a context manager,
     sync or async.
 
-    .base_url is the endpoint; .calls records each chat call's start time and messages.
-    A responder that raises answers HTTP 500 with the exception's text. Every input to
-    embed gets EMBEDDING.
+    .base_url is the endpoint; .calls records each chat call's start time, messages and
+    Authorization header, .embed_calls each embeddings call's. A responder that raises
+    answers HTTP 500 with the exception's text. Every input to embed gets EMBEDDING.
     """
 
     def __init__(
@@ -61,6 +62,7 @@ class FakeOpenAI:
         usage: Callable[[Messages, str], dict[str, Any]] | None = None,
     ) -> None:
         self.calls: list[FakeCall] = []
+        self.embed_calls: list[FakeCall] = []
         self._responder = responder
         self._latency_s = latency_s
         self._usage = usage or token_usage
@@ -70,10 +72,13 @@ class FakeOpenAI:
     def base_url(self) -> str:
         return f"http://127.0.0.1:{self._server.server_address[1]}/v1"
 
-    def answer(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def answer(
+        self, request: dict[str, Any], authorization: str | None = None
+    ) -> tuple[int, dict[str, Any]]:
         """The HTTP status and body for one chat completion request."""
         messages = request.get("messages", [])
-        self.calls.append(FakeCall(time.time(), request.get("model", ""), messages))
+        model = request.get("model", "")
+        self.calls.append(FakeCall(time.time(), model, messages, authorization))
         time.sleep(self._latency_s)
         try:
             reply = self._responder(messages)
@@ -95,8 +100,12 @@ class FakeOpenAI:
             "usage": self._usage(messages, reply),
         }
 
-    def embed(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def embed(
+        self, request: dict[str, Any], authorization: str | None = None
+    ) -> tuple[int, dict[str, Any]]:
         """The HTTP status and body for one embeddings request."""
+        model = request.get("model", "")
+        self.embed_calls.append(FakeCall(time.time(), model, [], authorization))
         given = request["input"]
         inputs = given if isinstance(given, list) else [given]
         return 200, {
@@ -117,7 +126,9 @@ class FakeOpenAI:
                 length = int(self.headers.get("Content-Length", 0))
                 request = json.loads(self.rfile.read(length))
                 embeds = self.path.endswith("/embeddings")
-                status, body = (fake.embed if embeds else fake.answer)(request)
+                authorization = self.headers.get("Authorization")
+                respond = fake.embed if embeds else fake.answer
+                status, body = respond(request, authorization)
                 data = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
