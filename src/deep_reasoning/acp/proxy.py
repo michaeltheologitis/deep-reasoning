@@ -481,7 +481,8 @@ class KeyProxy:
         reservation: Reservation | None,
     ) -> Response:
         """Send body upstream with the real key; settle the reservation from the usage
-        the response reports (none reported: the reservation stands)."""
+        the response reports, else at the reservation for a success and at 0 for a
+        refusal."""
         headers = {
             name: value
             for name, value in request.headers.items()
@@ -532,7 +533,10 @@ class KeyProxy:
             content = content.replace(route.key.encode(), REDACTED)
         if reservation is not None:
             usage = self._json_usage(content)
-            cost = reservation.usd if usage is None else self._cost(route, model, usage)
+            if usage is not None:
+                cost = self._cost(route, model, usage)
+            else:  # a refusal that reports nothing cost nothing
+                cost = reservation.usd if upstream.is_success else 0.0
             self._ledger.settle(reservation, cost)
         return Response(content, status_code=upstream.status_code, headers=returned)
 

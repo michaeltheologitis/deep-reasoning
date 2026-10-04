@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Self
 
 import httpx
+import openai
 import pytest
 
 from deep_reasoning.acp import texts
@@ -49,6 +50,7 @@ class Reply:
     status: int = 200
     content_type: str = "application/json"
     chunks: list[bytes] = field(default_factory=list)
+    headers: dict[str, str] = field(default_factory=dict)
 
 
 def completion(tokens_out: int = 10) -> bytes:
@@ -90,6 +92,8 @@ class Upstream:
                 self.send_response(reply.status)
                 self.send_header("Content-Type", reply.content_type)
                 self.send_header("Content-Length", str(len(body)))
+                for name, value in reply.headers.items():
+                    self.send_header(name, value)
                 self.end_headers()
                 self.wfile.write(body)
 
@@ -388,6 +392,57 @@ def test_upstream_error_bodies_never_echo_the_key(proxy):
     assert response.status_code == 401
     assert KEY not in response.text
     assert "Incorrect API key provided: [redacted]." in response.text
+
+
+def test_provider_errors_release_their_reservations(proxy, ledger):
+    """The OpenAI client retries a 500 four times: five reservations, which under a
+    cap of five calls would leave no room for the next one if they stood."""
+    overloaded = json.dumps({"error": {"message": "overloaded"}}).encode()
+
+    def failing_five_times(seen: Seen) -> Reply:
+        if len(fake.seen) <= 5:
+            return Reply(500, chunks=[overloaded], headers={"retry-after-ms": "10"})
+        return Reply(chunks=[completion()])
+
+    with Upstream(failing_five_times) as fake:
+        proxy.ensure_started()
+        route = openai_route(proxy, fake.url)
+        client = openai.OpenAI(
+            base_url=f"{proxy.base_url}{route}", api_key=TOKEN, max_retries=4
+        )
+        with pytest.raises(openai.InternalServerError):
+            client.chat.completions.create(**chat())
+        after_errors = ledger.spend("s-1")
+        client.chat.completions.create(**chat())
+    assert len(fake.seen) == 6
+    assert (after_errors.spent_usd, after_errors.reserved_usd, after_errors.calls) == (
+        0.0,
+        0.0,
+        5,
+    )
+    assert ledger.spend("s-1").spent_usd == pytest.approx(0.01)
+
+
+@pytest.mark.parametrize(
+    ("status", "usage", "cost"),
+    [
+        (200, None, 0.01),  # no usage reported: the reservation stands
+        (500, None, 0.0),  # a refusal that reports nothing cost nothing
+        (400, {"prompt_tokens": 3, "completion_tokens": 4}, 0.004),
+        (200, {"prompt_tokens": 3, "completion_tokens": 4}, 0.004),
+    ],
+    ids=["ok-silent", "error-silent", "error-with-usage", "ok-with-usage"],
+)
+def test_a_call_costs_its_reported_usage_else_its_reservation_unless_refused(
+    proxy, ledger, status, usage, cost
+):
+    body = json.dumps({"id": "c", **({"usage": usage} if usage else {})}).encode()
+    with Upstream(answering(status, body)) as fake:
+        route = openai_route(proxy, fake.url)
+        response = call(proxy, f"{route}/chat/completions", body=chat())
+    assert response.status_code == status
+    assert ledger.spend("s-1").spent_usd == pytest.approx(cost)
+    assert ledger.spend("s-1").reserved_usd == 0.0
 
 
 def test_a_released_runs_tokens_stop_working(proxy, upstream):
