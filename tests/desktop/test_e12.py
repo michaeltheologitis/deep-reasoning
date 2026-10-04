@@ -352,7 +352,8 @@ def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switc
     stored = page.evaluate(f"() => localStorage.getItem({CONSENT_STORAGE_KEY!r})")
     assert stored is None
     page.goto(CANVAS_URL + "settings/app")
-    expect(page.get_by_test_id("enable-sound-notifications-switch")).to_be_visible()
+    # A settings switch's test id is on its hidden checkbox.
+    expect(page.get_by_test_id("enable-sound-notifications-switch")).to_be_attached()
     expect(page.get_by_test_id("enable-analytics-switch")).to_have_count(0)
 
 
