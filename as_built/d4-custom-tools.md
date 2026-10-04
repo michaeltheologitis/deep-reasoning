@@ -731,8 +731,8 @@ runs on the same merge commit (for #28, `f3766d1` both times). [CI]
 | #33 | `c95e059` | 37186335307 | 37186338108, 37186338790 | 694, 84 | 214 + 1 | 76 + 1 |
 
 The Python suite is whole by #31; #32 and #33 add frame tests. The deselected count rises by D4's two live tests
-(#27, #31) and its 20 browser cases (#32 11, #33 9). `main` `53c821b`'s push run 37187128304 was still running when I
-read it. [CI]
+(#27, #31) and its 20 browser cases (#32 11, #33 9). After the merge, `main` `53c821b`'s push run 37187128304 is
+green with #33's counts: 694 passed, 84 deselected; vitest 214 passed, 1 skipped; browser 76 passed, 1 skipped. [CI]
 
 **The live run, D4's two tests.** The MCP test passed at 05:35:53.90, ≈32.5 s after the previous PASSED line, and the
 tool test at 05:36:01.58, ≈7.7 s after that. [CI] The tool test writes through `create_app`'s `PUT /tools/course_credits`,
@@ -857,8 +857,7 @@ dicts (`test_wire.py`). [read]
 4. **The evidence step** (§1 #14) ran here, extracted from `live.yml`, not on GitHub's runner: no live run has failed
    since `6e07549`, so the step has not run there. I ran it as root with two capabilities dropped, not as the runner's
    user.
-5. **The stack** ran only in CI. I ran no level locally, and the live tier ran at no level. `main` `53c821b`'s CI run
-   was in progress when I read it.
+5. **The stack** ran only in CI. I ran no level locally, and the live tier ran at no level, nor at `main` `53c821b`.
 6. **macOS**: nothing ran there, not the guard, not `check_env`'s password database, not the group kill.
 7. **Remote servers** ran only against the local fake servers over loopback. OAuth servers and slow networks did not.
 8. **The read claims that matter most:**
