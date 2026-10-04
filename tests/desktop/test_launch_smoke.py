@@ -1,11 +1,11 @@
 """The launch smoke (D5 §7.6): the built app's first launch, with a fresh HOME, gets the
 Library App's backend ready, and the app quits. On a real Mac it is S2 PR 3's
 falsifier, "the Library App's backend does not start on macOS"; desktop-release.yml
-launches the universal .app it built on an Apple silicon runner and on an Intel one,
-so each half of it runs once. It starts no conversation, so no model is called.
+launches the Apple silicon .app it built (Macs are Apple silicon only). It starts no
+conversation, so no model is called.
 """
 
-import platform
+import subprocess
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -23,8 +23,6 @@ pytestmark = [
 
 BACKEND = "/api/canvas-extensions/installed/dr-library/backend"
 BUNDLED_UV = "[desktop] Injected bundled uv from "
-# The universal app's per-architecture runtime directories, by this Mac's machine.
-MAC_RUNTIMES = {"arm64": "bin-arm64", "x86_64": "bin-x64"}
 
 
 @dataclass
@@ -55,7 +53,15 @@ def test_the_first_launch_starts_the_library_backend_and_the_app_quits(first_lau
     assert first_launch.returncode == 0
 
 
-@pytest.mark.skipif(sys.platform != "darwin", reason="a universal app is macOS's")
-def test_the_universal_app_runs_the_runtime_of_this_macs_architecture(first_launch):
+def archs(path: str) -> str:
+    """A Mach-O file's architectures, as lipo names them."""
+    return subprocess.run(
+        ["lipo", "-archs", path], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="lipo reads Mach-O files")
+def test_the_mac_app_and_the_runtime_it_ran_are_arm64_only(first_launch):
     [bundled] = [line for line in first_launch.lines if line.startswith(BUNDLED_UV)]
-    assert bundled.endswith(f"/{MAC_RUNTIMES[platform.machine()]}"), bundled
+    uv = f"{bundled.removeprefix(BUNDLED_UV)}/uv"
+    assert (archs(str(APP)), archs(uv)) == ("arm64", "arm64")

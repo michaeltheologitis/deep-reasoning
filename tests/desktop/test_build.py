@@ -281,3 +281,71 @@ def test_a_debs_payload_paths_keep_their_spaces(tmp_path):
     )
     paths = build.payload_paths(tmp_path / "t.deb", tmp_path)
     assert "./opt/Deep Reasoning/deep-reasoning" in paths
+
+
+ARM64_DMG = "deep-reasoning-1.0.0-rc.1-arm64.dmg"
+
+
+def built_mac_app(canvas: Path, dmg: str = ARM64_DMG) -> Path:
+    """dist-electron as electron-builder leaves it for the mac target: the .dmg, and
+    the .app it was made from, with the binaries the arm64 check reads."""
+    output = canvas / "dist-electron"
+    app = output / "mac-arm64" / "Deep Reasoning.app" / "Contents"
+    for binary in (
+        "MacOS/Deep Reasoning",
+        "Resources/bin/uv",
+        "Resources/node/bin/node",
+    ):
+        (app / binary).parent.mkdir(parents=True, exist_ok=True)
+        (app / binary).write_text("")
+    (output / dmg).write_text("")
+    return output
+
+
+def test_the_mac_build_is_one_arm64_dmg_whose_binaries_are_arm64_only(canvas):
+    built_mac_app(canvas)
+    [dmg] = build.verify("mac-arm64", PINS, canvas, archs_of=lambda path: "arm64")
+    assert dmg.name == ARM64_DMG
+
+
+@pytest.mark.parametrize(
+    ("dmg", "archs", "refused"),
+    [
+        ("deep-reasoning-1.0.0-rc.1-universal.dmg", "arm64", "unexpected artifacts"),
+        ("deep-reasoning-1.0.0-rc.1-x64.dmg", "arm64", "unexpected artifacts"),
+        (ARM64_DMG, "x86_64 arm64", "Resources/bin/uv is x86_64 arm64"),
+    ],
+    ids=["universal", "intel", "universal-binary"],
+)
+def test_a_mac_build_that_is_not_arm64_only_is_refused(canvas, dmg, archs, refused):
+    built_mac_app(canvas, dmg)
+
+    def archs_of(path: Path) -> str:
+        return archs if path.name == "uv" else "arm64"
+
+    with pytest.raises(SystemExit, match=refused):
+        build.verify("mac-arm64", PINS, canvas, archs_of=archs_of)
+
+
+@pytest.mark.parametrize(
+    ("target", "machine", "builds"),
+    [
+        ("mac-arm64", ("Darwin", "arm64"), True),
+        ("mac-arm64", ("Darwin", "x86_64"), False),
+        ("mac-arm64", ("Linux", "aarch64"), False),
+        ("linux", ("Linux", "x86_64"), True),
+        ("linux", ("Darwin", "arm64"), False),
+    ],
+)
+def test_a_target_builds_only_on_the_machine_it_is_for(target, machine, builds):
+    """The Canvas fork packages its runtimes for the machine it builds on."""
+    refusal = build.wrong_machine(target, *machine)
+    assert (refusal is None) is builds
+    if not builds:
+        assert refusal.startswith(f"✗ desktop/build.py {target} builds for ")
+
+
+def test_the_build_offers_no_universal_or_intel_mac_target():
+    with pytest.raises(SystemExit):
+        build.main(["mac-universal"])
+    assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}

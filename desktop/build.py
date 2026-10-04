@@ -1,7 +1,7 @@
 """The desktop app's build: check that the pins belong together, write D5's values into a
 checkout of the Canvas fork, build the frontend and package it under our name (D5 §4.2).
 
-uv run desktop/build.py {linux|mac|mac-universal|check} [--work DIR]
+uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]
 
 Standard library only. Neither fork gets a commit: every change is made to a build
 checkout under --work.
@@ -11,6 +11,7 @@ import argparse
 import copy
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -48,9 +49,22 @@ TYPESCRIPT_CLIENT: Final = "@openhands/typescript-client"
 ACP_PYTHON: Final = "agent-client-protocol"
 ARTIFACT_KINDS: Final = {
     "linux": ("AppImage", "deb"),
-    "mac": ("dmg",),
-    "mac-universal": ("dmg",),
+    "mac-arm64": ("dmg",),
 }
+# The machine each target builds on (platform.system(), platform.machine()): the Canvas
+# fork packages its uv and Node runtimes for the machine it runs on. Macs are Apple
+# silicon only (Michael, 2026-10-04).
+BUILD_MACHINES: Final = {
+    "linux": ("Linux", "x86_64"),
+    "mac-arm64": ("Darwin", "arm64"),
+}
+MAC_ARCH: Final = "arm64"
+# What the .app carries that must run on Apple silicon: Electron, uv and Node.
+MAC_BINARIES: Final = (
+    "MacOS/{product}",
+    "Resources/bin/uv",
+    "Resources/node/bin/node",
+)
 FORBIDDEN_IN_PAYLOAD: Final = "deep_reasoner"
 
 
@@ -78,7 +92,7 @@ class Pins:
     app: AppPin
 
 
-Target = Literal["linux", "mac", "mac-universal"]
+Target = Literal["linux", "mac-arm64"]
 
 
 # The build's sentences (§6): each names the file and the two values that disagree.
@@ -151,6 +165,21 @@ def off_branch(fork: str, commit: str) -> str:
         f"✗ The {fork} commit {commit[:7]} is not on its {FORK_BRANCH} branch: pin a "
         "commit its stacks merged there."
     )
+
+
+def wrong_machine(target: Target, system: str, machine: str) -> str | None:
+    """The refusal for a build on a machine the target is not for; None when it is."""
+    want_system, want_machine = BUILD_MACHINES[target]
+    if (system, machine) == (want_system, want_machine):
+        return None
+    return (
+        f"✗ desktop/build.py {target} builds for {want_system} on {want_machine}, the "
+        f"machine it runs on, and this one is {system} on {machine}."
+    )
+
+
+def not_arm64(binary: str, archs: str) -> str:
+    return f"✗ {binary} is {archs}, not {MAC_ARCH} only: Macs are Apple silicon only."
 
 
 def load_pins(path: Path) -> Pins:
@@ -373,13 +402,28 @@ def payload_paths(artifact: Path, canvas: Path) -> list[str]:
     return [str(p) for tree in unpacked for p in tree.rglob("*")]
 
 
-def verify(target: Target, pins: Pins, canvas: Path) -> list[Path]:
-    """Exactly the expected artifacts, named deep-reasoning-<version>-<arch>.<ext>, and no
-    deep_reasoner inside any."""
+def macho_archs(path: Path) -> str:
+    """The architectures of a Mach-O file, as lipo names them ("arm64", "x86_64 arm64")."""
+    return subprocess.run(
+        ["lipo", "-archs", str(path)], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def verify(
+    target: Target,
+    pins: Pins,
+    canvas: Path,
+    *,
+    archs_of: Callable[[Path], str] = macho_archs,
+) -> list[Path]:
+    """Exactly the expected artifacts, named deep-reasoning-<version>-<arch>.<ext> (the
+    .dmg's arch arm64), no deep_reasoner inside any, and for the Mac the .app's Electron,
+    uv and Node arm64 only."""
     output = canvas / "dist-electron"
+    arch = MAC_ARCH if target == "mac-arm64" else "[A-Za-z0-9_]+"
     name = re.compile(
         rf"{re.escape(pins.app.executable_name)}-{re.escape(pins.app.version)}-"
-        r"[A-Za-z0-9_]+\.(AppImage|deb|dmg)"
+        rf"{arch}\.(AppImage|deb|dmg)"
     )
     artifacts = sorted(
         p for p in output.iterdir() if p.suffix in (".AppImage", ".deb", ".dmg")
@@ -399,6 +443,13 @@ def verify(target: Target, pins: Pins, canvas: Path) -> list[Path]:
             raise SystemExit(
                 f"✗ {artifact.name} carries {FORBIDDEN_IN_PAYLOAD}: {leaked[:3]}"
             )
+    if target == "mac-arm64":
+        app = output / f"mac-{MAC_ARCH}" / f"{pins.app.product_name}.app" / "Contents"
+        for binary in MAC_BINARIES:
+            relative = binary.format(product=pins.app.product_name)
+            archs = archs_of(app / relative)
+            if archs != MAC_ARCH:
+                raise SystemExit(not_arm64(relative, archs))
     return artifacts
 
 
@@ -422,6 +473,9 @@ def check_checkouts(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, list[s
 def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
     """Check out the Canvas fork at its commit under work/, check, patch, build, verify;
     the artifacts, copied to <repo>/dist/."""
+    refusal = wrong_machine(target, platform.system(), platform.machine())
+    if refusal:
+        raise SystemExit(refusal)
     canvas, problems = check_checkouts(pins, repo=repo, work=work)
     if problems:
         raise SystemExit("\n".join(problems))
@@ -433,11 +487,11 @@ def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
-    env = dict(os.environ)
-    universal = {"ELECTRON_ARCH": "universal"} if target == "mac-universal" else {}
+    # ELECTRON_ARCH unset: the fork builds for, and downloads runtimes for, this machine.
+    env = {k: v for k, v in os.environ.items() if k != "ELECTRON_ARCH"}
     run(["npm", "ci"], cwd=canvas)
     run(["npm", "run", "build:app"], cwd=canvas, env=env | {"VITE_DO_NOT_TRACK": "1"})
-    downloads = env | universal | {"UV_VERSION": pins.app.uv_version}
+    downloads = env | {"UV_VERSION": pins.app.uv_version}
     run(["node", "scripts/download-uv.mjs"], cwd=canvas, env=downloads)
     run(["node", "scripts/download-node.mjs"], cwd=canvas, env=downloads)
     app = {
@@ -463,7 +517,7 @@ def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
             platform_flag,
         ],
         cwd=canvas,
-        env=env | universal | app,
+        env=env | app,
     )
     dist = repo / "dist"
     dist.mkdir(exist_ok=True)
@@ -474,9 +528,9 @@ def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """uv run desktop/build.py {linux|mac|mac-universal|check} [--work DIR]."""
+    """uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]."""
     parser = argparse.ArgumentParser(prog="desktop/build.py", description=__doc__)
-    parser.add_argument("target", choices=["linux", "mac", "mac-universal", "check"])
+    parser.add_argument("target", choices=[*ARTIFACT_KINDS, "check"])
     parser.add_argument("--work", type=Path, default=REPO / ".desktop-work")
     args = parser.parse_args(argv)
     try:

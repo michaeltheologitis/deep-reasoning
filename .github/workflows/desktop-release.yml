@@ -1,9 +1,10 @@
-# D5's per-OS builds (§7.6): the Linux .AppImage and .deb, and one universal macOS .dmg,
-# from the pins in desktop/pins.toml. Dispatched by hand, it builds and checks the
-# packages and keeps them as the run's artifacts; on a v* tag, it first requires
-# cross-repo.yml green on the tagged commit, and last attaches the packages to the
-# tag's release. The universal app is launched once on Apple silicon and once on Intel,
-# each time waiting for the Library App's backend to be ready. No job calls a model.
+# D5's per-OS builds (§7.6): the Linux .AppImage and .deb, and one Apple silicon macOS
+# .dmg (Macs are Apple silicon only, Michael, 2026-10-04), from the pins in
+# desktop/pins.toml. Dispatched by hand, it builds and checks the packages and keeps them
+# as the run's artifacts; on a v* tag, it first requires cross-repo.yml green on the
+# tagged commit, and last attaches the packages to the tag's release, public downloads
+# like the repository. The macOS job launches the app it built once and waits for the
+# Library App's backend to be ready. No job calls a model.
 name: desktop-release
 
 on:
@@ -93,12 +94,11 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
-      - name: Read access to deep_reasoner_beta and deep-reasoning (private)
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-          git config --global url."https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}".insteadOf "https://github.com/${{ github.repository }}"
-      - name: Build the universal .dmg (build.py checks it)
-        run: uv run desktop/build.py mac-universal
+      # deep-reasoning is public: the app's setup fetches it as anyone's would.
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - name: Build the Apple silicon .dmg (build.py checks it is arm64 only)
+        run: uv run desktop/build.py mac-arm64
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: The .app inside it
@@ -126,47 +126,8 @@ jobs:
             ~/Library/Logs/DiagnosticReports/
           if-no-files-found: ignore
 
-  # The universal .dmg's x64 half, launched once on an Intel Mac: macos-26-intel is
-  # GitHub's standard Intel image (actions/runner-images' README, checked 2026-10-04).
-  macos-intel:
-    needs: [has-d5, macos]
-    if: ${{ !cancelled() && needs.has-d5.outputs.present == 'true' && needs.macos.result != 'skipped' }}
-    runs-on: macos-26-intel
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Read access to deep_reasoner_beta and deep-reasoning (private)
-        run: |
-          git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-          git config --global url."https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}".insteadOf "https://github.com/${{ github.repository }}"
-      - uses: actions/download-artifact@v4
-        with:
-          name: desktop-macos
-          path: dist
-      - name: The .app inside the .dmg the macos job built
-        run: |
-          test "$(uname -m)" = x86_64
-          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" dist/*.dmg
-          cp -R "$RUNNER_TEMP/dmg/Deep Reasoning.app" "$RUNNER_TEMP/"
-          hdiutil detach "$RUNNER_TEMP/dmg"
-      - name: Launch it once on Intel; the Library App's backend starts
-        run: uv run pytest -m desktop tests/desktop/test_launch_smoke.py -v -rA -s --basetemp "$RUNNER_TEMP/pytest"
-        env:
-          DR_APP_EXECUTABLE: ${{ runner.temp }}/Deep Reasoning.app/Contents/MacOS/Deep Reasoning
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: desktop-macos-intel-launch
-          path: |
-            ${{ runner.temp }}/pytest/**/app.log
-            ~/Library/Logs/DiagnosticReports/
-          if-no-files-found: ignore
-
   release:
-    needs: [linux, macos, macos-intel]
+    needs: [linux, macos]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -175,11 +136,11 @@ jobs:
         with:
           path: packages
           merge-multiple: true
-      - name: Attach the packages to the tag's release (private, like the repository)
+      - name: Attach the packages to the tag's release (public downloads, like the repository)
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "Deep Reasoning $TAG"
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "Deep Reasoning $TAG. The .dmg is for macOS 14 or later on Apple silicon; the .AppImage and the .deb are for Linux on x86-64."
           gh release upload "$TAG" packages/* --repo "$GITHUB_REPOSITORY" --clobber
