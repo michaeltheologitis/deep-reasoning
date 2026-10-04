@@ -213,3 +213,20 @@ class LibraryRefused(LibraryError):
 class LibraryImportError(LibraryError):
     code = "import_failed"
     status = 422
+
+
+class LibraryForbidden(LibraryError):
+    """A request from another user, or addressed to a host other than loopback."""
+
+    code = "forbidden"
+    status = 403
+
+
+class LibraryBadRequest(LibraryError):
+    code = "bad_request"
+    status = 400
+
+
+class LibraryNotJson(LibraryError):
+    code = "unsupported_media_type"
+    status = 415
