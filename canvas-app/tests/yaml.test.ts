@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { YamlSyntaxError, parseYaml, stringifyYaml } from "../src/ui/yaml";
+import { YAMLParseError, parseYaml, stringifyYaml } from "../src/ui/yaml";
 
 describe("parseYaml reads as PyYAML (YAML 1.1) reads", () => {
   it.each<[string, unknown]>([
@@ -20,7 +20,7 @@ describe("parseYaml reads as PyYAML (YAML 1.1) reads", () => {
   });
 
   it("throws a syntax error with its message", () => {
-    expect(() => parseYaml("v: [1, 2")).toThrow(YamlSyntaxError);
+    expect(() => parseYaml("v: [1, 2")).toThrow(YAMLParseError);
     expect(() => parseYaml("v: [1, 2")).toThrow(/flow sequence/i);
   });
 });

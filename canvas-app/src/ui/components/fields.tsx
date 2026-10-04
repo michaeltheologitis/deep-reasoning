@@ -5,7 +5,7 @@ import { useId, useState } from "preact/hooks";
 
 import { CANCEL, LABELS, YAML_SYNTAX } from "../texts";
 import type { FieldError } from "../types";
-import { YamlSyntaxError, parseYaml, stringifyYaml } from "../yaml";
+import { YAMLParseError, parseYaml, stringifyYaml } from "../yaml";
 
 export interface CodeFieldProps {
   label: string;
@@ -135,7 +135,7 @@ export function ValueEditor(props: ValueEditorProps) {
     try {
       props.onSave(parseYaml(text));
     } catch (failure) {
-      if (!(failure instanceof YamlSyntaxError)) throw failure;
+      if (!(failure instanceof YAMLParseError)) throw failure;
       setError(YAML_SYNTAX(failure.message));
     }
   };

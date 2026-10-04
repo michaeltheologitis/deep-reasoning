@@ -61,7 +61,7 @@ import type {
   NamespaceRecord,
   ValidationResult,
 } from "../types";
-import { YamlSyntaxError, parseYaml, stringifyYaml } from "../yaml";
+import { YAMLParseError, parseYaml, stringifyYaml } from "../yaml";
 import { CodeField, ConfirmRow, FieldErrors } from "./fields";
 import { NamespaceChecklist, NamespacePicker } from "./pickers";
 
@@ -140,7 +140,7 @@ function decompositionOf(
   try {
     value = parseYaml(text);
   } catch (error) {
-    if (error instanceof YamlSyntaxError) return YAML_SYNTAX(error.message);
+    if (error instanceof YAMLParseError) return YAML_SYNTAX(error.message);
     throw error;
   }
   const data = value as { name?: unknown; messages?: unknown } | null;
