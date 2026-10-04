@@ -83,6 +83,7 @@ a parametrization.
 | **Writes and conflicts** (§5.2, §5.3, decision H): every body is exactly D2's fields, `use_when` and `hint` always sent; a new decomposition is version 1 in the picked namespace; an edit is the next version; Attached to is the exact set; a stale save offers Reload or Save over it; an existing name offers Save mine as v*n* keeping its namespaces; an unchanged imported decomposition makes no version; a namespace edit changes one key of the namespace's own YAML and keeps the rest | `save.test.ts`; `api.test.ts › the requests`; `test_create.py::test_saving_stores_version_1_in_the_picked_namespace`, `::test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`, `::test_use_when_and_hint_survive_a_save_that_did_not_touch_them`, `::test_an_imported_decomposition_saved_unchanged_makes_no_new_version`, `::test_an_example_without_final_answer_asks_before_saving`; `test_browse.py::test_saving_an_opened_decomposition_makes_its_next_version`, `::test_attached_to_is_the_exact_set_after_a_save`, `::test_a_stale_save_offers_reload_or_save_over`, `::test_deleting_a_decomposition_detaches_it_everywhere`; `test_namespaces.py::test_override_sets_a_field_here_and_reset_removes_it`, `::test_keys_the_panel_does_not_show_survive_an_override`, `::test_yaml_values_mean_what_dr_reads`, `::test_attach_and_detach_change_only_this_namespaces_list` |
 | **Create decomposition's draft and errors** (§2.3): the draft survives a reload of the frame, the namespace picked included; a card-mode save without a name asks for one and writes nothing; D2's errors land on the card they name, and an error that names no card sits above the cards; Rename in YAML mode focuses the YAML, which holds the name | `test_create.py::test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (v4), `::test_a_draft_survives_reloading_the_frame`, `::test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (v3), `::test_validation_errors_show_on_the_card_they_name`, `::test_an_error_that_names_no_card_shows_above_the_cards` (v3), `::test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (v3) |
 | **The turn after a step reads observation, think, code** (§2.3, v6, B28): the card holding a step's result is labelled `observation`, which is its field's accessible name, and `RAW_NOTE` names it the same way | `test_create.py::test_the_turn_after_a_step_reads_observation_think_code` (v6) |
+| **A turn after the first reads observation, think, code** (§2.3, §5.1, v7, B29): turn 1 is the first step alone, every later turn is an observation with the step after it, the task is in no turn; removing a turn removes all of it, turn 1 with the observation after it, and never leaves an observation after anything but a step; **+ turn** appends a turn at the end | `cards.test.ts › editing cards ›` `groups an observation with the step after it; every other card stands alone`, `numbers turns: […]`, `removes […]`, `never leaves an observation that follows no step`, `adds a turn […]`; `test_create.py::test_a_turn_after_the_first_starts_with_its_observation` (v7) |
 | **Namespaces: adding, deleting, and the selection** (§2.4): Add namespace is prefilled `<selected>.`, and empty under `root` and Run settings; D2's refusals come in its words; a write answered after the user selected another node leaves that selection | `test_namespaces.py::test_adding_and_deleting_a_namespace`, `::test_add_namespace_is_not_prefilled_under_root_or_run_settings[root, run-settings]` (v4), `::test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (v4) |
 | **Lossless cards** (§5.1, decision J): one card per message; the round trip is the identity on a table, on 2,000 generated conversations and on every decomposition in deep_reasoner_beta's configs | `cards.test.ts › messages ↔ cards ›` (the table; `round trip is identity over generated messages`; `round trip is identity over every decomposition in deep_reasoner_beta's configs`) |
 | **A Library D2 cannot resolve** (§3.2 B1): both tabs say why in D2's words, Decompositions falls back to attachments, and neither reports the backend lost | `test_browse.py::test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_namespaces.py::test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` |
@@ -93,6 +94,19 @@ a parametrization.
 §7.2–§7.5 list every test file.
 
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-04 · v7 · the cards regrouped at Michael's request: the editor shows them in turns, and every turn after the
+  first reads observation, think, code (§3.2 B29; tests `9578c2e`, the change and the rebuilt frame `7af632a`). Turn 1
+  is the first step alone; an observation belongs to the step after it, and one with no step after it is a last turn of
+  its own; the task and raw cards are in no turn and show no number; each turn has one ✕, `Remove turn {n}`, that
+  removes the whole turn. Stop trusting: §2.3's mock-up and its Cards bullet (the numbering, **+ turn** and the ✕),
+  §5.1's Editing paragraph (`addTurn`, `removeTurn`, `turnNumbers`), A.3's `turnNumbers` (it returns
+  `(number | null)[]`), A.5's `dr-remove-<index>` (one per turn), §7.2's `cards.test.ts` row and §7.3's counts (each now
+  marked v7); and, as v5 and v6 said, the header's "Matches the build at `d4e9cd3`" and this section's evidence and
+  counts until a CI run at the new head is recorded (vitest now 168 passed, 1 skipped with the configs; browser tier 57
+  passed, 1 skipped). Unchanged: the stored YAML, the message order, §5.1's parse and render, the card kinds and their
+  names, and the ids `dr-card-<index>` and `dr-card-<index>-<field>`. Added without changing earlier sentences: §3.2
+  B29, `cardGroups` (A.3), `dr-turn-<n>` (A.5), `Remove turn {n}` (§4.7), the property table's row and §7.3's v7 test.
+  Nothing else of v6 changes.
 - 2026-10-04 · v6 · one label renamed at Michael's request: the card that holds a step's result is labelled
   `observation`, not `output`, so the turn after a step reads observation, think, code, as deep_reasoner names it
   (§3.2 B28; test `2fda86d`, the label, `RAW_NOTE` and the rebuilt frame `93f4e24`). Stop trusting: §2.3's mock-up
@@ -379,16 +393,21 @@ Name       rank by prerequisites                 → /rank-by-prerequisites
 Use when   ordering courses by what they need first
 Hint       the task                              (what the slash command asks for; optional)
 Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor           (the Library's namespaces)
-1  task    Which of CS201, CS310 and CS330 can I take first?
-2  think   Each course's prerequisites decide it; look them up, then sort.
+   task    Which of CS201, CS310 and CS330 can I take first?
+───────────────────────────────────────────────────────────────────────────────────────────────────────
+1  think   Each course's prerequisites decide it; look them up, then sort.                          [✕]
    code    order = sorted(cs, key=lambda c: len(catalog[c]['prereqs'])); print(order)
-   observation ['CS201', 'CS310', 'CS330']                              written by you, not run
-3  think
+───────────────────────────────────────────────────────────────────────────────────────────────────────
+2  observation ['CS201', 'CS310', 'CS330']                              written by you, not run     [✕]
+   think
    code    FinalAnswer(order)
    [+ turn]                                              [View YAML]   [Save to course_advisor]
 ✓ Saved 'rank by prerequisites' v1 in course_advisor. New conversations in course_advisor use it; this
   conversation does not, because its run was built at its first message.               [Show in Decompositions]
 ```
+
+(v7, B29: the cards are in turns, a divider above each; turn 1 is the first step, and turn 2 starts with the
+observation of turn 1's code. v6's mock-up numbered the task 1 and showed each observation under the step before it.)
 
 - **The namespace** is picked from the Library's namespaces (`GET /namespaces`), one of them, required. Preselected: the
   open conversation's namespace when the page found one and the Library has it, else the namespace new conversations
@@ -397,11 +416,16 @@ Namespace  ( ) root  ( ) router  (•) course_advisor  ( ) health_advisor       
 - **The slash command** beside the name is `/` + the `slug` `POST /validate` returns (D2 computes it; the panel never
   slugs by itself).
 - **Cards** (§5.1): a new decomposition starts with a task card and one step whose code is `FinalAnswer(...)`. A step
-  has think (optional) and code; **+ turn** gives the last step an observation card if it has none (what the agent will
-  see in `<observation>`) and adds a new step, so the turn after a step reads observation, think, code (v6, B28: v5
-  labelled the card `output`). Each step and observation has a ✕ that removes it; a step's ✕ removes its observation
-  too. Observation cards say "written by you, not run". A message that is not in this form (a system message, an
-  assistant message with prose outside `<think>` and `<repl>`, a user message that is neither the task nor an
+  has think (optional) and code. (v7, B29:) The cards are shown in turns, a divider above each. Turn 1 is the first
+  step, think and code, since the task is its input; every later turn is an observation card (what the agent will see in
+  `<observation>`) and the step after it, so it reads observation, think, code (v6, B28: v5 labelled the card `output`);
+  an observation with no step after it is a last turn of its own. The task card, and any raw card, is in no turn and
+  shows no number. **+ turn** appends a turn: an observation when the last card is a step, then an empty step. Each turn
+  has one ✕, named `Remove turn {n}`, that removes the whole turn; removing turn 1 also removes the observation after
+  it, so the next step becomes turn 1 and no observation is left without a step before it. (v6 numbered the task and
+  each step, an observation with the step before it, and gave each step and observation its own ✕, a step's taking its
+  observation.) Observation cards say "written by you, not run". A message that is not in this form (a system message,
+  an assistant message with prose outside `<think>` and `<repl>`, a user message that is neither the task nor an
   observation) is a raw card: its role and its text, editable, labelled `RAW_NOTE`.
 - **View YAML** shows the canonical YAML of what would be saved (`POST /validate`'s `yaml`), read-only, with **Edit
   YAML**: the textarea then holds the YAML, and **Edit as cards** parses it back (YAML 1.1) into the name and the cards,
@@ -864,6 +888,38 @@ reading.
   a system message, made a raw card through Edit YAML, carries `RAW_NOTE` ending "or an observation."). Before
   the change it failed on the labels (`output`) and, with only the label changed, on `RAW_NOTE`.
 
+**v7: Michael's request**
+
+- **B29. A turn after the first reads observation, think, code** (§2.3, §4.7, §5.1, A.3, A.5; commits `9578c2e`,
+  `7af632a`). v1 to v6 put a step's observation in the turn of the step before it: `turnNumbers` gave the task 1 and
+  each step the next number, an observation sharing the number of the step before it, so the editor read task; think,
+  code, observation; think, code; each step and each observation had its own ✕, a step's taking the observation after
+  it. Built: `cardGroups` makes an observation and the step directly after it one group, and every other card a group of
+  its own. Turn 1 is the first step alone, think and code; every later turn is observation, think, code; an observation
+  with no step after it (imported YAML may end with a user message) is a last turn of its own; the task and raw cards
+  are in no turn and show no number (this design's reading of the request: the task is turn 1's input, as an observation
+  is a later turn's, so the first step is turn 1). Each group is a list item with a divider above it (`li.card-group`,
+  `--oh-border`), so the divider falls before each observation. **+ turn** appends at the end: an observation when the
+  last card is a step, then an empty step (v6 instead gave the last step an observation wherever it was, so cards ending
+  in a task got one inserted before that task). Each turn has one ✕, named `Remove turn {n}` (v6's ✕ was named `✕ {n}`),
+  which removes the whole turn; when the card before the turn is not a step (turn 1 after the task, or a turn after a
+  later task or a raw card), the observation after the turn goes too, so the next step becomes that turn and an
+  observation never follows anything but a step. *Why (Michael, 2026-10-04):* "each grouping now becomes … 'think code
+  observation' but I want it to be 'observation think code'. This means the first will have 'think code' and no
+  observation because it will come after … the first think code doesn't need observation beforehand because it gets the
+  task." Unchanged: the stored YAML, the message order, §5.1's parse and render, the card kinds and their names (`kind:
+  "output"`, the `.card.output` class), and the ids `dr-card-<index>` and `dr-card-<index>-<field>` (A.5); the cards are
+  now `div`s inside their group's `li`. Changed ids (A.5): `dr-remove-<index>` is one per turn, at its first card's
+  index (turn 1's is still `dr-remove-1` when the task is card 0), and a turn's `li` carries `dr-turn-<n>`. *Pinned by:*
+  `cards.test.ts › editing cards ›` `groups an observation with the step after it; every other card stands alone`,
+  `numbers turns: […]` (5 cases), `removes […]` (8 cases), `never leaves an observation that follows no step` (removing
+  each turn of every deck of up to six cards the editor can hold), `adds a turn: an empty observation, then an empty
+  step` and `adds a turn […]` (4 cases); `test_create.py::test_a_turn_after_the_first_starts_with_its_observation`
+  (after **+ turn** twice the turns' labels read [think, code], [observation, think, code], [observation, think, code],
+  each ✕ named `Remove turn n`; Remove turn 2 leaves two turns of that shape, turn 3's step now in turn 2). Before the
+  change 11 of the unit cases failed (the numbering, a middle turn's removal, a step after a step, adding at the end,
+  `cardGroups` missing) and the browser test found no turn.
+
 ---
 
 ## 4 · Modules
@@ -1194,7 +1250,8 @@ Labels: `Name`, `Use when`, `Hint`, `Namespace`, `task`, `think`, `code`, `obser
 setting`, `Attach…`, `Detach`. (v2, B8: they are `LABELS` in `ui/texts.ts`, which also has `what the slash command asks
 for; optional` (the hint's note), `also used in {namespace} (inherited)`, `✕`, `← Decompositions`, `Every namespace's
 menu` and `Not attached`. A few are literals in their tab: `granted in` (Tools); `REPL`, `Backbone`, `May spawn into`,
-`Tools`, `Variables`, `System suffix` (Namespaces); `YAML` and `role` (the editor).)
+`Tools`, `Variables`, `System suffix` (Namespaces); `YAML` and `role` (the editor).) (v7, B29: `Remove turn {n}`,
+`LABELS.removeTurn`, is each turn's ✕'s accessible name; v6's was `✕ {n}`.)
 
 D2's `texts.py` gains (D3's Python): `UI_NOT_BUILT` = `The panel's files are not in this installation: reinstall
 deep-reasoning, or run npm run build in canvas-app/.` and `ui_file_missing(name)` = `There is no file '{name}' in the
@@ -1236,9 +1293,15 @@ block gives (`|` clips to one) and the missing one a flow string has. `thinkLayo
 written; typing a newline into an inline think switches it to block, and an empty think renders none (so a message with
 an empty `<think></think>` is a raw card, never silently rewritten).
 
-**Editing.** `addTurn` gives the last step an empty output card when it has none, then appends a step with empty
-think and code; `removeTurn(i)` removes step `i` and the output after it; `turnNumbers` numbers task and step cards
-1, 2, 3…, an output sharing its step's number (the spec's mock-up). `cardIndexForLoc("messages.3.content")` is 3
+**Editing** (v7, B29). `cardGroups` groups the cards: an output and the step directly after it are one group, and
+every other card is a group of its own. `turnNumbers` numbers the groups that hold a step or an output 1, 2, 3…, so an
+output has the number of the step after it, an output with no step after it is a turn of its own, and task and raw
+cards have none (`null`). `addTurn` appends, at the end only, an empty output card when the last card is a step, then
+a step with empty think and code. `removeTurn(i)` removes the group holding card `i` and, when the card before that
+group is not a step, the output directly after it, so an output always follows a step (removing turn 1 removes its
+step and the next observation). (v6: `addTurn` gave the last step an output wherever it was; `removeTurn(i)` removed
+card `i`, a step with the output after it; `turnNumbers` numbered task, step and raw cards, an output sharing the
+number of the step before it, as the spec's mock-up did.) `cardIndexForLoc("messages.3.content")` is 3
 (`null` for other locations), so D2's errors land on their card.
 
 ### 5.2 Saving a decomposition
@@ -1334,7 +1397,7 @@ real in every browser test. (v2: so Proof Green for D3 is the CI run alone, run 
 
 | File | Pins |
 |---|---|
-| `cards.test.ts` | each form of §5.1 parses and renders (a table: inline and block think, no think, trailing newline or not, empty think → raw, prose outside the tags → raw, an observation not after a step → task, a system message → raw); `test round trip is identity` over a generated set (random roles, contents with and without the tags); over every decomposition in `$DR_BETA_CHECKOUT/docs/configs` and `configs` (read in place with `yaml` 1.1; skipped without the variable; a guard fails when `CI` is set and it is unset); `addTurn` adds the missing output before the new step; `removeTurn` takes the output with its step; `turnNumbers`; `cardIndexForLoc` |
+| `cards.test.ts` | each form of §5.1 parses and renders (a table: inline and block think, no think, trailing newline or not, empty think → raw, prose outside the tags → raw, an observation not after a step → task, a system message → raw); `test round trip is identity` over a generated set (random roles, contents with and without the tags); over every decomposition in `$DR_BETA_CHECKOUT/docs/configs` and `configs` (read in place with `yaml` 1.1; skipped without the variable; a guard fails when `CI` is set and it is unset); `addTurn` adds the missing output before the new step; `removeTurn` takes the output with its step; `turnNumbers`; `cardIndexForLoc`. v7 (B29): `cardGroups`; `turnNumbers` (the task and raw cards no turn, an observation with the step after it, a trailing observation its own turn); `removeTurn` over a table (turn 1, a middle turn, the last, a trailing observation, a step after a step, a turn after a later task) and over every deck of up to six cards (no observation left after anything but a step); `addTurn` (an observation and a step after a step, a step after a trailing observation or a task, always at the end) |
 | `yaml.test.ts` | the agreement table of the header's item 3 (each value as PyYAML reads it); `stringifyYaml` output reparses to the same value; multi-line strings are literal blocks; a syntax error throws with its message |
 | `protocol.test.ts` | `readFrameParams(frameSearch(p))` equals `p`; an unknown tab, a bad `theme` JSON or an unsafe token value falls back; `isFrameMessage` accepts the two shapes only |
 | `context.test.ts` | `spendCapFromArgs` table (`["--home", h, "--spend-cap-usd", "7"]` → `7`; `--spend-cap-usd=2.5` → `2.5`; absent → `5`; `--no-key-proxy` → `off`; `abc` → `5`); `readConversationNamespace` with a fake `request`: one value → started, several → not started, no event, another agent's options, a failing request → `null`; `readTheme` keeps the listed tokens and drops unsafe values |
@@ -1361,6 +1424,9 @@ v4, at `d4e9cd3`: 152 cases. With the configs, 151 passed and one skipped; witho
 `backend` has 15: `gives a backend still starting after start timed out a fresh 45 s` (B20); the helper `agentServer`
 takes an optional `startTakesMs`.
 
+v7, at `7af632a`: 169 cases. With the configs, 168 passed and one skipped; without them, 167 passed and two skipped.
+`cards` has 44, sixteen more than v6 (B29).
+
 ### 7.3 Browser tests (`tests/canvas_app/`, pytest + Playwright, marker `browser`)
 
 Fixtures (`conftest.py`, Appendix A.4): `library_home` (a Library built in `tmp_path` by importing
@@ -1381,12 +1447,13 @@ adds `serve` and `stop` (the server without the fixture, for E8), `parent_site` 
 and the parametrizations are marked v2 below. v3, at `2af80ef`: 51 cases, 50 passed and the same one skipped;
 `test_create.py` gains three (B21–B23), marked v3. v4, at `d4e9cd3`: 56 cases, 55 passed and the same one skipped;
 `test_create.py` gains one (B24) and `test_namespaces.py` four (B25, B26), marked v4. v6, at `93f4e24`: 57 cases,
-56 passed and the same one skipped; `test_create.py` gains one (B28), marked v6.
+56 passed and the same one skipped; `test_create.py` gains one (B28), marked v6. v7, at `7af632a`: 58 cases, 57 passed
+and the same one skipped; `test_create.py` gains one (B29), marked v7.
 
 | File | Tests (each named for its property) |
 |---|---|
 | `test_browse.py` | `test_decompositions_are_grouped_by_namespace_with_version_slash_command_and_use_when`; `test_an_inherited_decomposition_says_where_it_comes_from`; `test_top_level_and_unattached_decompositions_have_groups_of_their_own`; `test_saving_an_opened_decomposition_makes_its_next_version`; `test_attached_to_is_the_exact_set_after_a_save`; `test_a_stale_save_offers_reload_or_save_over`; `test_deleting_a_decomposition_detaches_it_everywhere`; `test_a_change_made_elsewhere_appears_without_a_reload` (a `put_decomposition` through the Python API; the row appears within the poll); `test_the_tab_falls_back_to_attachments_when_inheritance_cannot_be_resolved`; `test_focus_opens_that_decomposition` |
-| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23); v4: `test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (B24); v6: `test_the_turn_after_a_step_reads_observation_think_code` (B28) |
+| `test_create.py` | `test_saving_stores_version_1_in_the_picked_namespace` (the record's messages equal what the cards showed; `namespaces == [picked]`; `use_when`, `hint`); `test_the_picker_lists_the_librarys_namespaces_and_preselects_the_conversations`; `test_without_a_conversation_namespace_the_default_namespace_is_preselected` (v2: `[None, not_in_the_library]`); `test_the_saved_line_says_the_started_conversation_does_not_change` (`started=1` → `SAVED_STARTED`; otherwise `SAVED`; v2: one case each); `test_validation_errors_show_on_the_card_they_name`; `test_an_example_without_final_answer_asks_before_saving` (Cancel stores nothing; Save anyway stores it); `test_an_existing_name_offers_to_save_the_next_version_keeping_its_namespaces`; `test_view_yaml_shows_the_canonical_yaml_and_edited_yaml_returns_to_cards`; `test_use_when_in_the_yaml_is_refused_in_deep_reasoners_words`; `test_a_draft_survives_reloading_the_frame`; `test_use_when_and_hint_survive_a_save_that_did_not_touch_them`; `test_an_imported_decomposition_saved_unchanged_makes_no_new_version` (cards are lossless end to end); v3: `test_a_draft_keeps_the_namespace_picked_over_the_preselected_one` (B21), `test_an_error_that_names_no_card_shows_above_the_cards` (B22), `test_rename_in_yaml_mode_focuses_the_yaml_which_holds_the_name` (B23); v4: `test_saving_without_a_name_in_card_mode_asks_for_one_and_writes_nothing` (B24); v6: `test_the_turn_after_a_step_reads_observation_think_code` (B28); v7: `test_a_turn_after_the_first_starts_with_its_observation` (B29) |
 | `test_namespaces.py` | `test_the_tree_follows_dotted_names_and_marks_the_default`; `test_each_field_shows_its_effective_value_and_source`; `test_override_sets_a_field_here_and_reset_removes_it`; `test_a_variable_is_overridden_and_reset_key_by_key`; `test_a_tool_granted_here_adds_to_the_inherited_ones`; `test_attach_and_detach_change_only_this_namespaces_list`; `test_start_new_conversations_here_moves_the_default` (`/health`'s `default_namespace`); `test_adding_and_deleting_a_namespace` (and D2's refusal for root, the default and a parent, in its words); `test_run_settings_edit_the_profile`; `test_yaml_values_mean_what_dr_reads` (a variable typed as `on` is stored `true`); `test_keys_the_panel_does_not_show_survive_an_override`; v2: `test_a_namespace_whose_inheritance_cannot_be_resolved_says_why` (B1); v4: `test_add_namespace_is_not_prefilled_under_root_or_run_settings[root, run-settings]` (B25), `test_a_write_answered_after_another_node_is_selected_keeps_that_selection[add, delete]` (B26; `test_adding_and_deleting_a_namespace` now also waits for the added namespace's title) |
 | `test_tools_tab.py` | `test_the_tools_tab_always_shows_the_safety_notice_with_the_cap` (v2: `[5, 12]`, the cap from the URL); `test_the_tools_tab_lists_tools_with_their_grants` |
 | `test_notice.py` | `test_the_safety_notice_shows_until_understood`; `test_the_notice_is_d5s_sentence_with_the_cap` (equal to `dr_app.texts.SAFETY` formatted with `7`; skipped until D5's package is in the environment); `test_without_the_key_proxy_the_notice_says_nothing_caps_spending` |
@@ -2185,8 +2252,9 @@ export declare function parseOutput(content: string): OutputCard | null;
 export declare function renderOutput(card: OutputCard): string;
 export declare function newDecompositionCards(): Card[];
 export declare function addTurn(cards: readonly Card[]): Card[];
-export declare function removeTurn(cards: readonly Card[], index: number): Card[];
-export declare function turnNumbers(cards: readonly Card[]): number[];
+export declare function cardGroups(cards: readonly Card[]): number[][]; // v7, B29
+export declare function removeTurn(cards: readonly Card[], index: number): Card[]; // v7: the group holding index
+export declare function turnNumbers(cards: readonly Card[]): (number | null)[]; // v7: null for task and raw cards
 export declare function cardIndexForLoc(loc: string): number | null;
 
 // ui/save.ts
@@ -2477,3 +2545,7 @@ in Canvas's DOM: `dr-library-loading`, `dr-library-error`, `dr-library-retry`.
 - **Tools:** `dr-no-tools`.
 - A `NamespaceChecklist` without a `testIdPrefix` uses `dr-namespaces-<namespace>` and `dr-namespaces-list` (no D3 view
   does).
+
+**v7 changes** (§3.2 B29): `dr-turn-<n>` is turn *n*'s group (the task and raw cards are in none); `dr-remove-<index>`
+is one per turn, at the index of the turn's first card (v6 had one per step and one per observation). Every other id
+is unchanged.
