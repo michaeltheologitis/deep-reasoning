@@ -13,15 +13,18 @@ from deep_reasoning.library.records import (
     DecompositionRecord,
     HistoryEntry,
     ImportReport,
+    LibraryConflict,
     LibraryError,
     LibraryImportError,
     LibraryNotFound,
+    LibraryRefused,
     LibraryState,
     LibraryValidationError,
     Manifest,
     NamespaceRecord,
     ProfileRecord,
     ToolRecord,
+    ValidationResult,
 )
 
 _LAZY = {"Library": "library", "Effective": "effective"}
@@ -32,15 +35,18 @@ __all__ = [
     "HistoryEntry",
     "ImportReport",
     "Library",
+    "LibraryConflict",
     "LibraryError",
     "LibraryImportError",
     "LibraryNotFound",
+    "LibraryRefused",
     "LibraryState",
     "LibraryValidationError",
     "Manifest",
     "NamespaceRecord",
     "ProfileRecord",
     "ToolRecord",
+    "ValidationResult",
 ]
 
 
