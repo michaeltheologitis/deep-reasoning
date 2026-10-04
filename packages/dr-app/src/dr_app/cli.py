@@ -21,6 +21,7 @@ from dr_app.layout import (
     AppLayout,
     SetupError,
     SetupState,
+    check_socket_room,
     choose_home,
     filesystem_type,
 )
@@ -186,6 +187,7 @@ def _home(layout: AppLayout, args: argparse.Namespace) -> None:
         if not args.dir.is_absolute():
             refusal = texts.home_refused(str(args.dir), "is not an absolute path")
             raise SetupError(EXIT_HOME, refusal)
+        check_socket_room(args.dir, system=platform.system())
         args.dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         fstype = filesystem_type(args.dir) if linux else None
         if fstype in NETWORK_FILESYSTEMS:

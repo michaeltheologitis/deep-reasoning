@@ -2,6 +2,7 @@
 
 import fcntl
 import os
+import platform
 import subprocess
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ import pytest
 
 import dr_app.cli
 from dr_app import texts
-from dr_app.layout import SetupState
+from dr_app.layout import SOCKET_PATH_MAX, SetupState, deepest_socket
 from tests.app.conftest import COMMIT, DR_APP, REPO
 
 SETUP = ["setup", "--repo", REPO, "--commit", COMMIT]
@@ -130,7 +131,7 @@ def test_export_runs_the_runtimes_dr_library_with_the_home(layout, tmp_path, stu
 def test_home_records_a_local_folder_and_refuses_a_network_one(
     layout, tmp_path, monkeypatch, capsys
 ):
-    chosen = tmp_path / "data"
+    chosen = layout.root.parents[1] / "data"
     done = dr_app_run(layout, "home", str(chosen))
     assert done.returncode == 0, done.stdout
     assert done.stdout == texts.home_set(str(chosen), str(layout.root)) + "\n"
@@ -146,12 +147,28 @@ def test_home_records_a_local_folder_and_refuses_a_network_one(
     monkeypatch.setenv("HOME", str(layout.root.parent))
     monkeypatch.setattr(dr_app.cli.platform, "system", lambda: "Linux")
     monkeypatch.setattr(dr_app.cli, "filesystem_type", lambda path: "nfs4")
-    mounted = tmp_path / "mounted"
+    mounted = layout.root.parents[1] / "mounted"
     assert dr_app.cli.main(["home", str(mounted)]) == 13
     assert capsys.readouterr().out == (
         texts.home_refused(str(mounted), "is on a network filesystem (nfs4)") + "\n"
     )
     assert SetupState.load(layout.setup_file).dr_home == str(chosen)
+
+
+def test_home_refuses_a_folder_too_long_for_a_claude_runs_socket(layout, tmp_path):
+    deep = tmp_path / ("d" * 60)
+    done = dr_app_run(layout, "home", str(deep))
+    assert done.returncode == 13
+    assert done.stdout == (
+        texts.home_too_long(
+            str(deep),
+            str(deepest_socket(deep)),
+            str(SOCKET_PATH_MAX[platform.system()]),
+        )
+        + "\n"
+    )
+    assert not deep.exists()
+    assert SetupState.load(layout.setup_file).dr_home is None
 
 
 @pytest.mark.parametrize("missing", ["AGENT_SERVER_URL", "SESSION_API_KEY"])

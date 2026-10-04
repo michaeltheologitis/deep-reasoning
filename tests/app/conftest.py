@@ -6,6 +6,7 @@ import os
 import secrets
 import shutil
 import sys
+import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,8 +81,10 @@ class Stubs:
 
 
 @pytest.fixture
-def layout(tmp_path: Path) -> AppLayout:
-    return AppLayout(tmp_path / "home" / ".deep-reasoning")
+def layout() -> Iterator[AppLayout]:
+    """A home short enough for deep_reasoner's Claude sockets, which tmp_path is not."""
+    with tempfile.TemporaryDirectory(prefix="dr-app-", dir="/tmp") as short:
+        yield AppLayout(Path(short) / "home" / ".deep-reasoning")
 
 
 @pytest.fixture

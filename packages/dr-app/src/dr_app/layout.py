@@ -20,6 +20,12 @@ NETWORK_FILESYSTEMS: Final = frozenset(
     {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "fuse.sshfs"}
 )
 MOUNTS: Final = Path("/proc/self/mounts")
+# sun_path's size less its terminating NUL: the longest path a Unix socket can bind.
+SOCKET_PATH_MAX: Final = {"Linux": 107, "Darwin": 103}
+# The deepest socket setup makes room for under DR_HOME: a Claude-backed reasoner serves
+# <run_dir>/repl.sock (deep_reasoner), D1 runs it in runs/<run id>, and each Claude
+# sub-agent it spawns serves from children/<n> below it; room for one such level.
+DEEPEST_SOCKET: Final = "runs/20261004-173501-a1b2c3/children/1000/repl.sock"
 EXIT_HOME: Final = 13
 SETUP_STATE_VERSION: Final = 1
 
@@ -102,6 +108,22 @@ def filesystem_type(path: Path, *, mounts: Path = MOUNTS) -> str | None:
     return best[1] if best else None
 
 
+def deepest_socket(home: Path) -> int:
+    """The length in bytes of the deepest socket path setup makes room for under home."""
+    return len(os.fsencode(home / DEEPEST_SOCKET))
+
+
+def check_socket_room(home: Path, *, system: str) -> None:
+    """Raises SetupError(13, texts.home_too_long(...)) when a Claude run's socket under
+    home would be longer than the system lets a socket bind."""
+    limit = SOCKET_PATH_MAX.get(system)
+    deepest = deepest_socket(home)
+    if limit is not None and deepest > limit:
+        raise SetupError(
+            EXIT_HOME, texts.home_too_long(str(home), str(deepest), str(limit))
+        )
+
+
 def _is_private_dir_of(path: Path, uid: int) -> bool:
     """A real directory (not a link) owned by uid, with no group or other permission."""
     info = path.lstat()
@@ -124,7 +146,24 @@ def choose_home(
     """§4.4.1: a recorded home that is still a local directory of ours; else the root,
     unless (Linux) it is on a network filesystem; else /var/tmp/deep-reasoning-<uid>.
     Raises SetupError(13, texts.home_unsafe(...)) for a /var/tmp directory that is not
-    ours."""
+    ours, and SetupError(13, texts.home_too_long(...)) for a home too long for a Claude
+    run's socket."""
+    choice = _choose_home(
+        layout, recorded, system=system, uid=uid, mounts=mounts, var_tmp=var_tmp
+    )
+    check_socket_room(choice.path, system=system)
+    return choice
+
+
+def _choose_home(
+    layout: AppLayout,
+    recorded: Path | None,
+    *,
+    system: str,
+    uid: int,
+    mounts: Path,
+    var_tmp: Path,
+) -> HomeChoice:
     linux = system == "Linux"
     if recorded is not None and recorded.is_dir() and recorded.stat().st_uid == uid:
         fstype = filesystem_type(recorded, mounts=mounts) if linux else None

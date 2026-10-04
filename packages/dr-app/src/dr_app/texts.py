@@ -94,6 +94,14 @@ def home_unsafe(path: str, owner: str, mode: str) -> str:
     )
 
 
+def home_too_long(home: str, length: str, limit: str) -> str:
+    return (
+        f"✗ {home} is too long a path for your data: deep_reasoner's Claude runs serve "
+        f"sockets under it up to {length} bytes long, and this system allows {limit}. "
+        "Choose a shorter folder with dr-app home DIR."
+    )
+
+
 def home_set(home: str, old: str) -> str:
     return (
         f"Your data will be kept in {home} from the next launch. Nothing was moved: copy "
