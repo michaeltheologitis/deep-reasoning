@@ -19,6 +19,10 @@ NO_FINAL_ANSWER = "This example never reaches FinalAnswer; the agent will imitat
 FORBIDDEN_PEER = "This library belongs to another user on this computer."
 BAD_REQUEST = "The body must be a JSON object with a 'yaml' string."
 NOT_JSON = "The body must be sent as application/json."
+UI_NOT_BUILT = (
+    "The panel's files are not in this installation: reinstall deep-reasoning, or run "
+    "npm run build in canvas-app/."
+)
 
 
 def invalid(name: str | None, model: str, errors: Sequence[tuple[str, str]]) -> str:
@@ -190,6 +194,10 @@ def unknown_tool(namespace: str, tool: str) -> str:
 
 def unknown_spawn(namespace: str, target: str) -> str:
     return f"Namespace '{namespace}' may spawn into '{target}', which is not in the library."
+
+
+def ui_file_missing(name: str) -> str:
+    return f"There is no file '{name}' in the panel's build."
 
 
 def forbidden_host(port: int) -> str:
