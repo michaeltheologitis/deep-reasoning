@@ -1,4 +1,5 @@
 import json
+from itertools import pairwise
 
 import pytest
 from playwright.sync_api import expect
@@ -26,7 +27,6 @@ def test_saving_stores_version_1_in_the_picked_namespace(open_ui, library_server
     )
     page.get_by_test_id("dr-card-1-code").fill("order = sorted(cs)\nprint(order)")
     page.get_by_test_id("dr-add-turn").click()
-    expect(page.get_by_test_id("dr-card-2")).to_contain_text("written by you, not run")
     page.get_by_test_id("dr-card-2-output").fill("['CS201', 'CS310', 'CS330']")
     page.get_by_test_id("dr-card-3-code").fill("FinalAnswer(order)")
     expect(page.get_by_test_id("dr-save")).to_have_text("Save to course_advisor")
@@ -92,6 +92,45 @@ def test_a_turn_after_the_first_starts_with_its_observation(open_ui):
     expect_turns(page, [["think", "code"], ["observation", "think", "code"]])
     expect(page.get_by_test_id("dr-card-3-code")).to_have_value("turn 3")
     expect(page.get_by_test_id("dr-card-0-task")).to_be_visible()
+
+
+def test_a_turn_reads_as_one_block_with_no_note_under_its_observation(open_ui):
+    page = open_ui(tab="create")
+    page.get_by_test_id("dr-add-turn").click()
+    page.get_by_test_id("dr-add-turn").click()
+    expect(page.locator("[data-testid^='dr-turn-']")).to_have_count(3)
+    expect(page.locator("body")).not_to_contain_text("written by you, not run")
+    inside, between = gaps_above_labels(page)
+    assert len(inside) == 5 and len(between) == 3
+    assert max(inside) < min(between) / 4, f"inside a turn {inside}, between {between}"
+
+
+def gaps_above_labels(page) -> tuple[list[float], list[float]]:
+    """Pixels from each textarea's bottom to the next label's top: inside a group, and from
+    one group to the next (the task card, then each turn)."""
+    groups = [
+        page.get_by_test_id("dr-card-0"),
+        *page.locator("[data-testid^='dr-turn-']").all(),
+    ]
+    fields = [
+        [
+            (label.bounding_box(), textarea.bounding_box())
+            for label, textarea in zip(
+                group.locator("label").all(),
+                group.locator("textarea").all(),
+                strict=True,
+            )
+        ]
+        for group in groups
+    ]
+
+    def gap(above: tuple[dict, dict], below: tuple[dict, dict]) -> float:
+        textarea, label = above[1], below[0]
+        return round(label["y"] - (textarea["y"] + textarea["height"]), 1)
+
+    inside = [gap(a, b) for group in fields for a, b in pairwise(group)]
+    between = [gap(a[-1], b[0]) for a, b in pairwise(fields)]
+    return inside, between
 
 
 def expect_turns(page, turns: list[list[str]]) -> None:
