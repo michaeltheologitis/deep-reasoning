@@ -30,7 +30,14 @@ dev = [
     "referencing",
     "ruff",
     "playwright==1.56.0",
+    "deep-reasoning-app",
 ]
+
+[tool.uv.workspace]
+members = ["packages/dr-app"]
+
+[tool.uv.sources]
+deep-reasoning-app = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -50,8 +57,11 @@ testpaths = ["tests"]
 markers = [
     "live: calls a real model; run with -m live",
     "browser: drives the panel in Chromium (Playwright); run with -m browser",
+    "desktop: builds and drives the desktop app (E12); run with -m desktop",
+    "crossrepo: runs against the pinned forks' code; run with -m crossrepo",
 ]
-addopts = "-m 'not live and not browser'"
+addopts = "-m 'not live and not browser and not desktop and not crossrepo'"
 
 [tool.ruff]
 extend-exclude = ["docs"]
+src = [".", "src", "packages/dr-app/src"]

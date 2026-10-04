@@ -7,6 +7,12 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+members = [
+    "deep-reasoning",
+    "deep-reasoning-app",
+]
+
 [[package]]
 name = "agent-client-protocol"
 version = "0.12.1"
@@ -629,6 +635,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "deep-reasoning-app" },
     { name = "jsonschema" },
     { name = "playwright" },
     { name = "pytest" },
@@ -652,12 +659,18 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "deep-reasoning-app", editable = "packages/dr-app" },
     { name = "jsonschema" },
     { name = "playwright", specifier = "==1.56.0" },
     { name = "pytest" },
     { name = "referencing" },
     { name = "ruff" },
 ]
+
+[[package]]
+name = "deep-reasoning-app"
+version = "0.1.0"
+source = { editable = "packages/dr-app" }
 
 [[package]]
 name = "deprecated"
