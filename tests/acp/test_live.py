@@ -132,7 +132,7 @@ def test_live_stopping_a_department_stops_it_and_its_course_agents(
         for u in client.updates_on(department.session_id)
         if u["sessionUpdate"] == "agent_thought_chunk"
     ]
-    assert texts.stop_requested("interim", "chat") in thoughts
+    assert texts.stop_requested("dean", "chat") in thoughts
 
 
 def test_live_without_the_key_the_run_fails_before_any_call_and_says_which(
