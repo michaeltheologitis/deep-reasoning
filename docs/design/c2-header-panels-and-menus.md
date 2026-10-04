@@ -243,7 +243,7 @@ stop trusting):
   sentences: the "Matches the code" and "Stacked for Gate C" paragraphs; §3.2 B21–B32; the Gate B section's v3
   preface and the v3 notes on its rulings and table; v3 notes in §1.2, §2 decisions I, L and M, §3.1 items 2, 13 and
   15, §3.2 B2, B3, B8, B12, B16–B20, §4.1, §4.7, §4.9, §5.1–§5.8, §6.2, §6.4, §8, §9, §10 and §11; §11 items 9 to
-  11; Appendix A's preface and the `// v3:` lines in A.2, A.7–A.11. No section is renumbered, and every signature
+  12; Appendix A's preface and the `// v3:` lines in A.2, A.7–A.11. No section is renumbered, and every signature
   block still parses as TypeScript: a name that is gone stays as a comment.
 - 2026-10-03 · v2 · brought in line with the build at `64b5a8b`, after Proof Green. Stop trusting: §1.2's and §6's
   "proposed" for PR 3 (approved as a scope addition on 2026-10-03); §3.1 items 2 and 13 (B20, B15); §4.4's spinner and
@@ -451,7 +451,9 @@ to B19 the tests and the live tier; B20 the size. Where the build recorded no re
 a commit message, a code comment or PR #3's description), the reason given is marked as this design's reading.
 *(v3: B21 is the ruling made at Gate B; B22–B30 are what changed after it; B31 and B32 are where v1 and v2 described
 the build wrongly and the build stands. Each was checked against the code at `ca1dd71`; v3 notes in B2, B3, B8, B12
-and B16–B20 say which of their sentences moved. B21–B30 answer the as-built r2's D-12 to D-19, B31 and B32 its §2.3.)*
+and B16–B20 say which of their sentences moved. B21–B27 and B30 answer the as-built r2's D-12 to D-19, B31 and B32
+its §2.3; B28 and B29 are the r3's D-20 and D-21. "As-built §x" and "as-built D-n" below cite r3, on `as-built/c2-r3`,
+which keeps r2's numbers.)*
 
 **Against S2's contract**
 
@@ -707,7 +709,7 @@ and B16–B20 say which of their sentences moved. B21–B30 answer the as-built 
 **Decided at Gate B (v3)**
 
 - **B21. A failed live set that is not a refusal says what the model picker says** (§5.3, decision M, B3; the Gate B
-  section's ruling 3, which Michael decided as (b); as-built r2 D-12; `3912c52`, `4ff261c`, `3461e1c`). Built: the
+  section's ruling 3, which Michael decided as (b); as-built D-12; `3912c52`, `4ff261c`, `3461e1c`). Built: the
   toast belongs to `useSetAcpConfigOption` itself (`use-set-acp-config-option.ts:37–42`), which keeps
   `meta: {disableToast: true}`.
   - A 422 shows upstream's `getApiErrorMessage(error, error.message)`: the body's `message`, else a string `detail`,
@@ -734,7 +736,7 @@ B24–B26 are the refactor's changes to helpers and names, which change nothing 
 `4ff261c` also fixed, counted under B21; B27 is the tests; B28 the
 base the code now stands on; B29 the split; B30 the size.
 
-- **B22. On the home screen a refused pick is withdrawn** (§5.4, §5.6, A.10, ASC-002; as-built r2 D-13; `6fb7f05`,
+- **B22. On the home screen a refused pick is withdrawn** (§5.4, §5.6, A.10, ASC-002; as-built D-13; `6fb7f05`,
   `61b9bdc`; the Conductor's items on §5.4, §5.6 and ASC-002). v2's §5.4: "a 422 keeps the last successful preview's
   controls, shows the agent's sentence … and the refused value is not sent". The refused value stayed in the store,
   so picking it again asked nothing, every later preview carried it, and a home screen mounted with it showed the
@@ -761,7 +763,7 @@ base the code now stands on; B29 the split; B30 the size.
   preview answers %i after an earlier answer, and shows no sentence for it` [400, 504]; `chat-input-agent-options.test.tsx
   › ChatInputAgentOptions › sets nothing when the value in effect is chosen` (as-built §6.3 P6, P8). Unit tests only:
   the mock agent can refuse, but no end-to-end spec picks a value it refuses.
-- **B23. A preview's answer stays current until the home screen unmounts** (§5.4, A.10; as-built r2 D-14;
+- **B23. A preview's answer stays current until the home screen unmounts** (§5.4, A.10; as-built D-14;
   `6fb7f05`; the Conductor's `staleTime` item). v2's §5.4 and A.10: `staleTime: 0`. Built
   (`use-acp-session-preview.ts:74, 95–96`): the hook records when it mounted, and `staleTime` is `Infinity` for data
   fetched since then and `0` for older data. Going back to inputs the agent answered during the visit asks nothing:
@@ -772,7 +774,7 @@ base the code now stands on; B29 the split; B30 the size.
   data, and B22's first and third tests, which fail with `0` (as-built §6.3 P9a, P9b). The withdrawal and this rule
   fail together, which is why they are one fix.
 - **B24. Upstream's error helpers replace C2's** (§2 decision M, §5.1, §5.3, §5.4, §6.2 step 4, A.7, A.11, B2, B12;
-  as-built r2 D-15; `4ff261c`). v2: `getSdkHttpErrorDetail` (null for a 5xx) and `getSdkHttpServerErrorReason` in
+  as-built D-15; `4ff261c`). v2: `getSdkHttpErrorDetail` (null for a 5xx) and `getSdkHttpServerErrorReason` in
   `agent-server-compatibility.ts`. Built: neither exists; C2's only addition to that file is `AgentServerCapability`
   and `localAgentServerHasCapability`. Both refusal sites count only a 422 as the agent's, with upstream's
   `isSdkHttpStatusError(error, 422)`, and read its sentence with upstream's `getApiErrorMessage`
@@ -784,14 +786,14 @@ base the code now stands on; B29 the split; B30 the size.
   *Pinned by:* B21's and B22's tests; `mount-app-backend-frame.test.ts › mountAppBackendFrame › reports %s once, with
   a notice in the container, for %s` [not-ready; no-ingress for an ingress the agent-server lacks].
 - **B25. The controls event guard is the client's, and C2 no longer touches `type-guards.ts`** (§5.2, §5.7, §8 item
-  1, §9, A.8; as-built r2 D-16; `0e396b9`). Built: `useLatestAcpSessionControls` imports `isACPSessionControlsEvent`,
+  1, §9, A.8; as-built D-16; `0e396b9`). Built: `useLatestAcpSessionControls` imports `isACPSessionControlsEvent`,
   with `ACP_SESSION_CONTROLS_EVENT_KIND` and the event type, from the client (`use-latest-acp-session-controls.ts:2–6`).
   It checks `event.kind === "ACPSessionControlsEvent"`, as C2's guard did. The call site keeps `"kind" in event`
   (`:17`), because Canvas's event union holds a message event without `kind`. `src/types/agent-server/type-guards.ts`
   is untouched, so C1 and C2 share 8 files, not 9 (§9). *Why (recorded in `0e396b9`):* "The dr-1 TypeScript client
   exports isACPSessionControlsEvent, the same one-line check C2 declared in type-guards.ts"; `dr-2`'s does too (B28).
   *Pinned by:* `use-latest-acp-session-controls.test.tsx`'s six cases.
-- **B26. Names no longer exported, or gone** (§5.2, §5.5, A.2, A.9, A.10, B8; as-built r2 D-17; `258944e`,
+- **B26. Names no longer exported, or gone** (§5.2, §5.5, A.2, A.9, A.10, B8; as-built D-17; `258944e`,
   `01411cd`, `501f0c6`).
 
   | v2 | Built |
@@ -807,7 +809,7 @@ base the code now stands on; B29 the split; B30 the size.
   start body's readers use"; `501f0c6`, "check enabled once in useLatestAcpSessionControls". *Pinned by:* typecheck
   and both builds, in every level's CI.
 - **B27. The tests, after the fixes, the refactor and two re-pins** (the Gate B section's table, §4.9, §5.8, §6.4,
-  B17; as-built r2 D-18; `8708eae`, `9c49036`, `334bba8`, `e483dc3`, `f4c7ae5`, `667ec86`, `a1ec3d1`). At `ca1dd71`:
+  B17; as-built D-18; `8708eae`, `9c49036`, `334bba8`, `e483dc3`, `f4c7ae5`, `667ec86`, `a1ec3d1`). At `ca1dd71`:
   109 vitest definitions, 12 of them `it.each`, 140 cases, in 25 files that carry C2 lines and two shared helpers
   (`__tests__/helpers/canvas-extension-panels.tsx` and the new `__tests__/helpers/query-wrapper.tsx`).
   `acp-error-codes.test.ts` no longer carries a C2 line. The two Playwright specs are unchanged: 7 tests.
@@ -829,7 +831,7 @@ base the code now stands on; B29 the split; B30 the size.
   cut test went with its helper or repeated another test's property; each re-pin names the cut that left its
   property bare. *Pinned by:* every level's CI.
 - **B28. The code on the SDK fork's `dr-2`, through `deep-reasoning` at `fc87687`** (the header, §8, §9, §10, B16,
-  B19; `fc87687` with `988dce8`, `383771c` and `9035f9e`; the merge `30068b8`). `wiring/dr-1` (`9881d24`: the `dr-1`
+  B19; as-built D-20; `fc87687` with `988dce8`, `383771c` and `9035f9e`; the merge `30068b8`). `wiring/dr-1` (`9881d24`: the `dr-1`
   agent-server `cef3b24` and its client, on C3's launcher at `22272d9`) is replaced by the fork's `deep-reasoning` at
   `fc87687`: C3's launcher stack as merged (#5–#11) and `wiring/dr-2` (#12). That wiring names the SDK fork at
   `34c540c` (tag `dr-2`, S1 and S2 merged into the SDK fork's `deep-reasoning`) in `config/defaults.json`'s
@@ -841,10 +843,12 @@ base the code now stands on; B29 the split; B30 the size.
   1, B25) the `dr-2` client exports, and every level type-checks. *Why (recorded in `30068b8`):* "Bring C2 onto
   deep-reasoning at fc87687, which carries C3's launcher stack and the dr-2 wiring in place of wiring/dr-1."
   *Evidence:* CI at `30068b8`, run 37215713339, green; the mock-LLM dispatch with C2's two specs at `30068b8`, run
-  37215721829, 7 of 7 in 1.9 min, its agent-server the one `config/defaults.json` names, `34c540c`. Nothing has run an
-  App backend frame against the `dr-2` agent-server's bridge (§6.4, §11 item 1).
-- **B29. The stack for Gate C** (§1.2, §3.1 item 13, §4.7, §4.9, §5.7, §5.8, §6.4, §9, B16; the PR Splitter, one
-  commit per level). Each level's CI is green on its own; translations ride with their level.
+  37215721829, 7 of 7 in 1.9 min, its agent-server the one `config/defaults.json` names, `34c540c`. That commit is
+  read from the configuration, not from the run's log, which does not print it; tests 6 and 7 need the preview route,
+  which upstream's 1.50.1 lacks (as-built §8 item 11). Nothing has run an App backend frame against the `dr-2`
+  agent-server's bridge (§6.4, §11 item 1).
+- **B29. The stack for Gate C** (§1.2, §3.1 item 13, §4.7, §4.9, §5.7, §5.8, §6.4, §9, B16; as-built D-21; the PR
+  Splitter, one commit per level). Each level's CI is green on its own; translations ride with their level.
 
   | Level | PR | Head | v2's | What it holds | Upstream spec text |
   |---|---|---|---|---|---|
@@ -859,13 +863,15 @@ base the code now stands on; B29 the split; B30 the size.
   - Each unit's spec text lands at its first level, ahead of the levels whose code makes it true (§3.1 item 13).
   - The client pin is below the stack, in `fc87687`, so B16 is resolved.
   - C1's overlap (`src/types/agent-server/core/events/index.ts` and `openhands-event.ts`) lands at #23 (§9).
-  - #23 needs nothing from #20–#22, and #26 needs only #20 (its host API, runtime and capability check).
+  - #23 needs nothing from #20–#22: it applies to `fc87687` alone and passes there. #26 needs #20 in substance (its
+    host API, runtime and capability check) and #22 only as text: its hunk in `canvas-extensions-service.ts` has
+    #22's `fetchPanelIcon` as context (as-built §5.2).
   - At #24, `use-agent-controls.ts` is the final file less its home half, with `HomeAgentControls` and
     `NO_AGENT_CONTROLS.startValues` already present for #25.
 
   *Why:* Gate C reads the code as a stack of semantic PRs, bottom-up (the Gate C ledger, "The stack, bottom-up").
   Nothing in the code changed: `ca1dd71`'s tree equals `30068b8`'s.
-- **B30. Size** (the Gate B section's ruling 1, §3.1 item 2, B20; as-built r2 D-19). `git diff --numstat
+- **B30. Size** (the Gate B section's ruling 1, §3.1 item 2, B20; as-built D-19). `git diff --numstat
   fc87687..ca1dd71`: **6,974 added and 167 removed, in 88 files**, 6,313 of the added lines not blank.
 
   | Part | v2, `64b5a8b` | `ca1dd71` |
@@ -885,7 +891,7 @@ base the code now stands on; B29 the split; B30 the size.
 **Where v1 and v2 described the build wrongly (v3)**
 
 - **B31. The preview's body is the start's less `initial_message`, `user_id` and `conversation_id`; without a
-  workspace, its `working_dir` differs too** (decision I, §5.2, A.9; as-built r2 §2.3, r1's D-3). v1 and v2: the
+  workspace, its `working_dir` differs too** (decision I, §5.2, A.9; as-built §2.3, r1's D-3). v1 and v2: the
   preview body is the start body less `initial_message` and `user_id`. Built: `buildLocalStartConversationRequest`
   mints a fresh `conversation_id` per call (`agent-server-conversation-service.api.ts:479`). Without a workspace,
   `resolveNewConversationWorkspace` derives `working_dir` from that id, under the backend's workspace root, so a
@@ -897,7 +903,7 @@ base the code now stands on; B29 the split; B30 the size.
   preview reuses the start's builder, which decision I chose over a second one. *Pinned by:* `› previews with the body
   %s would start with, less its first message and user`, which deletes `conversation_id` from both bodies and names a
   workspace in both launches; no test covers a no-workspace preview's `working_dir`.
-- **B32. Four smaller places v1 and v2 read wrongly** (§4.1, decision L, §5.6, A.2; as-built r2 §2.3).
+- **B32. Four smaller places v1 and v2 read wrongly** (§4.1, decision L, §5.6, A.2; as-built §2.3).
   - §4.1 says the route page's mount effect "moves unchanged" into `useCanvasExtensionMount`. Built, it remounts when
     `mount` or the mount key changes (`use-canvas-extension-mount.ts:62`), not on a change of `page` or `navigate`,
     as upstream's effect did; the rest of the context is read through a ref when it mounts.
@@ -1735,6 +1741,12 @@ backend frame.
 11. *(v3)* **No-workspace previews** (§3.2 B31): the preview and its start name different working directories. No
     agent C2 serves depends on it; if one does, the builder could take the id from its caller so a preview and the
     start after it share one. Not proposed for v1.
+12. *(v3)* **Lint that CI does not run** (as-built §6.5). CI lints `src/` only. Over `__tests__/`, ESLint flags two
+    of C2's lines (`canvas-extension-panels.tsx:71`, `import-x/extensions`, at #20; `conversation-app-panel.test.tsx:171`,
+    `no-param-reassign`, at #21) among 839 errors that are nearly all upstream's; over `specs/*.md`, Prettier fails
+    C2's invariant blocks in `canvas-extensions.md` and `acp-session-controls.md` (a blank line after each heading, a
+    deeper continuation indent), as it already fails three of upstream's five spec files. No design change; for the
+    Conductor to fix in Gate C's round or leave, as upstream leaves its own.
 
 ---
 
