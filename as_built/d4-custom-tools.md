@@ -1,65 +1,82 @@
 # D4 · Custom tools and MCP servers, as built
 
-**TASK-9** · Cartographer · revision 3 · 2026-10-04 · the code at `3129da9` (head of `v1-custom-tools`; this file
-is on `as-built/d4-r3`) · checked against design v5 with B30 (`docs/design/d4-custom-tools.md`, last changed in
-`60f1d00`) · deep_reasoner_beta `d7334ae`, `mcp` 1.30.0 and agent-client-protocol 0.12.1, as `uv.lock` pins them ·
-SDK fork `91430aa`, read only (the two files cited are unchanged at the fork's head `1f2b52d`).
+**TASK-9** · Cartographer · revision 4 · 2026-10-04 · the code at `68ebe81` (head of `v1-custom-tools`; this file
+is on `as-built/d4-r4`) and the stack #27–#33 cut from it · checked against design v5 with B30
+(`docs/design/d4-custom-tools.md`, last changed in `60f1d00`, unchanged at `68ebe81`) · deep_reasoner_beta `d7334ae`,
+`mcp` 1.30.0 and agent-client-protocol 0.12.1, as `uv.lock` pins them · SDK fork `91430aa`, read only, as r3 read it.
 
-This revision replaces r2 (`2353fe6`: the code at `f69bc73`, against design v3). It is Gate C's map of the code
-after three things: Michael's ruling (b) (design B30), the merges of D3's and D2's refactored heads, and D4's
-literate refactor (12 commits, `be131ce` … `dcd84af`). D4's code is `src/deep_reasoning/tools/`,
-`src/deep_reasoning/mcp/`, the Tools tab in D3's `canvas-app/` with its built files, and `tests/tools/` and
-`tests/mcp/`. It also edits D1's, D2's and D3's files (§6.1).
+**Merged:** #27–#33 merged bottom-up into `main`, now `53c821b`, whose tree equals #33's head `c95e059` (both
+`99986b2`). [run: `git rev-parse <commit>^{tree}`]
+
+This revision revises r3 (`461c3b5`: the code at `3129da9`). It keeps r3's section and finding numbers, which the PR
+bodies cite, and numbers new findings after r3's. Since r3, `v1-custom-tools` has gained four commits, each a fix for
+an r3 finding, landed test-first:
+- `f553260` fixes §1.3 #10;
+- `6e07549` and its fixup `68ebe81` fix #11;
+- `6739e0f` pins r3's probe survivors M1, M3 and M4 (§7.4).
+
+The PR Splitter cut #27–#33 on `main`, and the same fixes were landed per level (§5.1). D4's code is
+`src/deep_reasoning/tools/`, `src/deep_reasoning/mcp/`, the Tools tab in D3's `canvas-app/` with its built files, and
+`tests/tools/` and `tests/mcp/`. It also edits D1's, D2's and D3's files (§6.1).
 
 **Evidence marks.** Every claim carries one.
-- **[run]**: executed on this machine at `3129da9`. That covers the suites and builds of §7.1, the probe scripts
-  and mutation probes of §7.4 and §7.5 (not committed), and `git`.
-- **[CI]**: read from GitHub's logs of the runs in §7.1. I ran no live test and made no paid model call.
+- **[run]**: executed on this machine at `68ebe81`. That covers the suites and builds of §7.1, the probes of §1.3, §7.4
+  and §7.5 (not committed), the evidence step's script (§1.3 #11), and `git`.
+- **[run at 3129da9]**: r3's run, not repeated. Between `3129da9` and `68ebe81` nothing under `src/` changed but the
+  built `app.js`, and of the frame's sources only `ui/tools.ts` did [run: `git diff --stat`]. These claims stand for
+  the code they name.
+- **[CI]**: read from GitHub's logs of the runs in §7.1. I ran no live test, dispatched no workflow and made no paid
+  model call.
 - **[read]**: read in the code and **not executed**. This is weaker evidence than [run]. §8 lists the read claims
   that matter most.
 
 **Reading order:**
-- §1: the divergences from the design.
+- §1: the divergences from the design, and r3's findings resolved.
 - §2–§4: the map, with routes into the code.
-- §5: what D4 stands on, and what stands on D4.
-- §6: wiring and size.
-- §7: tests and evidence, including what the refactor left unpinned (§7.4).
+- §5: what D4 stands on, the stack and the merge, and what stands on D4.
+- §6: wiring and size, per level too.
+- §7: tests and evidence, per level too, and the probes (§7.4).
 - §8: what I could not verify.
 
 ---
 
 ## 1 · Divergences from design v5 and B30
 
-No Changelog entry is linked to TASK-9, so none carries a drift line for it. The newest entries are the merges of
-D1, D2, S1, S2 and C3 on 2026-10-03 and 2026-10-04 [read: the Notion Changelog]. Everything below was found in
-the code or the runs.
+The Changelog's D4 merge entry (2026-10-04 07:53) has a drift line: design v5 is stale where r3 listed, and where the
+fixes changed it, "MCP_CHANGED per transport, B25's evidence step, B30 for stdio, the test lists". It names v6 and
+this r4 as the record after the merge. [read: the Notion Changelog] Those are #13, #14, #1 and §7.2 below. Everything
+else was found in the code or the runs.
 
 The design says it matches the build at `f69bc73` (its line 16). Since then `v1-custom-tools` has gained:
 - B30's two commits, `87f24e5` and `e32bc3d`;
 - five merges of D3: `fd0fc84`, `a87e898`, `3f85560` and `e866563` bring D3's UI changes, and `3129da9` brings
   D3's `73c6425`;
 - `01abb88`, the merge of D3's refactored head together with D2's;
-- the 12 refactor commits.
+- the 12 refactor commits;
+- r4's four fix commits.
 
-Of D4's Python, only `tools/` changed. `src/deep_reasoning/mcp/` is byte-identical to `f69bc73` [run: `git diff`].
+Of D4's Python, only `tools/` changed, and nothing under `src/` since `3129da9` but the built `app.js`.
+`src/deep_reasoning/mcp/` is byte-identical to `f69bc73`. [run: `git diff`]
 
 ### 1.1 Built otherwise than the design says
 
 | # | Design says | Built | Where | Reason recorded |
 |---|---|---|---|---|
-| 1 | B30: the frame adds the header names that "a remote server's `auth`" sends to that server's `headers`. | `mcpServersFromSettings` adds them for every transport. For HTTP and SSE, B30 holds as written. For stdio, see #10. [run: probe, §7.5] | `canvas-app/src/page/context.ts:126-140, 168-173` | `e32bc3d`'s title says "a remote server's auth"; it records nothing about stdio |
-| 2 | §7.1, §7.2, §11.2, B12, B16, A.2, A.5: `tool_routes(library)`, built with a module-level `json_route` that D4 moved out of `create_app`. | `tool_routes(library, route)` takes D2's own `route` closure. `json_route` exists nowhere. D4's edit to `api.py` is now +17 −5, where it was +70 −46. `tools/routes.py` still imports D2's private `_parse`, so `create_app` still imports D4's modules inside itself (B12's cycle, now through `_parse`). [read; run: `git grep json_route` is empty] | `tools/routes.py:37-86`; `library/api.py:208-210, 316-327, 376` | `01abb88`: D2's refactor deleted the `_dump` that `json_route` called; resolved with the Scout's cut |
+| 1 | B30: the frame adds the header names that "a remote server's `auth`" sends to that server's `headers`. | `mcpServersFromSettings` adds them for every transport. For HTTP and SSE, B30 holds as written. For stdio the names reach `McpServerInfo.headers`, but no block stores them and, since `f553260`, no row compares them (#10, #13). [run at 3129da9: §7.5; run: §1.3 #10's probe] | `canvas-app/src/page/context.ts:126-140, 168-173` | `e32bc3d`'s title says "a remote server's auth"; it records nothing about stdio |
+| 2 | §7.1, §7.2, §11.2, B12, B16, A.2, A.5: `tool_routes(library)`, built with a module-level `json_route` that D4 moved out of `create_app`. | `tool_routes(library, route)` takes D2's own `route` closure. `json_route` exists nowhere. D4's edit to `api.py` is +17 −5, where it was +70 −46. `tools/routes.py` still imports D2's private `_parse`, so `create_app` still imports D4's modules inside itself (B12's cycle, now through `_parse`). [read; run: `git grep json_route` is empty] | `tools/routes.py:37-86`; `library/api.py:208-210, 316-327, 376` | `01abb88`: D2's refactor deleted the `_dump` that `json_route` called; resolved with the Scout's cut |
 | 3 | §3.3: `tmp = mkdtemp("dr-check-")`, removed after the child is reaped. | `tempfile.TemporaryDirectory(prefix="dr-check-", ignore_cleanup_errors=True)`. That is still `mkdtemp` underneath, so the folder is still mode 0700, and it is removed on every path, after `_end`. One difference: CPython 3.12's cleanup resets permissions and retries where the old `rmtree(ignore_errors=True)` gave up. [read: `check.py:182-218`, the 3.12.3 stdlib; CI: `test_the_temporary_folder_is_removed[word_count, hang]`] | `tools/check.py:182-184` | `eb19663`: the Scout's adopted cut |
-| 4 | §3.3: the child reports `ready`, `loaded`, `built` or `failed`, `example`, `done`. | It reports `ready`, then `built` or `failed`, then `example` (only with `--example`). The supervisor never awaited `loaded` or `done`, and a report is built from the same lines. One consequence: the phase filter in `_Reports.get` now skips no line (§7.4, M1). [read; run: M1] | `tools/check_child.py:29-54` | `e5583e6`: "written for no reader" |
-| 5 | §7.4, A.6: `ui/tools.ts` exports `RESERVED_NAMES`, `McpSnapshot = Omit<McpGrantBody, …>`, `snapshotOf(info)`, `grantSnapshot(grant)` and `inheritedGrants`. | `McpSnapshot` is an interface in `ui/types.ts`, and `McpGrant` and `McpGrantBody` extend it. `snapshotOf(server, target)` takes a target from Canvas's settings or from a grant, and `grantSnapshot` is gone. `inheritedNotes(tool, effective)` returns the note text (`INHERITED_ROW`), so both components pass it as it is. `RESERVED_NAMES` is module-private. The Tools tab's markup is unchanged in 28 states (§7.4). [read; run: DOM probe] | `ui/types.ts:175-191`; `ui/tools.ts:9-16, 75-78, 125-136` | `be131ce`, `58dd18f` |
+| 4 | §3.3: the child reports `ready`, `loaded`, `built` or `failed`, `example`, `done`. | It reports `ready`, then `built` or `failed`, then `example` (only with `--example`). The supervisor never awaited `loaded` or `done`, and a report is built from the same lines. No child writes a line the phase filter in `_Reports.get` skips; since `6739e0f` a test feeds it one directly (§7.4, M1). [read; run: M1] | `tools/check_child.py:29-54` | `e5583e6`: "written for no reader" |
+| 5 | §7.4, A.6: `ui/tools.ts` exports `RESERVED_NAMES`, `McpSnapshot = Omit<McpGrantBody, …>`, `snapshotOf(info)`, `grantSnapshot(grant)` and `inheritedGrants`. | `McpSnapshot` is an interface in `ui/types.ts`, and `McpGrant` and `McpGrantBody` extend it. `snapshotOf(server, target)` takes a target from Canvas's settings or from a grant, and `grantSnapshot` is gone. `inheritedNotes(tool, effective)` returns the note text (`INHERITED_ROW`), so both components pass it as it is. `RESERVED_NAMES` is module-private. The Tools tab's markup is unchanged in 28 states (§7.4). [read; run: DOM probe] | `ui/types.ts:175-191`; `ui/tools.ts:9-16, 75-78, 130-141` | `be131ce`, `58dd18f` |
 | 6 | §7.1, §10.3, B15: no conftest under `tests/tools/` or `tests/mcp/`; `test_put_mcp_refuses_a_stdio_grant_without_a_command`. | `tests/tools/conftest.py` holds `source(fixture)` and the `no_process` fixture (it was `no_check` in `test_routes.py`). `tests/mcp/conftest.py` holds `put_grant(lib, alias, granted_in, *, block=None, **fields)`. The test is renamed `test_put_mcp_refuses_a_grant_without_its_command_or_url`. `test_acp.py`'s conversations go through a `converse` fixture. Every other test name the design gives exists. [run: name comparison; read] | `tests/tools/conftest.py`, `tests/mcp/conftest.py`, `tests/mcp/test_acp.py:87-113` | `488c580`, `58e9be4`, `5363cc8`, `c62d30f` |
-| 7 | B16, §13 and the Gate B section: 3,399 lines of code and 3,778 of tests. | **3,309 and 3,728**, measured the design's way; 3,327 and 4,287 measured the task row's way (§6.2). [run] | — | the refactor, B30, and the route cut |
-| 8 | The Gate B section: the evidence is at `f69bc73`, and the live tier has six tests. B11: 18 golden recordings change one line. | CI and the live tier are green at `3129da9` (§7.1). The live job runs seven tests: the merges brought in D1's `test_live_claude_code_on_sonnet_…` (`2a15388`). There are 20 golden recordings, each with the `http`/`sse` line: the merge added `unanswered.flat` and `unanswered.native`. [CI; run: `git diff --numstat`] | `tests/acp/golden/` | evidence, not build |
-| 9 | §7.4 and B22: `app.js` is 169 KB (169,027 B). | `app.js` is 167,192 B, `editor.js` 348,475 B (unchanged) and the page bundle `dist/index.js` 9,358 B. Over D3's head (`app.js` 150,631 B, page 7,517 B), D4 adds 16,561 B and 1,841 B. [run: `git cat-file -s`, a fresh build] | `src/deep_reasoning/canvas_app/` | the merges and the refactor (−423 B on `app.js`) |
+| 7 | B16, §13 and the Gate B section: 3,399 lines of code and 3,778 of tests. | **3,314 and 3,807**, measured the design's way; 3,352 and 4,366 measured the task row's way (§6.2). [run] | — | the refactor, B30, the route cut, and r4's fixes and pins |
+| 8 | The Gate B section: the evidence is at `f69bc73`, and the live tier has six tests. B11: 18 golden recordings change one line. | CI is green at `68ebe81` and at every level of the stack; the live tier passed at `3129da9`, and r4's commits change nothing it runs (§7.1). The live job runs seven tests: the merges brought in D1's `test_live_claude_code_on_sonnet_…` (`2a15388`). There are 20 golden recordings, each with the `http`/`sse` line: the merge added `unanswered.flat` and `unanswered.native`. [CI; run: `git diff --numstat`] | `tests/acp/golden/` | evidence, not build |
+| 9 | §7.4 and B22: `app.js` is 169 KB (169,027 B). | `app.js` is 167,267 B, `editor.js` 348,475 B (unchanged) and the page bundle `dist/index.js` 9,358 B. Over D3's head (`app.js` 150,631 B, page 7,517 B), D4 adds 16,636 B and 1,841 B. [run: `git cat-file -s`, a fresh build] | `src/deep_reasoning/canvas_app/` | the merges and the refactor (−423 B on `app.js`); `f553260` (+75 B) |
+| 13 | §8.6 and §5's row table: a granted row is `changed` when Canvas's transport, command, args, URL, env names or header names differ from the grant's snapshot. | `mcpRows` compares only what the grant's block keeps, per transport (`kept`): transport, command, args and env for stdio; transport, URL and headers for HTTP and SSE. A stdio entry's header names, and a remote entry's args or env, make no row changed. [run: §1.3 #10's probe, and M5 in §7.4; CI: `tools.test.ts`] | `ui/tools.ts:80-87, 105` | `f553260`: r3's #10 |
+| 14 | B25: on a failure, a step checks that no file under the live folder holds the model key (`grep -rqF -- "$OPENAI_API_KEY"`); "the step checks the model key only". | The step "No dr home holds a secret" (`id: secretless`) checks `OPENAI_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` and `DEEP_REASONER_TOKEN`. The last is in the step's `env` only, not the tests'. It skips an empty value. For each other value, only grep's exit 1 goes on; exit 0 (found) or any other exit refuses. The upload waits on `steps.secretless.outcome == 'success'`. [read; run: §1.3 #11] | `.github/workflows/live.yml:38-74` | `6e07549`, `68ebe81`: r3's #11 |
 
 ### 1.2 Stale lines in the design
 
-These are the ones the brief named, each confirmed [read]:
+These are the ones r3's brief named, each confirmed [read]:
 - line 16, "Matches the build at `f69bc73`";
 - the Revisions list, which has no B30 entry;
 - the Gate B section's third ruling, "Nothing changes in code until Michael rules" (line 94);
@@ -71,29 +88,31 @@ Beyond those, I found these:
 - `json_route` (lines 1103-1108, 1159, 1370, 1397, 1864-1866, 2327-2328, 2605-2610);
 - `ui/types.ts` (line 1435) and `ui/tools.ts`'s exports (lines 1068, 1438-1439, 1737, 2749, 2751, 2780-2782);
 - the test name of #6 (lines 1147, 1701);
-- "18" golden recordings (lines 72, 1168).
+- "18" golden recordings (lines 72, 1168);
+- `changed` (line 470, lines 1553-1554; #13);
+- B25's step (lines 1266, 1274-1275, 1771; #14).
 
 ### 1.3 Behaviour the design does not state
 
 | # | Found | Where | Evidence |
 |---|---|---|---|
-| 10 | **A stdio server whose Canvas entry has `headers`, or (since B30) an `auth` that sends a header, reads as changed forever.** Its `McpServerInfo.headers` is non-empty. `mcp_block` stores only `command`, `args` and `env` for stdio, so `GET /mcp` answers `headers: []`. `mcpRows` therefore marks the row `changed` and it shows **Update**. Update `PUT`s the same block, D2 writes no version for an unchanged row, and the row stays changed. The SDK fork's `MCPServer` accepts `headers` and `auth` on a stdio entry. The bridge forwards neither to a stdio server, so a conversation is unaffected. | `page/context.ts:168-173`; `mcp/grants.py:76`; `ui/tools.ts:96-100`; SDK fork `mcp/config.py:497-563` | [run: `PUT /mcp` of a stdio body with `headers: ["Authorization"]` → the block has no headers, `GET /mcp` → `[]`, the resend → 200 at version 1; `mcpRows` on the frame's reading of `{command, auth: bearer}` and of `{command, headers}` → `changed: true`, and of `{command}` → `false`; read: the SDK model] |
-| 11 | **The live job's evidence step checks for one secret of two.** On a failure, the step that guards the upload of every dr home (D4's B25) greps for `$OPENAI_API_KEY` only. The job now also holds `CLAUDE_CODE_OAUTH_TOKEN`, which D1's merged `live.yml` added. | `.github/workflows/live.yml`, the steps "No dr home holds the model key" and `upload-artifact` | [read] |
-| 12 | **D4 does not merge cleanly with `main`.** `main` (`16d4b3a`) holds D1 and D2's eight PRs, and its `src/` equals D2's `0e0a394`, which D4 contains. A trial merge reports add/add conflicts in `library/api.py` and `library/texts.py`. D3's head `73c6425` conflicts with `main` in the same two files. | §5.1 | [run: `git merge-tree --write-tree`] |
+| 10 | **Resolved at `f553260`.** r3 found that a stdio server whose Canvas entry has `headers`, or an `auth` that sends a header, read as changed forever. The frame still names those headers in `McpServerInfo.headers`, and `mcp_block` still stores none for stdio, so `GET /mcp` answers `headers: []`. `mcpRows` no longer compares them (#13), so the row is not changed. In the mirror case, a remote entry with `args` or `env` is not changed either. A remote entry's extra header still makes its row changed. | `page/context.ts:168-173`; `mcp/grants.py:76`; `ui/tools.ts:80-87, 105` | [run: `mcpRows` on the page's reading of Canvas entries, against a grant as `GET /mcp` answers it: stdio with a bearer `auth`, with `headers` or with neither → `false`, with another variable → `true`; HTTP with `args` and `env` → `false`, with a bearer `auth` → `true`. CI: `tools.test.ts`'s two new cases; `test_a_changed_server_offers_update[a header a stdio block does not keep]`] |
+| 11 | **Resolved at `6e07549` and `68ebe81`.** r3 found that the live job's evidence step checked the OpenAI key only, while the job also holds `CLAUDE_CODE_OAUTH_TOKEN`. It now checks all three secrets the job holds, skips an empty value, and fails closed (#14). When all three are empty, it runs no grep and the upload proceeds. | `.github/workflows/live.yml:38-74` | [run: the step's script, extracted from `live.yml`, under `bash -e` with a scratch `RUNNER_TEMP` and made-up values: clean → exit 0, with `DEEP_REASONER_TOKEN` set, empty or unset; each value planted → exit 1, naming it; no live folder, or a mode-000 file read with `CAP_DAC_OVERRIDE` and `CAP_DAC_READ_SEARCH` dropped → exit 1 (grep exit 2); all three empty → exit 0] |
+| 12 | **Resolved by the stack, and merged.** r3 found that D4 did not merge cleanly with `main`. The stack is cut on D3's split top `c60d6d9`, whose tree is `main` `1f9fe52`'s. A trial merge of its top into `1f9fe52` was clean, and `main` `53c821b` now has the top's tree. The top's tree equals `68ebe81`'s except for the docs and three files, each equal to `main`'s (§5.1). `v1-custom-tools` itself merges into `53c821b` without a conflict. | §5.1 | [run: `git merge-tree --write-tree`, `git diff --stat`, `git rev-parse ^{tree}`] |
 
 ### 1.4 Where the design holds
 
-I compared every behaviour in the design that the code could contradict with the code at `3129da9`. Beyond
+I compared every behaviour in the design that the code could contradict with the code at `68ebe81`. Beyond
 §1.1–§1.3:
-- B1–B29 hold as v5 states them, except B12 (#2), B15's test name (#6), B16 (#7) and B22's size (#9). `mcp/` is
-  unchanged and the D1 and D2 seams are unchanged in substance [read; run: `git diff`];
-- B30 holds for remote servers [run: §7.5];
+- B1–B29 hold as v5 states them, except B12 (#2), B15's test name (#6), B16 (#7), B22's size (#9) and B25's step
+  (#14). `mcp/` is unchanged and the D1 and D2 seams are unchanged in substance [read; run: `git diff`];
+- B30 holds for remote servers [run at 3129da9: §7.5; `context.ts` is unchanged since];
 - every test function the design names exists, except #6's rename, the old capability-test name that the design
   quotes as history, and §10.6's proposed cross-repository test [run: name comparison];
 - Appendix A.1's public surface is `check.py`'s, name for name [read].
 
-r2's #11 (a non-boolean property schema stops a plain-`dr` run) is now in the design (B26's "Left", §14 item 15),
-and the code is unchanged [run: `git diff`]. r2's #13 (D4 on stale D1 and D2) is resolved (§5.1).
+r2's #11 (a non-boolean property schema stops a plain-`dr` run) is in the design (B26's "Left", §14 item 15), and the
+code is unchanged [run: `git diff`]. r2's #13 (D4 on stale D1 and D2) is resolved (§5.1).
 
 ---
 
@@ -220,7 +239,7 @@ The tab shows, top to bottom:
 - **MCP servers (from Canvas's settings)**, under `MCP_SETTINGS_UNKNOWN` when Canvas's settings were not read;
 - `MCP_EXPORT_NOTE`.
 
-[read: `ui/tabs/tools.tsx:72-173`; CI and run: the 17 browser tests of D4's in `test_tools_tab.py`]
+[read: `ui/tabs/tools.tsx:72-173`; CI and run: the 20 browser cases of D4's in `test_tools_tab.py`]
 
 The frame takes one parameter of D4's, `mcp`: a JSON list of `McpServerInfo`. An entry of another shape is dropped,
 and an unreadable value is `null`. [read: `shared/protocol.ts:45-61, 129, 162-186`; CI: `protocol.test.ts`]
@@ -282,7 +301,9 @@ An exception from the factory is `raised`, with the traceback's frames in `tools
 On every path, `_end` sends `SIGKILL` to the child's group **before** reaping it. The report carries the last 2,000
 characters of `printed.txt`, and the folder goes when the `with` block exits. [read: `check.py:221-328`; CI:
 `test_nothing_a_stopped_tool_started_is_left_running`, `test_the_temporary_folder_is_removed[word_count, hang]`,
-`test_printing_cannot_corrupt_the_report`, `test_an_example_that_ends_the_process_says_how_and_the_build_stays_ok`]
+`test_printing_cannot_corrupt_the_report`, `test_an_example_that_ends_the_process_says_how_and_the_build_stays_ok`,
+`test_a_report_line_of_a_phase_not_awaited_is_skipped`, which writes `ready`, `loaded`, `built` and `done` to a pipe
+and hands it to `_Reports` directly, with no child]
 
 ### 4.2 The gate: D2's `PUT /tools/{name}`
 
@@ -303,16 +324,16 @@ order:
 
 `PUT /mcp/{name}` writes `Library.put_tool(name, canonical_yaml(mcp_block(name, body)), source=shim_source(), …)`.
 The block holds `factory: mcp_server`, `name`, `server` and `transport`, and then one of two sets:
-- for stdio: `command`, `args` and `env` (names only), and **no** `headers` (`grants.py:76`; §1 #10);
+- for stdio: `command`, `args` and `env` (names only), and **no** `headers` (`grants.py:76`);
 - for HTTP or SSE: `url`, and `headers` mapped to the variable that `dr` reads each one from,
   `header_env_name(server, header)`, which gives `POSTGRES_AUTHORIZATION` (`:79-80`).
 
-D2 adds `factory_from: tools/<name>.py`. A row is a grant when its factory is `mcp_server` and its source starts with
-`# deep-reasoning MCP shim` (`is_mcp_tool`). That still holds after an export and re-import. A resend of the stored
-snapshot makes no tool version, because D2 writes none for an unchanged row (`library/library.py:438-449`).
-`shim_current` is exact equality with the installed `shim.py`'s text (`grants.py:96`). [read; CI:
-`test_put_mcp_writes_the_block_and_the_shim_and_grants`, `test_put_mcp_resent_unchanged_makes_no_tool_version`,
-`test_an_exported_and_reimported_grant_is_still_a_grant`]
+These two sets are what the frame's `mcpRows` compares (§4.8). D2 adds `factory_from: tools/<name>.py`. A row is a
+grant when its factory is `mcp_server` and its source starts with `# deep-reasoning MCP shim` (`is_mcp_tool`). That
+still holds after an export and re-import. A resend of the stored snapshot makes no tool version, because D2 writes
+none for an unchanged row (`library/library.py:438-449`). `shim_current` is exact equality with the installed
+`shim.py`'s text (`grants.py:96`). [read; CI: `test_put_mcp_writes_the_block_and_the_shim_and_grants`,
+`test_put_mcp_resent_unchanged_makes_no_tool_version`, `test_an_exported_and_reimported_grant_is_still_a_grant`]
 
 ### 4.4 Front to worker: the seam that carries secrets
 
@@ -392,7 +413,7 @@ split across two writes is still caught. A server's arguments are not redacted. 
 - **Plain `dr`** (when `SESSION` is `None`): `spec_from_block` reads each `env` name and each header's variable from
   `os.environ`, and leaves out a variable that is unset, naming it in the stand-in's reason if the server cannot be
   bound. The shim connects, waits `connect_timeout_s`, and binds `Server(granted=None)`. Without the `mcp` package
-  the stand-in says `pip install mcp`. [read: `:457-519`; run: §7.5; CI: `test_an_exported_grant_runs_under_dr`]
+  the stand-in says `pip install mcp`. [read: `:457-519`; run at 3129da9: §7.5; CI: `test_an_exported_grant_runs_under_dr`]
 - **The guard** starts the command in its own process group and polls its parent every 0.5 s. When the parent
   changes, it sends `SIGKILL` to the group. [read: `:522-541`; CI:
   `test_the_guard_ends_its_server_when_its_parent_is_killed`]
@@ -425,12 +446,13 @@ server:
 
 - **`why_not`**: `disabled` or `not_in_profile`.
 
-[read; run: §7.5; CI: `context.test.ts`'s "adds the header names a remote server's auth sends" (7 cases)]
+[read; run at 3129da9: §7.5; CI: `context.test.ts`'s "adds the header names a remote server's auth sends" (7 cases)]
 
-**`mcpRows`** (`ui/tools.ts:82-121`) joins Canvas's list with `GET /mcp` by server name. It returns Canvas's servers in
-order, then the grants gone from Canvas's list, by name. `changed` compares the JSON of `snapshotOf(server, info)`
-and `snapshotOf(server, grant)`, so a header name the grant lacks makes a row changed (§1 #10). With `mcp` null there
-are the grants' rows only, in state `given`. [read; CI: `tools.test.ts`, 22 cases]
+**`mcpRows`** (`ui/tools.ts:91-126`) joins Canvas's list with `GET /mcp` by server name. It returns Canvas's servers in
+order, then the grants gone from Canvas's list, by name. `changed` compares `kept(info)` with `kept(grant)`
+(`:80-87, 105`): for stdio the transport, command, args and env, and for HTTP and SSE the transport, URL and headers,
+which are the two sets a block keeps (§4.3; §1 #13). With `mcp` null there are the grants' rows only, in state
+`given`. [read; run: §1.3 #10; CI: `tools.test.ts`, 24 cases]
 
 **The editor** (`ToolEditor.tsx`):
 - A saved tool's namespace tick `PUT`s the head's YAML, source and version with the new `granted_in`
@@ -450,7 +472,8 @@ are the grants' rows only, in state `given`. [read; CI: `tools.test.ts`, 22 case
 - **Remove** is D2's `DELETE /tools/{name}`.
 - Inherited namespaces show `inheritedNotes` (`:115-117`).
 
-[read; CI: the browser tests of §7.2; §7.4 says which of these lines no test pins]
+[read; CI: the browser tests of §7.2, `test_a_later_tick_keeps_the_granted_settings` and
+`test_an_inherited_server_grant_is_fixed` among them; §7.4 shows each of these lines is now pinned]
 
 ---
 
@@ -459,16 +482,42 @@ are the grants' rows only, in state `given`. [read; CI: `tools.test.ts`, 22 case
 ### 5.1 Where D4 sits
 
 ```text
-3129da9  D4 (v1-custom-tools)
+68ebe81  D4 (v1-custom-tools)
   └ D3's head 73c6425 (v1-decompositions-panel), merged whole
       └ D2's code head 0e0a394 (v1-library-store; its head f54a2aa is two document commits on)
           └ D1's head f7a91f3 (v1-dr-acp)
-main 16d4b3a: D1 and D2's eight PRs; its src/ equals 0e0a394's. D4 has not merged it (merge-base 32c7f61).
+
+main 53c821b  #27 … #33, merged bottom-up, one merge commit each; its tree is c95e059's
+  └ 1f9fe52   D1's, D2's and D3's PRs (#19–#26 are D3's); its tree is D3's split top c60d6d9's
+#27–#33       v1-custom-tools-01-check … -07-mcp-tab, cut on c60d6d9; each PR's base the level below, #27's main
 ```
 
-[run: `git merge-base`, `git rev-list`, `git diff --stat 0e0a394 origin/main -- src` (empty)] The trial merge with
-`main` conflicts in two of D2's files, as D3's head does (§1 #12). D4 adds to them: `api.py` +17 −5 (§1 #2), and
-none to `texts.py`; the `texts.py` conflict is D3's. [run]
+[run: `git merge-base`, `git log --format=%p`, `git rev-parse ^{tree}`; read: the PRs over REST]
+
+The top `c95e059` equals `68ebe81` except for three files and the docs. Each of the three equals `main`'s:
+- `docs/deep-reasoner-contract.md`;
+- `pyproject.toml`'s sdist exclude, `["docs/"]`, where `68ebe81` also excludes `as_built/`;
+- `tests/acp/test_stop.py`, D1's later version with `SIBLING_HOLD_S`.
+
+The design docs and `as_built/` are not in the stack. D3's split top differs from D3's head by the same three files
+and the docs.
+[run: `git diff --stat`]
+
+| PR | Level and head | What it adds | A fix landed here |
+|---|---|---|---|
+| #27 | `01-check` `151fbe3` | Check, its routes and the gate | `151fbe3`, the M1 pin |
+| #28 | `02-mcp-wire` `adb8967` | `mcp/wire.py`: specs, redaction, the seen cache | — |
+| #29 | `03-shim` `cf14ba3` | `mcp/shim.py`, the `mcp` dependency and its lock, the fake servers | — |
+| #30 | `04-grants` `51820ca` | `mcp/grants.py`, `PUT /mcp`, `GET /mcp`, export | — |
+| #31 | `05-acp-servers` `1caa229` | `mcp/session.py`, D1's edits, the golden lines, the MCP live test and `live.yml` | `1caa229`, the evidence step |
+| #32 | `06-tools-tab` `cfcf2c4` | the Tools tab's tool editor, the CodeMirror packages, the built `app.js` and `editor.js` | — |
+| #33 | `07-mcp-tab` `c95e059` | the page's MCP reading, `McpServerRow`, `mcpRows`, the rebuilt `app.js` and page bundle | `28355d4`, the stdio fix; `c95e059`, the M3 and M4 pins |
+
+[read: the PR titles; run: `git diff --name-status` per level] Each fix equals its commit on `v1-custom-tools`:
+`1caa229` is `6e07549` and `68ebe81` squashed, `28355d4` is `f553260`, and `151fbe3` and `c95e059` are `6739e0f`'s
+two halves. The levels between take each fix by a merge from below. [run: `cmp` of the diffs] `v1-custom-tools` now
+merges into `main` `53c821b` without a conflict. Outside `docs/` and `as_built/`, the two differ only in
+`pyproject.toml` and `test_stop.py`. [run: `git merge-tree`]
 
 ### 5.2 deep_reasoner (`d7334ae`), `mcp` (1.30.0)
 
@@ -543,15 +592,18 @@ in plain text (`acp_agent.py:739-821`). For a remote server, `_remote_mcp_header
 | OAuth | `None`, so the bridge logs a warning and sends nothing for it |
 
 An unset secret sends `{}`. [read: `mcp/config.py:131, 153-159, 179-182, 203, 231, 480`] B30's frame mirrors exactly
-this (§4.8), except that it names an `auth` header even when its secret is unset, and that it also applies to stdio
-(§1 #10). [run: §7.5] Both files are the same at `91430aa` and `1f2b52d` [run: `git diff --stat`].
+this (§4.8), with two differences: it names an `auth` header even when its secret is unset, and it also applies to
+stdio, where since `f553260` the names change no row (§1 #1, #13). [run at 3129da9: §7.5; run: §1.3 #10] Both files
+are the same at `91430aa` and `1f2b52d`. [run at 3129da9: `git diff --stat` in the fork]
 
 ### 5.7 What relies on D4
 
 - **D5**, by its design (`8086afb`) and D4's §11.4: E10 re-run with an MCP server bound, the `deep_reasoner` profile's
-  `mcp_server_refs: null` (which D4 reads), and E12's proposed MCP step through Appendix B's test ids. None of this
-  is built in D4. No branch of this repository holds D5's code: `test_notice.py` skips because "D5's dr_app is not
-  installed". [read; run: `git branch -r`, `git grep`]
+  `mcp_server_refs: null` (which D4 reads), and E12's proposed MCP step through Appendix B's test ids. D5's code is on
+  `v1-desktop` (`2a7b0ec`). That branch does not contain D4: its `src/deep_reasoning/` has no `tools/` or `mcp/`, and
+  its merge-base with `68ebe81` is `32c7f61`. Its `dr_app/profile.py:46` writes `"mcp_server_refs": None`, with
+  which D4's page marks every enabled server forwarded (`shared/protocol.ts:57`). At `68ebe81`, `test_notice.py` still skips:
+  "D5's dr_app is not installed". [read; run: `git ls-tree`, `git merge-base`]
 - Nothing else in this repository imports `deep_reasoning.tools` or `deep_reasoning.mcp`. The importers are D4's own
   files (`test_tools_tab.py` among them), six D1 files and D2's `api.py`, all seams of §6.1. [run: `git grep`]
 
@@ -562,8 +614,8 @@ this (§4.8), except that it names an `auth` header even when its secret is unse
 ### 6.1 Wiring
 
 - **`pyproject.toml`**: `mcp>=1.28,<2` joins the runtime dependencies; ruff's `extend-exclude` adds
-  `tests/mcp/fixtures`; the sdist excludes `as_built/` beside `docs/`. Pytest collects `tests/` only, and CI's ruff
-  runs on `src` and `tests`. [read]
+  `tests/mcp/fixtures`; the sdist excludes `as_built/` beside `docs/` on `v1-custom-tools`, and not on `main` (§5.1).
+  Pytest collects `tests/` only, and CI's ruff runs on `src` and `tests`. [read]
 - **D1's files**, +101 −7, as at `f69bc73`:
   - `AGENT_CAPABILITIES` turns on both MCP transports;
   - `McpStatus` joins the run-event union, and the encoder handles it;
@@ -575,11 +627,11 @@ this (§4.8), except that it names an `auth` header even when its secret is unse
 
   D1's tests change too: the harness's `open_session(cwd, mcp_servers)` (+7 −4), the renamed capability test
   (+2 −2), the notice test in `test_encoder.py` (+36), and one line in each of the 20 golden recordings. [run:
-  `git diff --numstat 73c6425 3129da9`]
+  `git diff --numstat 73c6425 68ebe81`]
 - **D2's `api.py`**, +17 −5: `accept_check_failure`, `_parse`'s `sentence`, `require_check` in `put_tool`,
   `*tool_routes(lib, route)`, and the two imports inside `create_app`. `tests/library/test_ui.py` requires the editor
   chunk (+3). [run: `git diff`]
-- **D3's project**, +1,457 −30 in 17 files:
+- **D3's project**, +1,462 −30 in 17 files:
   - `tabs/tools.tsx` is extended;
   - `api.ts`, `types.ts`, `texts.ts`, `styles.css`, `shared/protocol.ts`, `page/context.ts`, `page/mount.ts` and
     `fields.tsx` are edited;
@@ -590,7 +642,7 @@ this (§4.8), except that it names an `auth` header even when its secret is unse
 
   [run: `git diff --numstat`]
 - **CI.** D4 leaves `ci.yml` as D3 has it [run: `git diff`]. `live.yml` runs `pytest -m live` and keeps a failed
-  run's homes (B25; §1 #11). [read]
+  run's homes, after a step that checks them for every secret the job holds (B25; §1 #14). [read; run: §1.3 #11]
 
 ### 6.2 Size
 
@@ -601,30 +653,52 @@ committed]
 |---|---|---|---|
 | r2: `f69bc73` over `d4e9cd3`, the design's way | 3,399 | 3,778 | 7,177 |
 | Before the refactor: `01abb88` over `a7a50db`, the design's way | 3,375 | 3,840 | 7,215 |
-| **Now: `3129da9` over `73c6425`, the design's way** | **3,309** | **3,728** | **7,037** |
+| r3: `3129da9` over `73c6425`, the design's way | 3,309 | 3,728 | 7,037 |
+| **Now: `68ebe81` over `73c6425`, the design's way** | **3,314** | **3,807** | **7,121** |
 | Before the refactor, the task row's way (Lines Before) | 3,393 | 4,399 | 7,792 |
-| **Now, the task row's way (Lines After)** | **3,327** | **4,287** | **7,614** |
+| r3, the task row's way (Lines After) | 3,327 | 4,287 | 7,614 |
+| **Now, the task row's way** | **3,352** | **4,366** | **7,718** |
 
-The two ways differ only in three things the design leaves out: `tests/mcp/fixtures/shim_v1.py` (539 lines),
-`.github/workflows/live.yml` (+18) and the golden recordings (+20). The Refactorer's figures, 3,393 → 3,327 and
-4,399 → 4,287, are the task row's way, and they reproduce. [run]
+The two ways differ only in three things the design leaves out:
+- `tests/mcp/fixtures/shim_v1.py`, 539 lines;
+- `.github/workflows/live.yml`, +38 (it was +18);
+- the golden recordings, +20.
+
+The stack's top over `main` `1f9fe52` measures 3,352 and 4,366 the task row's way, the same as `68ebe81` over D3's
+head. [run]
 
 Now, by part, the design's way:
 
 | Part | Code | Tests |
 |---|---|---|
-| Check: `check.py` 369, `check_child.py` 126, `texts.py` 100 | 595 | 563 (`test_check.py` 460, fixtures 79, conftest 24) |
+| Check: `check.py` 369, `check_child.py` 126, `texts.py` 100 | 595 | 573 (`test_check.py` 470, fixtures 79, conftest 24) |
 | Routes and the gate: `routes.py` 86; D2's `api.py` +17 | 103 | 333 (`test_routes.py`) |
 | MCP: `shim.py` 541, `session.py` 244, `wire.py` 163, `grants.py` 98 | 1,046 | 1,296 (`test_shim` 412, `test_session` 328, `test_grants` 167, `test_wire` 149, fake servers 217, conftest 23) |
 | D1's files | 101 | 485 (`tests/mcp/test_acp.py` 410, D1's test files 45, `tests/processes.py` 30) |
 | Export and live tier | — | 228 (`test_export.py` 60, the two live tests 89 and 79) |
-| The frame | 1,457 | 823 (vitest 495, browser 325, `test_ui.py` 3) |
+| The frame | 1,462 | 892 (vitest 534, browser 355, `test_ui.py` 3) |
 | `pyproject.toml`, the two `__init__.py` | 7 | |
-| **Total** | **3,309** | **3,728** |
+| **Total** | **3,314** | **3,807** |
 
-Against r2, Check is −25, the routes and gate −47 (the route cut), and the frame −18 (B30 +23, refactor −41). In the
-tests, `test_acp.py` is −85 (the `converse` fixture) and the frame +35 (B30's 62 vitest lines, browser −27). At the
-workspace's ~300 lines an hour, 7,037 lines is about 23.5 h at Gate C; 7,614 is about 25 h.
+Against r3, the code is +5 (`kept`) and the tests +79: `test_check.py` +10 (M1's pin), `test_tools_tab.py` +30
+(M3's and M4's pins, the stdio parameter) and `tools.test.ts` +39 (the per-transport table). At the workspace's ~300 lines an hour, 7,121 lines is about 23.7 h
+at Gate C; 7,718 is about 25.7 h.
+
+**Per level**, the design's way, each level over the one below:
+
+| PR | Level | Code | Tests | GitHub's count, all files |
+|---|---|---|---|---|
+| #27 | `01-check` | 616 | 811 | +1,427 −1 |
+| #28 | `02-mcp-wire` | 165 | 149 | +314 −0 |
+| #29 | `03-shim` | 544 | 577 (1,116 with `shim_v1.py`) | +1,797 −1 |
+| #30 | `04-grants` | 189 | 454 | +643 −11 |
+| #31 | `05-acp-servers` | 345 (383 with `live.yml`) | 924 (944 with the golden recordings) | +1,327 −34 |
+| #32 | `06-tools-tab` | 925 | 330 | +1,509 −123 |
+| #33 | `07-mcp-tab` | 542 | 565 | +1,361 −203 |
+
+[run: `git diff --numstat` per level; read: the PRs' `additions` and `deletions` over REST] The levels sum to 7,136
+the design's way, 15 more than the whole: a line added at one level and changed at a later one counts at both. The
+largest level, #29, is 1,121 lines the design's way.
 
 ---
 
@@ -634,46 +708,71 @@ workspace's ~300 lines an hour, 7,037 lines is about 23.5 h at Gate C; 7,614 is 
 
 | Run | Conditions | Commit | Result |
 |---|---|---|---|
-| CI [37179695984](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37179695984), job `test` | push; ubuntu, Python 3.12.3, pytest 9.1.1; `ruff check`, `ruff format --check` first | `3129da9` | **693 passed, 81 deselected, 558.88 s**: `tests/acp` 241, `tests/library` 303, `tests/mcp` 80, `tests/tools` 69. Ruff: "All checks passed!" and "133 files already formatted" [CI] |
-| the same run, job `canvas-app` | Node 22.23.3: `npm ci`, typecheck, prettier, vitest, build, the committed-build check, then Playwright Chromium against a real `dr-library serve` | `3129da9` | vitest **212 passed, 1 skipped** (12 files); build `app.js` 167.19 kB, `editor.js` 348.48 kB (gzip 117.55), page 9.36 kB; committed build matches; browser **73 passed, 1 skipped, 197.54 s** (`test_tools_tab.py` 20; the skip is D3's `test_notice.py`, "D5's dr_app is not installed") [CI] |
-| CI [37177530471](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37177530471) | push, both jobs | `01abb88` (the merge) | **693 passed, 81 deselected, 387.14 s**, with the same D4 counts; vitest 210 passed, 1 skipped (11 files); `app.js` 167.62 kB; browser 73 passed, 1 skipped, 199.16 s [CI] |
+| CI [37186335030](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37186335030) | push to `v1-custom-tools`; both jobs | `68ebe81` | test **694 passed, 84 deselected, 524.75 s**; vitest **214 passed, 1 skipped**; browser **76 passed, 1 skipped, 204.78 s** [CI] |
+| CI [37184460145](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37184460145), job `test` | push to `fix/d4-r3`; ubuntu, Python 3.12.3, pytest 9.1.1; `ruff check`, `ruff format --check` first | `68ebe81` | **694 passed, 84 deselected, 365.63 s**: `tests/acp` 241, `tests/library` 303, `tests/mcp` 80, `tests/tools` 70. Ruff: "All checks passed!" and "133 files already formatted" [CI] |
+| the same run, job `canvas-app` | Node 22.23.3: `npm ci`, typecheck, prettier, vitest, build, the committed-build check, then Playwright Chromium against a real `dr-library serve` | `68ebe81` | vitest **214 passed, 1 skipped** (12 files); build `app.js` 167.27 kB, `editor.js` 348.48 kB; committed build matches; browser **76 passed, 1 skipped, 147.42 s** (`test_tools_tab.py` 23; the skip is D3's `test_notice.py`, "D5's dr_app is not installed") [CI] |
 | **live [37180265916](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37180265916)** | `workflow_dispatch` on `v1-custom-tools`, created 05:34:07 UTC; job 05:34:11–05:36:03; `OPENAI_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` secrets; Claude Code 2.1.285; `pytest -m live -v -rA --basetemp=…` | `3129da9` | **success: 7 passed, 639 deselected, 92.95 s**. The evidence and upload steps were skipped, as they are on success. [CI] |
-| local, D4's suites | `DR_BETA_CHECKOUT=/home/user/deep_reasoner_beta uv run pytest tests/tools tests/mcp tests/library/test_api.py`; 4 cores, load average 3–4 | `3129da9` | **189 passed, 2 deselected, 213.79 s**: `test_check` 42, `test_routes` 27, `test_acp` 16, `test_export` 1, `test_grants` 17, `test_session` 17, `test_shim` 23, `test_wire` 6, `test_api` 40. The slowest are `test_check_and_make_tools_agree[hang]` 14.34 s and `test_a_hanging_factory_is_stopped_at_the_build_limit` 12.65 s. No failure, so nothing was rerun. [run] |
-| local, browser | `CI=true uv run pytest -m browser tests/canvas_app`, preinstalled Chromium | `3129da9` | **73 passed, 1 skipped, 237.63 s**, the same skip as CI; `test_tools_tab.py` 20 passed [run] |
-| local, frame | in `canvas-app/`: `npm ci`, `npx tsc --noEmit`, `npx prettier --check .`, `DR_BETA_CHECKOUT=… npx vitest run`, `npm run build` | `3129da9` | `tsc` and prettier exit 0; vitest **212 passed, 1 skipped**; the build leaves `git status` clean, so it equals the committed `ui/` and `dist/` [run] |
+| local, D4's suites | `DR_BETA_CHECKOUT=/home/user/deep_reasoner_beta uv run pytest tests/tools tests/mcp tests/library/test_api.py`; 4 cores, load average 4–9 | `68ebe81` | **190 passed, 2 deselected, 224.70 s**: `test_check` 43, `test_routes` 27, `test_acp` 16, `test_export` 1, `test_grants` 17, `test_session` 17, `test_shim` 23, `test_wire` 6, `test_api` 40. The slowest are `test_check_and_make_tools_agree[hang]` 14.72 s and `test_a_hanging_factory_is_stopped_at_the_build_limit` 12.82 s. No failure, so nothing was rerun. `ruff check` and `ruff format --check` on `src` and `tests` pass. [run] |
+| local, browser | `CI=true uv run pytest -m browser tests/canvas_app`, preinstalled Chromium | `68ebe81` | **76 passed, 1 skipped, 283.54 s**, the same skip as CI; `test_tools_tab.py` 23 passed [run] |
+| local, frame | in `canvas-app/`: `npm ci`, `npx tsc --noEmit`, `npx prettier --check .`, `DR_BETA_CHECKOUT=… npx vitest run`, `npm run build` | `68ebe81` | `tsc` and prettier exit 0; vitest **214 passed, 1 skipped**. The skip is the CI-only guard "has deep_reasoner_beta's configs in CI"; with `DR_BETA_CHECKOUT` set, the round trip over deep_reasoner_beta's configs ran and passed. The build leaves `git status` clean, so it equals the committed `ui/` and `dist/` (`app.js` 167.27 kB, `editor.js` 348.48 kB, page 9.36 kB) [run] |
+
+**The stack, per level.** Every run below is `success` in both jobs. From #28 up, each PR has two `pull_request`
+runs on the same merge commit (for #28, `f3766d1` both times). [CI]
+
+| PR | Head | push run | pull_request runs | test: passed, deselected | vitest | browser |
+|---|---|---|---|---|---|---|
+| base | `main` `1f9fe52` | 37181971014 | — | 541, 62 | 166 + 1 skipped | 56 + 1 skipped |
+| #27 | `151fbe3` | 37186335473 | 37186338259 | 591, 63 | 166 + 1 | 56 + 1 |
+| #28 | `adb8967` | 37186335322 | 37186338354, 37186338770 | 597, 63 | 166 + 1 | 56 + 1 |
+| #29 | `cf14ba3` | 37186335061 | 37186338275, 37186338547 | 620, 63 | 166 + 1 | 56 + 1 |
+| #30 | `51820ca` | 37186336491 | 37186337719, 37186337630 | 658, 63 | 166 + 1 | 56 + 1 |
+| #31 | `1caa229` | 37186335342 | 37186338684, 37186338979 | 694, 64 | 166 + 1 | 56 + 1 |
+| #32 | `cfcf2c4` | 37186334875 | 37186338549, 37186338988 | 694, 75 | 174 + 1 | 67 + 1 |
+| #33 | `c95e059` | 37186335307 | 37186338108, 37186338790 | 694, 84 | 214 + 1 | 76 + 1 |
+
+The Python suite is whole by #31; #32 and #33 add frame tests. The deselected count rises by D4's two live tests
+(#27, #31) and its 20 browser cases (#32 11, #33 9). `main` `53c821b`'s push run 37187128304 was still running when I
+read it. [CI]
 
 **The live run, D4's two tests.** The MCP test passed at 05:35:53.90, ≈32.5 s after the previous PASSED line, and the
 tool test at 05:36:01.58, ≈7.7 s after that. [CI] The tool test writes through `create_app`'s `PUT /tools/course_credits`,
 so the gate and a real Check run, and then asserts that a Check of the same body says `built`. Both tests open the
 starter Library, whose model is gpt-6-luna (`library/starter.yaml:3`). [read: `tests/tools/test_live.py:43-79`,
-`tests/mcp/test_live.py`] Both tests are unchanged since `f69bc73` [run: `git diff`]. The other five are D1's three,
-D2's one and D1's
+`tests/mcp/test_live.py`] The other five are D1's three, D2's one and D1's
 `tests/acp/test_claude_code.py::test_live_claude_code_on_sonnet_answers_through_acp_and_each_snippet_is_a_cell`, and
 all passed. The log names no model and no token cost. [CI]
 
+**Why it stands at `68ebe81`.** Between `3129da9` and `68ebe81`, `src/` differs only in the built `app.js`, which
+none of the five live test files loads; the changed tests (`test_check.py`, `test_tools_tab.py`, `tools.test.ts`)
+are none of them live; the lock is unchanged; and in `live.yml` only the evidence step and the upload's condition
+changed, which run after a failure only and were skipped in 37180265916. [run: `git diff --stat`, `git grep`] No live
+run has been made since. [CI: `gh run list`]
+
 ### 7.2 Which tests carry D4
 
-Python: 149 deterministic cases and 2 live ones, spread as in §7.1. Beyond those, D1's `test_encoder.py` carries the
-notice test (3 cases) and D2's `test_ui.py` requires the editor chunk. [run]
+Python: 150 deterministic cases and 2 live ones, spread as in §7.1. Beyond those, D1's `test_encoder.py` carries the
+notice test (3 cases) and D2's `test_ui.py` requires the editor chunk. Together these are the 153 cases the stack adds
+to `main`'s 541. [run; CI]
 
-The browser tier has 17 of D4's cases in `test_tools_tab.py`; D3's three are the safety notice ×2 and the tool list.
-[run: `--collect-only`]
+The browser tier has 20 of D4's cases in `test_tools_tab.py`; D3's three are the safety notice ×2 and the tool list.
+[run: `--collect-only`, 23 items]
 
-vitest: `tools.test.ts` has 22 cases, all D4's. D3's files hold 24 more of D4's:
+vitest: `tools.test.ts` has 24 cases, all D4's. D3's files hold 24 more of D4's:
 - `context.test.ts`: `mcpServersFromSettings` 11, B30's 7 among them, and `readMcpServers` 3;
 - `api.test.ts`: 5;
 - `protocol.test.ts`: 4;
 - `mount.test.ts`: 1.
 
-[run: vitest's JSON report]
+[run: vitest's JSON report; those four files are unchanged since `3129da9`]
 
 The design's property table (Gate B section) still maps each property to tests that exist, apart from §1 #6's
-rename. [run: name comparison]
+rename. It does not name the three pins, `test_a_changed_server_offers_update`'s stdio parameter, or `tools.test.ts`'s
+two new cases. [run: name comparison]
 
 ### 7.3 E9 at this commit
 
-`check_tool` ran on the committed fixtures, one at a time, with the default limits, at load average about 4. [run:
-probe script]
+`check_tool` ran on the committed fixtures, one at a time, with the default limits, at load average about 4. [run at
+3129da9: probe script] `check.py`, `check_child.py` and the fixtures are byte-identical at `68ebe81` [run: `git diff`].
 
 | Case | Outcome | Save | Wall time |
 |---|---|---|---|
@@ -690,38 +789,40 @@ probe script]
 | `hang.py` | `timeout`, "longer than 10 s" | anyway | 11.37 s |
 
 Every outcome and every "save" is the same as r2 measured at `f69bc73`. `test_check_and_make_tools_agree` (8 cases)
-passed locally and in CI. [run; CI]
+passed at `68ebe81`, locally and in CI. [run; CI]
 
 ### 7.4 What the refactor removed from test coverage
 
 **No test was cut.** The test functions in `tests/tools/`, `tests/mcp/` and `test_tools_tab.py` number 128 at
-`f69bc73` and at `3129da9`, and the one difference is the rename of §1 #6. The per-file case counts in CI at `3129da9`
-and at `01abb88` equal those r2 read at `f69bc73`. [run: `git grep` of `def test_`; CI] The
-refactor's test commits move helpers into conftests and a fixture. Reading their diffs, every assertion stands.
-`test_acp.py`'s unused `START_S` went, and the three crash tests share a function-scoped `crashed` fixture, so each
-still has its own conversation. [read]
+`f69bc73` and at `3129da9`, and the one difference is the rename of §1 #6. At `68ebe81` they number 131: the three
+pins of `6739e0f`. [run: `git grep` of `def test_`] The refactor's test commits move helpers into conftests and a
+fixture. Reading their diffs, every assertion stands. `test_acp.py`'s unused `START_S` went, and the three crash tests
+share a function-scoped `crashed` fixture, so each still has its own conversation. [read]
 
-**What the code changes left unpinned.** I ran one temporary edit per probe, ran the tests named, and reverted.
-`git status` was clean after each. [run]
+**The probes.** For each probe I made one temporary edit, ran the tests named, then reverted the source and the built
+files. `git status` was clean after each. M1 ran `tests/tools`. M3, M4 and M5 rebuilt the frame and ran
+`test_tools_tab.py`'s 23 cases; M5 also ran `tools.test.ts`. [run]
 
-| Probe | Edit | Tests run | Result | What it shows |
-|---|---|---|---|---|
-| **M1**, the dropped report lines | `_Reports.get` returns the next line whatever its phase (`check.py:241`, `if True:`) | `tests/tools` and `test_acp.py`'s tool-through-the-API test, at `3129da9` | **survived**: 70 passed | Since `e5583e6` the child writes only the lines it is asked for, in order, so the phase filter skips nothing and no test needs it. |
-| M1 before the cut | the same edit at `01abb88`, where the child still wrote `loaded` and `done` | `tests/tools`, in a scratch worktree (removed) | **caught**: 26 failed, 43 passed (`KeyError: 'told'`: `loaded` was taken for the build's answer) | Before the cut, every Check past `ready` exercised the filter. |
-| **M3**, a refactored line (`0100905`) | a later tick on an MCP row sends Canvas's snapshot instead of the grant's stored one (`McpServerRow.tsx:89`) | `test_tools_tab.py`, after a rebuild | **survived**: 20 passed | No test ticks a granted row whose Canvas snapshot differs from the stored one. Only **Update** should change a snapshot, and nothing pins that a tick does not. The same holds before `0100905` [read: the same tests]. |
-| **M4**, a refactored line (`58dd18f`) | an MCP row passes no inherited notes (`McpServerRow.tsx:116`) | `test_tools_tab.py`, after a rebuild | **survived**: 20 passed | No browser test grants an MCP server to a parent namespace and looks at the child's checkbox. |
-| C1, a control | the same edit in the tool editor (`ToolEditor.tsx:204`) | `test_tools_tab.py`, after a rebuild | **caught**: `test_an_inherited_grant_is_fixed` | The probe method detects a change the browser tier pins. |
+| Probe | Edit | At `68ebe81` | r3, at `3129da9` |
+|---|---|---|---|
+| **M1**, the phase filter | `_Reports.get` returns the next line whatever its phase (`check.py:241`, `if True:`) | **caught**: 1 failed, 69 passed. The failure is `test_a_report_line_of_a_phase_not_awaited_is_skipped`. | survived: 70 passed. The same edit at `01abb88`, before the child stopped writing `loaded` and `done`, failed 26. |
+| **M3**, `0100905`'s line | a later tick on an MCP row sends Canvas's snapshot instead of the grant's stored one (`McpServerRow.tsx:89`, `...snapshot`) | **caught**: 1 failed, 22 passed. `test_a_later_tick_keeps_the_granted_settings` got version 2 and Canvas's variable, where it expects 1 and `OLD_TOKEN`. | survived: 20 passed |
+| **M4**, `58dd18f`'s line | an MCP row passes no inherited notes (`McpServerRow.tsx:116`, `{}`) | **caught**: 1 failed, 22 passed. `test_an_inherited_server_grant_is_fixed`: "Locator expected to be checked". | survived: 20 passed |
+| **M5**, new: `f553260`'s comparison | `kept` compares all six fields whatever the transport, which is r3's comparison (`ui/tools.ts:84-86`) | **caught**. vitest: 2 failed, 22 passed, namely the stdio-header case and the remote args-and-env case. Browser: 1 failed, 22 passed, namely `test_a_changed_server_offers_update[a header a stdio block does not keep]`, whose row is still changed after **Update**. | — |
+| C1, a control | the same edit as M4 in the tool editor (`ToolEditor.tsx:204`) | not repeated | caught: `test_an_inherited_grant_is_fixed` |
+
+The M1 pin feeds `_Reports` a hand-written pipe and never runs a child (§4.1). [read]
 
 **The markup.** I re-ran the Refactorer's DOM probe
-(`/tmp/claude-0/-home-user/f8e56d4d-b822-5c27-9bd1-fe1ab3886dee/scratchpad/d4r/dom_probe.py`) myself. It renders 28
-states of the Tools tab against a real `dr-library serve`, with ids and timings normalized. It ran at `01abb88`, in a
-scratch worktree with its own venv, and at `3129da9`. The two outputs are byte-identical, and both equal the
-Refactorer's own baseline and final files. [run: `cmp`]
+(`/tmp/claude-0/-home-user/f8e56d4d-b822-5c27-9bd1-fe1ab3886dee/scratchpad/d4r/dom_probe.py`) at `68ebe81`. It
+renders 28 states of the Tools tab against a real `dr-library serve`, with ids and timings normalized. Its output is
+byte-identical to r3's at `3129da9`, which equalled the output at `01abb88` and the Refactorer's baseline and final
+files. So `f553260` changes none of those 28 states. [run: `cmp`]
 
 ### 7.5 B30 and the stdio case, run
 
 - **The frame.** `mcpServersFromSettings` ran through `vite-node` on one remote server per strategy, each with its own
-  header `X-Trace`. The results [run]:
+  header `X-Trace`. The results [run at 3129da9; `context.ts` is unchanged since]:
   - bearer, basic, `api_key` without a `header_name`, and `api_key` with `header_name: ""` → `["X-Trace",
     "Authorization"]`;
   - `api_key` with `header_name: "X-Api-Key"` → `["X-Trace", "X-Api-Key"]`;
@@ -732,8 +833,8 @@ Refactorer's own baseline and final files. [run: `cmp`]
 - **The backend and `dr`.** Through `create_app`, `PUT /mcp/postgres` with headers `["X-Trace", "Authorization"]`
   stores `{"X-Trace": "POSTGRES_X_TRACE", "Authorization": "POSTGRES_AUTHORIZATION"}`. `spec_from_block` with only
   `POSTGRES_AUTHORIZATION="Bearer s3cret"` in the environment sends `{"Authorization": "Bearer s3cret"}` and names
-  `POSTGRES_X_TRACE` missing. [run]
-- **The stdio case.** See §1 #10. [run]
+  `POSTGRES_X_TRACE` missing. [run at 3129da9; the Python is unchanged since]
+- **The stdio case.** See §1.3 #10: the row is no longer changed. [run]
 
 ### 7.6 Named in the design, not run by D4
 
@@ -750,14 +851,17 @@ dicts (`test_wire.py`). [read]
    B30's design entry says it ran that route; I did not. [read]
 2. **`TemporaryDirectory`'s permission reset** (§1 #3) was read in the 3.12.3 stdlib and not run: as root, a read-only
    folder does not block removal.
-3. **The live tier** ran in CI only. Its log records no model name and no token cost; gpt-6-luna is the starter
-   profile's model, read in the code. The brief placed the dispatch at about 05:25 UTC; the only `live.yml` run on
-   `v1-custom-tools` after `f69bc73` is 37180265916, created 05:34:07 UTC.
-4. **§1 #11**, the evidence step and the Claude Code token, was read in `live.yml`. I did not check whether a Claude
-   Code test's home can hold the token.
-5. **macOS**: nothing ran there, not the guard, not `check_env`'s password database, not the group kill.
-6. **Remote servers** ran only against the local fake servers over loopback. OAuth servers and slow networks did not.
-7. **The read claims that matter most:**
+3. **The live tier** ran in CI only, at `3129da9`. I did not dispatch it at `68ebe81`, and no one has; §7.1 says why
+   it stands. Its log records no model name and no token cost; gpt-6-luna is the starter profile's model, read in the
+   code.
+4. **The evidence step** (§1 #14) ran here, extracted from `live.yml`, not on GitHub's runner: no live run has failed
+   since `6e07549`, so the step has not run there. I ran it as root with two capabilities dropped, not as the runner's
+   user.
+5. **The stack** ran only in CI. I ran no level locally, and the live tier ran at no level. `main` `53c821b`'s CI run
+   was in progress when I read it.
+6. **macOS**: nothing ran there, not the guard, not `check_env`'s password database, not the group kill.
+7. **Remote servers** ran only against the local fake servers over loopback. OAuth servers and slow networks did not.
+8. **The read claims that matter most:**
    - §4.4, that secrets never enter the worker's environment: the tests check the logs and the transcript, not
      `/proc/<worker>/environ`;
    - §4.7, that `library.path.parent` is `$DR_HOME`;
