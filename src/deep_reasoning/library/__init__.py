@@ -8,6 +8,7 @@ importing this package, LibraryCatalog or library_path does not.
 import importlib
 from typing import Any
 
+from deep_reasoning.library.catalog import LIBRARY_FILE, LibraryCatalog, library_path
 from deep_reasoning.library.records import (
     DecompositionMeta,
     DecompositionRecord,
@@ -31,12 +32,14 @@ from deep_reasoning.library.records import (
 _LAZY = {"Library": "library", "Effective": "effective"}
 
 __all__ = [
+    "LIBRARY_FILE",
     "DecompositionMeta",
     "DecompositionRecord",
     "Effective",
     "HistoryEntry",
     "ImportReport",
     "Library",
+    "LibraryCatalog",
     "LibraryConflict",
     "LibraryError",
     "LibraryImportError",
@@ -50,6 +53,7 @@ __all__ = [
     "ProfileRecord",
     "ToolRecord",
     "ValidationResult",
+    "library_path",
 ]
 
 
