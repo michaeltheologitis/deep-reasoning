@@ -1,21 +1,25 @@
-// Tools (§2.5; D4 §2): the safety banner, always first, D4's risk line, and your own tools
-// with their editor.
+// Tools (§2.5; D4 §2): the safety banner, always first, D4's risk line, your own tools with
+// their editor, and the MCP servers of Canvas's settings with their grants.
 
 import { useState } from "preact/hooks";
 
 import { getEffective, getMcp, getNamespaces, getTools } from "../api";
+import { McpServerRow, mcpTestId } from "../components/McpServerRow";
 import { ToolEditor } from "../components/ToolEditor";
 import { Banner } from "../components/fields";
 import { SafetyNotice } from "../components/notices";
 import { resolved, useLoaded } from "../load";
 import {
+  MCP_EXPORT_NOTE,
+  MCP_SERVERS,
+  MCP_SETTINGS_UNKNOWN,
   NEW_TOOL,
   NO_TOOLS,
   TOOLS_RISK,
   TOOL_LABELS,
   YOUR_TOOLS,
 } from "../texts";
-import { splitTools } from "../tools";
+import { mcpRows, splitTools } from "../tools";
 import type {
   Effective,
   McpGrant,
@@ -146,6 +150,26 @@ export function ToolsTab(props: TabProps) {
           ))}
         </ul>
       )}
+      <h3>{MCP_SERVERS}</h3>
+      {props.params.mcp === null && (
+        <Banner kind="warning" testId="dr-mcp-unknown">
+          {MCP_SETTINGS_UNKNOWN}
+        </Banner>
+      )}
+      <ul class="plain">
+        {mcpRows(props.params.mcp, data.grants).map((row) => (
+          <McpServerRow
+            key={mcpTestId(row.server)}
+            row={row}
+            namespaces={data.namespaces}
+            effective={data.effective}
+            takenNames={new Set(data.tools.map((t) => t.name))}
+            onChanged={loaded.reload}
+            onBackendLost={props.onBackendLost}
+          />
+        ))}
+      </ul>
+      <p class="note">{MCP_EXPORT_NOTE}</p>
     </section>
   );
 }

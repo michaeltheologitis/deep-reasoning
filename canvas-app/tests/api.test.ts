@@ -159,6 +159,34 @@ describe("the requests", () => {
       "../tools/word%20count/check",
       ["yaml", "source", "example"],
     ],
+    [
+      "putMcp",
+      () =>
+        api.putMcp("github", {
+          server: "github",
+          transport: "stdio",
+          command: "npx",
+          args: [],
+          url: null,
+          env: ["GITHUB_TOKEN"],
+          headers: [],
+          granted_in: ["router"],
+          base_version: 0,
+        }),
+      "PUT",
+      "../mcp/github",
+      [
+        "server",
+        "transport",
+        "command",
+        "args",
+        "url",
+        "env",
+        "headers",
+        "granted_in",
+        "base_version",
+      ],
+    ],
   ])(
     "%s sends JSON with exactly D2's fields",
     async (_, request, method, url, keys) => {
