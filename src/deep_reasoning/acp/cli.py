@@ -13,6 +13,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+DEFAULT_SPEND_CAP_USD = 5.0  # per conversation, through the key proxy
+PROXY_STOP_S = 0.5  # inside D1's shutdown budget
+
 
 @dataclass(frozen=True)
 class Options:
@@ -23,6 +26,8 @@ class Options:
     flat: bool  # --flat: never send sub-agent sessions, whatever the client advertises
     heartbeat_s: float  # --heartbeat SECONDS, default 60
     log_level: str  # --log-level, default WARNING
+    key_proxy: bool  # off with --no-key-proxy: the worker gets the keys themselves
+    spend_cap_usd: float  # --spend-cap-usd USD, default 5
 
 
 def parse_options(argv: Sequence[str] | None) -> Options:
@@ -40,9 +45,27 @@ def parse_options(argv: Sequence[str] | None) -> Options:
     )
     parser.add_argument("--heartbeat", type=float, default=60.0, metavar="SECONDS")
     parser.add_argument("--log-level", default="WARNING")
+    parser.add_argument(
+        "--no-key-proxy",
+        action="store_true",
+        help="give the worker the provider keys themselves (debugging)",
+    )
+    parser.add_argument(
+        "--spend-cap-usd",
+        type=float,
+        default=DEFAULT_SPEND_CAP_USD,
+        metavar="USD",
+        help="what one conversation may spend through the key proxy (default 5)",
+    )
     args = parser.parse_args(argv)
     return Options(
-        args.config, args.home, args.flat, args.heartbeat, args.log_level.upper()
+        args.config,
+        args.home,
+        args.flat,
+        args.heartbeat,
+        args.log_level.upper(),
+        not args.no_key_proxy,
+        args.spend_cap_usd,
     )
 
 
@@ -81,7 +104,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     from deep_reasoning.acp.agent import DrAcpAgent
     from deep_reasoning.acp.catalog import ConfigCatalog
     from deep_reasoning.acp.costs import PriceTable
-    from deep_reasoning.acp.route import DirectRoute
+    from deep_reasoning.acp.proxy import KeyProxy, ProxyRoute, SpendLedger
+    from deep_reasoning.acp.route import DirectRoute, ModelRoute
     from deep_reasoning.acp.runlog import Home
     from deep_reasoning.acp.wire import ClientMode, Outbox, serve
     from deep_reasoning.library.catalog import LibraryCatalog, library_path
@@ -93,7 +117,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if options.config is not None
         else LibraryCatalog(library_path(options.home))
     )
-    route, prices = DirectRoute(), PriceTable.load(home)
+    prices = PriceTable.load(home)
+    proxy = None
+    route: ModelRoute = DirectRoute()
+    if options.key_proxy:
+        ledger = SpendLedger(home, options.spend_cap_usd)
+        proxy = KeyProxy(ledger=ledger, prices=prices, home=home)
+        route = ProxyRoute(proxy, os.environ)
 
     def make_agent(outbox: Outbox, client: ClientMode) -> DrAcpAgent:
         return DrAcpAgent(
@@ -106,5 +136,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             heartbeat_s=options.heartbeat_s,
         )
 
-    asyncio.run(serve(make_agent, acp_out_fd=acp_fd, flat=options.flat))
+    try:
+        asyncio.run(serve(make_agent, acp_out_fd=acp_fd, flat=options.flat))
+    finally:
+        if proxy is not None:
+            proxy.stop(PROXY_STOP_S)
     return 0

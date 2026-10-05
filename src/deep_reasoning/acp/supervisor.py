@@ -102,12 +102,14 @@ class RunHandle:
         """Create the run's log and worker, and start its pump and heartbeat.
 
         RunLog.create; append run.start (with after); grant = route.grant(session=...,
-        run=run_id, upstream=source.client); spawn the worker: sys.executable -m
+        run=run_id, upstream=source.client, tool_upstreams=source.tool_clients); spawn
+        the worker: sys.executable -m
         deep_reasoning.acp.worker --control-fd C --events-fd E, pass_fds=(C, E),
         start_new_session=True, stdin=DEVNULL, stdout and stderr to runs/<run>/worker.log,
         cwd=session.cwd, env=worker_env(os.environ, grant); send
-        Start(client_overrides=grant.client_overrides, mcp_servers=..., ...). The pump
-        remembers the tools of each server a live mcp.status says is bound (D4 §4.7).
+        Start(client_overrides=..., tool_client_overrides=... from the grant,
+        mcp_servers=..., ...). The pump remembers the tools of each server a live
+        mcp.status says is bound (D4 §4.7).
         """
         handle = cls(
             run_id=run_id,
@@ -137,7 +139,12 @@ class RunHandle:
                 },
             )
         )
-        grant = route.grant(session=session.id, run=run_id, upstream=source.client)
+        grant = route.grant(
+            session=session.id,
+            run=run_id,
+            upstream=source.client,
+            tool_upstreams=source.tool_clients,
+        )
         reader = await handle._spawn(session.cwd, worker_env(os.environ, grant))
         handle._send(
             Start(
@@ -147,6 +154,10 @@ class RunHandle:
                 config_path=str(source.config_path),
                 namespace=source.namespace,
                 client_overrides=dict(grant.client_overrides),
+                tool_client_overrides={
+                    name: dict(overrides)
+                    for name, overrides in grant.tool_client_overrides.items()
+                },
                 mcp_servers=list(mcp_servers),
             )
         )
