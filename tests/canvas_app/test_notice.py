@@ -30,7 +30,7 @@ def test_the_safety_notice_shows_until_understood(open_ui):
 def test_the_notice_is_d5s_sentence_with_the_cap(open_ui):
     texts = pytest.importorskip("dr_app.texts", reason="D5's dr_app is not installed")
     page = open_ui(notice=True, cap="7")
-    expect(page.get_by_test_id("dr-notice")).to_contain_text(texts.SAFETY.format(cap=7))
+    expect(page.get_by_test_id("dr-notice")).to_contain_text(texts.safety("7"))
 
 
 def test_without_the_key_proxy_the_notice_says_nothing_caps_spending(open_ui):
