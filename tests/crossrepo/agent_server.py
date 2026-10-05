@@ -1,8 +1,8 @@
 """An agent-server from the SDK fork's pinned commit, started directly: no Canvas, no
 launcher, no wiring (D5 §1.2 step 5).
 
-DR_SDK_CHECKOUT names a checkout of desktop/pins.toml's [sdk_fork] commit, synced
-(uv sync --frozen); cross-repo.yml makes one.
+DR_SDK_CHECKOUT names a checkout of desktop/pins.toml's [sdk_fork] commit, synced with
+uv sync --frozen.
 """
 
 import os

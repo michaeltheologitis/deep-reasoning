@@ -175,20 +175,15 @@ def _setup(layout: AppLayout, args: argparse.Namespace, env: Mapping[str, str]) 
             after_ready(layout, env=env)
 
 
-def _recorded_home(layout: AppLayout) -> Path | None:
-    state = SetupState.load(layout.setup_file)
-    return Path(state.dr_home) if state.dr_home else None
-
-
 def _export(layout: AppLayout, args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """dr-library export DIR --home DR_HOME from the runtime, its output and exit code
     passed through."""
     dr_library = layout.current_runtime / "bin" / "dr-library"
-    home = _recorded_home(layout)
-    if home is None or not dr_library.exists():
+    home = SetupState.load(layout.setup_file).dr_home
+    if not home or not dr_library.exists():
         raise SetupError(EXIT_HOME, texts.NOTHING_INSTALLED)
     namespace = ("--namespace", args.namespace) if args.namespace else ()
-    argv = [str(dr_library), "export", str(args.dir), "--home", str(home), *namespace]
+    argv = [str(dr_library), "export", str(args.dir), "--home", home, *namespace]
     return run_logged(argv, env=env, log=say)
 
 

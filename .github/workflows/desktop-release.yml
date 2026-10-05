@@ -1,5 +1,5 @@
 # D5's per-OS builds (§7.6): the Linux .AppImage and .deb, and one Apple silicon macOS
-# .dmg (Macs are Apple silicon only, Michael, 2026-10-04), from the pins in
+# .dmg (Macs are Apple silicon only, Michael's ruling), from the pins in
 # desktop/pins.toml. Dispatched by hand, it builds and checks the packages and keeps them
 # as the run's artifacts; on a v* tag, it first requires cross-repo.yml green on the
 # tagged commit, and last attaches the packages to the tag's release, public downloads
