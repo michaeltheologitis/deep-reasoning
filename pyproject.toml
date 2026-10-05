@@ -58,8 +58,9 @@ testpaths = ["tests"]
 markers = [
     "live: calls a real model; run with -m live",
     "browser: drives the panel in Chromium (Playwright); run with -m browser",
+    "crossrepo: runs against the pinned forks' code; run with -m crossrepo",
 ]
-addopts = "-m 'not live and not browser'"
+addopts = "-m 'not live and not browser and not crossrepo'"
 
 [tool.ruff]
 # docs: design notes; tests/mcp/fixtures: a stored shim, frozen as the Library holds it.
