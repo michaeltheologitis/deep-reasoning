@@ -109,7 +109,7 @@ Moved by collaborators, or by D5's own progress [read, except where marked]:
 4. **A `setup.json` whose `v` is not 1. Closed in r2, and its residue in r3.** At `3c923aa` it was a traceback, exit
    1 [read at 3c923aa]. `930a0cf` made a version other than 1 exit 14 [run at c9bb7fe]; a file with no `v` was still
    called a newer app's, and one that was not JSON was still a traceback [run at c9bb7fe]. Since `8125fa1` each gets
-   its own reason under exit 14 (§1.1 #20). Pinned by `test_setup_state_from_a_newer_app_is_explained_and_exits_14`,
+   its own reason under exit 14 (§1.1 #20). Pinned by `test_a_setup_state_it_cannot_use_is_explained_and_exits_14`,
    `test_a_setup_state_this_app_could_not_have_written_says_why` (seven files) and
    `test_a_setup_state_that_cannot_be_read_says_why` (a directory in its place) [run].
 5. **Setup is silent while git waits on a credential dialog.** The macOS smoke's 15-minute hang (§5.3) was a keychain
@@ -400,7 +400,7 @@ reproduce: `DR_SDK_CHECKOUT=<checkout> uv run pytest -m crossrepo tests/app/test
 **12 passed in 53.1 s**: each of D1's ten native recordings is stored by the agent-server as the tree it records,
 D4's forwarding test passes, and the staged App passes `prepare` and its backend answers `/health`.
 
-**E6, `canvas-replay`** (C1's replay spec at Canvas `4355a36`) [CI]: **10 of 10** on attempt 1. TASK-40's race did not
+**E6, `canvas-replay`** (C1's replay spec at Canvas `4355a36`) [CI]: **10 of 10** on attempt 1. TASK-41's race did not
 show at `c9bb7fe` or `3e9cee9`; at `3c923aa` it failed attempt 1 (§5.3).
 
 **The launch smoke** (`macos`, `macos-26-arm64` runner image) [CI]: the `.dmg` built in 2 min 39 s, its `.app` passing
@@ -425,7 +425,7 @@ S1's `test_live_agent_tree_is_well_formed` and `test_live_agent_stops_one_subage
   the `Info.plist` check; the smoke 2 passed in 55.6 s, `installed in 14s`.
 - **At `3c923aa`, r1's evidence:** `ci` 37240441891, 833 passed. `cross-repo` 37240441432, all six green on attempt 2;
   attempt 1 failed only `canvas-replay`, on `fanout20.native.jsonl`, whose rows `n16` and `n17` were read before their
-  tool calls rendered (five passed, four skipped after it; TASK-40). E12 there: 17 passed in 428.7 s.
+  tool calls rendered (five passed, four skipped after it; TASK-41). E12 there: 17 passed in 428.7 s.
   `desktop-release` 37240443237: the smoke 2 passed in 54.2 s, `installed in 15s`, 42 s across both phases.
   `fork-live` 37241495293: S1 2 of 2, S2 8 of 8.
 - `desktop-release` 37226929314 (`9ca1f70`): `macos` red. The launch smoke waited its limit on a keychain dialog
@@ -501,7 +501,7 @@ r1's numbers kept; the closed ones struck through.
    tells the user to quit and run setup's access check in a terminal when setup stops moving.
 4. **TASK-38:** E12's Stop saw a sibling spawned in the same `run_all` still running when Stop was pressed; whether
    that is the fake holding a call or real serialisation in D1 is open. E12 spawns the done sibling first.
-5. **TASK-40:** C1's replay spec reads the DOM once and failed about one run in five; the fix is in the Canvas fork.
+5. **TASK-41:** C1's replay spec reads the DOM once and failed about one run in five; the fix is in the Canvas fork.
    It passed on attempt 1 at `c9bb7fe` and `3e9cee9`.
 6. ~~**Check 8 on a reused `--work`.**~~ Closed by `24646d0`; the cache itself went in `f28730d` (§1.3 #1).
 7. **`main`'s workflow copies are behind `v1-desktop`'s** (§1.1 #11), with `main`'s `nightly.yml`. Nothing runs them
