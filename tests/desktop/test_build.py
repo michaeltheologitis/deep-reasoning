@@ -70,16 +70,10 @@ def canvas(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A deep-reasoning checkout: its lock files, committed and pushed to origin."""
+    """A deep-reasoning checkout of its pins and uv.lock, committed and pushed."""
     origin, checkout = tmp_path / "origin.git", tmp_path / "deep-reasoning"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-    for name in (
-        "desktop/pins.toml",
-        "pyproject.toml",
-        "uv.lock",
-        "packages/dr-app/pyproject.toml",
-        str(build.RUNTIME_LOCK),
-    ):
+    for name in ("desktop/pins.toml", "uv.lock"):
         (checkout / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / name, checkout / name)
     for argv in (
@@ -201,14 +195,6 @@ def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
         check=True,
     ).stdout.strip()
     assert problems(canvas, repo) == [build.head_unpushed(head)]
-
-
-def test_a_runtime_lock_that_is_not_uv_lock_is_refused(canvas, repo):
-    lock = repo / build.RUNTIME_LOCK
-    lock.write_text(lock.read_text().replace("httpx==", "httpx>="))
-    subprocess.run([*GIT, "commit", "-q", "-am", "stale"], cwd=repo, check=True)
-    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=repo, check=True)
-    assert problems(canvas, repo) == [build.lock_stale()]
 
 
 def test_defaults_gain_only_d5s_four_keys():

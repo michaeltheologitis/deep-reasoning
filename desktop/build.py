@@ -29,17 +29,6 @@ DEEP_REASONING: Final = "https://github.com/michaeltheologitis/deep-reasoning"
 PINS: Final = REPO / "desktop" / "pins.toml"
 BOOTSTRAP: Final = REPO / "desktop" / "bootstrap.sh"
 WRAPPER_CONFIG: Final = REPO / "desktop" / "electron-builder.dr.mjs"
-RUNTIME_LOCK: Final = Path("packages/dr-app/src/dr_app/runtime.lock.txt")
-UV_EXPORT: Final = (
-    "uv",
-    "export",
-    "--frozen",
-    "--no-emit-workspace",
-    "--no-dev",
-    "--no-hashes",
-    "--no-header",
-    "--no-annotate",
-)
 COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 # (v2) The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
@@ -154,13 +143,6 @@ def head_unpushed(head: str) -> str:
     return (
         f"✗ deep-reasoning's HEAD ({head[:7]}) is on no branch of origin: every user's "
         "setup fetches it, so push it first."
-    )
-
-
-def lock_stale() -> str:
-    return (
-        f"✗ {RUNTIME_LOCK} is not uv export of uv.lock: run {' '.join(UV_EXPORT)} "
-        f"-o {RUNTIME_LOCK}."
     )
 
 
@@ -283,16 +265,6 @@ def check_pins(
         problems.append(checkout_dirty(len(changed.strip().splitlines())))
     if not git("branch", "-r", "--contains", "HEAD", cwd=repo).strip():
         problems.append(head_unpushed(git("rev-parse", "HEAD", cwd=repo).strip()))
-    exported = subprocess.run(
-        UV_EXPORT, cwd=repo, capture_output=True, text=True, check=False
-    )
-    lock = repo / RUNTIME_LOCK
-    if (
-        exported.returncode != 0
-        or not lock.exists()
-        or lock.read_text() != (exported.stdout)
-    ):
-        problems.append(lock_stale())
     for fork, pin in forks:
         if not is_on_branch(pin.repo, FORK_BRANCH, pin.commit):
             problems.append(off_branch(fork, pin.commit))

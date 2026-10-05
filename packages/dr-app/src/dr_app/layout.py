@@ -190,8 +190,8 @@ def _choose_home(
 
 @dataclass
 class RuntimeRecord:
-    commit: str
-    lock_sha256: str
+    commit: str  # deep-reasoning's, whose uv.lock fixes everything else installed
+    lock_sha256: str  # that uv.lock's: what was synced, which no check reads
     path: str
 
 

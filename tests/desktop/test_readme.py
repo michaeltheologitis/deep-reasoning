@@ -8,7 +8,7 @@ import shlex
 from pathlib import Path
 
 from dr_app import cli, layout, profile, texts
-from dr_app.runtime import RuntimeSpec, git_environment
+from dr_app.runtime import deep_reasoner_pin, git_environment
 
 ROOT = Path(__file__).resolve().parents[2]
 _spec = importlib.util.spec_from_file_location("build", ROOT / "desktop" / "build.py")
@@ -38,7 +38,7 @@ def test_the_key_is_the_one_setup_asks_for_where_setup_says():
 
 
 def test_the_access_check_is_the_one_setup_runs():
-    url = RuntimeSpec.for_commit(build.DEEP_REASONING, "0" * 40).deep_reasoner_url
+    url = deep_reasoner_pin(ROOT).url
     env = [
         f"{name}={shlex.quote(value)}" for name, value in git_environment({}).items()
     ]

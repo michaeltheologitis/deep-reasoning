@@ -21,8 +21,8 @@ def test_sentences_with_fields_are_the_designs_verbatim():
         "installing deep-reasoning a1b2c3d with deep_reasoner d7334ae … (first launch, "
         "or after an update: a few minutes)"
     )
-    assert texts.install_failed("a1b2c3d", "uv pip sync", "2") == (
-        "✗ Installing deep-reasoning a1b2c3d failed (uv pip sync exited 2); its output is "
+    assert texts.install_failed("a1b2c3d", "uv sync", "2") == (
+        "✗ Installing deep-reasoning a1b2c3d failed (uv sync exited 2); its output is "
         "above. After an update this needs the network once: connect and restart."
     )
     assert texts.app_ready("0.1.0", "installed") == (
