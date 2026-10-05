@@ -85,6 +85,26 @@ def test_materialize_hands_the_worker_the_config_as_it_is(config, tmp_path):
         versions={"config_sha256": hashlib.sha256(config.read_bytes()).hexdigest()},
     )
     assert source.client["base_url"] == "http://127.0.0.1:9/v1"
+    assert source.tool_clients == {}
+
+
+def test_materialize_hands_the_worker_each_tools_own_client(tmp_path):
+    rag_client = {"base_url": "http://127.0.0.1:9/v1", "api_key_env": "EMBED_KEY"}
+    path = tmp_path / "main.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "system_prompt": "s",
+                "model": "m",
+                "tools": {
+                    "rag": {"embed_model": "e", "client": rag_client},
+                    "kg": {"persist": "kg"},
+                },
+            }
+        )
+    )
+    source = ConfigCatalog(path).materialize("root", run_dir=tmp_path / "run")
+    assert source.tool_clients == {"rag": rag_client}
 
 
 @pytest.mark.parametrize(

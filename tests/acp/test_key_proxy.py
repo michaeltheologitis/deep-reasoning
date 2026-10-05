@@ -3,6 +3,7 @@
 
 import asyncio
 import json
+import logging
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
@@ -18,9 +19,15 @@ from deep_reasoning.acp import texts
 from deep_reasoning.acp.costs import Price, PriceTable
 from deep_reasoning.acp.proxy import (
     KeyProxy,
+    ProxyRoute,
     SpendLedger,
+    loopback_proxy_env,
 )
+from deep_reasoning.acp.route import RouteGrant, worker_env
 from deep_reasoning.acp.runlog import Home
+from deep_reasoning.acp.testing.fake_model import FakeOpenAI
+from tests.acp.harness import dr_acp, run, scripted_env, write_config
+from tests.acp.scenarios import repl, scripted
 
 KEY = "sk-proxy-test-0123456789abcdef"
 TOKEN = "token-proxy-test-0123456789abcdef"
@@ -456,3 +463,195 @@ def test_the_ledger_continues_after_a_restart(tmp_path):
     assert (spend.spent_usd, spend.calls, spend.refused) == (0.03, 1, 1)
     saved = json.loads((tmp_path / "home" / "spend" / "s-1.json").read_text())
     assert (saved["spent_usd"], saved["refused"]) == (0.03, 1)
+
+
+def test_a_client_without_a_held_key_is_left_as_configured(proxy):
+    route = ProxyRoute(proxy, {"PATH": "/bin", "OTHER_API_KEY": "x" * 20})
+    grant = route.grant(
+        session="s-1",
+        run="run-1",
+        upstream={"base_url": "http://127.0.0.1:8000/v1", "api_key_env": "LOCAL_KEY"},
+    )
+    assert grant == RouteGrant()
+
+
+def granted(env: dict[str, str], proxy: KeyProxy, **upstreams: Any) -> RouteGrant:
+    return ProxyRoute(proxy, env).grant(
+        session="s-1",
+        run="run-1",
+        upstream={"base_url": "https://api.example.invalid/v1", "api_key_env": "K"},
+        **upstreams,
+    )
+
+
+def test_the_key_is_removed_from_the_worker_env_by_value_under_any_name(proxy):
+    secret = "oh-secret-0123456789abcdef"
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "K": KEY,
+        "MY_KEY_COPY": KEY,
+        "IN_A_URL": f"https://user:{KEY}@example.invalid",
+        "OH_SECRET_KEY": secret,
+        "SECRET_COPY": secret,
+        "SESSION_API_KEY": "bin",  # short: its value must not remove PATH
+        "ANTHROPIC_API_KEY": "sk-ant-0123456789abcdef",
+    }
+    grant = granted(env, proxy)
+    worker = worker_env(env, grant)
+    assert worker["PATH"] == "/usr/bin:/bin"
+    assert {"MY_KEY_COPY", "IN_A_URL", "SECRET_COPY", "OH_SECRET_KEY"}.isdisjoint(
+        worker
+    )
+    assert worker["K"] not in env.values()
+    assert worker["ANTHROPIC_API_KEY"] not in env.values()
+    assert worker["ANTHROPIC_BASE_URL"].startswith(proxy.base_url + "/r/")
+    for value in (KEY, secret, env["ANTHROPIC_API_KEY"]):
+        assert not [k for k, v in worker.items() if value in v]
+    assert grant.client_overrides == {
+        "base_url": grant.client_overrides["base_url"],
+        "api_key_env": "K",
+    }
+    assert grant.client_overrides["base_url"].startswith(proxy.base_url + "/r/")
+
+
+def test_a_tool_with_its_own_client_gets_its_own_overrides(proxy, upstream):
+    env = {"OPENAI_API_KEY": KEY}
+    grant = granted(
+        env,
+        proxy,
+        tool_upstreams={
+            "rag": {"base_url": upstream.url, "api_key_env": "OPENAI_API_KEY"},
+            "local": {"base_url": "http://127.0.0.1:1/v1", "api_key_env": "NONE"},
+        },
+    )
+    # NONE is unset, so like the main client's K it falls back to OPENAI_API_KEY,
+    # as deep_reasoner's build_client does.
+    assert set(grant.tool_client_overrides) == {"rag", "local"}
+    assert grant.tool_client_overrides["rag"]["api_key_env"] == "OPENAI_API_KEY"
+    assert grant.client_overrides["api_key_env"] == "OPENAI_API_KEY"
+    assert grant.env_add["OPENAI_API_KEY"] != KEY
+    assert (
+        len(
+            {
+                grant.client_overrides["base_url"],
+                *(o["base_url"] for o in grant.tool_client_overrides.values()),
+            }
+        )
+        == 3
+    )
+
+
+@pytest.mark.parametrize(
+    ("env", "system", "proxies", "expected"),
+    [
+        (
+            {},
+            "Darwin",
+            {"http": "http://corp:3128", "https": "http://corp:3129"},
+            {
+                "NO_PROXY": "127.0.0.1,localhost,::1",
+                "HTTP_PROXY": "http://corp:3128",
+                "HTTPS_PROXY": "http://corp:3129",
+            },
+        ),
+        (
+            {"NO_PROXY": "internal.example"},
+            "Linux",
+            {"http": "http://corp:3128"},
+            {"NO_PROXY": "internal.example,127.0.0.1,localhost,::1"},
+        ),
+        (
+            {"HTTPS_PROXY": "http://mine:8080"},
+            "Darwin",
+            {"https": "http://corp:3129"},
+            {"NO_PROXY": "127.0.0.1,localhost,::1"},
+        ),
+    ],
+    ids=["macos-system-proxies", "linux", "environment-proxy-wins"],
+)
+def test_loopback_calls_bypass_macos_system_proxies_and_others_keep_them(
+    env, system, proxies, expected
+):
+    assert loopback_proxy_env(env, system=system, system_proxies=lambda: proxies) == (
+        expected
+    )
+
+
+def test_the_proxy_never_logs_a_key_or_a_token(tmp_path, ledger, capfd, caplog):
+    caplog.set_level(logging.DEBUG)
+    proxy = KeyProxy(ledger=ledger, prices=PRICES, home=Home(tmp_path / "home"))
+    try:
+        with Upstream(answering()) as fake:
+            env = {"OPENAI_API_KEY": KEY}
+            grant = ProxyRoute(proxy, env).grant(
+                session="s-1",
+                run="run-1",
+                upstream={"base_url": fake.url, "api_key_env": "OPENAI_API_KEY"},
+            )
+            token = grant.env_add["OPENAI_API_KEY"]
+            base = grant.client_overrides["base_url"]
+            auth = {"Authorization": f"Bearer {token}"}
+            with httpx.Client(trust_env=False) as client:
+                statuses = [
+                    client.post(f"{base}/chat/completions", json=chat(), headers=auth)
+                    for _ in range(7)
+                ]
+                statuses.append(client.post(f"{base}/files", json={}, headers=auth))
+                statuses.append(client.post(f"{base}/chat/completions", json=chat()))
+    finally:
+        proxy.stop()
+    assert [r.status_code for r in statuses] == [200] * 5 + [402] * 2 + [403, 401]
+    captured = capfd.readouterr()
+    logged = captured.out + captured.err + caplog.text
+    assert "refused" in logged
+    assert KEY not in logged
+    assert token not in logged
+
+
+@pytest.mark.parametrize(
+    ("args", "worker_sees_the_key"),
+    [((), False), (("--no-key-proxy",), True)],
+    ids=["proxied", "no-key-proxy"],
+)
+def test_no_key_proxy_keeps_d1s_direct_route(
+    tmp_path, home, work, args, worker_sees_the_key
+):
+    key = "sk-direct-0123456789abcdef"
+    plan = {
+        "Which key?": [
+            repl(
+                "import os", "print(os.environ['OPENAI_API_KEY'] == " + repr(key) + ")"
+            ),
+            repl("FinalAnswer('checked')"),
+        ]
+    }
+
+    async def body():
+        async with FakeOpenAI(scripted(plan)) as model:
+            config = write_config(
+                tmp_path / "config" / "main.yaml",
+                {
+                    "model": "fake-model",
+                    "client": {
+                        "base_url": model.base_url,
+                        "api_key_env": "OPENAI_API_KEY",
+                        "max_retries": 0,
+                    },
+                    "system_prompt": "s",
+                    "max_iter": 4,
+                },
+            )
+            env = scripted_env(OPENAI_API_KEY=key)
+            async with dr_acp(config, home, args=args, env=env) as client:
+                root = await client.open_session(work)
+                await client.ask(root, "Which key?")
+                outputs = [
+                    u.get("rawOutput")
+                    for u in client.updates_on(root)
+                    if u["sessionUpdate"] == "tool_call_update"
+                ]
+        return outputs, model.calls
+
+    outputs, calls = run(body())
+    assert str(worker_sees_the_key) in outputs
+    assert {c.authorization for c in calls} == {f"Bearer {key}"}

@@ -37,7 +37,7 @@ def test_answers_from_the_responder_and_records_each_call():
     assert replies[0].usage.prompt_tokens > 0 and replies[0].usage.completion_tokens > 0
 
 
-def test_embeds_every_input_alike_and_records_only_chat_calls():
+def test_embeds_every_input_alike_and_records_each_call_with_its_authorization():
     with FakeOpenAI(lambda messages: "ok") as model:
         client = openai.OpenAI(base_url=model.base_url, api_key="unused", max_retries=0)
         embedded = client.embeddings.create(model="e", input=["one", "two"])
@@ -47,6 +47,11 @@ def test_embeds_every_input_alike_and_records_only_chat_calls():
     assert [e.embedding for e in embedded.data] == [EMBEDDING, EMBEDDING]
     assert reply.choices[0].message.content == "ok"
     assert [c.messages for c in model.calls] == [[{"role": "user", "content": "hi"}]]
+    assert [c.model for c in model.embed_calls] == ["e"]
+    assert [c.authorization for c in (*model.calls, *model.embed_calls)] == [
+        "Bearer unused",
+        "Bearer unused",
+    ]
 
 
 def test_a_responder_that_raises_answers_500():

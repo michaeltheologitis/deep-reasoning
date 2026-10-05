@@ -174,9 +174,9 @@ def scripted_env(**extra: str) -> dict[str, str]:
     return env
 
 
-def write_prices(home: Path) -> None:
+def write_prices(home: Path, prices: dict[str, Any] | None = None) -> None:
     home.mkdir(parents=True, exist_ok=True)
-    (home / "prices.yaml").write_text(yaml.safe_dump(FAKE_PRICES))
+    (home / "prices.yaml").write_text(yaml.safe_dump(FAKE_PRICES | (prices or {})))
 
 
 @contextlib.asynccontextmanager
@@ -189,10 +189,11 @@ async def dr_acp(
     env: dict[str, str] | None = None,
     command: tuple[str, ...] | None = None,
     initialize: bool = True,
+    prices: dict[str, Any] | None = None,
 ) -> AsyncIterator[DrAcp]:
     """Spawn dr-acp (on the Library at home when config is None), connect, initialize;
-    on exit close stdin and check what was sent."""
-    write_prices(home)
+    on exit close stdin and check what was sent. prices are added to FAKE_PRICES."""
+    write_prices(home, prices)
     stderr = home / f"dr-acp-{len(list(home.glob('dr-acp-*.log')))}.log"
     argv = command or (DR_ACP,)
     with stderr.open("wb") as err:

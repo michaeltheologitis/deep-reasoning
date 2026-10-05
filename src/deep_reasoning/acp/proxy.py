@@ -1,19 +1,23 @@
 """The key proxy: the worker's model calls carry a token, the proxy swaps the key in, and
 a conversation's spend stops at its cap (D5 §4.7).
 
-Two parts, in this order: SpendLedger, each root session's spend, reserved before a
-call and settled after it; and KeyProxy, the HTTP side, in dr-acp's front on a thread of
-its own and serving 127.0.0.1 only.
+Three parts, in this order: SpendLedger, each root session's spend, reserved before a
+call and settled after it; KeyProxy, the HTTP side, in dr-acp's front on a thread of its
+own and serving 127.0.0.1 only; and ProxyRoute, D1's ModelRoute, which grants a run its
+routes and tokens and takes the keys out of the worker's environment.
 """
 
+import fnmatch
 import hashlib
 import hmac
 import json
 import math
+import platform
 import secrets
 import socket
 import threading
-from collections.abc import AsyncIterator, Mapping
+import urllib.request
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 from urllib.parse import urlsplit
@@ -28,13 +32,25 @@ from starlette.routing import Route as StarletteRoute
 
 from deep_reasoning.acp import texts
 from deep_reasoning.acp.costs import PriceTable
+from deep_reasoning.acp.route import ALWAYS_REMOVED, NO_TOOL_UPSTREAMS, RouteGrant
 from deep_reasoning.acp.runlog import Home
 
 logger = structlog.get_logger(__name__)
 
 DEFAULT_RESERVED_OUTPUT_TOKENS: Final = 4096
 MAX_BODY_BYTES: Final = 32 * 1024 * 1024
+MIN_SECRET_LENGTH: Final = 16
+OPENAI_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
+ANTHROPIC_DEFAULT_BASE_URL: Final = "https://api.anthropic.com"
+ANTHROPIC_KEY_ENV: Final = "ANTHROPIC_API_KEY"
+ANTHROPIC_BASE_URL_ENV: Final = "ANTHROPIC_BASE_URL"
+OPENAI_BASE_URL_ENV: Final = "OPENAI_BASE_URL"
+# build_client's fallback, config.py:256
+OPENAI_FALLBACK_KEY_ENV: Final = "OPENAI_API_KEY"
+# ClientConfig.api_key_env's default
+DEEP_REASONER_DEFAULT_KEY_ENV: Final = "NOVITA_API_KEY"
 LOOPBACK_HOSTS: Final = ("127.0.0.1", "::1", "localhost")
+NO_PROXY_HOSTS: Final = "127.0.0.1,localhost,::1"
 UPSTREAM_TIMEOUT: Final = httpx.Timeout(600.0, connect=10.0)
 # Not forwarded either way: the connection's own, and what the proxy sets itself.
 HOP_BY_HOP: Final = frozenset(
@@ -534,3 +550,132 @@ class KeyProxy:
                     else self._cost(route, model, meter.usage)
                 )
                 self._ledger.settle(reservation, cost)
+
+
+def loopback_proxy_env(
+    env: Mapping[str, str],
+    *,
+    system: str,
+    system_proxies: Callable[[], Mapping[str, str]] = urllib.request.getproxies,
+) -> dict[str, str]:
+    """§4.7.2 step 5: NO_PROXY with the loopback hosts appended; on macOS with no proxy in
+    env, the system's http and https proxies as HTTP_PROXY and HTTPS_PROXY."""
+    existing = env.get("NO_PROXY") or env.get("no_proxy")
+    no_proxy = f"{existing},{NO_PROXY_HOSTS}" if existing else NO_PROXY_HOSTS
+    added = {"NO_PROXY": no_proxy}
+    if "no_proxy" in env:  # Python reads the lower-case name first
+        added["no_proxy"] = no_proxy
+    names_a_proxy = any(
+        name.lower() in ("http_proxy", "https_proxy", "all_proxy") and value
+        for name, value in env.items()
+    )
+    if system == "Darwin" and not names_a_proxy:
+        proxies = system_proxies()
+        for scheme in ("http", "https"):
+            if proxies.get(scheme):
+                added[f"{scheme.upper()}_PROXY"] = proxies[scheme]
+    return added
+
+
+class ProxyRoute:
+    """D1's ModelRoute over a KeyProxy (§4.7.2)."""
+
+    def __init__(self, proxy: KeyProxy, env: Mapping[str, str]) -> None:
+        self._proxy = proxy
+        self._env = dict(env)
+
+    def _key_name(self, client: Mapping[str, Any]) -> str | None:
+        """The variable whose value the client would send, as build_client picks it;
+        None when dr-acp holds no value for it."""
+        name = client.get("api_key_env") or DEEP_REASONER_DEFAULT_KEY_ENV
+        if not self._env.get(name) and self._env.get(OPENAI_FALLBACK_KEY_ENV):
+            name = OPENAI_FALLBACK_KEY_ENV
+        return name if self._env.get(name) else None
+
+    def _upstream(self, client: Mapping[str, Any]) -> str:
+        url = (
+            client.get("base_url")
+            or self._env.get(OPENAI_BASE_URL_ENV)
+            or OPENAI_DEFAULT_BASE_URL
+        )
+        return url.rstrip("/")
+
+    def grant(
+        self,
+        *,
+        session: str,
+        run: str,
+        upstream: Mapping[str, Any],
+        tool_upstreams: Mapping[str, Mapping[str, Any]] = NO_TOOL_UPSTREAMS,
+    ) -> RouteGrant:
+        clients = {None: upstream, **dict(tool_upstreams)}
+        held = {name: self._key_name(c) for name, c in clients.items()}
+        anthropic_key = self._env.get(ANTHROPIC_KEY_ENV)
+        if not any(held.values()) and not anthropic_key:
+            return RouteGrant()
+        self._proxy.ensure_started()
+        tokens: dict[str, str] = {}
+        routes: dict[tuple[str, str], str] = {}
+        overrides: dict[str | None, dict[str, Any]] = {}
+        for name, client in clients.items():
+            key_name = held[name]
+            if key_name is None:
+                continue
+            token = tokens.setdefault(key_name, secrets.token_urlsafe(32))
+            where = (self._upstream(client), key_name)
+            if where not in routes:
+                route = self._proxy.add_route(
+                    session=session,
+                    run=run,
+                    dialect="openai",
+                    upstream=where[0],
+                    key=self._env[key_name],
+                    token=token,
+                )
+                routes[where] = f"{self._proxy.base_url}/r/{route.id}"
+            overrides[name] = {"base_url": routes[where], "api_key_env": key_name}
+        env_add = dict(tokens)
+        if anthropic_key:
+            token = secrets.token_urlsafe(32)
+            route = self._proxy.add_route(
+                session=session,
+                run=run,
+                dialect="anthropic",
+                upstream=self._env.get(ANTHROPIC_BASE_URL_ENV)
+                or ANTHROPIC_DEFAULT_BASE_URL,
+                key=anthropic_key,
+                token=token,
+            )
+            env_add[ANTHROPIC_KEY_ENV] = token
+            env_add[ANTHROPIC_BASE_URL_ENV] = f"{self._proxy.base_url}/r/{route.id}"
+        env_add |= loopback_proxy_env(self._env, system=platform.system())
+        return RouteGrant(
+            client_overrides=overrides.get(None, {}),
+            env_add=env_add,
+            env_remove=self._env_remove(
+                [self._env[k] for k in tokens]
+                + ([anthropic_key] if anthropic_key else [])
+            ),
+            tool_client_overrides={
+                name: o for name, o in overrides.items() if name is not None
+            },
+        )
+
+    def _env_remove(self, keys: list[str]) -> frozenset[str]:
+        """Every variable whose value contains a held key, or the value of a variable
+        one of ALWAYS_REMOVED's patterns names; values shorter than MIN_SECRET_LENGTH
+        are never matched."""
+        secret_values = [
+            value
+            for name, value in self._env.items()
+            if any(fnmatch.fnmatchcase(name, p) for p in ALWAYS_REMOVED)
+        ]
+        values = [v for v in (*keys, *secret_values) if len(v) >= MIN_SECRET_LENGTH]
+        return frozenset(
+            name
+            for name, value in self._env.items()
+            if any(secret in value for secret in values)
+        )
+
+    def release(self, run: str) -> None:
+        self._proxy.drop_run(run)
