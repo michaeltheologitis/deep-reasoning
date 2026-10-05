@@ -1,0 +1,352 @@
+"""desktop/build.py's checks and what it writes, with every reader of a fork passed in
+(D5 §4.2, §7.3). The packaging itself is tested by building it (§7.5, §7.6)."""
+
+import copy
+import json
+import plistlib
+import shutil
+import subprocess
+import tomllib
+from pathlib import Path
+
+import pytest
+
+from desktop import build
+
+ROOT = Path(__file__).resolve().parents[2]
+
+CANVAS_REPO = "https://github.com/michaeltheologitis/OpenHands"
+SDK_REPO = "https://github.com/michaeltheologitis/software-agent-sdk"
+CANVAS_COMMIT = "c" * 40
+SDK_COMMIT = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
+CLIENT = f"{SDK_REPO}/releases/download/dr-2/openhands-typescript-client-1.50.1.tgz"
+PINS = build.Pins(
+    canvas_fork=build.ForkPin(CANVAS_REPO, CANVAS_COMMIT, "dr-1"),
+    sdk_fork=build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2"),
+    app=build.AppPin(
+        "Deep Reasoning",
+        "io.github.michaeltheologitis.deep-reasoning",
+        "deep-reasoning",
+        "1.0.0-rc.1",
+        "M <m@example.invalid>",
+        "0.12.23",
+    ),
+)
+# The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired.
+DEFAULTS = {
+    "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
+    "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
+    "sources": {"agentServerGitRepo": SDK_REPO, "agentServerGitRef": SDK_COMMIT},
+    "ports": {"agentServer": 18000, "proxy": 8000},
+    "paths": {"stateSubdir": "agent-canvas", "stateDir": None},
+    "setup": {"command": None, "phases": ["before-start", "after-ready"]},
+    "telemetry": {
+        "posthogApiKey": "phc_upstreams_key",
+        "posthogHost": "https://us.i.posthog.com",
+    },
+}
+GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
+
+
+def ours_acp_lock() -> str:
+    """The SDK fork's uv.lock as far as check 4 reads it: our agent-client-protocol."""
+    version = build.locked_version(
+        (ROOT / "uv.lock").read_text(), "agent-client-protocol"
+    )
+    return f'version = 1\n\n[[package]]\nname = "agent-client-protocol"\nversion = "{version}"\n'
+
+
+@pytest.fixture
+def canvas(tmp_path: Path) -> Path:
+    checkout = tmp_path / "canvas"
+    (checkout / "config").mkdir(parents=True)
+    (checkout / "config" / "defaults.json").write_text(json.dumps(DEFAULTS))
+    package = {"dependencies": {"@openhands/typescript-client": CLIENT}}
+    (checkout / "package.json").write_text(json.dumps(package))
+    return checkout
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    """A deep-reasoning checkout of its pins and uv.lock, committed and pushed."""
+    origin, checkout = tmp_path / "origin.git", tmp_path / "deep-reasoning"
+    subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
+    for name in ("desktop/pins.toml", "uv.lock"):
+        (checkout / name).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / name, checkout / name)
+    for argv in (
+        ["init", "-q", "-b", "main"],
+        ["add", "-A"],
+        ["commit", "-q", "-m", "the build's inputs"],
+        ["remote", "add", "origin", str(origin)],
+        ["push", "-q", "origin", "main"],
+    ):
+        subprocess.run([*GIT, *argv], cwd=checkout, check=True)
+    subprocess.run(["git", "fetch", "-q", "origin"], cwd=checkout, check=True)
+    return checkout
+
+
+def readers(**changed):
+    tags = {
+        "refs/tags/dr-1": CANVAS_COMMIT,
+        "refs/tags/dr-2": "a" * 40,  # the annotated tag's own object
+        "refs/tags/dr-2^{}": SDK_COMMIT,
+    } | changed.pop("tags", {})
+    on_branch = changed.pop("on_branch", {CANVAS_COMMIT, SDK_COMMIT})
+    sdk_lock = changed.pop("sdk_lock", ours_acp_lock())
+    return {
+        "ls_remote": lambda url, refs: {r: tags[r] for r in refs if r in tags},
+        "read_sdk_file": lambda path: {"uv.lock": sdk_lock}[path],
+        "is_on_branch": lambda url, branch, commit: (
+            branch == "deep-reasoning" and commit in on_branch
+        ),
+    }
+
+
+def problems(canvas, repo, pins=PINS, **changed):
+    return build.check_pins(pins, canvas=canvas, repo=repo, **readers(**changed))
+
+
+def rewire(canvas: Path, **sources) -> None:
+    path = canvas / "config" / "defaults.json"
+    defaults = json.loads(path.read_text())
+    defaults["sources"] |= sources
+    path.write_text(json.dumps(defaults))
+
+
+def test_pins_that_belong_together_pass_every_check(canvas, repo):
+    assert problems(canvas, repo) == []
+
+
+def test_pins_with_a_short_commit_are_refused(tmp_path):
+    pins = (ROOT / "desktop" / "pins.toml").read_text()
+    short = tmp_path / "pins.toml"
+    placeholder = tomllib.loads(pins)["canvas_fork"]["commit"]
+    short.write_text(
+        pins.replace(placeholder, CANVAS_COMMIT).replace(SDK_COMMIT, SDK_COMMIT[:7])
+    )
+    with pytest.raises(
+        ValueError, match="sdk_fork.commit must be a full 40-hex commit"
+    ):
+        build.load_pins(short)
+
+
+def test_a_canvas_fork_wired_to_another_sdk_commit_is_refused(canvas, repo):
+    rewire(canvas, agentServerGitRef="cef3b24" + "0" * 33)
+    assert problems(canvas, repo) == [
+        (
+            "✗ Canvas fork dr-1 runs the agent-server at cef3b24 (its wiring commit), "
+            "but desktop/pins.toml pins the SDK fork at dr-2 (34c540c). Bump both, or "
+            "neither."
+        )
+    ]
+
+
+def test_a_tag_that_moved_is_refused(canvas, repo):
+    found = problems(canvas, repo, tags={"refs/tags/dr-2^{}": "b" * 40})
+    assert found == [build.tag_moved("SDK fork", "dr-2", "b" * 40, SDK_COMMIT)]
+
+
+def test_a_commit_off_the_forks_deep_reasoning_branch_is_refused(canvas, repo):
+    assert problems(canvas, repo, on_branch={CANVAS_COMMIT}) == [
+        build.off_branch("SDK fork", SDK_COMMIT)
+    ]
+
+
+def test_a_typescript_client_from_another_tag_is_refused(canvas, repo):
+    elsewhere = CLIENT.replace("/dr-2/", "/dr-1/")
+    (canvas / "package.json").write_text(
+        json.dumps({"dependencies": {"@openhands/typescript-client": elsewhere}})
+    )
+    assert problems(canvas, repo) == [
+        build.client_from_elsewhere("dr-1", elsewhere, "dr-2")
+    ]
+
+
+def test_a_different_acp_python_is_refused(canvas, repo):
+    theirs = ours_acp_lock().replace('version = "0.', 'version = "9.')
+    [problem] = problems(canvas, repo, sdk_lock=theirs)
+    assert problem.startswith(
+        "✗ The SDK fork's uv.lock at dr-2 locks agent-client-protocol 9."
+    )
+
+
+def test_a_fork_that_carries_our_values_is_refused(canvas, repo):
+    path = canvas / "config" / "defaults.json"
+    defaults = json.loads(path.read_text())
+    defaults["paths"]["stateDir"] = "~/.elsewhere/agent-canvas"
+    path.write_text(json.dumps(defaults))
+    assert problems(canvas, repo) == [
+        build.fork_sets_ours("dr-1", "paths.stateDir", "~/.elsewhere/agent-canvas")
+    ]
+
+
+def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
+    (repo / "desktop" / "pins.toml").write_text("# changed\n")
+    assert problems(canvas, repo) == [build.checkout_dirty(1)]
+    subprocess.run([*GIT, "commit", "-q", "-am", "local only"], cwd=repo, check=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert problems(canvas, repo) == [build.head_unpushed(head)]
+
+
+def test_defaults_gain_only_d5s_four_keys():
+    before = copy.deepcopy(DEFAULTS)
+    command = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
+    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=command)
+    assert DEFAULTS == before
+    expected = copy.deepcopy(DEFAULTS)
+    expected["paths"]["stateDir"] = "~/.deep-reasoning/canvas/agent-canvas"
+    expected["setup"] = {"command": command, "phases": ["before-start", "after-ready"]}
+    expected["telemetry"]["posthogApiKey"] = ""
+    assert patched == expected
+
+
+def test_telemetry_is_off_in_the_built_defaults():
+    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=[])
+    assert patched["telemetry"] == {
+        "posthogApiKey": "",
+        "posthogHost": "https://us.i.posthog.com",
+    }
+
+
+def test_the_setup_command_embeds_the_bootstrap_and_the_commit():
+    bootstrap = (ROOT / "desktop" / "bootstrap.sh").read_text()
+    command = build.setup_command(build.DEEP_REASONING, SDK_COMMIT, bootstrap)
+    assert command == [
+        "sh",
+        "-c",
+        bootstrap,
+        "dr-app-bootstrap",
+        (
+            f"git+https://github.com/michaeltheologitis/deep-reasoning@{SDK_COMMIT}"
+            "#subdirectory=packages/dr-app"
+        ),
+        "https://github.com/michaeltheologitis/deep-reasoning",
+        SDK_COMMIT,
+    ]
+
+
+def test_the_committed_sdk_pin_is_34c540c_tagged_dr_2():
+    raw = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())
+    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": SDK_COMMIT, "tag": "dr-2"}
+    assert raw["app"]["uv_version"] == "0.12.23"
+
+
+def test_the_committed_pins_load():
+    pins = build.load_pins(ROOT / "desktop" / "pins.toml")
+    assert pins.canvas_fork == build.ForkPin(
+        CANVAS_REPO, "4355a36580191bb98d53610152469864d9640b8a", "dr-3"
+    )
+    assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2")
+    assert "@" in pins.app.maintainer
+
+
+@pytest.mark.skipif(
+    shutil.which("dpkg-deb") is None, reason="lists a .deb with dpkg-deb"
+)
+def test_a_debs_payload_paths_keep_their_spaces(tmp_path):
+    package = tmp_path / "package"
+    (package / "DEBIAN").mkdir(parents=True)
+    (package / "DEBIAN" / "control").write_text(
+        "Package: t\nVersion: 1\nArchitecture: all\nMaintainer: t <t@example.invalid>\n"
+        "Description: t\n"
+    )
+    (package / "opt" / "Deep Reasoning").mkdir(parents=True)
+    (package / "opt" / "Deep Reasoning" / "deep-reasoning").write_text("")
+    subprocess.run(
+        ["dpkg-deb", "--build", str(package), str(tmp_path / "t.deb")],
+        check=True,
+        capture_output=True,
+    )
+    paths = build.payload_paths(tmp_path / "t.deb", tmp_path)
+    assert "./opt/Deep Reasoning/deep-reasoning" in paths
+
+
+ARM64_DMG = "deep-reasoning-1.0.0-rc.1-arm64.dmg"
+
+
+def built_mac_app(
+    canvas: Path, dmg: str = ARM64_DMG, plist: dict | None = None
+) -> Path:
+    """dist-electron as electron-builder leaves it for the mac target: the .dmg, and
+    the .app it was made from, with the binaries the arm64 check reads and the
+    Info.plist the minimum-macOS check reads."""
+    output = canvas / "dist-electron"
+    app = output / "mac-arm64" / "Deep Reasoning.app" / "Contents"
+    for binary in (
+        "MacOS/Deep Reasoning",
+        "Resources/bin/uv",
+        "Resources/node/bin/node",
+    ):
+        (app / binary).parent.mkdir(parents=True, exist_ok=True)
+        (app / binary).write_text("")
+    info = {"CFBundleName": "Deep Reasoning", "LSMinimumSystemVersion": "14.0"}
+    info |= plist or {}
+    declared = {key: value for key, value in info.items() if value is not None}
+    (app / "Info.plist").write_bytes(plistlib.dumps(declared))
+    (output / dmg).write_text("")
+    return output
+
+
+def test_the_mac_build_is_one_arm64_dmg_whose_binaries_are_arm64_only(canvas):
+    built_mac_app(canvas)
+    [dmg] = build.verify("mac-arm64", PINS, canvas, archs_of=lambda path: "arm64")
+    assert dmg.name == ARM64_DMG
+
+
+@pytest.mark.parametrize(
+    ("dmg", "archs", "refused"),
+    [
+        ("deep-reasoning-1.0.0-rc.1-universal.dmg", "arm64", "unexpected artifacts"),
+        ("deep-reasoning-1.0.0-rc.1-x64.dmg", "arm64", "unexpected artifacts"),
+        (ARM64_DMG, "x86_64 arm64", "Resources/bin/uv is x86_64 arm64"),
+    ],
+    ids=["universal", "intel", "universal-binary"],
+)
+def test_a_mac_build_that_is_not_arm64_only_is_refused(canvas, dmg, archs, refused):
+    built_mac_app(canvas, dmg)
+
+    def archs_of(path: Path) -> str:
+        return archs if path.name == "uv" else "arm64"
+
+    with pytest.raises(SystemExit, match=refused):
+        build.verify("mac-arm64", PINS, canvas, archs_of=archs_of)
+
+
+@pytest.mark.parametrize("declared", ["12.0", "13.0", None])
+def test_a_mac_app_that_opens_before_macos_14_is_refused(canvas, declared):
+    """macOS 14 is the oldest the runtime's arm64 wheels install on: the app must say so
+    to macOS, which then refuses to open it on an older system."""
+    built_mac_app(canvas, plist={"LSMinimumSystemVersion": declared})
+    with pytest.raises(SystemExit, match="LSMinimumSystemVersion"):
+        build.verify("mac-arm64", PINS, canvas, archs_of=lambda path: "arm64")
+
+
+@pytest.mark.parametrize(
+    ("target", "machine", "builds"),
+    [
+        ("mac-arm64", ("Darwin", "arm64"), True),
+        ("mac-arm64", ("Darwin", "x86_64"), False),
+        ("mac-arm64", ("Linux", "aarch64"), False),
+        ("linux", ("Linux", "x86_64"), True),
+        ("linux", ("Darwin", "arm64"), False),
+    ],
+)
+def test_a_target_builds_only_on_the_machine_it_is_for(target, machine, builds):
+    """The Canvas fork packages its runtimes for the machine it builds on."""
+    refusal = build.wrong_machine(target, *machine)
+    assert (refusal is None) is builds
+    if not builds:
+        assert refusal.startswith(f"✗ desktop/build.py {target} builds for ")
+
+
+def test_the_build_offers_no_universal_or_intel_mac_target():
+    with pytest.raises(SystemExit):
+        build.main(["mac-universal"])
+    assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}

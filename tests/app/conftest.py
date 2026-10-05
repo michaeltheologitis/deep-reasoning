@@ -1,4 +1,4 @@
-"""dr-app's harness: a stub uv and git on PATH that record their argv, a layout under
+"""dr-app's harness: a stub uv, uvx and git on PATH that record their argv, a layout under
 tmp_path, and an in-test agent-server (D5 §7.2)."""
 
 import json
@@ -75,6 +75,7 @@ if argv[:1] == ["sync"]:
     print("Resolved 173 packages")
     print("Installed 173 packages")
 """
+UVX = ""
 
 
 @dataclass
@@ -101,10 +102,10 @@ def layout() -> Iterator[AppLayout]:
 
 @pytest.fixture
 def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Stubs:
-    """uv and git first on PATH; whatever else PATH holds stays reachable."""
+    """uv, uvx and git first on PATH; whatever else PATH holds stays reachable."""
     bin_ = tmp_path / "stub-bin"
     bin_.mkdir()
-    for tool, body in (("git", GIT), ("uv", UV)):
+    for tool, body in (("git", GIT), ("uv", UV), ("uvx", UVX)):
         path = bin_ / tool
         filled = body.format(
             python=sys.executable,
