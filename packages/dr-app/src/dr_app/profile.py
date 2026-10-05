@@ -8,14 +8,13 @@ from typing import Any, Final
 
 from dr_app import texts
 from dr_app.agent_server import AgentServer, AgentServerError
-from dr_app.layout import ProfileRecord, SetupError, SetupState
+from dr_app.layout import EXIT_AGENT_SERVER, ProfileRecord, SetupError, SetupState
 
 PROFILE_NAME: Final = "deep_reasoner"
 HOME_FLAG: Final = "--home"
 SPEND_CAP_FLAG: Final = "--spend-cap-usd"
 DEFAULT_SPEND_CAP_USD: Final = "5"
 OWNED_FIELDS: Final = ("agent_kind", "acp_server", "acp_command", "acp_subagents")
-EXIT_AGENT_SERVER: Final = 12
 PROFILES: Final = "/api/agent-profiles"
 
 

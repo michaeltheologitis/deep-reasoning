@@ -17,6 +17,8 @@ from dr_app import texts
 from dr_app.agent_server import AgentServer, AgentServerError
 from dr_app.canvas_app import ensure_canvas_app, stage_canvas_app
 from dr_app.layout import (
+    EXIT_CHECK,
+    EXIT_HOME,
     NETWORK_FILESYSTEMS,
     AppLayout,
     RuntimeRecord,
@@ -39,10 +41,6 @@ from dr_app.runtime import (
     runtime_is_current,
 )
 
-EXIT_CHECK: Final = 10
-EXIT_INSTALL: Final = 11
-EXIT_AGENT_SERVER: Final = 12
-EXIT_HOME: Final = 13
 PHASES: Final = ("before-start", "after-ready")
 PHASE_ENV: Final = "OH_CANVAS_SETUP_PHASE"
 LINKED: Final = ("dr-app", "dr")  # in bin/, to the runtime's own

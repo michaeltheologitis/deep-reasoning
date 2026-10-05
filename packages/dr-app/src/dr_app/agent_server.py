@@ -4,12 +4,10 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
-from typing import Any, Final
+from typing import Any
 
 from dr_app import texts
-from dr_app.layout import SetupError
-
-EXIT_USAGE: Final = 2
+from dr_app.layout import EXIT_USAGE, SetupError
 
 
 class AgentServerError(Exception):

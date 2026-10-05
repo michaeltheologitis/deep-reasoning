@@ -18,8 +18,8 @@ from dr_app import texts
 from dr_app.agent_server import AgentServer, AgentServerError
 from dr_app.layout import AppLayout, CanvasAppRecord, SetupState
 
-# D3's deep_reasoning.canvas_app.APP_NAME; tests/app/test_canvas_app.py pins that they
-# are equal.
+# D3's deep_reasoning.canvas_app.APP_NAME, mirrored: this package imports nothing of
+# deep-reasoning's.
 APP_NAME: Final = "dr-library"
 # D3's built files, in the runtime (§8.3)
 APP_PACKAGE: Final = "deep_reasoning.canvas_app"

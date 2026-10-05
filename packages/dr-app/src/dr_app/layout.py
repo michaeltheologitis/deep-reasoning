@@ -1,5 +1,9 @@
 """Where the app keeps everything, where the user's data lives, and what setup last did
-(D5 §1, §4.4.1)."""
+(D5 §1, §4.4.1); and how setup fails.
+
+Every failure setup explains is a SetupError carrying one of the exit codes below; the
+bootstrap trusts a status from 10 to 19 to have been explained.
+"""
 
 import json
 import os
@@ -11,11 +15,18 @@ from typing import Final, Literal
 
 from dr_app import texts
 
+EXIT_USAGE: Final = 2  # as argparse's; after-ready without the launcher's variables
+EXIT_CHECK: Final = 10  # a check before the install: nothing was installed
+EXIT_INSTALL: Final = 11  # a step of the install: runtime/current is unchanged
+EXIT_AGENT_SERVER: Final = 12  # the agent-server refused what setup depends on
+EXIT_HOME: Final = 13  # the data home is unusable, or nothing is installed to export
+EXIT_STATE: Final = 14  # setup.json is unusable: a newer app's, or damaged
+
 ROOT_DIRNAME: Final = ".deep-reasoning"
 CANVAS_DIRNAME: Final = "canvas"  # the agent-server's persistence root
-STATE_DIRNAME: Final = "agent-canvas"  # C3's state directory, inside it
 NETWORK_HOME_TEMPLATE: Final = "/var/tmp/deep-reasoning-{uid}"
-# D2's store.NETWORK_FILESYSTEMS; tests/app/test_layout.py pins that they are equal.
+# D2's store.NETWORK_FILESYSTEMS, mirrored: this package imports nothing of
+# deep-reasoning's, which uvx has not fetched when it runs.
 NETWORK_FILESYSTEMS: Final = frozenset(
     {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "fuse.sshfs"}
 )
@@ -26,14 +37,12 @@ SOCKET_PATH_MAX: Final = {"Linux": 107, "Darwin": 103}
 # <run_dir>/repl.sock (deep_reasoner), D1 runs it in runs/<run id>, and each Claude
 # sub-agent it spawns serves from children/<n> below it; room for one such level.
 DEEPEST_SOCKET: Final = "runs/20261004-173501-a1b2c3/children/1000/repl.sock"
-EXIT_HOME: Final = 13
-EXIT_STATE: Final = 14  # setup.json unusable: a newer app's, or damaged
 SETUP_STATE_VERSION: Final = 1
 
 
 class SetupError(Exception):
-    """A failure setup has explained; main() prints message and exits with exit_code.
-    dr_app.runtime exports it too."""
+    """A failure setup explains: its message is printed and dr-app exits with
+    exit_code."""
 
     def __init__(self, exit_code: int, message: str) -> None:
         super().__init__(message)
@@ -53,10 +62,6 @@ class AppLayout:
     @property
     def canvas(self) -> Path:
         return self.root / CANVAS_DIRNAME
-
-    @property
-    def state_dir(self) -> Path:
-        return self.canvas / STATE_DIRNAME
 
     @property
     def runtime_dir(self) -> Path:
