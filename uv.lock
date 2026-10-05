@@ -668,6 +668,7 @@ dependencies = [
     { name = "agent-client-protocol" },
     { name = "deep-reasoner" },
     { name = "genai-prices" },
+    { name = "httpx" },
     { name = "ipython" },
     { name = "mcp" },
     { name = "pydantic" },
@@ -679,7 +680,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "jsonschema" },
     { name = "playwright" },
     { name = "pytest" },
@@ -692,6 +692,7 @@ requires-dist = [
     { name = "agent-client-protocol", specifier = ">=0.12.1,<0.13" },
     { name = "deep-reasoner", git = "https://github.com/DeanLight/deep_reasoner_beta?rev=d7334ae6ea884617a377d9f1ce872530d898484c" },
     { name = "genai-prices", specifier = ">=0.1.9,<0.2" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "ipython" },
     { name = "mcp", specifier = ">=1.28,<2" },
     { name = "pydantic", specifier = ">=2.7" },
@@ -703,7 +704,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx" },
     { name = "jsonschema" },
     { name = "playwright", specifier = "==1.56.0" },
     { name = "pytest" },
