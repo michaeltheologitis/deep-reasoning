@@ -1,0 +1,7 @@
+# What one desktop build is made of. A pin moves only when cross-repo.yml is green on the new set (spec §2).
+# Commits are authoritative (Michael's ruling); tags are for people and for the TypeScript client check.
+
+[sdk_fork]
+repo = "https://github.com/michaeltheologitis/software-agent-sdk"
+commit = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
+tag = "dr-2"
