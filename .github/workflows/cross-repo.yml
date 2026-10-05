@@ -1,6 +1,6 @@
 # D5's cross-repo checks (§7.5): the forks' code at their pins in desktop/pins.toml,
-# against this branch's. No job calls a real model. Dispatched by hand and nightly (through
-# main's nightly.yml), and on every pull request that moves a pin or the app.
+# against this branch's. No job calls a real model. Nightly, by hand, and on every pull
+# request that moves a pin or the app.
 name: cross-repo
 
 on:
@@ -12,64 +12,172 @@ on:
       - uv.lock
       - src/deep_reasoning/acp/proxy.py
       - .github/workflows/cross-repo.yml
+  schedule:
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 jobs:
-  # main carries this file before D5's code does (decision M): on a tree without
-  # desktop/pins.toml every job below is skipped, not failed.
-  has-d5:
+  # The pins belong together (D5 §4.2.2): build.py check, every check against the real
+  # forks. It checks out the commit itself, never a pull request's merge commit, since
+  # check 6 asks that the commit every user's setup fetches is on origin.
+  pins:
     runs-on: ubuntu-latest
-    outputs:
-      present: ${{ steps.look.outputs.present }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: desktop/pins.toml
-          sparse-checkout-cone-mode: false
-      - id: look
-        run: |
-          if [ -f desktop/pins.toml ]; then echo "present=true"; else echo "present=false"; fi >> "$GITHUB_OUTPUT"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv run desktop/build.py check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
-  # The staged Library App in a real agent-server from the SDK fork's pin: it installs,
-  # its artifact passes prepare and its backend answers /health (D5 §7.2).
-  library-app:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      DR_SDK_CHECKOUT: ${{ github.workspace }}/sdk
+  # E12's skeleton flow (D5 §7.5): the Linux packages built from the pins, the .deb
+  # installed, and the app launched with a fresh HOME under Xvfb and driven over its
+  # DevTools port. The model is FakeOpenAI in the test, so no model is called. The app's
+  # setup fetches deep-reasoning (this commit, public) and deep_reasoner_beta (private,
+  # through the runner's insteadOf line) with git, as a user's would.
+  desktop-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - name: The SDK fork's pin
-        id: pin
-        run: |
-          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
-          import tomllib
-          pin = tomllib.load(open("desktop/pins.toml", "rb"))["sdk_fork"]
-          print("repo=" + pin["repo"].removeprefix("https://github.com/"))
-          print("commit=" + pin["commit"])
-          EOF
-      - uses: actions/checkout@v4
         with:
-          repository: ${{ steps.pin.outputs.repo }}
-          ref: ${{ steps.pin.outputs.commit }}
-          path: sdk
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
-      - run: uv sync --frozen
-        working-directory: sdk
-      - run: uv run pytest -m crossrepo tests/app/test_canvas_app.py -v -rA
+      - name: Build the Linux packages
+        run: uv run desktop/build.py linux
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Install the .deb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ./dist/*.deb
+      - name: Let unshare cut the network for an unprivileged user (Ubuntu 24.04's AppArmor)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: E12
+        run: xvfb-run -a uv run pytest -m desktop tests/desktop/test_e12.py -v -rA
+      - name: The app's log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e12-app-log
+          path: /tmp/pytest-of-*/pytest-*/e12*/app.log
+          if-no-files-found: ignore
 
-  # E5's second half: each of D1's native recordings, played by S1's scripted agent into
-  # the SDK fork's agent-server, is stored as the tree it records (D5 §7.5).
+  # E6 (D5 §7.5, C1 §6.4): each of D1's native recordings, played by S1's scripted agent
+  # with acp_subagents on, renders in the pinned Canvas as the pinned agent-server stored
+  # it: C1's replay spec, one test per recording, in the Canvas fork's mock-LLM stack,
+  # set up as its mock-llm-e2e.yml does. The mock LLM only serves the spec's profile.
+  canvas-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: The forks' pins
+        id: pin
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import tomllib
+          pins = tomllib.load(open("desktop/pins.toml", "rb"))
+          for fork in ("canvas_fork", "sdk_fork"):
+              print(f"{fork}_repo=" + pins[fork]["repo"].removeprefix("https://github.com/"))
+              print(f"{fork}_commit=" + pins[fork]["commit"])
+          EOF
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pin.outputs.canvas_fork_repo }}
+          ref: ${{ steps.pin.outputs.canvas_fork_commit }}
+          path: canvas
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pin.outputs.sdk_fork_repo }}
+          ref: ${{ steps.pin.outputs.sdk_fork_commit }}
+          path: sdk
+          sparse-checkout: tests/fixtures/acp
+      - uses: actions/setup-node@v4
+        with:
+          # The fork's pin: Node 24.16 hangs Playwright < 1.60's browser install.
+          node-version: "24.15"
+          cache: npm
+          cache-dependency-path: canvas/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci
+        working-directory: canvas
+      - run: npx playwright install --with-deps chromium
+        working-directory: canvas
+      - name: The mock LLM's Python, at the agent-server's version
+        working-directory: canvas
+        run: |
+          uv venv .mock-llm-venv
+          uv pip install -p .mock-llm-venv "openhands-sdk==$(node -p "require('./config/defaults.json').versions.agentServer")"
+      - name: The automation backend in uvx's cache, inside the stack's 180 s start
+        working-directory: canvas
+        run: uvx --from "openhands-automation==$(node -p "require('./config/defaults.json').versions.automation")" python -c "import openhands.automation.app"
+      - run: npm run build:app
+        working-directory: canvas
+        env:
+          VITE_ENABLE_BROWSER_TOOLS: "false"
+      - name: E6, D1's ten native recordings
+        working-directory: canvas
+        env:
+          MOCK_LLM_PYTHON: .mock-llm-venv/bin/python3
+          SCRIPTED_ACP_AGENT: ${{ github.workspace }}/sdk/tests/fixtures/acp/scripted_agent.py
+        run: |
+          OH_ACP_REPLAY_TRANSCRIPTS="$(ls "$GITHUB_WORKSPACE"/tests/acp/golden/*.native.jsonl | paste -sd: -)"
+          export OH_ACP_REPLAY_TRANSCRIPTS
+          # The stack's teardown can hang after the last test (the fork's workflow says
+          # so): once the reporter marks the tests done, Playwright gets 30 s to exit,
+          # and the reporter's results, written after every test, are the verdict.
+          npx playwright test --config=playwright.mock-llm.config.ts \
+            tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts &
+          playwright=$!
+          while kill -0 "$playwright" 2>/dev/null && [ ! -f .mock-llm-markers/.tests-done ]; do sleep 2; done
+          for _ in $(seq 30); do kill -0 "$playwright" 2>/dev/null || break; sleep 1; done
+          kill "$playwright" 2>/dev/null || true
+          python3 - "$OH_ACP_REPLAY_TRANSCRIPTS" <<'EOF'
+          import json, os, sys
+          recordings = sorted(os.path.basename(p) for p in sys.argv[1].split(":"))
+          tests = json.load(open(".mock-llm-markers/.results.json"))["tests"]
+          for test in tests:
+              print(f"{test['status']:>8}  {test['title']}")
+          passed = sorted(
+              name for name in recordings for test in tests
+              if test["status"] == "passed" and f"nests {name} as" in test["title"]
+          )
+          assert len(recordings) == 10, recordings
+          assert passed == recordings, f"passed {len(passed)} of {len(recordings)}"
+          EOF
+      - name: The replay's report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e6-canvas-replay
+          path: |
+            canvas/test-results-mock-llm/
+            canvas/playwright-report-mock-llm/
+          if-no-files-found: ignore
+
+  # Against the SDK fork's agent-server at its pin: E5's second half, each of D1's native
+  # recordings, played by S1's scripted agent, is stored as the tree it records (D5
+  # §7.5); D4's forwarding test, an MCP server in its settings reaches a cell through the
+  # deep_reasoner profile and dr-acp, its secret with it (D4 §10.6, D5 §8.7); and the
+  # staged Library App installs, passes prepare and answers /health (D5 §7.2).
   bridge-replay:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -98,4 +206,4 @@ jobs:
       - run: uv sync --locked
       - run: uv sync --frozen
         working-directory: sdk
-      - run: uv run pytest -m crossrepo tests/crossrepo -v -rA
+      - run: uv run pytest -m crossrepo tests/app/test_canvas_app.py tests/crossrepo -v -rA
