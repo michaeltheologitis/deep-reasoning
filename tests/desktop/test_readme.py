@@ -1,19 +1,16 @@
 """The README's install section names what the build and setup really use (D5 §2.3,
 §4.2.6, §4.8.3, §3 item 12): the app, its packages, the key, the commands, the paths."""
 
-import importlib.util
 import os
 import re
 import shlex
 from pathlib import Path
 
+from desktop import build
 from dr_app import cli, layout, profile, texts
 from dr_app.runtime import deep_reasoner_pin, git_environment
 
 ROOT = Path(__file__).resolve().parents[2]
-_spec = importlib.util.spec_from_file_location("build", ROOT / "desktop" / "build.py")
-build = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(build)
 
 PINS = build.load_pins(build.PINS)
 README = (ROOT / "README.md").read_text()

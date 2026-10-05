@@ -4,7 +4,6 @@ driven over the agent-server's REST API and Electron's DevTools port (D5 §7.5, 
 DR_APP_EXECUTABLE names the installed executable; the default is where the .deb puts it.
 """
 
-import json
 import os
 import re
 import secrets
@@ -15,12 +14,13 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
+
+from dr_app.agent_server import AgentServer
 
 APP = Path(os.environ.get("DR_APP_EXECUTABLE", "/opt/Deep Reasoning/deep-reasoning"))
 CANVAS_URL = "http://localhost:8000/"
@@ -47,8 +47,6 @@ RUNNER_ONLY = (
     "UV_TOOL_BIN_DIR",
     "UV_PROJECT_ENVIRONMENT",
 )
-# Loopback, so never through a proxy.
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def free_port() -> int:
@@ -142,19 +140,8 @@ class LaunchedApp:
         raise AssertionError(f"{why}; the end of {self.log}:\n{tail}")
 
     def request(self, method: str, path: str, body: Any = None) -> Any:
-        """The agent-server's REST API with the app's session key; non-2xx raises."""
-        request = urllib.request.Request(
-            AGENT_SERVER + path,
-            data=None if body is None else json.dumps(body).encode(),
-            method=method,
-            headers={
-                "X-Session-API-Key": self.session_key,
-                "Content-Type": "application/json",
-            },
-        )
-        with OPENER.open(request, timeout=60) as response:
-            raw = response.read()
-        return json.loads(raw) if raw else None
+        """The agent-server's REST API with the app's session key, as setup calls it."""
+        return AgentServer(AGENT_SERVER, self.session_key).request(method, path, body)
 
     def stop(self) -> None:
         """SIGTERM, the signal the app's own quit sends itself; its handler stops every

@@ -1,19 +1,14 @@
 """desktop/bootstrap.sh, run as C3's launcher runs the setup command, with a stub git and
 uvx (D5 §4.3.1)."""
 
-import importlib.util
 import subprocess
-from pathlib import Path
 
+from desktop import build
 from dr_app import texts
 from tests.app.conftest import COMMIT
 
-ROOT = Path(__file__).resolve().parents[2]
-BOOTSTRAP = (ROOT / "desktop" / "bootstrap.sh").read_text()
-REPO = "https://github.com/michaeltheologitis/deep-reasoning"
-_spec = importlib.util.spec_from_file_location("build", ROOT / "desktop" / "build.py")
-build = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(build)
+BOOTSTRAP = build.BOOTSTRAP.read_text()
+REPO = build.DEEP_REASONING
 # deep-reasoning is public, so a fetch that fails means the network.
 UNREACHABLE_LINE = (
     "✗ Could not fetch github.com/michaeltheologitis/deep-reasoning: check that this "

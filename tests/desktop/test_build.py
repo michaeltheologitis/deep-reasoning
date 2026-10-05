@@ -2,7 +2,6 @@
 (D5 §4.2, §7.3). The packaging itself is tested by building it (§7.5, §7.6)."""
 
 import copy
-import importlib.util
 import json
 import plistlib
 import shutil
@@ -12,10 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from desktop import build
+
 ROOT = Path(__file__).resolve().parents[2]
-_spec = importlib.util.spec_from_file_location("build", ROOT / "desktop" / "build.py")
-build = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(build)
 
 CANVAS_REPO = "https://github.com/michaeltheologitis/OpenHands"
 SDK_REPO = "https://github.com/michaeltheologitis/software-agent-sdk"
