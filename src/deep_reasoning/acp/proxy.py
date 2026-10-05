@@ -1,7 +1,10 @@
 """The key proxy: the worker's model calls carry a token, the proxy swaps the key in, and
 a conversation's spend stops at its cap (D5 §4.7).
 
-The proxy runs in dr-acp's front on a thread of its own, serving 127.0.0.1 only.
+Three parts, in this order: SpendLedger, each root session's spend, reserved before a
+call and settled after it; KeyProxy, the HTTP side, in dr-acp's front on a thread of its
+own and serving 127.0.0.1 only; and ProxyRoute, D1's ModelRoute, which grants a run its
+routes and tokens and takes the keys out of the worker's environment.
 """
 
 import fnmatch

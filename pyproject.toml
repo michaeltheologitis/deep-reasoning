@@ -13,7 +13,7 @@ dependencies = [
     "structlog",
     "starlette>=0.40",
     "uvicorn>=0.30",
-    # The key proxy forwards with it (D5 §4.7); deep_reasoner's dependency until then.
+    # The key proxy forwards with it (D5 §4.7).
     "httpx>=0.28",
     # deep_reasoner imports IPython.display at module level but declares it only in its dev group.
     "ipython",
