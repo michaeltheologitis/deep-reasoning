@@ -1,8 +1,9 @@
 # D5 · Desktop app: build, install and launch — design
 
 **TASK-10** · System Designer · task branch `v1-desktop` in
-[deep-reasoning](https://github.com/michaeltheologitis/deep-reasoning), cut from `main` (this file is written on
-`design/d5`) · against the approved spec [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012) (D5 in
+[deep-reasoning](https://github.com/michaeltheologitis/deep-reasoning), cut from `main` (v1 and v2 were written on
+`design/d5` and merged; v3 on `design/d5-v3`, cut from `v1-desktop` at `3e9cee9`, changes only this file) · against
+the approved spec [TASK-1](https://app.notion.com/p/3ed62fb22237814ab425c81b3844f012) (D5 in
 full, §2, C3, §4's E10, E12 and testing layers, the dated notes at its end through "Scope additions approved,
 2026-10-03").
 
@@ -33,7 +34,74 @@ full, §2, C3, §4's E10, E12 and testing layers, the dated notes at its end thr
   `fbf4230`).
 - **D4**, `v1-custom-tools` (`461c3b5`; design v5 `60f1d00`), being split onto `main`.
 
+*(v3: all of it landed. `dr-2` is on the SDK fork's `34c540c`, with its release's tarball. The redone wiring merged
+into the Canvas fork's `deep-reasoning` as its #12 and was tagged `dr-1` (`fc87687`); C1 merged as Canvas #13–#19 and
+C2 as #20–#26, with a toast fix (#27), tagged `dr-2` (`9d050ab`); two fork-only fixes for our build, #28 (no telemetry
+prompt where a build cannot report) and #29 (onboarding keeps the active profile), tagged `dr-3` (`4355a36`), which
+the build pins. D4 merged into `main` as #27–#33 (`53c821b`), and `v1-desktop` merged `main` at `53c821b`, `b2a74e0`
+and `f1ca641`. §3.1 B1.)*
+
+**Matches the build at `3e9cee9`** (v3): the head of `v1-desktop`. `main` (`f1ca641`) is its ancestor, so `git diff
+f1ca641 3e9cee9` is D5 alone: 48 commits of code and tests besides v1's and v2's, 7,689 lines added and 134 removed in
+63 files, this file aside. Since v2's `9ee36f6`: the skeleton and the final part, built in one pass; the four fixes
+Michael approved at Gate B, and two more after the as-built r2; the Scout's five findings, adopted; and the literate
+refactor (`d9b35f4` … `3e9cee9`). §3.1 B1–B29 give each change its commit, its reason and the test that pins it, and
+the sections they name carry a v3 note in place. Line numbers in v3 notes are `3e9cee9`'s. v2's stay as v2 cited them:
+deep-reasoning's `1f9fe52`; the Canvas fork's `7c12afb`, whose cited files are unchanged at the pin `4355a36` but for
+`src/services/telemetry.ts` (§9); the SDK fork's `34c540c`, still the pin.
+
+**In Gate C** (v3, 2026-10-05). Michael approved D5's behaviour at Gate B after running the `3c923aa` build in a macOS
+26 VM ("It runs good btw generally."), and his rulings since v2 are §3.1 B4 and B13–B21: the four fixes
+the as-built r1 proposed; Intel Macs dropped; deep-reasoning and its release downloads public; **the GitHub sign-in
+kept in every build and release**, so deep_reasoner never ships inside the app (lifting it is TASK-45, only on his
+word); his UI requests moved to a later UX round (TASK-42, 43, 44 and 46, and TASK-50 since), not into D5; and a
+provider's error that reports no usage costs nothing against the cap. The stack is nine pull requests, #36 to #44,
+each one commit on the one below and #36 on `main` at `f1ca641`. The top's tree (#44, `9455452`) is `3e9cee9`'s less
+this file, and no branch of the stack carries a design or an as-built file. What to read beside each pull request is
+the table "Which PR holds what" (§"Gate C: reading beside the PRs", below; #44's description carries the same table),
+which cites v3 and the as-built document's revision 3 (`as_built/d5-desktop-app.md` on `as-built/d5`, `ffa34b1`, the
+code at `3e9cee9`; r1's numbers kept, §8 the refactor). What changed since Gate B is §3.1 B18–B29: the fixes, then the
+Scout's findings and the refactor. One approved behaviour moved on an error path, **B23** (as-built §6 #11): an
+offline launch with no current runtime now fails naming `git fetch`, exit 11, not `no_access_dr`, exit 10. The tests
+that carry each property are "Which tests carry which property", current at the stack top. The evidence at `3e9cee9`:
+`ci.yml` [run 37256037218](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37256037218), green,
+**858 passed**, 115 deselected; `cross-repo.yml` [run
+37256036928](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37256036928), all four jobs green (E12
+**17 of 17**, `bridge-replay` 12, `canvas-replay` 10 of 10); `desktop-release.yml` [run
+37256038987](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37256038987), `linux` and `macos`
+green, the macOS launch smoke 2 of 2; and the live tier, `fork-live.yml` with `sdk_ref` `dr-2`, [run
+37256842683](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37256842683), S1 2 of 2 and S2 8 of 8
+on gpt-6-luna through the key proxy. Each level of the stack has its own green `ci.yml` run; D5's own `cross-repo.yml`
+ran on #42 (all four jobs green on attempt 1) and #44 (green on attempt 2: `canvas-replay` failed attempt 1 on
+`exhausted.native.jsonl`, TASK-41's race, and passed 10 of 10 alone).
+
 **Revisions** (newest first; each line says which sentences to stop trusting):
+- 2026-10-05 · v3 · brought in line with the build at `3e9cee9`, the head of `v1-desktop`, whose tree less this file
+  is the stack top's (#44, `9455452`), for Gate C; read beside the as-built r3 (`ffa34b1`). Since v2: both parts built
+  in one pass; Michael's Gate B approval and rulings, the four fixes, and two more after r2; the Scout's five
+  findings; the literate refactor. B-numbers are §3.1's. Stop trusting: the header's "Expected" list (landed, B1); §1
+  item 1's universal `.dmg` (B14); §1.2 as a plan still to run (B1); decision C, §3 item 4, `runtime.lock.txt`,
+  `RuntimeSpec`, §4.2.2 check 7, §4.4 steps 3–5, §4.4.2's order and its URL "parsed from `runtime.lock.txt`", and
+  §4.4.3's `uv pip sync` and the paragraph under it (B22, B23, B2); decision M's and §7.5's `nightly.yml`, `has-d5`
+  and trigger files (B26, B11); a private deep-reasoning and private releases in §2.2 and §3 items 1 and 2, §4.3.1's
+  fetch line, and §7.5's `insteadOf` for deep-reasoning (B15); §4.2.1's placeholders (B1); §4.2.2's blobless fetch for
+  check 8, check 2 as one sentence and check 5's "all of `setup`" (B24); §4.2.4's `ELECTRON_ARCH=universal`, its
+  universal macOS build and its wrapper "whole" without the `mac` line (B14, B19); §4.3.2's exit codes (B6, B21, B27);
+  §4.4.1's three rules (B3); §4.5.1 step 4's listing (B25); §4.7.3's "no usage reported: the reservation stands" (B4),
+  and its silence on a body it cannot read (B5); in §5, `STATE_DIRNAME` and `state_dir`, `dr_app.runtime`'s
+  `SetupError`, `LOCK_RESOURCE`, `RuntimeSpec`, `check_git(run=)`, `check_readable(url, run=)`, `runtime_is_current(…,
+  spec)` and `install_runtime(layout, spec, …)`, `dr_app.cli`'s exit constants, the proxy's `DEFAULT_SPEND_CAP_USD`,
+  its frozen `Spend(session, cap_usd, …)` and its `MappingProxyType` tables, and `Target` (B22, B27, B28, B14); §6's
+  tables as complete (B6); §7.1–§7.3's names where their v3 notes rename them; §7.5's E12 as seven steps and a final
+  flow, and `e12/main.yaml` (B7); §7.6's universal build and private release (B14, B15); §8's asks as open (all met);
+  §9's W1, C1, C2 and D4 as expected, L6 as unverified, and U1's uv commands; §10's estimate; §11's items 1, 2, 4–6,
+  8, 10–13 and 15–17 as open. Added without changing earlier sentences: the "Matches the build" and "In Gate C"
+  paragraphs; §"Gate C: reading beside the PRs", with "Which PR holds what" and "Which tests carry which property";
+  §3.1, B1 to B29 with "Size" and "The stack"; §6's new rows and the build's sentences; §11 items 19 to 22; and v3
+  notes in §1, §1.1 (decisions A to F, I, K to N, P), §1.2, §1.3, §2.1 to §2.3, §3 items 1, 2, 4 and 13 to 15, §4.1 to
+  §4.9, §6 to §11. Rewritten to the code: §5's blocks (each changed line marked `# v3:`), §4.2.4's wrapper and
+  §4.3.1's bootstrap, each equal to its file at `3e9cee9`. No section is renumbered: §3.1 is new, and §3's items keep
+  their numbers, so "§3 item N" still resolves.
 - 2026-10-04 · v2 · brought up to date with what merged since v1's pins, so an Implementer can build the skeleton
   now; the changes, each with its source, are listed next. Stop trusting: v1's pins; §1.2 (rewritten: the Library
   App, E5's bridge replay and the macOS smoke join the skeleton, and it has a build order); decision M and every
@@ -117,13 +185,125 @@ full, §2, C3, §4's E10, E12 and testing layers, the dated notes at its end thr
 branch holds only documents (no `pyproject.toml`, no test runner, no package). On `v1-desktop`, cut from `main`,
 which carries D1's `pyproject.toml`, pytest collects `tests/` only, the wheel is built from `src/deep_reasoning`
 (and the new `packages/dr-app` from its own `src/`), the sdist excludes `docs/`, and ruff excludes `docs` (D1
-§8.5). No design document goes into either fork, or onto `main`. The PR split leaves it behind.
+§8.5). No design document goes into either fork, or onto `main`. The PR split leaves it behind. *(v3: still so at
+`3e9cee9`: ruff's `extend-exclude` holds `docs`, pytest's `testpaths` is `tests`, and no pull request of the stack
+carries this file.)*
 
-**Reading guide.** Gate B: §1 (what D5 is, its decisions, the skeleton, its build order and the final part), §2
-(what the app protects and what it does not) and §3 (departures from the spec): about 20 minutes. The Implementer:
+**Reading guide.** *(v3)* Gate C: the "In Gate C" paragraph above, then §"Gate C: reading beside the PRs" below (which
+PR holds what, and which tests carry which property), then §3.1 for what the build changed since v2. Beside each pull
+request, the design sections its row names; every one of them carries its v3 notes in place. Gate B (v2): §1 (what
+D5 is, its decisions, the skeleton, its build order and the final part), §2 (what the app protects and what it does
+not) and §3 (departures from the spec): about 20 minutes. The Implementer:
 §1.2 first, then everything; §5 is the signature index, §6 every user-visible sentence, §7 the tests and workflows.
 Whoever redoes the wiring: §8.6. C1's and C2's authors: §8.4. D3's: §8.3. D4's: §8.7. D1's next revision: §8.1.
 The Conductor: §1.2, §8 and §11.
+
+## Gate C: reading beside the PRs
+
+*(v3; new. Nothing here renumbers a section: §1 to §11 are v2's, with v3 notes, and §3.1 is added.)*
+
+Gate C reads the code: 6,512 reviewable lines, 2,589 of code and 3,923 of tests, and the README's 161 (§3.1 "Size"),
+in nine pull requests. Read each with the design sections and the as-built sections its row names. Bottom-up, the
+stack is the key proxy, the grant that puts it between the worker and every key, setup's two phases, the SDK fork's
+pin with what is checked against it, the build, the CI that installs and drives the app, the release, and the README
+(§3.1 "The stack" says why in that order).
+
+### Which PR holds what
+
+Reviewable lines are non-blank added lines against the level below, as #44's description and the review ledger count
+them; `uv.lock` (+2 in #36, +11 in #38) is not counted. B-numbers are §3.1's; as-built numbers are r3's.
+
+| # | PR (head) | What it holds | Lines (code + tests) | Read beside: design v3 | as-built r3 |
+|---|---|---|---|---|---|
+| 1 | [#36](https://github.com/michaeltheologitis/deep-reasoning/pull/36) The key proxy forwards a model call with the real key in place of its token, and stops a conversation's spend at its cap (`2646b89`) | `acp/proxy.py`'s `SpendLedger` and `KeyProxy`; the proxy's sentences in `acp/texts.py`; `httpx` as a dependency; the request half of `test_key_proxy.py` | 916 (511 + 405) | §1.1 H, I; §4.7.1; §4.7.3; §5.7 (`Spend`, `SpendLedger`, `KeyProxy`); §6 (the proxy's sentences); §7.1 (the proxy's units); §3.1 B4, B5, B28 | §1.1 #5, #6, #25 (`Spend`); §2.3; §3 (the key proxy's HTTP); §4.1 (a request); §8 (the proxy) |
+| 2 | [#37](https://github.com/michaeltheologitis/deep-reasoning/pull/37) dr-acp's worker gets tokens, not keys, for the main client and each tool's own, and a conversation's spend stops at $5 by default (`d3b7f52`) | D1's tool-client seam (`catalog.py`, `route.py`, `supervisor.py`, `worker/protocol.py`, `worker/runner.py`); `ProxyRoute` and `loopback_proxy_env`; `dr-acp`'s `--no-key-proxy` and `--spend-cap-usd`; `FakeOpenAI`'s `Authorization`; the grant half of `test_key_proxy.py`; E10 | 788 (249 + 539) | §1.1 H, J; §2.1; §2.2; §4.7.1; §4.7.2; §5.7 (`ProxyRoute`, `Options`); §7.1; §8.1; §8.7; §3.1 B9, B28 | §1.1 #16, #25 (the default cap); §2.3; §3 (`dr-acp`'s options); §4.1 (a grant); §5.2 (E10) |
+| 3 | [#38](https://github.com/michaeltheologitis/deep-reasoning/pull/38) dr-app installs deep-reasoning at a commit into a private data home on every launch, and dr-app home and export serve the user (`3bda1fd`) | `packages/dr-app`: `layout.py`, `runtime.py`, `cli.py`'s before-start, `home` and `export`; the uv workspace; ruff over `packages/`; D3's notice test | 1,443 (761 + 682) | §1.1 B, C (superseded: B22), D, E, O, P; §4.3.2; §4.4 to §4.4.3; §4.8.1; §4.8.2; §5.1; §5.2; §5.6; §6 (setup's sentences); §7.2; §3.1 B2, B3, B6, B12, B21, B22, **B23**, B27 | §1.1 #3, #4, #15, #20, #22, #23; §1.3 #2, #4; §2.2; §3 (`dr-app`, exit codes, on disk); §4.2 (before-start); §5.4; §5.5; §6 #11 |
+| 4 | [#39](https://github.com/michaeltheologitis/deep-reasoning/pull/39) Once the agent-server is up, dr-app makes dr-acp its default agent, says when no model key is saved, and starts the Library App (`c871ac5`) | `agent_server.py`, `profile.py`, `canvas_app.py`, `cli.py`'s after-ready; `tests/app/fake_agent_server.py` | 890 (371 + 519) | §1.1 F, G; §4.5; §4.5.1; §4.6; §5.3; §5.4; §5.5; §6 (setup's after-ready sentences); §7.2; §3.1 B6, B25 | §1.1 #24; §3 (the profile; the Library App's manifest); §4.2 (after-ready) |
+| 5 | [#40](https://github.com/michaeltheologitis/deep-reasoning/pull/40) The SDK fork is pinned at dr-2, and the Library App, D1's recordings and D4's forwarding are checked against that agent-server (`9ef441d`) | `pins.toml`'s `[sdk_fork]`; `tests/crossrepo/` (the agent-server harness, E5, D4's forwarding); the Library App's `crossrepo` test; the `crossrepo` marker | 356 (8 + 348) | §1.1 A; §4.2.1; §7.2 (`test_canvas_app.py`'s `crossrepo` test); §7.5 (E5); §8.7; §3.1 B1, B10, B11 | §1.1 #11; §2.5; §5.2 (E5, the Library App); §6 #12 |
+| 6 | [#41](https://github.com/michaeltheologitis/deep-reasoning/pull/41) desktop/build.py builds the Linux and Apple silicon packages from the Canvas fork at its pin, once the pins are checked to belong together (`4ff631c`) | `desktop/`: `build.py`, the rest of `pins.toml`, `bootstrap.sh`, `electron-builder.dr.mjs`; `test_build.py`, `test_bootstrap.py`; ruff over `desktop/` | 863 (511 + 352) | §1.1 A, K, L; §4.2 (all of it); §4.3.1; §5.8; §6 (the build's and the bootstrap's sentences); §7.3; §3.1 B1, B6, B12, B14, B15, B19, B20, B24 | §1.1 #1, #2, #7, #14, #19; §1.3 #3, #6; §2.1; §3 (`build.py`, `defaults.json`); §5.2 (pins) |
+| 7 | [#42](https://github.com/michaeltheologitis/deep-reasoning/pull/42) cross-repo.yml checks the pins and drives the installed Linux app end to end, on every pull request that moves a pin or the app and every night (`4703dc2`) | `cross-repo.yml`, D5's own; `nightly.yml` deleted; E12, `tests/desktop/app.py`, `test_app.py`, `e12/subagents.py`; the `desktop` marker | 1,107 (147 + 960) | §1.1 M; §1.2; §4.9; §7.5; §8.4; §3.1 B7, B10, B11, B26, B29 | §1.1 #10, #11, #12; §2.4; §4.3; §5.2 (E12, E6); §6 #4, #5, #7, #12 |
+| 8 | [#43](https://github.com/michaeltheologitis/deep-reasoning/pull/43) desktop-release.yml builds the Linux packages and the Apple silicon .dmg, launches the macOS app once, and attaches them to a v* tag's release (`c9ee72f`) | `desktop-release.yml`, D5's own; `test_launch_smoke.py` | 82 (30 + 52) | §4.2.6; §7.6; §3.1 B8, B11, B14, B15 | §1.1 #1, #13; §1.3 #5; §5.2 (the launch smoke); §7 (macOS) |
+| 9 | [#44](https://github.com/michaeltheologitis/deep-reasoning/pull/44) The README says what deep-reasoning is and how to install, run and remove the desktop app (`9455452`) | `README.md`; `test_readme.py`; `pyproject.toml`'s `readme` | 67 (1 + 66), and the README's 161 | §1.3; §2.2; §2.3; §3 item 12; §4.2.6; §4.8.3; §3.1 B15, B16, B18 | §1.1 #9, #18; §6 #8; §7 (the uninstall paths) |
+
+Across the stack, read the as-built's §1 (the divergences), §5.1 (the runs at `3e9cee9`), §6 (the open items) and §7
+(what could not be verified, first that nothing ran on a Mac but GitHub's runner); and §3.1 B23 here, the one approved
+behaviour that moved.
+
+### Which tests carry which property
+
+Each test's name states the property it pins. Paths are from the repository's root; `::` precedes a test, `[…]` its
+parameters; the pull request that holds each test is in parentheses. Current at the stack top (`9455452`, the tree of
+`3e9cee9`). A test runs in the default suite (`ci.yml`, every push and pull request) unless it is marked `crossrepo`
+or `desktop`: those run in `cross-repo.yml` (and the smoke in `desktop-release.yml`).
+
+*Part 1 · the key proxy and the cap* (§2.1, §4.7; #36, #37)
+
+| Property | Tests |
+|---|---|
+| **No provider key `dr-acp` holds, and none of the agent-server's secrets, reaches the worker's environment, a cell, a process it starts, the transcript, the run log or any file under the home** (§2.1 rows 1 and 2; E10 #1) | `tests/acp/test_e10_keys.py::test_provider_keys_and_agent_server_secrets_never_reach_the_worker_a_cell_the_transcript_or_the_run_log` (#37; Linux only, it reads `/proc`); `tests/acp/test_key_proxy.py::test_the_key_is_removed_from_the_worker_env_by_value_under_any_name` (#37), `::test_upstream_error_bodies_never_echo_the_key` (#36), `::test_the_proxy_never_logs_a_key_or_a_token` (#37); D1's `tests/acp/test_route.py::test_the_agent_servers_secrets_never_reach_the_worker` (on `main`); in the installed app, `tests/desktop/test_e12.py::test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out` (#42, `desktop`) |
+| **The proxy swaps the token for the key and forwards the call, for the main client and for each tool with its own client; a client whose key `dr-acp` lacks is left as configured** (§4.7.2, §8.1) | `test_key_proxy.py::test_the_token_is_swapped_for_the_key_and_the_call_forwarded`, `::test_an_anthropic_route_swaps_the_x_api_key` (#36); `::test_a_tool_with_its_own_client_gets_its_own_overrides`, `::test_a_client_without_a_held_key_is_left_as_configured` (#37); D1's seam: `tests/acp/test_catalog.py::test_materialize_hands_the_worker_each_tools_own_client`, `tests/acp/test_runner.py::test_the_run_config_takes_the_namespace_and_every_clients_overrides`, `::test_a_start_without_tool_overrides_leaves_every_tool_as_configured`, `tests/acp/test_route.py::test_the_direct_route_overrides_nothing` (`tool_upstreams` ignored) (#37); `tests/acp/test_fake_model.py::test_embeds_every_input_alike_and_records_each_call_with_its_authorization` (#37), the record E10 #1 reads to see the real key on the main client's and the `rag` tool's calls |
+| **A token is worth nothing outside its run; a route forwards only to its configured upstream, and only model calls** (§2.1 rows 4 and 5) | `test_key_proxy.py::test_a_wrong_or_missing_token_is_refused_and_nothing_is_forwarded`, `::test_a_released_runs_tokens_stop_working`, `::test_a_route_forwards_only_to_its_configured_upstream`, `::test_only_model_endpoints_are_forwarded[…]` (#36: POSTs to `files`, `fine_tuning/jobs`, `batches`, `images/generations` and `chat/completions/../../files`, and a GET on `chat/completions`) |
+| **Spending through the proxy stops at the conversation's cap**: reserved before forwarding, settled after; an unpriced model refused off loopback; concurrent calls overshoot by at most their reservations; streams metered; the count survives a restart; a provider's error that reports no usage costs nothing (§2.1 row 3; decision I; B4) | `tests/acp/test_e10_keys.py::test_a_call_past_the_spend_cap_is_refused_and_never_forwarded` (#37, E10 #2: three prompts, one after `dr-acp` restarts); `test_key_proxy.py::test_an_unpriced_model_is_refused_unless_the_upstream_is_loopback`, `::test_concurrent_calls_overshoot_the_cap_by_at_most_their_reservations` (20 at once), `::test_a_streamed_openai_call_is_metered_from_its_last_chunk`, `::test_a_streamed_anthropic_call_is_metered_from_message_start_and_delta`, `::test_the_ledger_continues_after_a_restart`, `::test_provider_errors_release_their_reservations`, `::test_a_call_costs_its_reported_usage_else_its_reservation_unless_refused` (#36) |
+| **Loopback calls bypass a Mac's system proxies; every other call keeps them** (§4.7.2 step 5) | `test_key_proxy.py::test_loopback_calls_bypass_macos_system_proxies_and_others_keep_them` (#37; `system_proxies` faked, no Mac) |
+| **The proxy is on by default with a $5 cap per conversation; `--no-key-proxy` keeps D1's direct route** (decision J) | `test_key_proxy.py::test_no_key_proxy_keeps_d1s_direct_route`; D1's `tests/acp/test_cli.py::test_options_default_to_native_a_minute_of_heartbeat_warnings_and_the_proxy` (#37) |
+| **An MCP server gets a provider key only when its Canvas settings name it, and the worker's token never** (§2.1 row 1's exception; §8.7; B9) | `test_e10_keys.py::test_an_mcp_server_gets_a_provider_key_only_when_its_settings_name_it_and_the_worker_never_does[unnamed, named]` (#37) |
+| **The proxy's sentences are §6's, verbatim** | `tests/acp/test_texts.py::test_the_key_proxys_sentences_are_d5s_verbatim` (#36) |
+| **Through the proxy against a real provider** (the live tier) | not a D5 test: S1's two and S2's eight live tests, `fork-live.yml` with `dr-acp` from this branch (§7.4; run 37256842683) |
+
+*Part 2 · setup's before-start* (§4.3, §4.4, §4.8; #38)
+
+| Property | Tests |
+|---|---|
+| **The data home**: the root when it is local; `/var/tmp/deep-reasoning-<uid>` under a network home, refused when not a private folder of ours; a recorded home kept; never one too long for a Claude run's socket (§4.4.1; B3) | `tests/app/test_layout.py::test_the_default_home_is_the_root_when_it_is_local`, `::test_a_network_home_moves_the_data_to_var_tmp`, `::test_a_var_tmp_directory_not_ours_is_refused[link, other-owner, mode-0755]`, `::test_a_recorded_home_is_kept`, `::test_our_network_filesystems_are_d2s`, `::test_a_home_too_long_for_a_claude_runs_socket_is_refused[…]` (five homes, Linux and macOS, 86 to 130 bytes), `::test_setup_refuses_a_default_home_too_long_for_a_claude_runs_socket`, `::test_linuxs_limit_is_where_a_socket_stops_binding[107, 108]` |
+| **A first launch checks, then installs exactly the commit's own lock into a relocatable venv; a failed check installs nothing** (§4.4.2, §4.4.3; B2, B22, B23) | `tests/app/test_runtime.py::test_a_first_launch_checks_then_installs_the_commits_own_lock`, `::test_deep_reasoners_pin_is_read_from_uv_lock_as_pyproject_names_it`, `::test_the_runtimes_uv_sync_reads_no_project_setting_that_changes_its_set`, `::test_the_runtimes_commands_run_from_where_the_install_leaves_them`, `::test_an_unreadable_deep_reasoner_installs_nothing`, `::test_without_uv_nothing_is_installed`, `::test_the_runtime_lock_installs_on_every_platform_the_app_ships_for[x86_64-unknown-linux-gnu, aarch64-apple-darwin]` (reads PyPI, B12); `tests/app/test_cli.py::test_a_failed_check_exits_with_its_code_and_its_sentence` |
+| **A relaunch with nothing changed installs nothing and needs no network; a change or a broken runtime reinstalls; a failed install keeps `current`** (decision E; §4.4.3) | `test_runtime.py::test_a_relaunch_with_nothing_changed_runs_no_uv_and_no_git`, `::test_a_new_commit_reinstalls`, `::test_a_broken_runtime_python_reinstalls`, `::test_a_failed_install_keeps_current_and_exits_11[git fetch, uv sync]`, `::test_an_interrupted_install_is_cleaned_up`; `test_cli.py::test_the_bin_links_lead_to_the_runtime`; in the installed app, `tests/desktop/test_e12.py::test_setup_relaunches_offline_from_its_cache_and_installs_nothing` (#42, `desktop`) |
+| **Setup never prompts, never holds the launcher's phase, leaves nothing running, and never overlaps itself** (decision P; §4.3.2) | `test_runtime.py::test_git_never_prompts[None, ssh -i ~/.ssh/work]`, `::test_a_background_child_that_keeps_the_output_never_holds_setup`, `::test_nothing_setup_starts_leaves_the_process_group`; `test_cli.py::test_two_setups_never_run_at_once`; in the installed app, `test_e12.py::test_closing_the_window_quits_the_app_and_leaves_nothing_running` (#42, `desktop`) |
+| **`setup.json` round-trips atomically, and one this app cannot use is explained, exit 14, not a traceback** (B21) | `test_layout.py::test_setup_state_round_trips_and_writes_atomically`, `::test_a_setup_state_this_app_could_not_have_written_says_why[seven files]`, `::test_a_setup_state_that_cannot_be_read_says_why`; `test_cli.py::test_a_setup_state_it_cannot_use_is_explained_and_exits_14[newer, no version, not JSON × setup, home]` |
+| **`dr-app home` and `dr-app export` serve the user** (§4.8) | `test_cli.py::test_home_records_a_local_folder_and_refuses_a_network_one`, `::test_home_refuses_a_folder_too_long_for_a_claude_runs_socket`, `::test_export_runs_the_runtimes_dr_library_with_the_home` |
+| **Setup's sentences are §6's, and D3's notice is D5's sentence** (decision O) | `tests/app/test_texts.py::test_sentences_with_fields_are_the_designs_verbatim` (#38, #39); D3's `tests/canvas_app/test_notice.py::test_the_notice_is_d5s_sentence_with_the_cap` (#38, `browser`, in `ci.yml`'s `canvas-app` job; it stops skipping here) |
+
+*Part 3 · setup's after-ready* (§4.5, §4.6; #39, #40)
+
+| Property | Tests |
+|---|---|
+| **Setup makes `deep_reasoner` the app's agent once, owns four fields and the `--home` pair, and keeps the rest the user's** (decision F; §4.5.1; B25) | `tests/app/test_profile.py::test_the_profile_is_created_and_made_the_default_once`, `::test_a_relaunch_writes_nothing` (one request), `::test_the_users_spend_cap_and_other_arguments_survive`, `::test_the_profile_always_turns_sub_agent_sessions_on`, `::test_a_refused_profile_fails_setup_with_exit_12`, `::test_a_deleted_profile_is_recreated_but_not_reactivated`, `::test_a_command_path_with_spaces_is_shell_quoted`; in the installed app, `test_e12.py::test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_it` (#42, `desktop`) |
+| **The phase comes from the launcher; a hand run does both; after-ready needs the launcher's variables; nothing secret is printed** (§4.3.2) | `test_cli.py::test_the_phase_comes_from_the_launchers_variable`, `::test_a_hand_run_does_both_phases_when_the_agent_server_is_up`, `::test_after_ready_without_the_agent_server_is_a_usage_error[AGENT_SERVER_URL, SESSION_API_KEY]`, `::test_nothing_secret_is_printed` |
+| **The Library App is staged byte for byte the same, from D3's three files and one script, then installed, enabled once, approved and started; a refusal only warns** (decision G; §4.6) | `tests/app/test_canvas_app.py::test_the_backend_artifact_is_byte_for_byte_stable`, `::test_the_manifest_names_both_architectures_and_the_home[Linux, Darwin]`, `::test_only_the_apps_own_files_are_staged`, `::test_our_app_name_is_d3s`, `::test_a_first_install_enables_approves_and_starts`, `::test_a_relaunch_only_starts_the_backend`, `::test_an_upgrade_stops_reinstalls_and_reapproves`, `::test_a_disabled_app_is_left_alone`, `::test_an_unsupported_platform_says_so`, `::test_an_agent_server_refusal_warns_and_setup_succeeds` (#39) |
+| **Against the pinned agent-server, the staged App passes `prepare` and its backend answers `/health`** | `test_canvas_app.py::test_the_staged_app_passes_prepare_and_its_backend_answers_health` (#40, `crossrepo`); on GitHub's macOS runner, `tests/desktop/test_launch_smoke.py::test_the_first_launch_starts_the_library_backend_and_the_app_quits` (#43); in the installed Linux app, `test_e12.py::test_the_first_launch_installs_everything_and_opens_the_window` (#42) |
+
+*Part 4 · the build* (§4.2, §4.3.1; #41)
+
+| Property | Tests |
+|---|---|
+| **The pins belong together, or the build names the two values that disagree** (§4.2.2's seven checks; B24) | `tests/desktop/test_build.py::test_pins_that_belong_together_pass_every_check`, `::test_pins_with_a_short_commit_are_refused`, `::test_a_tag_that_moved_is_refused`, `::test_a_canvas_fork_wired_to_another_sdk_commit_is_refused`, `::test_a_typescript_client_from_another_tag_is_refused`, `::test_a_different_acp_python_is_refused`, `::test_a_fork_that_carries_our_values_is_refused`, `::test_a_dirty_or_unpushed_checkout_is_refused`, `::test_a_commit_off_the_forks_deep_reasoning_branch_is_refused` (each with injected readers); against the real forks, `cross-repo.yml`'s `pins` job (#42) |
+| **The build writes only D5's four keys, telemetry off, and a setup command that embeds the bootstrap and the commit** (§4.2.3; decision K) | `test_build.py::test_defaults_gain_only_d5s_four_keys`, `::test_telemetry_is_off_in_the_built_defaults`, `::test_the_setup_command_embeds_the_bootstrap_and_the_commit` |
+| **Macs are Apple silicon only, from macOS 14, and each target builds only on its own machine** (B14, B19) | `test_build.py::test_the_mac_build_is_one_arm64_dmg_whose_binaries_are_arm64_only`, `::test_a_mac_build_that_is_not_arm64_only_is_refused[universal, intel, universal-binary]`, `::test_a_mac_app_that_opens_before_macos_14_is_refused[12.0, 13.0, None]`, `::test_a_target_builds_only_on_the_machine_it_is_for[…]` (each target on its own machine and on the other's), `::test_the_build_offers_no_universal_or_intel_mac_target`; on the built app, `test_launch_smoke.py::test_the_mac_app_and_the_runtime_it_ran_are_arm64_only` (#43) |
+| **A package's payload is listed whole, so the `deep_reasoner` check sees every path** (§2.1 row 7) | `test_build.py::test_a_debs_payload_paths_keep_their_spaces` (skipped without `dpkg-deb`); the check itself runs in every build (`desktop-e2e`, `desktop-release.yml`), with no unit test of its refusal |
+| **The committed pins load, and two tests restate them** (B12) | `test_build.py::test_the_committed_pins_load`, `::test_the_committed_sdk_pin_is_34c540c_tagged_dr_2`: a pin bump edits both |
+| **The bootstrap explains the two failures before `dr-app` exists, and passes `dr-app`'s own exit codes on** (§4.3.1; B15) | `tests/app/test_bootstrap.py::test_no_git_says_how_to_install_it`, `::test_an_unreachable_deep_reasoning_says_so_and_keeps_uvx_status`, `::test_dr_apps_own_failure_passes_through_without_the_fetch_line`, `::test_the_arguments_reach_dr_app_unchanged` |
+
+*Part 5 · across the repositories, and the installed app* (§7.5, §7.6; #40, #42, #43, #44)
+
+| Property | Tests |
+|---|---|
+| **E5: each of D1's ten native recordings is stored by the pinned agent-server as the tree it records** | `tests/crossrepo/test_bridge_replay.py::test_each_native_recording_is_stored_as_the_tree_it_records[ten recordings]` (#40, `crossrepo`), with `::test_the_recorded_shape_places_every_child_under_its_cell` (default suite) |
+| **D4's forwarding: an MCP server in the agent-server's settings reaches a cell through the profile and `dr-acp`, its secret with it** | `tests/crossrepo/test_mcp_forwarding.py::test_an_mcp_server_in_the_agent_servers_settings_reaches_a_cell_with_its_secret` (#40, `crossrepo`) |
+| **E6: C1's replay spec renders each recording as stored** | not a D5 test: `cross-repo.yml`'s `canvas-replay` job runs C1's spec in the pinned Canvas (#42) |
+| **E12, the installed Linux app on a fake model** (§7.5; B7): one launch, seventeen tests in file order | `tests/desktop/test_e12.py` (#42, `desktop`): the launch, `::test_the_first_launch_installs_everything_and_opens_the_window`; onboarding and consent, `::test_the_first_launch_asks_for_no_telemetry_consent`, `::test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_it`, `::test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switch`; E10 inside the app, `::test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out`; the bridge in Electron's Chromium (§4.9), `::test_d3s_frame_works_through_the_bridge_in_electrons_chromium`; C1, `::test_sub_agents_nest_under_the_cells_that_spawned_them_as_the_run_log_records`, `::test_each_sub_agent_shows_its_latest_cost_once_the_setting_is_on`, `::test_stop_on_one_sub_agent_stops_it_and_its_branch`; C2 and D3, `::test_the_home_screen_offers_the_namespaces_and_each_ones_decompositions`, `::test_create_decomposition_in_the_header_panel_saves_into_the_conversations_namespace`, `::test_the_next_conversation_in_the_namespace_offers_the_decomposition_and_uses_it`, `::test_the_header_panel_keeps_working_past_its_first_backend_session`; D4, `::test_the_tools_tab_shows_the_safety_notice_with_d4s_risk_line_under_it`, `::test_an_mcp_server_granted_in_the_tools_tab_is_called_by_the_next_conversation`; then `::test_closing_the_window_quits_the_app_and_leaves_nothing_running` and `::test_setup_relaunches_offline_from_its_cache_and_installs_nothing` |
+| **The launch harness says why a launch failed, and its fresh HOME stores no git credentials** (B8) | `tests/desktop/test_app.py::test_a_failed_wait_says_why_with_the_logs_last_lines[exited, reported-failure, timed-out]`, `::test_git_under_the_fresh_home_stores_no_credentials_whatever_the_systems_helper` (#42) |
+| **The macOS app, as built, starts the Library backend, quits cleanly, and is arm64 only** (§7.6; B8, B14) | `tests/desktop/test_launch_smoke.py::test_the_first_launch_starts_the_library_backend_and_the_app_quits`, `::test_the_mac_app_and_the_runtime_it_ran_are_arm64_only` (#43, `desktop`, on `macos-latest`) |
+| **The README names what the code does** (B18) | `tests/desktop/test_readme.py::test_the_mac_steps_name_the_package_and_the_app_the_build_produces`, `::test_the_key_is_the_one_setup_asks_for_where_setup_says`, `::test_the_access_check_is_the_one_setup_runs`, `::test_the_terminal_commands_are_the_ones_setup_links`, `::test_uninstall_removes_what_the_app_writes`, `::test_the_safety_section_quotes_setup_with_the_cap_setup_sets`, `::test_the_data_table_names_everything_setup_keeps_in_the_root`, `::test_dr_app_home_says_how_long_a_folder_may_be` (#44) |
+
+**Not pinned by any test:** the GitHub readers of checks 4 and 8 (`read_file_at`, `is_on_branch`), which run only in
+builds and the `pins` job, and whose HTTP errors other than check 8's 404 (a rate limit) end `build.py` in a traceback
+(as-built §1.3 #6; §11 item 19); the proxy's `bad_body` refusal and its uncompressed path (B5; §11 item 20); the
+build's refusal of a payload path holding `deep_reasoner` (the check runs in every build; no build has failed it); the
+system-proxy export on a real Mac (unit-tested with `system_proxies` faked); the Claude CLI behind the proxy (§11 item
+3); macOS 13 refusing to open the app (Apple's handling of `LSMinimumSystemVersion`, which `verify()` checks is
+declared); onboarding's **Close** on **Say hello** without a key, which the README tells a user to press and E12 never
+presses; the offline case of B23 as a user meets it (a failing `git fetch` stands for it in the tests); setup's
+failure cases run through the bootstrap rather than `dr-app` alone (the bootstrap's tests stub `uvx`); the README's
+Electron folders in uninstall; and TASK-38's cause.
 
 ---
 
@@ -136,7 +316,8 @@ app's own launcher install the rest, as the user, on first launch. It is four th
    commit, writes D5's values into that checkout's `config/defaults.json` (the state directory, the setup
    command, telemetry off), builds the frontend, and packages it with electron-builder under our product name.
    Output: one universal `.dmg`, an `.AppImage` and a `.deb`, unsigned as upstream's are. Neither fork gets a
-   commit from D5: every change is made to a build checkout.
+   commit from D5: every change is made to a build checkout. *(v3: one Apple silicon `.dmg` for macOS 14 or later,
+   built on an Apple silicon Mac, and the Linux packages on Linux x86-64: B14, B19.)*
 2. **`dr-app`** (`packages/dr-app/`), the setup command C3's launcher runs as the user on every launch, before
    the stack starts and again once the agent-server answers. It installs deep-reasoning (and through it
    deep_reasoner) with the user's own git credentials into a private runtime, picks where the user's data lives,
@@ -146,10 +327,15 @@ app's own launcher install the rest, as the user, on first launch. It is four th
 3. **The key proxy** (`src/deep_reasoning/acp/proxy.py`), inside `dr-acp`'s front process, implementing D1's
    `ModelRoute`. The worker gets a token instead of each provider key; the proxy swaps the key in, forwards only
    model calls, and refuses a call once the conversation's spend cap is reached.
-4. **The cross-repo CI** (`.github/workflows/`): the shared live workflow for S1's and S2's live tiers with
-   `dr-acp` behind the bridge (*v2:* built and on `main`, §7.4); E12 on the real Linux app, the golden replays into
-   the pinned agent-server (E5) and Canvas (E6), and the pin checks, nightly and on every pin bump; the per-OS
-   release build.
+4. **The cross-repo CI** (`.github/workflows/`): the shared live workflow for S1's and S2's live tiers with `dr-acp`
+   behind the bridge (*v2:* built and on `main`, §7.4); E12 on the real Linux app, the golden replays into the pinned
+   agent-server (E5) and Canvas (E6), and the pin checks, nightly and on every pin bump; the per-OS release build.
+   *(v3: `cross-repo.yml` runs nightly on its own schedule once it is on `main`, and `nightly.yml` goes, B26; release
+   downloads are public, B15.)*
+
+*(v3: and the README, which v2 named only as "the README's install section": `README.md` at the root says what
+deep-reasoning is, how to install, run and remove the app, and §2 in short, and `tests/desktop/test_readme.py` pins
+its names and commands to the code's, B18.)*
 
 A launch of the installed app, end to end:
 
@@ -194,34 +380,45 @@ D5's (`canvas/`, `runtime/`, `bin/`, `canvas-app/`, `setup.json`, `setup.lock`, 
 DR_HOME can be the root itself. A terminal `dr-acp` or `dr-library` with no `--home` uses `~/.deep-reasoning`
 (D1's default), so on a local home the terminal and the app share one Library.
 
+*(v3)* In the launch above, step 2's runtime comes from the commit's own `uv.lock`, not a packaged export (B22). While
+an install runs, `runtime/` also holds `<commit>.tmp-<pid>` (the venv being built) and `<commit>.tmp-<pid>-source`
+(the commit's fetched tree); the next install removes either if a quit left it. The README's data table is this
+table's, and a test holds them together (`test_the_data_table_names_everything_setup_keeps_in_the_root`).
+
 ### 1.1 Decisions this design takes
 
 The spec's seven decisions in §2 stand; these are the next layer down.
 
 | # | Decision | Why | Rejected |
 |---|---|---|---|
-| A | **Every pin is a full commit; tags are recorded beside them for people.** `desktop/pins.toml` holds each fork's repository, commit and tag; the build records deep-reasoning's own commit (its `HEAD`) in the setup command. *(v2: and each pinned commit must be on its fork's `deep-reasoning` branch, §4.2.2 check 8.)* | Michael's ruling for the SDK fork; C3 §2.3 measured that uv reuses only a commit offline, and the same holds for D5's own `uvx` command (C3 §4.6). One rule for all three repos. *(v2: the spec pins each fork by a `dr-N` tag on its `deep-reasoning` branch, and the fork stacks merge there; `dr-1` was cut from `dr/integration`.)* | Tags in `defaults.json` (C3's tag-resolving variant, ≈170 lines; ruled out). |
-| B | **The setup command is a ten-line `sh` bootstrap around `uvx` of a separate, standard-library-only package, `deep-reasoning-app`** (`packages/dr-app`), fetched by commit with `#subdirectory=`. | Whatever `uvx` installs must be fetched before anything of ours can speak. If the setup command were the main package, `uvx` would first fetch deep_reasoner and fail with uv's words, before any check could say "ask Dean for access". The small package needs nothing private but deep-reasoning itself, and the bootstrap explains a missing `git` or an unreadable deep-reasoning, the two failures that happen before `dr-app` exists. A commit-pinned `uvx` of a package with no dependencies starts from uv's cache, offline included (C3 §2.3). | `uvx --from git+…/deep-reasoning@<commit> dr-app setup` as C3 §4.6 sketches (the private fetch fails before our checks, so the spec's failure messages cannot be ours). A setup script bundled into the app's resources (it would need a path into the bundle, which differs per launch for an AppImage, and a file added inside the fork's `uv` resource directory). |
-| C | **`dr-app` installs a runtime venv from a committed export of `uv.lock`** (`runtime.lock.txt`, exact versions, platform markers kept), on uv's managed Python 3.12, into `runtime/<commit>/`, then swaps the `runtime/current` link atomically. | Users run exactly the dependency set CI tested; a transitive release between our test and their first launch cannot break them. The link keeps every path that is written into a profile or an App stable across upgrades. A managed Python survives a system or Homebrew Python upgrade. | `uv tool install` (resolves afresh, ignoring the lock; writes into the user's global tool and `~/.local/bin` directories). The `uvx` environment itself (uv's cache can be pruned under it). |
-| D | **One root, `~/.deep-reasoning`. The agent-server's persistence root is `~/.deep-reasoning/canvas`** (state directory `…/canvas/agent-canvas`). **DR_HOME is `~/.deep-reasoning`, or `/var/tmp/deep-reasoning-<uid>` when the home directory is on a network filesystem.** Every process is told the home with `--home`; DR_HOME is never set in any environment. | C3 §4.3: the state directory's parent holds everything the agent-server persists, so it must be ours, not `~/.openhands`. D2's ruling: the Library refuses a network filesystem, so setup picks local disk. deep_reasoner reads `DR_HOME` itself as the root of its Claude runs (`v2/claude_code.py:270`), so an exported DR_HOME would reach the worker with a second meaning. | `~/.openhands/deep-reasoning` (the spec's mock-up; shares settings, secrets, profiles and Apps with stock Agent Canvas, C3 §2.4). |
-| E | **Setup is idempotent, and its cheap path is a JSON read, a few `stat`s and one exec of the runtime's Python**; it changes anything only when a pin, the data home or the App package changed, or something it installed is gone. | C3 §4.2: both phases run on every launch, and the command must be fast and offline-safe when nothing changed. Checking the installed thing (not only a record) repairs a deleted runtime or a removed managed Python. | A "first launch done" flag (misses a deleted install). |
-| F | **Setup owns four fields of the `deep_reasoner` agent profile** (`agent_kind`, `acp_server`, `acp_command`, `acp_subagents`) **and the `--home` pair in its arguments; it activates the profile once, when it first creates it.** Everything else in the profile, the spend cap included, is the user's after creation. | The profile's command path is stable (`runtime/current`), so a launch rewrites nothing. A user who switches the default agent, or raises the cap in Canvas's profile editor, is not overruled on the next launch. | Rewriting the whole profile every launch. Making it the default every launch. |
+| A | **Every pin is a full commit; tags are recorded beside them for people.** `desktop/pins.toml` holds each fork's repository, commit and tag; the build records deep-reasoning's own commit (its `HEAD`) in the setup command. *(v2: and each pinned commit must be on its fork's `deep-reasoning` branch, §4.2.2 check 8.)* *(v3: built so; check 8 asks GitHub's compare API, B24; the Canvas fork is pinned at `4355a36`, tag `dr-3`, B1.)* | Michael's ruling for the SDK fork; C3 §2.3 measured that uv reuses only a commit offline, and the same holds for D5's own `uvx` command (C3 §4.6). One rule for all three repos. *(v2: the spec pins each fork by a `dr-N` tag on its `deep-reasoning` branch, and the fork stacks merge there; `dr-1` was cut from `dr/integration`.)* | Tags in `defaults.json` (C3's tag-resolving variant, ≈170 lines; ruled out). |
+| B | **The setup command is a ten-line `sh` bootstrap around `uvx` of a separate, standard-library-only package, `deep-reasoning-app`** (`packages/dr-app`), fetched by commit with `#subdirectory=`. *(v3: built so. deep-reasoning is public, so the bootstrap's second sentence asks only that the computer be online, B15.)* | Whatever `uvx` installs must be fetched before anything of ours can speak. If the setup command were the main package, `uvx` would first fetch deep_reasoner and fail with uv's words, before any check could say "ask Dean for access". The small package needs nothing private but deep-reasoning itself, and the bootstrap explains a missing `git` or an unreadable deep-reasoning, the two failures that happen before `dr-app` exists. A commit-pinned `uvx` of a package with no dependencies starts from uv's cache, offline included (C3 §2.3). | `uvx --from git+…/deep-reasoning@<commit> dr-app setup` as C3 §4.6 sketches (the private fetch fails before our checks, so the spec's failure messages cannot be ours). A setup script bundled into the app's resources (it would need a path into the bundle, which differs per launch for an AppImage, and a file added inside the fork's `uv` resource directory). |
+| C | **`dr-app` installs a runtime venv from a committed export of `uv.lock`** (`runtime.lock.txt`, exact versions, platform markers kept), on uv's managed Python 3.12, into `runtime/<commit>/`, then swaps the `runtime/current` link atomically. *(v3: superseded by B22. The runtime is `uv sync --frozen --no-dev --no-editable --all-packages` of the commit's own tree, fetched with git into `runtime/`, into a relocatable venv (B2); there is no exported lock. The reason stands: users run the set CI tested, which the commit's `uv.lock` fixes.)* | Users run exactly the dependency set CI tested; a transitive release between our test and their first launch cannot break them. The link keeps every path that is written into a profile or an App stable across upgrades. A managed Python survives a system or Homebrew Python upgrade. | `uv tool install` (resolves afresh, ignoring the lock; writes into the user's global tool and `~/.local/bin` directories). The `uvx` environment itself (uv's cache can be pruned under it). |
+| D | **One root, `~/.deep-reasoning`. The agent-server's persistence root is `~/.deep-reasoning/canvas`** (state directory `…/canvas/agent-canvas`). **DR_HOME is `~/.deep-reasoning`, or `/var/tmp/deep-reasoning-<uid>` when the home directory is on a network filesystem.** Every process is told the home with `--home`; DR_HOME is never set in any environment. *(v3: and never a home too long for a Claude run's socket, B3.)* | C3 §4.3: the state directory's parent holds everything the agent-server persists, so it must be ours, not `~/.openhands`. D2's ruling: the Library refuses a network filesystem, so setup picks local disk. deep_reasoner reads `DR_HOME` itself as the root of its Claude runs (`v2/claude_code.py:270`), so an exported DR_HOME would reach the worker with a second meaning. | `~/.openhands/deep-reasoning` (the spec's mock-up; shares settings, secrets, profiles and Apps with stock Agent Canvas, C3 §2.4). |
+| E | **Setup is idempotent, and its cheap path is a JSON read, a few `stat`s and one exec of the runtime's Python**; it changes anything only when a pin, the data home or the App package changed, or something it installed is gone. *(v3: built so; the cheap path's check is the record's commit alone, B22, and a relaunch's before-start took 0.02 s, as-built §5.4.)* | C3 §4.2: both phases run on every launch, and the command must be fast and offline-safe when nothing changed. Checking the installed thing (not only a record) repairs a deleted runtime or a removed managed Python. | A "first launch done" flag (misses a deleted install). |
+| F | **Setup owns four fields of the `deep_reasoner` agent profile** (`agent_kind`, `acp_server`, `acp_command`, `acp_subagents`) **and the `--home` pair in its arguments; it activates the profile once, when it first creates it.** Everything else in the profile, the spend cap included, is the user's after creation. *(v3: built so; the id comes from the profile's own GET, B25. Canvas `dr-3`'s onboarding keeps the active profile (#29), so a first launch does not undo the activation, and E12 pins that.)* | The profile's command path is stable (`runtime/current`), so a launch rewrites nothing. A user who switches the default agent, or raises the cap in Canvas's profile editor, is not overruled on the next launch. | Rewriting the whole profile every launch. Making it the default every launch. |
 | G | **The Library App is staged on the user's machine** (*v2:* skeleton, no longer final): three of D3's built files from the runtime (`canvas-extension.json`, `dist/index.js`, `panel.svg`; not `ui/`, which `dr-library serve` serves itself), plus a backend artifact D5 generates, a `.tar.gz` holding one `/bin/sh` launcher that `exec`s `runtime/current/bin/dr-library`. Setup installs it from that local path, enables it once, and approves (`prepare`) and starts its backend on every launch. A failure here warns and does not stop the launch. | The agent-server requires the backend's executable inside the unpacked artifact and gives it six environment variables (`manifest.py:217–255`, `backend.py:38–40, 395–412`); `dr-library` imports deep_reasoner, which nothing we publish may contain, so the artifact can only be built where deep_reasoner is installed. The launcher script is the same bytes on every launch and both architectures, so its checksum and the approval survive upgrades. Stock Canvas has no control that starts an App backend, and backends do not survive an agent-server restart, so setup starts it. Conversations work without the panel, so the panel's failure must not block them. *(v2: D3 accepted this, D3 §8.4; staging only the App's own files keeps a UI-only change from changing the digest, which would force a reinstall.)* | Shipping a frozen `dr-library` binary (it would contain deep_reasoner). Installing from a git URL (the backend artifact must be built per machine). Leaving the start to D3's panel (a backend is not ready until its first open, and every first open would wait on deep_reasoner's imports; *v2:* the panel, as built, restarts one that died by starting its prepared revision, never by approving one, D3 decision F). |
 | H | **The key proxy runs in `dr-acp`'s front, on its own thread, as a Starlette app under uvicorn on 127.0.0.1.** Per run it mints one 256-bit token per provider key it holds, one route per configured upstream, and gives the worker the token under the key's own variable name; it scrubs the worker's environment of the key by name and by value, and of the agent-server's secrets. | The spec places it there (decision 7). Its own thread keeps a slow upstream from delaying ACP traffic, and uvicorn installs no signal handlers off the main thread (`uvicorn/server.py`, `capture_signals`), so D1's SIGTERM shutdown is untouched. Starlette and uvicorn are already dependencies (D2). Reusing the variable name means anything that reads the key, a user's own code in a cell included, gets a token that works only through the proxy. | LiteLLM (heavy for one user, spec §2). A hand-written HTTP/1.1 server on `asyncio` (chunked transfer and keep-alive by hand). |
-| I | **The cap is enforced, not estimated afterwards:** the proxy forwards only metered model endpoints; it reserves an estimate of each call's cost before forwarding and settles the real one after; it refuses a model whose price is unknown unless the upstream is on loopback. The ledger is per conversation (root ACP session) and persisted. | A cap that a cell can step around through an unmetered endpoint (fine-tuning, batch, files), an unpriced model or twenty concurrent calls does not bound anything. A restarted `dr-acp` (the bridge restarts it after a slow Stop) must not reset the count. | Counting after the fact only (a `run_all` of 20 overshoots by 20 calls). Pricing unknown models at a fallback rate (a dearer model escapes the cap). |
+| I | **The cap is enforced, not estimated afterwards:** the proxy forwards only metered model endpoints; it reserves an estimate of each call's cost before forwarding and settles the real one after; it refuses a model whose price is unknown unless the upstream is on loopback. The ledger is per conversation (root ACP session) and persisted. *(v3: Michael's ruling, B4: a provider's refusal that reports no usage costs nothing. A body that is not a JSON object of at most 32 MiB is refused, B5.)* | A cap that a cell can step around through an unmetered endpoint (fine-tuning, batch, files), an unpriced model or twenty concurrent calls does not bound anything. A restarted `dr-acp` (the bridge restarts it after a slow Stop) must not reset the count. | Counting after the fact only (a `run_all` of 20 overshoots by 20 calls). Pricing unknown models at a fallback rate (a dearer model escapes the cap). |
 | J | **The proxy is on by default in `dr-acp`** (`--no-key-proxy` turns it off); a client whose key `dr-acp` does not hold is left as configured. | Decision 7 says keys reach the worker only through the proxy. Keyless clients (a local vLLM, every one of D1's scripted tests) have nothing to protect, so D1's suite is unaffected. | Opt-in (a terminal `dr-acp` would leak by default). |
-| K | **Telemetry is off in our builds**: the frontend is built with `VITE_DO_NOT_TRACK=1` and `telemetry.posthogApiKey` is emptied in the built `defaults.json`. | Canvas sends an install event to OpenHands' PostHog without consent (`src/services/telemetry.ts:7–12`, unchanged since v1's pin), and the agent-server and automation backends default to the same key (`scripts/dev-safe.mjs:752–790`, `buildAgentServerTelemetryEnv`; `dev-with-automation.mjs:1070–1084`, `buildAutomationTelemetryEnv`). A packaged app is started without our build's environment, so only build-time values reach it: the bundle's `VITE_DO_NOT_TRACK` and `defaults.json`'s empty key, which the launcher reads as its default. Our users did not agree to report to a third party. | Shipping upstream's default. |
-| L | **Product identity comes from a wrapper electron-builder config in this repo** (`desktop/electron-builder.dr.mjs`) that imports the fork's and overrides the app id, product name, `extraMetadata` and artifact names. | No fork commit (the brief's rule); Electron's `userData` (the frontend's local storage) follows `extraMetadata.productName`, so it is separate from stock Agent Canvas (C3 §4.3). | A fork commit for our name. `-c.key=value` overrides on the command line (ambiguous beside `--config`). |
-| M | **CI lives in this repo, and D5's workflows reach `main` with D5's PR stack, as D1's to D3's code did.** Until then `main` carries only what GitHub needs to start them: a copy of each on-demand workflow (`cross-repo.yml`, `desktop-release.yml`; `fork-live.yml` is there already, `633a00d`) and `nightly.yml`, a scheduled trigger that dispatches `cross-repo.yml` on `v1-desktop`, and on `main` once D5 has merged. | GitHub requires an on-demand workflow's file on the default branch and runs a scheduled workflow only from it. A dispatched run uses the file at the ref it is dispatched on. A run started by the workflow token through `workflow_dispatch` is allowed to start another workflow. *(v2: v1 sent the nightly run to `self-hosted-v1`, the spec's integration branch (§5); D1 to D3 merged into `main` (#1–#26), so `main` is where merged work and its workflows live.)* | The nightly job's full definition on `main` before D5 merges (it would drift from the branch it tests). |
-| N | **The App-backend ingress is `http://127.0.0.1:<agent-server port>`, which C3's launcher sets as a generic default** (*v2:* built, C3 #5, B2, `scripts/dev-safe.mjs:883–884`; approved by Michael as a scope addition to C3 on 2026-10-03). D5 sets nothing; v1's fallback in setup is gone. | The bridge answers 503 until an ingress origin is configured, and requires it to be a different origin from Canvas's (`canvas_extensions/bridge.py:231–244, 304–314`). The window loads Canvas from `http://localhost:8000` (`electron/main.mjs:399`), and the launcher binds the agent-server to 127.0.0.1 (`dev-with-automation.mjs:1126–1132`), so the agent-server's own address is reachable, keeps its `Host`, and is another origin and another site: Canvas's own cookies never reach an App backend. What stays D5's: showing in Electron's own Chromium that the frame keeps the bridge's cookie (E12 step 5). | `http://localhost:18000` (another origin but the same site, so Canvas's `localhost` cookies would travel with every App request; and `localhost` may resolve to `::1` where the agent-server listens only on IPv4). A second ingress process (one more port and service for what the agent-server already serves). |
+| K | **Telemetry is off in our builds**: the frontend is built with `VITE_DO_NOT_TRACK=1` and `telemetry.posthogApiKey` is emptied in the built `defaults.json`. *(v3: and with Canvas `dr-3`'s #28, a build that cannot report asks no consent and offers no analytics switch, B7.)* | Canvas sends an install event to OpenHands' PostHog without consent (`src/services/telemetry.ts:7–12`, unchanged since v1's pin), and the agent-server and automation backends default to the same key (`scripts/dev-safe.mjs:752–790`, `buildAgentServerTelemetryEnv`; `dev-with-automation.mjs:1070–1084`, `buildAutomationTelemetryEnv`). A packaged app is started without our build's environment, so only build-time values reach it: the bundle's `VITE_DO_NOT_TRACK` and `defaults.json`'s empty key, which the launcher reads as its default. Our users did not agree to report to a third party. | Shipping upstream's default. |
+| L | **Product identity comes from a wrapper electron-builder config in this repo** (`desktop/electron-builder.dr.mjs`) that imports the fork's and overrides the app id, product name, `extraMetadata` and artifact names. *(v3: and one more key, `mac.minimumSystemVersion` `"14.0"`, B19.)* | No fork commit (the brief's rule); Electron's `userData` (the frontend's local storage) follows `extraMetadata.productName`, so it is separate from stock Agent Canvas (C3 §4.3). | A fork commit for our name. `-c.key=value` overrides on the command line (ambiguous beside `--config`). |
+| M | **CI lives in this repo, and D5's workflows reach `main` with D5's PR stack, as D1's to D3's code did.** Until then `main` carries only what GitHub needs to start them: a copy of each on-demand workflow (`cross-repo.yml`, `desktop-release.yml`; `fork-live.yml` is there already, `633a00d`) and `nightly.yml`, a scheduled trigger that dispatches `cross-repo.yml` on `v1-desktop`, and on `main` once D5 has merged. *(v3: B26 and B11. `cross-repo.yml` now runs nightly on its own schedule, which takes effect once it is on `main`, and has no `has-d5`; #42 deletes `nightly.yml` from `main`. Until the stack merges, `main`'s copies (#34, #35), older than this branch's, run nothing, since `main` has no `desktop/pins.toml`.)* | GitHub requires an on-demand workflow's file on the default branch and runs a scheduled workflow only from it. A dispatched run uses the file at the ref it is dispatched on. A run started by the workflow token through `workflow_dispatch` is allowed to start another workflow. *(v2: v1 sent the nightly run to `self-hosted-v1`, the spec's integration branch (§5); D1 to D3 merged into `main` (#1–#26), so `main` is where merged work and its workflows live.)* | The nightly job's full definition on `main` before D5 merges (it would drift from the branch it tests). |
+| N | **The App-backend ingress is `http://127.0.0.1:<agent-server port>`, which C3's launcher sets as a generic default** (*v2:* built, C3 #5, B2, `scripts/dev-safe.mjs:883–884`; approved by Michael as a scope addition to C3 on 2026-10-03). D5 sets nothing; v1's fallback in setup is gone. *(v3: E12 proves it in Electron's Chromium: D3's frame works through the bridge, its cookie partitioned under `http://localhost`, as-built §5.2.)* | The bridge answers 503 until an ingress origin is configured, and requires it to be a different origin from Canvas's (`canvas_extensions/bridge.py:231–244, 304–314`). The window loads Canvas from `http://localhost:8000` (`electron/main.mjs:399`), and the launcher binds the agent-server to 127.0.0.1 (`dev-with-automation.mjs:1126–1132`), so the agent-server's own address is reachable, keeps its `Host`, and is another origin and another site: Canvas's own cookies never reach an App backend. What stays D5's: showing in Electron's own Chromium that the frame keeps the bridge's cookie (E12 step 5). | `http://localhost:18000` (another origin but the same site, so Canvas's `localhost` cookies would travel with every App request; and `localhost` may resolve to `::1` where the agent-server listens only on IPv4). A second ingress process (one more port and service for what the agent-server already serves). |
 | O | *(v2)* **`dr_app.texts` follows D1's and D2's rule: a constant is a sentence without fields, a function returns a sentence with its fields** (`texts.safety(cap)`, §6). D3's equality test changes one line with it: `texts.safety("7")` for `texts.SAFETY.format(cap=7)`. | The Code Guide forbids `.format()`; `deep_reasoning.acp.texts` and `deep_reasoning.library.texts` already work this way; D3 said its test follows whatever D5 writes (D3 B19, §8.4 item 7). The test stops skipping as soon as `dr_app` is a dev dependency, so the line changes in the same commit. | A `str.format` template, which D3's test assumed. |
-| P | *(v2)* **`dr-app` leaves nothing running and holds nothing open.** It starts no process in a session or group of its own, and no background process; it runs each subprocess (`uv`, `git`, the runtime's Python) with its output on a pipe of `dr-app`'s own, copies the lines into the startup log, and goes on at the subprocess's exit, not at the pipe's end. The Library backend is started by the agent-server (its child, its own log), never by `dr-app`. | C3 v3 §4.2: a phase ends only when the command's stdout and stderr close, so anything that keeps them (a credential helper that daemonizes, a stray grandchild) holds the phase, up to its 15 minutes, and then fails the launch. A quit signals the command's process group, so whatever `dr-app` started is stopped with it, unless it left the group. Every step is restartable (§4.4.3), so a quit or a timeout mid-install leaves nothing the next launch cannot repair. | Letting subprocesses inherit the launcher's output (any grandchild that keeps it holds the phase). `start_new_session` for the install (a quit could not stop it). |
+| P | *(v2)* **`dr-app` leaves nothing running and holds nothing open.** It starts no process in a session or group of its own, and no background process; it runs each subprocess (`uv`, `git`, the runtime's Python) with its output on a pipe of `dr-app`'s own, copies the lines into the startup log, and goes on at the subprocess's exit, not at the pipe's end. The Library backend is started by the agent-server (its child, its own log), never by `dr-app`. *(v3: built so; the fetch of the commit's tree runs through `run_logged` too, B22.)* | C3 v3 §4.2: a phase ends only when the command's stdout and stderr close, so anything that keeps them (a credential helper that daemonizes, a stray grandchild) holds the phase, up to its 15 minutes, and then fails the launch. A quit signals the command's process group, so whatever `dr-app` started is stopped with it, unless it left the group. Every step is restartable (§4.4.3), so a quit or a timeout mid-install leaves nothing the next launch cannot repair. | Letting subprocesses inherit the launcher's output (any grandchild that keeps it holds the phase). `start_new_session` for the install (a quit could not stop it). |
 
 ### 1.2 The skeleton now, the final part after the rest
 
 *(v2: rewritten.)* The task row says "skeleton first, final after the rest". Most of the rest has merged since v1, so
 the skeleton is now everything that needs only merged code and the redone wiring, and the final part is only what
 C1, C2 and D4 bring.
+
+*(v3: both parts are built and run; read this section as v2's plan. Steps 1 to 5 went in this order, test-first. By
+the time step 7's pins existed, C1, C2 and D4 had merged, so the final part was built in the same pass: E10 with D4's
+server (`d2f42d4`), `canvas-replay` (`fe6a135`), D4's forwarding test (`e943977`) and E12's final steps (`518fb91`).
+The Canvas pin went `dr-1` → `dr-2` → `dr-3` and the first release tag is still to come (B1). Step 6's files on `main`
+are #34 and #35 (B11).)*
 
 | Part | Skeleton (build now) | Final (waits on) |
 |---|---|---|
@@ -277,10 +474,11 @@ so v1's flat fallback is gone (§4.5.1).
 
 ### 1.3 What D5 owns, and its seams
 
-- **Owns:** `desktop/` (pins, build, wrapper config, bootstrap); the `deep-reasoning-app` package and the
-  `dr-app` command; `src/deep_reasoning/acp/proxy.py` and the two `dr-acp` options that use it; the workflows
-  `fork-live.yml` (built), `cross-repo.yml`, `desktop-release.yml` and `nightly.yml`; E10, E12, and the
-  cross-repo halves of E5 and E6; the README's install section.
+- **Owns:** `desktop/` (pins, build, wrapper config, bootstrap); the `deep-reasoning-app` package and the `dr-app`
+  command; `src/deep_reasoning/acp/proxy.py` and the two `dr-acp` options that use it; the workflows `fork-live.yml`
+  (built), `cross-repo.yml`, `desktop-release.yml` and `nightly.yml`; E10, E12, and the cross-repo halves of E5 and
+  E6; the README's install section. *(v3: `nightly.yml` is gone from D5's files, B26; the README is the whole root
+  `README.md`, B18; and D5 owns the macOS launch smoke, `tests/desktop/test_launch_smoke.py`.)*
 - **Seam to C3** (C3 v3 §4): D5 writes `paths.stateDir` and `setup` into a build checkout's `defaults.json` and relies
   on §4 as v3 states it, the ingress default (B2) and the end of a phase (decision P) included. *(v2: v1's ask
   for the ingress default is built, §8.5.)*
@@ -291,8 +489,9 @@ so v1's flat fallback is gone (§4.5.1).
 - **Seam to S1** (§8.2): the profile's `acp_subagents`; the scripted agent's `--transcript` mode for E5. Both merged.
 - **Seam to D3** (§8.3): the three files D5 stages and the `backend` block it adds; `texts.safety`, which D3's
   test compares; the backend's start, which D3's page repeats for a backend that died.
-- **Seam to C1, C2** (§8.4): C1's replay hook for E6; their stable test ids for E12. Adopted, not merged.
-- **Seam to D4** (§8.7): E10 with an MCP server bound; the profile's `mcp_server_refs: null`.
+- **Seam to C1, C2** (§8.4): C1's replay hook for E6; their stable test ids for E12. Adopted, not merged. *(v3:
+  merged, Canvas #13–#26, and E12 drives them, B1.)*
+- **Seam to D4** (§8.7): E10 with an MCP server bound; the profile's `mcp_server_refs: null`. *(v3: built, B9.)*
 - **Seam to the SDK fork's release** (§8.6): a `dr-N` tag on `deep-reasoning` and the tarball its release carries.
 
 ---
@@ -318,6 +517,11 @@ same to the user (§2.3).
 | Canvas's own cookies and scripts do not reach an App's frame, nor the frame Canvas's | The App-backend ingress, C3's default, is another origin and another site than Canvas's (§4.9); the bridge admits a frame's request only with that App's five-minute HttpOnly session cookie (`bridge.py:33, 448–472`) | E12 step 5 (§7.5), with D3's frame |
 | Nothing of deep_reasoner is in anything we build or publish, and no read token ships | deep_reasoner is installed on the user's machine with the user's credentials (§4.4); CI's token lives in Actions secrets | the build's artifact check (§4.2) |
 | No usage reports go to a third party | Telemetry off at build time (decision K) | §7.3 |
+
+*(v3: every row holds as built. The tests that prove each are named in "Which tests carry which property", Part 1,
+and E12 repeats rows 1, 2 and 6 in the installed app. Row 7 is also Michael's ruling, B16: the GitHub sign-in stays in
+every build and release, so deep_reasoner is installed on the user's machine with the user's git credentials and
+never ships inside the app. Row 7's check runs in every build; no unit test pins its refusal.)*
 
 ### 2.2 What it does not protect
 
@@ -358,7 +562,8 @@ change that.
   decision K and its §9 item 1; on Linux D2 refuses other users' connections; on both, its `Host` check, D2
   as-built §2 #1, stops a rebinding web page, not a local process).
 - **The download.** The app is unsigned; on macOS the user clears the quarantine flag by hand (§4.2.6), so they
-  trust whatever they downloaded. Releases are assets of a private GitHub repository.
+  trust whatever they downloaded. Releases are assets of a private GitHub repository. *(v3: deep-reasoning is public,
+  and so are its release downloads, Michael's ruling, B15; deep_reasoner_beta stays private, B16.)*
 
 ### 2.3 Where the user is told
 
@@ -369,6 +574,11 @@ change that.
   tab, final part.)*
 - **The README's install section**: §2.2 in short, with how to uninstall (§4.8.3).
 
+*(v3: all three are built: the startup log's `safety` line at a first install, D3's notice in the panel and the Tools
+tab with D4's risk line under it (E12 reads both in the real app), and the README's "What the app protects, and what
+it does not". Michael has asked to revisit these warnings in a later UX round, TASK-42, done with his other UI
+requests; that is not D5's, and D5 ships them as this section says, B17.)*
+
 ---
 
 ## 3 · Where this design departs from, or adds to, the approved spec
@@ -378,14 +588,18 @@ was approved, it goes back to Michael.
 
 1. **The setup command is an `sh` bootstrap around a separate small package** (decision B), not `dr-app` from
    the main package; the spec's three first-launch failure messages are kept, and the one for deep-reasoning
-   itself is new (deep-reasoning is private too, spec D5's evidence).
+   itself is new (deep-reasoning is private too, spec D5's evidence). *(v3: deep-reasoning is public, so that line
+   now asks only that the computer be online, B15.)*
 2. **Who can install v1:** people with read access to **both** deep_reasoner_beta and deep-reasoning (the
    release assets and the setup's fetch), until Michael makes deep-reasoning public. The spec names only
-   deep_reasoner_beta.
+   deep_reasoner_beta. *(v3: deep-reasoning and its release downloads are public, B15, so it is now as the spec
+   says: read access to deep_reasoner_beta, with the user's own git sign-in, which stays in every build and release,
+   B16.)*
 3. **The state directory is `~/.deep-reasoning/canvas/agent-canvas`,** not the mock-up's
    `~/.openhands/deep-reasoning` (C3 §2.4 and §4.3).
 4. **The runtime is installed from a committed export of `uv.lock`** (decision C). The spec says "installs
-   deep-reasoning at its pinned commit with uv"; this fixes every transitive version too.
+   deep-reasoning at its pinned commit with uv"; this fixes every transitive version too. *(v3: superseded by B22:
+   `uv sync` of the commit's own tree, which fixes every version through the commit's `uv.lock`, with no export.)*
 5. **The data home moves to `/var/tmp/deep-reasoning-<uid>` on a network home directory,** with `dr-app home` to
    choose another (D2's ruling made concrete; §4.4.1).
 6. **Telemetry is off** in our builds (decision K). The spec does not mention it.
@@ -405,16 +619,293 @@ was approved, it goes back to Michael.
     directory to their `PATH` (the README says how).
 13. **E12 gains four checks** the spec does not list: E10's properties inside the real app, a relaunch of setup
     with the network cut, the App-backend bridge's cookie in Electron's Chromium (*v2:* with D3's own frame, which
-    replaces v1's probe App), and *(v2)* a quit that leaves nothing of the setup command running.
+    replaces v1's probe App), and *(v2)* a quit that leaves nothing of the setup command running. *(v3: built, among
+   E12's seventeen tests, with three more on onboarding and consent, B7.)*
 14. **The CI is split across three workflows plus trigger files on `main`** (decision M), and owns the shared
     live workflow S1 and S2 asked for (S1 §7.4, S2 §9). *(v2: that workflow, `fork-live.yml`, is built, on `main`,
     and carried S1's and S2's live tiers, §7.4. D5's other workflows reach `main` with its PR stack; v1 said
-    `self-hosted-v1`, the spec's §5 branch, which the merged work did not use.)*
+    `self-hosted-v1`, the spec's §5 branch, which the merged work did not use.)* *(v3: two workflows, `cross-repo.yml`
+    with its own schedule and `desktop-release.yml`, and no trigger file once the stack merges, B26, B11.)*
 15. **Size:** ≈2.7k lines with tests and about 8–9 h at Gate C, against the spec's ≈1.2k and ≈4 h (§10). *(v2:
-    ≈2.6k, about 8.5 h; §10.)*
+    ≈2.6k, about 8.5 h; §10.)* *(v3: built at 6,512 reviewable lines, 2,589 of code and 3,923 of tests, and the
+    README's 161: about 22 h at Gate C at ≈300 lines an hour. §3.1, "Size".)*
 16. ~~**The App-backend ingress is configured** for the desktop app by a generic launcher default in the Canvas
     fork, beyond C3's approved scope.~~ *(v2: no longer a departure of D5's. Michael approved the default as a
     scope addition to C3 on 2026-10-03 (spec, "Scope additions approved" (2)), and C3 built it (#5, B2).)*
+
+### 3.1 Changed by the build, and Michael's rulings since v2
+
+*(v3; new.)* Every departure the as-built r3 records (its §1.1 #1–#25, §1.2's stale lines, §1.3, §6 and §8) and every
+ruling Michael made since v2, each with its commit, its reason and the test that pins it. Where a later change
+superseded an earlier one, both are here and the later says so. The sections each names carry a v3 note in place.
+B-numbers are this design's; each item names the as-built's numbers it answers.
+
+**(a) The build, to Gate B** (`f106a0c` … `3c923aa`, 2026-10-04)
+
+B1. **Both parts in one pass, and the pins that came of it** (as-built §1.2). C1, C2 and D4 merged while the skeleton
+was being built, so the final part was built with it: E10 with D4's server (`d2f42d4`), `canvas-replay` (`fe6a135`),
+D4's forwarding test (`e943977`) and E12's final steps (`518fb91`). The Canvas pin followed the fork's tags: `dr-1`,
+`fc87687`, the redone wiring (`2f55b18`); `dr-2`, `9d050ab`, with C1, C2 and a toast fix, #27 (`5fc05eb`); `dr-3`,
+`4355a36`, with #28 and #29 (`f32e152`). The SDK pin stayed `34c540c`, `dr-2`. The `.deb`'s maintainer is Michael's
+git identity on this repository (his ruling, `2f55b18`). No release tag exists yet. Sections: §1.2, §4.2.1, §8.4,
+§8.6, §9 (W1, C1, C2, D4), §11 items 1, 2, 13, 17. Tests: `build.py check` in the `pins` job; and B12's two.
+
+B2. **The runtime venv is relocatable** (#3; `622976b`). `uv venv --relocatable --managed-python`: without it uv
+writes each entry point with an absolute shebang to `runtime/<commit>.tmp-<pid>`, and after the rename every runtime
+command was dead (`dr-library` exited 127 as the App's backend at E12's first launch). §4.4.3. Test:
+`test_runtime.py::test_the_runtimes_commands_run_from_where_the_install_leaves_them`.
+
+B3. **A fourth rule for the data home: room for a Claude run's socket** (#4; `b1e3df2`). deep_reasoner's Claude
+backbone serves `<run dir>/repl.sock`, and each Claude sub-agent one level below it; a Unix socket's path holds at
+most 107 bytes on Linux and 103 on macOS. `choose_home` and `dr-app home DIR` refuse, exit 13 with `home_too_long`,
+a home whose deepest such socket (`runs/<run id>/children/<n>/repl.sock`, the home plus 52 bytes) would pass the
+limit. The default homes fit (on macOS, user names up to 28 characters); a HOME under macOS's `$TMPDIR` does not.
+Upstream it is DR5 (TASK-47, deep_reasoner_beta#113). §4.4.1, §4.8.2, §5.1, §6. Tests:
+`test_layout.py::test_a_home_too_long_for_a_claude_runs_socket_is_refused`,
+`::test_setup_refuses_a_default_home_too_long_for_a_claude_runs_socket`,
+`::test_linuxs_limit_is_where_a_socket_stops_binding`;
+`test_cli.py::test_home_refuses_a_folder_too_long_for_a_claude_runs_socket`.
+
+B4. **Michael's ruling: a provider's error that reports no usage costs nothing** (#5; `f385025`, 2026-10-04). Usage
+reported, at any status, is charged; no usage on a 2xx keeps the reservation as the cost; no usage on a non-2xx is 0,
+the reservation released; an unreachable upstream is 0, as v2 had it. Before, the OpenAI client's four retries of a
+500 left five reservations standing as spend, and under a cap of five calls the next good call was refused 402.
+Decision I, §4.7.3. Tests: `test_key_proxy.py::test_provider_errors_release_their_reservations`,
+`::test_a_call_costs_its_reported_usage_else_its_reservation_unless_refused`.
+
+B5. **The proxy refuses a body it cannot read, and passes bodies uncompressed** (#6; `f198777`). A body that is not a
+JSON object, or is over 32 MiB, is refused 400 `bad_body` (`texts.bad_body(rest, mib)`); v2 named neither the refusal
+nor its sentence. `Accept-Encoding` is not forwarded and `Content-Encoding` not returned, so every response passes
+plain; the client's own `Authorization` and `x-api-key`, which carry the token, are not forwarded either. The build
+recorded no reason; this design's reading is that the proxy meters from the response's body, which compression would
+hide. An Anthropic route sends the key as `x-api-key`. §4.7.3, §6. Test:
+`test_key_proxy.py::test_an_anthropic_route_swaps_the_x_api_key`. No test pins `bad_body` or the uncompressed path.
+
+B6. **Sentences §6 lacked** (as-built #15, #19, #20; `5425b62`, `b1e3df2`, `930a0cf`, `8125fa1`, `bd6e170`,
+`e5c8be2`, `f198777`). `dr_app.texts` gains `NO_AGENT_SERVER` (after-ready without the launcher's variables, exit 2),
+`home_refused` (`dr-app home` given a relative path or a network filesystem), `home_too_long` (B3),
+`state_from_a_newer_app` and `state_unusable` (B21); the proxy's texts gain `bad_body` (B5); the build's checks have a
+sentence each, as §6 said, plus `wrong_machine` and `not_arm64` (B14) and `opens_too_early` (B19). §6 now lists every
+one verbatim. Tests: each sentence's refusal test; `tests/app/test_texts.py` and `tests/acp/test_texts.py` compare
+v2's sentences with fields, not these.
+
+B7. **E12 is seventeen ordered tests on one launch** (#12; `b797abf`, `518fb91`, `1a90887`, `d39be70`, `c538fb3`,
+`8ce99b2`). The module launches the installed app once with a fresh HOME, and its tests run in file order, each on
+what the one before left. Where they differ from §7.5: the first conversation is onboarding's hello, since Canvas
+`dr-3`'s #29 offers `deep_reasoner` first and chosen, not a dismissed onboarding; two tests the design did not list
+pin that no consent dialog shows (a fixed 5 s wait) and that nothing records consent and Settings offers no analytics
+switch (#28); the Library's config is written by the test (there is no `tests/desktop/e12/main.yaml`); Stop's plan
+spawns the done sibling first and holds the grandchild's model call until `dr-acp` logs `stop.accepted` (whether
+`run_all`'s children progress while one call waits is TASK-38, D1's); costs are compared with each sub-agent's cost
+in the run log at its end; the next conversation asks a plain question once the slash menu offers the command; the
+cookie is read with `Storage.getCookies`; the MCP server is added with `POST /api/settings/mcp/echo` and the Tools tab
+reopened; the quit test asks that no process's command line names the fresh HOME. §7.5, §11 item 10. Tests: Part 5's
+E12 row.
+
+B8. **The macOS launch smoke is two tests, and the launch tests' fresh HOME stores no git credentials** (#13, §1.3 #5;
+`9ca1f70`, `bd6e170`, `269c7af`, `ae363b4`). One launch: `app_ready(…, "installed")` in the log, the backend `ready`,
+the app quits with 0; and the launched executable and its bundled uv are arm64 only (B14). The smoke's first runs
+waited 15 minutes on a keychain dialog: the runner's system git config names `osxkeychain`, and under a HOME with no
+keychain git's store asks where to keep the token. A user's HOME has a keychain, so the fix is the test's: an empty
+credential helper ends the fresh HOME's git config. What it showed about the app, that the splash says nothing while
+git waits, is TASK-39. A failed wait says why, with the log's last lines. §7.6, §11 item 14. Tests:
+`test_launch_smoke.py`'s two;
+`test_app.py::test_git_under_the_fresh_home_stores_no_credentials_whatever_the_systems_helper`,
+`::test_a_failed_wait_says_why_with_the_logs_last_lines`.
+
+B9. **E10 with D4's MCP server bound** (#16; `d2f42d4`). As §8.7 asked, with one difference: the server's environment
+is its settings plus `mcp`'s six and `LC_CTYPE`, which D4's stdio guard, a Python, adds when it coerces a C locale
+(PEP 538). It runs twice, with and without the model key named in the server's settings. §7.1, §8.7. Test:
+`test_e10_keys.py::test_an_mcp_server_gets_a_provider_key_only_when_its_settings_name_it_and_the_worker_never_does[unnamed, named]`.
+
+B10. **`cross-repo.yml` at Gate B: six jobs** (as-built #10, first half; `57c019d`, `bdfe042`): `has-d5`, so that
+`main`'s copy (decision M) skips on a tree without `desktop/pins.toml`, and `library-app`, the Library App's
+`crossrepo` test, besides §7.5's four. Superseded by B26.
+
+B11. **`main`'s workflow copies are older than the branch's** (as-built #11, §6 #7 and #12; #34 `b2a74e0`, #35
+`f1ca641`). `main` holds `cross-repo.yml` with `has-d5`, `library-app` and `bridge-replay` only; `desktop-release.yml`
+building `mac-universal`, which `build.py` has refused since B14; and `nightly.yml`. None of them runs a job while
+`main` has no `desktop/pins.toml`. The stack replaces them: #42 (`cross-repo.yml`, and `nightly.yml` deleted) and #43
+(`desktop-release.yml`), with `desktop/pins.toml` first, in #40 (B26). Decision M, §7.5, §8.6, §11 item 8.
+
+B12. **The default suite needs the network, and two tests restate the pins** (as-built §1.3 #2, #3; `2e883e7`,
+`2a7b0ec`, `2f55b18`). `test_runtime.py::test_the_runtime_lock_installs_on_every_platform_the_app_ships_for`
+dry-runs `uv.lock`'s registry packages, wheels only, for Linux x86-64 and macOS 14 arm64 against PyPI's metadata, with
+no marker: the app must build nothing on a user's machine, which may have no compiler.
+`test_build.py::test_the_committed_pins_load` and `::test_the_committed_sdk_pin_is_34c540c_tagged_dr_2` restate
+`pins.toml`, so a pin bump edits them. §7.2, §7.3.
+
+**(b) Gate B, and Michael's rulings** (2026-10-04 and 05; his words from the review ledger)
+
+B13. **Gate B: approved.** Michael ran the `3c923aa` build in a macOS 26 VM: "It runs good btw generally." The
+Conductor recorded it as approval, and he did not object when told so. No code.
+
+B14. **Intel Macs dropped** (as-built #1; `bd6e170`, with `3500f87` undoing the Intel lock holds `2e883e7` and
+`a4a9336`): "lets drop the intel macs no worries. we will go public with the deep reasoner code at some point no
+worries for now." `build.py`'s targets are `linux` and `mac-arm64`, each only on its own machine (Linux x86-64, macOS
+arm64), since the Canvas fork packages its uv and Node for the machine it builds on. `verify()` requires
+`deep-reasoning-<version>-arm64.dmg` and `lipo -archs` = `arm64` for the `.app`'s Electron, uv and Node;
+`desktop-release.yml` has no Intel job. §1 item 1, §4.2.4, §5.8, §7.6. Tests: Part 4's Mac row, and
+`test_launch_smoke.py::test_the_mac_app_and_the_runtime_it_ran_are_arm64_only`.
+
+B15. **deep-reasoning is public, and so are its release downloads** (as-built #7, #8; `3c923aa`, `bd6e170`): "public
+downloads are fine", as the as-built records his words. Only deep_reasoner_beta needs read access. The bootstrap's
+fetch-failure line no longer asks for access ("✗ Could not fetch github.com/michaeltheologitis/deep-reasoning: check
+that this computer is online, then restart. Nothing was installed."); no workflow adds an `insteadOf` line for
+deep-reasoning (DeanLight's stays); a tag's release is public. §2.2, §3 items 1 and 2, §4.3.1, §6, §7.5, §7.6. Tests:
+`test_bootstrap.py::test_an_unreachable_deep_reasoning_says_so_and_keeps_uvx_status`,
+`::test_dr_apps_own_failure_passes_through_without_the_fetch_line`.
+
+B16. **The GitHub sign-in stays in every build and release**: "lets keep this login thing for when we are ready and we
+will lift it when time comes", and "we keep github login for this NOT to happen" (deep_reasoner shipping inside the
+app). It is the design as built (decision B, §2.1 row 7, §4.4.2): setup installs deep_reasoner on the user's machine
+with the user's own git credentials, after checking that they can read deep_reasoner_beta, and nothing we build or
+publish contains it. Lifting it is TASK-45, tied to no release, which starts only when Michael says Dean's code may go
+public. No code.
+
+B17. **His UI requests go to a later UX round, not into D5**: "Put them as tasks actually for when we make changes
+again so we do them together." TASK-42 (the safety warnings, which would reverse §2.3), TASK-43 (the panel's button in
+the dark theme), TASK-44 (the name "Deep Reasoning" wherever a user reads it), TASK-46 (the first message's auto-title
+error, from the agent-server); TASK-50 (no agent choice anywhere), filed after Gate B, belongs to the same round. And
+"dont start anything after we finish what we're doing now": nothing beyond D5 starts without his go. No code.
+
+B18. **The four fixes as-built r1 proposed** ("yeah do the four u recommended!"). **The first: the README** (as-built
+#9, #18; `c9bb7fe`, corrected by `3919e92`). A root `README.md`, also the package's long description, holds the
+install section §1.3 and §2.3 ask for and what a user also needs: setup's own access check to run in a terminal;
+where a credential helper must sit on a Mac; the `.AppImage`; a hand-run build's artifacts; onboarding (keep
+`deep_reasoner`, press **Close** on **Say hello**, add `OPENAI_API_KEY`); how to change the cap; Electron's folders in
+uninstall; and §2.2 in short. Where §2.2 is stale it follows the build (B15). `3919e92` corrected r2's findings: the
+install's timing as the runs show it, no release before the first tag, the whole data table, `dr-app home`'s length
+limit. §1.3, §2.3, §3 item 12, §4.2.6, §4.8.3. Tests: `test_readme.py`'s eight.
+
+B19. **The second: macOS 14, enforced** (as-built #2, #19; `e5c8be2`). The runtime's locked packages install on Apple
+silicon only from macOS 14 (onnxruntime 1.30.0, deep_reasoner's through chromadb, ships `macosx_14_0_arm64` wheels
+and none older). The wrapper config's `mac` block declares `minimumSystemVersion: "14.0"`, and `verify()` refuses a
+`.app` whose `Info.plist` declares any other `LSMinimumSystemVersion` (`opens_too_early`). That macOS 13 then refuses
+to open the app is Apple's handling of the key, not run. §4.2.4, §5.8, §6. Test:
+`test_build.py::test_a_mac_app_that_opens_before_macos_14_is_refused[12.0, 13.0, None]`.
+
+B20. **The third: check 8 on a reused `--work`** (as-built #21, §1.3 #1; `24646d0`). A kept fork cache's refetch
+moved only `FETCH_HEAD`, so a local check could refuse a pin merged after the first clone; the refetch was fixed.
+Superseded by B24, which removed the cache, and this fix's test with it.
+
+B21. **The fourth: a `setup.json` this app cannot use is explained, exit 14** (as-built #20, §1.3 #4; `930a0cf`, then
+`8125fa1` for r2's §6 #9). An integer `v` above 1 gives `state_from_a_newer_app`; any other unusable file gives
+`state_unusable` with one of six reasons (it cannot be read, it is not JSON, it is not a JSON object, its version is
+…, it has no version, it holds a record this app does not write). Exit 14 is in the bootstrap's trusted 10–19 band, so
+the bootstrap adds nothing. §4.3.2, §5.1, §6. Tests:
+`test_layout.py::test_a_setup_state_this_app_could_not_have_written_says_why`,
+`::test_a_setup_state_that_cannot_be_read_says_why`;
+`test_cli.py::test_a_setup_state_it_cannot_use_is_explained_and_exits_14`.
+
+**(c) The Scout's findings and the literate refactor** (after Behaviour Approved; `d9b35f4` … `3e9cee9`, 2026-10-05)
+
+B22. **The runtime is `uv sync` of the commit's own tree** (as-built #22; `d9b35f4`, the Scout's finding 3).
+`fetched_source` fetches deep-reasoning's tree at the commit into `runtime/<commit>.tmp-<pid>-source` (`git init`,
+`git fetch --depth 1 <repo> <commit>`, `git checkout FETCH_HEAD`, each through `run_logged`); `deep_reasoner_pin`
+reads deep_reasoner's URL and commit from that tree's `uv.lock`; `install_runtime` makes the relocatable venv (B2),
+then runs `UV_PROJECT_ENVIRONMENT=<venv> uv sync --frozen --no-dev --no-editable --all-packages --project <tree>`, the
+import check, the rename and the link; the tree is removed, success or not. `runtime_is_current` compares the commit
+only, which fixes its `uv.lock`. `RuntimeRecord.lock_sha256` is still written and no check reads it, so a
+`setup.json` from `3c923aa` or `c9bb7fe` still loads. Gone: `runtime.lock.txt` (176 generated lines), `RuntimeSpec`,
+`LOCK_RESOURCE`, and check 7 with its machinery. The installed set is the same 173 packages at the same versions as
+`3c923aa`'s exported lock gave (as-built §5.4). The reason: the lock CI tests is the one users install, with no second
+copy to keep equal. Decision C, §3 item 4, §4.2.2 check 7, §4.4, §4.4.2, §4.4.3, §5.2. Tests: Part 2's install rows;
+new, `test_runtime.py::test_deep_reasoners_pin_is_read_from_uv_lock_as_pyproject_names_it` and
+`::test_the_runtimes_uv_sync_reads_no_project_setting_that_changes_its_set`; renamed,
+`::test_a_first_launch_checks_then_installs_the_commits_own_lock` and `::test_a_new_commit_reinstalls`; gone with the
+file, `test_the_runtime_lock_matches_uv_lock`.
+
+B23. **The checks run in a new order, so two of setup's error paths changed** (as-built #23, §6 #11; `d9b35f4`).
+**This moves behaviour Gate B approved, §4.4.2's order, through an adopted Scout finding.** The order is now git's
+version, `uv` on `PATH`, the fetch of deep-reasoning's tree, then deep_reasoner's readability (its URL is in the
+fetched `uv.lock`), then `checks_ok`, the safety line and `installing`. What a user sees, before (`3c923aa`) and now,
+as the as-built ran each on both `dr-app`s (its §5.4):
+- *Offline, when `uvx` already has this `dr-app` but the runtime is not current* (an interrupted first launch, a
+  deleted runtime). Before: exit 10, `no_access_dr` ("✗ Could not read github.com/DeanLight/deep_reasoner_beta with
+  your git credentials. It is private: ask Dean for read access, …"). Now: exit 11, git's own `fatal: unable to
+  access 'https://github.com/michaeltheologitis/deep-reasoning/': …`, then `install_failed` naming `git fetch` ("…
+  After an update this needs the network once: connect and restart."). A first launch offline with nothing cached is
+  unchanged: `uvx` cannot fetch `dr-app`, and the bootstrap says to check the network.
+- *deep-reasoning unreachable.* Before: exit 11 naming `uv pip sync`, after `checks_ok` and the safety line had
+  printed. Now: exit 11 naming `git fetch`, before any check line.
+- *deep_reasoner unreadable.* Exit 10, `no_access_dr`, before and now; now after a silent fetch of deep-reasoning's
+  tree, which is removed. Nothing is installed.
+
+For Gate C: in the first case the new sentence is the more accurate one (the machine is offline; nothing says the
+user lacks access), so this design takes the new order as built. §4.4 steps 3–5, §4.4.2. Tests:
+`test_runtime.py::test_a_failed_install_keeps_current_and_exits_11[git fetch, uv sync]`,
+`::test_an_unreadable_deep_reasoner_installs_nothing` (now asserts `runtime/` empty rather than absent, since the
+fetch makes it first), `::test_without_uv_nothing_is_installed`. A failing `git fetch` stands for the offline case in
+the tests; the offline case itself is the as-built's probe.
+
+B24. **Checks 4 and 8 read the forks through GitHub, and check 7 is gone** (as-built #14, #21, §1.3 #6; `f28730d`, the
+Scout's finding 4; check 7 with B22). Check 4 reads the SDK fork's `uv.lock` at its commit from
+`raw.githubusercontent.com`. Check 8 asks `repos/<fork>/compare/<commit>...deep-reasoning`: `ahead` or `identical`
+passes, any other status or a 404 refuses, and `GITHUB_TOKEN`, when set, authenticates (the `pins` job and the
+release jobs pass it). The blobless clones under `--work` are gone, with the class of bug B20 fixed; `--work` holds
+only the Canvas checkout. Check 2 is two sentences (the repository, the commit), and check 5 asks only that
+`paths.stateDir` and `setup.command` be null, since the fork sets `setup.phases`. The gap: the two readers have no
+unit test, and an HTTP error other than check 8's 404 (GitHub allows 60 unauthenticated requests an hour) ends
+`build.py` in a traceback (§11 item 19). §4.2.2, §5.8. Tests: Part 4's pins row, the readers injected; `build.py
+check` against the real forks in the `pins` job.
+
+B25. **The profile's id comes from its own GET** (as-built #24; `9002014`, the Scout's finding 5). `GET
+/api/agent-profiles/deep_reasoner` returns the profile with its id; setup reads it there, and again after a write
+for the id the server kept or minted, and no longer lists the profiles. v2's reason for listing, that upstream seeds a
+default profile into an empty store and ours should be activated after it, never applied: setup has written
+`deep_reasoner` before any listing, and the seeding needs an empty store. A relaunch makes one request where it made
+two. §4.5.1 steps 3–4, §5.4. Tests: `test_profile.py::test_a_relaunch_writes_nothing`; E12's first test checks the
+active pointer.
+
+B26. **`cross-repo.yml` is D5's own: §7.5's four jobs, and its own schedule** (as-built #10; `146bbbf`, the Scout's
+findings 1 and 2). `has-d5` and its `needs`/`if` lines existed only so that `main`'s older copies would skip on a tree
+without `desktop/pins.toml`; they are gone from both workflows. `library-app`'s one test runs in `bridge-replay`'s job
+(`pytest -m crossrepo tests/app/test_canvas_app.py tests/crossrepo`, 12 tests with D4's forwarding). `cross-repo.yml`
+schedules itself (`17 6 * * *`) and `v1-desktop` deletes `nightly.yml`. GitHub runs a schedule only from the default
+branch, so until the stack merges `main`'s `nightly.yml` keeps dispatching `cross-repo.yml` on `v1-desktop`, and once
+#42 merges the schedule runs on `main`. Without `has-d5`, a pull request whose tree holds the new `cross-repo.yml` but
+no `desktop/pins.toml` would fail its jobs, so `pins.toml` lands first (#40, below #42). Decision M, §1.3, §7.5.
+
+B27. **One table of exit codes beside `SetupError`, in `dr_app.layout`; `AppLayout.state_dir` gone** (as-built #15,
+#25; `0f1d0e0`). The exit codes were defined in five modules; they are one table (2 and 10–14), each with what it
+means, beside the `SetupError` that carries them, and the other modules import them. `AppLayout.state_dir` and
+`STATE_DIRNAME`, which nothing read, are gone. `runtime.py` reads top-down. No behaviour changes. §4.3.2, §5.1,
+§5.2, §5.6.
+
+B28. **The default cap is defined once, in `acp/cli.py`; `Spend` is the ledger's own account** (as-built #25;
+`440e1ac`). `proxy.DEFAULT_SPEND_CAP_USD` was read only by a test; `dr-acp`'s `cli.py` holds `DEFAULT_SPEND_CAP_USD =
+5.0`. `dr_app.profile`'s `"5"` stays, since `dr_app` imports nothing of deep-reasoning's. `Spend` is each root
+session's mutable account (spent, reserved, calls, refused), `SpendLedger.spend()` returns a copy, and the cap is
+`SpendLedger.cap_usd`. The refusal's body is built in `KeyProxy._refuse`. No behaviour changes. §4.7.1, §5.7.
+
+B29. **Shared clients and reading order** (as-built §8; `6ee106c`, `94683bd`, `9134faf`, `3e9cee9`). The two test
+harnesses (`tests/crossrepo/agent_server.py`, `tests/desktop/app.py`) call the agent-server through
+`dr_app.agent_server.AgentServer` instead of private copies; tests import `desktop.build` as a module; `build.py`
+reads in order (the sentences, `check_pins`, the defaults, the forks' readers, the build, `verify`); `dr-app export`
+reads the recorded home itself; `proxy.py`'s docstring maps its three parts. No behaviour changes. §5.8, §7.5.
+
+**Size** (as-built #17; §3 item 15, §10). The spec costed D5 at ≈1.2k lines with tests and ≈4 h at Gate C; v2 at
+≈1.45k of code and ≈1.24k of tests, ≈2.7k, about 9 h. Gate C reads **6,512 reviewable lines, 2,589 of code and 3,923
+of tests**, and the README's 161 (non-blank lines added, level by level; the review ledger's count), about 22 h at
+≈300 lines an hour. By `wc` (the as-built's count), D5's own files hold 2,913 lines of code, 339 of them workflows,
+and 4,423 of tests, and D1's files gain 128 net lines of code and 114 of tests. The refactor took code from 2,644 to
+2,579 and tests from 3,999 to 3,917 (the task row: 6,643 before, 6,496 after). Where v2 fell short: E12 and its
+harness, 1,104 lines (`test_e12.py` 727, `app.py` 192, `e12/subagents.py` 106, `test_app.py` 79) against ≈280; setup's
+tests, 1,504 lines with `fake_agent_server.py` and the stub tools, against ≈405; `dr_app` itself, 1,301 against ≈535;
+the proxy and its tests, 1,338 with E10's 287, against ≈720; `build.py`, 532 against ≈250 for all of `desktop/`. The
+build recorded no reason for the growth; the estimate was this design's.
+
+**The stack** (#36–#44). Nine one-commit levels, bottom-up from `main` (`f1ca641`): the key proxy (#36), the grant
+that puts it between the worker and every key (#37), setup's before-start (#38) and after-ready (#39), the SDK fork's
+pin with what is checked against it (#40), the build (#41), `cross-repo.yml` and E12 (#42), the release (#43), the
+README (#44). #40 sits below #41 because `tests/crossrepo/agent_server.py` reads `desktop/pins.toml` when imported,
+and because `main`'s `cross-repo.yml` runs `library-app` and `bridge-replay` on any pull request whose tree has
+`pins.toml`, so the level that adds the pin must hold the tests those jobs run (B26). The split adds no code of its
+own: where a level holds part of a file it holds those lines of the final file, except that imports name fewer things,
+docstrings and comments name only what their level holds, and config lists (ruff's paths, the pytest markers,
+`pins.toml`'s tables, the stub tools) have fewer entries; in #38, `profile.py` holds only the default cap and `cli.py`
+has no after-ready branch. #44's description lists each. The stack top's tree is `3e9cee9`'s less this file.
 
 ---
 
@@ -467,6 +958,17 @@ the two new markers declared. CI's ruff steps cover `src tests packages desktop`
 `playwright==1.56.0` (D3 added it; E12 drives the app over CDP with it). The hatch sdist already excludes `docs/`;
 the dr-app wheel ships `runtime.lock.txt` as package data.
 
+*(v3: the tree at `3e9cee9` differs from the listing above in these, and nothing else. `runtime.lock.txt` does not
+exist, and the dr-app wheel ships no package data (B22). `.github/workflows/nightly.yml` is not D5's: it lives only on
+`main`, from #34, and #42 deletes it (B26). New files: `README.md` at the root, which `pyproject.toml` names as its
+`readme` (B18); `tests/app/fake_agent_server.py`, `test_texts.py` and `conftest.py`'s stub `uv`, `uvx` and `git`;
+`tests/acp/test_texts.py`'s proxy test, `test_catalog.py`'s and `test_runner.py`'s seam tests in D1's files;
+`tests/crossrepo/agent_server.py` (the SDK fork's agent-server, started from `DR_SDK_CHECKOUT`) and
+`test_mcp_forwarding.py` (D4's, §8.7); `tests/desktop/app.py` (the launch harness E12 and the smoke share),
+`test_app.py`, `e12/subagents.py` (C1's two DOM reads in Python), `test_launch_smoke.py` and `test_readme.py`. There
+is no `tests/desktop/e12/main.yaml` (B7). `pyproject.toml` also gives ruff `src = [".", "src",
+"packages/dr-app/src"]`, and `.gitignore` gains `.desktop-work/` and `/dist/`.)*
+
 ### 4.2 The build
 
 #### 4.2.1 `desktop/pins.toml`
@@ -493,6 +995,11 @@ version = "1.0.0-rc.1"
 maintainer = "<name and email for the .deb; fpm requires an email>"
 uv_version = "0.12.23"
 ```
+
+*(v3: the values at `3e9cee9`: `[canvas_fork]` `4355a36580191bb98d53610152469864d9640b8a`, tag `dr-3`; `[sdk_fork]` as
+above; `maintainer = "Michael Theologitis <michael.theologitis@outlook.com>"`, his ruling. The rest of `[app]` is as
+above. The Canvas fork's tags are `dr-1` (`fc87687`), `dr-2` (`9d050ab`) and `dr-3`, numbered apart from the SDK
+fork's, as below. B1.)*
 
 *(v2)* The values are the skeleton's first set. The SDK fork's is `34c540c` with the tag Michael is pushing there
 (`dr-1`, `cef3b24`, is on `dr/integration`, not `deep-reasoning`, so check 8 refuses it). The Canvas fork has no tag
@@ -528,6 +1035,15 @@ sentence (§6) and the build stops.
    into `deep-reasoning`, and the spec pins a `dr-N` tag there; a tag cut on another branch (`dr-1`, on
    `dr/integration`) would ship code no stack carried.
 
+*(v3: seven checks, as built (B24, B22). 1 and 3 as above. 2 is two sentences, one for the repository
+(`wired_to_another_repo`) and one for the commit (`wired_elsewhere`, §6's). 4 reads the SDK fork's `uv.lock` at its
+commit from `raw.githubusercontent.com`. 5 asks only that `paths.stateDir` and `setup.command` be null: the fork sets
+`setup.phases`. 6 as above. 7 is gone, with the exported lock it compared. 8 asks GitHub's compare API,
+`repos/<fork>/compare/<commit>...deep-reasoning`: `ahead` or `identical` passes, any other status or a 404 refuses;
+`GITHUB_TOKEN`, when set, authenticates. Nothing is cached under `--work` but the Canvas checkout. `check_pins` takes
+the readers as arguments, so the tests run every check without a network; `build.py check` passes the real ones,
+and so does the `pins` job.)*
+
 #### 4.2.3 What the build writes into the Canvas checkout
 
 `config/defaults.json`, after the checks, and nothing else in the checkout:
@@ -540,6 +1056,7 @@ sentence (§6) and the build stops.
 | `telemetry.posthogApiKey` | `""` |
 
 The file is compiled into the frontend (C3 §4.1), so it holds nothing secret: a script, a URL and a commit.
+*(v3: built so; `test_defaults_gain_only_d5s_four_keys` pins it.)*
 
 #### 4.2.4 The packages
 
@@ -555,7 +1072,15 @@ In the Canvas checkout, in order:
 5. Check the output: exactly the expected artifacts, named `deep-reasoning-<version>-<arch>.<ext>`; for the
    `.deb` and `.AppImage`, list the payload and fail if any path contains `deep_reasoner` (§2.1).
 
-`desktop/electron-builder.dr.mjs`, whole:
+*(v3, B14, B19: the targets are `linux` and `mac-arm64`, and each refuses to run on any machine but its own (Linux
+x86-64, macOS arm64; `wrong_machine`), because the fork downloads uv and Node for the machine it builds on:
+`ELECTRON_ARCH` is unset, not `universal`. Before step 1 the build checks the pins (§4.2.2) and writes the defaults
+(§4.2.3). Step 5's `verify()` also requires, for the Mac, one `deep-reasoning-<version>-arm64.dmg`, `lipo -archs` =
+`arm64` for the `.app`'s Electron, uv and Node (`not_arm64`), and `Info.plist`'s `LSMinimumSystemVersion` = `14.0`
+(`opens_too_early`); a `.deb`'s payload is its `dpkg-deb -c` listing, spaces kept. Then the artifacts are copied to
+`<repo>/dist/`.)*
+
+`desktop/electron-builder.dr.mjs`, whole (*v3:* as built, with its `mac` line, B19):
 
 ```js
 // The Canvas fork's electron-builder config under our name. No fork commit: the build points --config here.
@@ -575,6 +1100,8 @@ export default {
   appId: env.DR_APP_ID,
   productName,
   extraMetadata: { ...base.extraMetadata, name: executableName, productName, version },
+  // The oldest macOS the runtime's arm64 wheels install on: macOS refuses to open the app on an older one.
+  mac: { ...base.mac, minimumSystemVersion: "14.0" },
   dmg: { ...base.dmg, title: productName, artifactName },
   linux: { ...base.linux, executableName, artifactName, maintainer: env.DR_APP_MAINTAINER },
   win: undefined,
@@ -590,7 +1117,9 @@ Relative paths in the fork's config (`directories.app`, `extraResources`) resolv
 Strings hard-coded in the fork's Electron code keep upstream's name: the splash banner (`bannerTitle`,
 `electron/main.mjs:664`), the startup-failure dialog's title (`:755`) and the missing-`uv` dialog (`:708`); the
 first-launch notice still says it installs the agent-server "from PyPI" (`:681`), which our build does from git. The
-icon stays upstream's (§11 item 6). The menu, the dock, the window list and `userData` take our product name.
+icon stays upstream's (§11 item 6). The menu, the dock, the window list and `userData` take our product name. *(v3:
+the macOS launch log shows upstream's "OpenHands Agent Canvas (Static)" banner; the rest is not checked, as-built §7.
+The name a user reads is TASK-44's, in the later UX round, B17.)*
 
 #### 4.2.6 Signing
 
@@ -603,7 +1132,8 @@ Applications: `xattr -dr com.apple.quarantine "/Applications/Deep Reasoning.app"
 #### 4.3.1 `desktop/bootstrap.sh`
 
 Run by C3's launcher as `sh -c <script> dr-app-bootstrap SPEC REPO COMMIT`, with stdin closed and every line in
-the startup log (C3 §4.2), so it prints nothing secret. Whole:
+the startup log (C3 §4.2), so it prints nothing secret. Whole (*v3:* as built; the fetch line no longer asks for read
+access, since deep-reasoning is public, B15):
 
 ```sh
 # The setup command (C3 §4.2): explain the two failures that happen before dr-app exists, then run it.
@@ -619,7 +1149,7 @@ fi
 uvx --from "$1" dr-app setup --repo "$2" --commit "$3"
 status=$?
 if [ "$status" -ne 0 ] && { [ "$status" -lt 10 ] || [ "$status" -gt 19 ]; } && ! git ls-remote "$2" HEAD >/dev/null 2>&1; then
-  echo "✗ Could not fetch ${2#https://}: check that this computer is online, and that your git credentials can read it. It is private: ask Michael for read access, then sign git in for https (gh auth login, or an SSH key and git config --global url.\"git@github.com:\".insteadOf \"https://github.com/\") and restart. Nothing was installed."
+  echo "✗ Could not fetch ${2#https://}: check that this computer is online, then restart. Nothing was installed."
 fi
 exit "$status"
 ```
@@ -641,11 +1171,14 @@ exit "$status"
 #### 4.3.2 `dr-app setup`
 
 `dr-app setup [--phase before-start|after-ready] --repo URL --commit SHA`. The phase defaults to
-`$OH_CANVAS_SETUP_PHASE` (C3 §4.2); with neither, it runs before-start, then after-ready if `AGENT_SERVER_URL`
-is set (a run by hand). The whole command holds an exclusive lock on `~/.deep-reasoning/setup.lock`
-(`fcntl.flock`), so a terminal run and a launch cannot interleave. Every line goes to stdout, flushed; nothing
-prints `SESSION_API_KEY`, a token, a key or a credential. Exit codes: 0; 10 a check failed; 11 the runtime
-install failed; 12 the agent-server refused a call setup depends on; 13 the data home is unusable; 2 usage.
+`$OH_CANVAS_SETUP_PHASE` (C3 §4.2); with neither, it runs before-start, then after-ready if `AGENT_SERVER_URL` is set
+(a run by hand). The whole command holds an exclusive lock on `~/.deep-reasoning/setup.lock` (`fcntl.flock`), so a
+terminal run and a launch cannot interleave. Every line goes to stdout, flushed; nothing prints `SESSION_API_KEY`, a
+token, a key or a credential. Exit codes: 0; 10 a check failed; 11 the runtime install failed; 12 the agent-server
+refused a call setup depends on; 13 the data home is unusable; 2 usage. *(v3: one table in `dr_app.layout`, beside
+`SetupError`, B27: 2 also covers after-ready without `AGENT_SERVER_URL` and `SESSION_API_KEY` (`NO_AGENT_SERVER`); 13
+also a home too long for a Claude run's socket (B3) and `export` with nothing installed; and **14**, a `setup.json`
+this app cannot use (B21). `export` takes no lock; `setup` and `home` do.)*
 
 *(v2, decision P)* Every subprocess runs through `run_logged` (§5.2): its stdout and stderr on one pipe that
 `dr-app` reads, each line copied to stdout as it comes, and the call returns at the subprocess's exit, whatever still
@@ -670,10 +1203,18 @@ simply installs again, with whatever uv already downloaded still in its cache.
    launcher sets it, §4.9. The number stays so that nothing citing step 8 moves.)*
 8. Save `setup.json` (temporary file, then rename).
 
+*(v3, B22 and B23: steps 3 to 5 as built. 3: the commit must be 40 hex; if `runtime_is_current(layout,
+state.runtime, commit)`, go to 6. 4: `git --version` (`NO_GIT`), `uv` on `PATH` (`NO_UV`), then, inside
+`fetched_source`, the commit's tree fetched into `runtime/`; deep_reasoner's URL and commit from that tree's
+`uv.lock` (`deep_reasoner_pin`); deep_reasoner readable (`no_access_dr`); then `checks_ok`, on a first install the
+`safety` line, and `installing`. 5: `install_runtime` from that tree; the tree is removed; `installed`. A
+`setup.json` this app cannot use stops step 1 with exit 14, B21.)*
+
 `runtime_is_current` is true when the record's commit and lock digest equal the spec's, `runtime/current`
 resolves to the record's path, and `<path>/bin/python -I -c ""` exits 0 (one exec, about 20 ms: it catches a
 deleted runtime and a removed managed Python). So a relaunch with nothing changed costs one JSON read, a few
-`stat`s and that exec, plus `uvx`'s own start.
+`stat`s and that exec, plus `uvx`'s own start. *(v3: the record's commit alone, which fixes its `uv.lock`, B22. A
+relaunch's before-start took 0.02 s, and the whole bootstrap 0.12 s warm, with or without a network, as-built §5.5.)*
 
 #### 4.4.1 The data home
 
@@ -691,6 +1232,12 @@ deleted runtime and a removed managed Python). So a relaunch with nothing change
 macOS homes are local and get no check (as in D2). `home_network` says that systemd may delete files in
 `/var/tmp` unused for 30 days, and how to export or move the data. Nothing is ever moved by setup.
 
+*(v3, B3: and a fourth rule, after the choice: the home must leave room for a Claude run's socket.
+`check_socket_room` refuses, exit 13 with `home_too_long`, a home under which `runs/<run id>/children/<n>/repl.sock`
+(the home plus 52 bytes, `DEEPEST_SOCKET`) is longer than the system lets a socket bind: 107 bytes on Linux, 103 on
+macOS (`SOCKET_PATH_MAX`). `dr-app home DIR` applies the same rule. A recorded home that is no longer a directory of
+the user's falls through to rule 2.)*
+
 #### 4.4.2 The checks
 
 Run only when the runtime must be installed, so an offline relaunch never runs them:
@@ -702,6 +1249,12 @@ Run only when the runtime must be installed, so an offline relaunch never runs t
 - `uv` is on `PATH` (the app's bundled one comes first): otherwise `NO_UV`, exit 10.
 
 deep-reasoning's own readability needs no check: `dr-app` is running, so `uvx` fetched it.
+
+*(v3, B22 and B23: the order is git, `uv`, then the fetch of deep-reasoning's tree at the commit, then deep_reasoner's
+readability, whose `<url>` is read from that tree's `uv.lock` (the `deep-reasoner` package's `source.git`), since
+there is no packaged lock. `git ls-remote`'s output goes nowhere, so a credential helper left behind holds no pipe. A
+failed fetch is `install_failed` naming `git fetch`, exit 11, not a check: offline with no current runtime, a user now
+sees that rather than `no_access_dr`, B23. Nothing is installed either way.)*
 
 #### 4.4.3 The runtime install
 
@@ -718,14 +1271,35 @@ link runtime/current.tmp → <commit>; rename over runtime/current
 remove every other runtime/<…>
 ```
 
+*(v3, B22 and B2: as built, from `3e9cee9`'s `runtime.py`:*
+
+```text
+remove runtime/*.tmp-* left by an interrupted install
+git init -q runtime/<commit>.tmp-<pid>-source                                 (fetched_source, each step run_logged)
+git fetch -q --depth 1 <repo> <commit>; git checkout -q FETCH_HEAD             (in that tree)
+deep_reasoner_pin: deep_reasoner's URL and commit from the tree's uv.lock; the readability check (§4.4.2)
+uv venv --relocatable --managed-python --python 3.12 runtime/<commit>.tmp-<pid>
+UV_PROJECT_ENVIRONMENT=runtime/<commit>.tmp-<pid> uv sync --frozen --no-dev --no-editable --all-packages --project <tree>
+runtime/<commit>.tmp-<pid>/bin/python -c "import deep_reasoning.acp.cli, deep_reasoning.library.cli, deep_reasoner"
+rename runtime/<commit>.tmp-<pid> → runtime/<commit>     (an existing runtime/<commit> is removed first)
+link runtime/current.tmp → <commit>; rename over runtime/current
+remove every other runtime/<…>, then the tree
+```
+
+*`--all-packages` installs both workspace members, deep-reasoning and deep-reasoning-app, from the tree, not
+editable; `--frozen` takes `uv.lock` as it is. The record keeps the commit and, unread, the lock's digest. A step that
+exits non-zero is `install_failed` naming it (`git init`, `git fetch`, `git checkout`, `uv venv`, `uv sync` or `the
+import check`). Measured with the bundled uv 0.12.23: 7 s from a cold cache, the managed Python included; 173
+packages; a 474 MB runtime (as-built §5.4). The paragraph below is v2's.)*
+
 `uv pip sync` installs exactly the listed set and nothing it resolves itself; the export carries every transitive
 dependency with platform markers, so one file serves macOS and Linux. The two git lines are built from source by
-hatchling (fetched from PyPI the first time; cached after); deep-reasoning's wheel carries D3's committed App files
-as package data. Every subprocess gets the bootstrap's git environment and runs through `run_logged`, so its output
-streams into the startup log and nothing it leaves behind holds the phase (decision P). A non-zero exit is `install_failed`, exit 11; `current` still
-points at the previous runtime, but the launch stops (an app update tested its pins together, so an older
-`dr-acp` with newer forks is not a state to run in). The spec's mock-up measured the first install at about two
-minutes; C3's 15-minute limit per phase bounds it.
+hatchling (fetched from PyPI the first time; cached after); deep-reasoning's wheel carries D3's committed App files as
+package data. Every subprocess gets the bootstrap's git environment and runs through `run_logged`, so its output
+streams into the startup log and nothing it leaves behind holds the phase (decision P). A non-zero exit is
+`install_failed`, exit 11; `current` still points at the previous runtime, but the launch stops (an app update tested
+its pins together, so an older `dr-acp` with newer forks is not a state to run in). The spec's mock-up measured the
+first install at about two minutes; C3's 15-minute limit per phase bounds it.
 
 ### 4.5 after-ready
 
@@ -768,6 +1342,14 @@ how `dr-acp` becomes the app's agent. `ensure_profile`:
    profile on an empty store, `agent_profiles_router.py:256–282`, so ours is activated after it).
 5. If `setup.json` does not record that setup activated it before: `POST /api/agent-profiles/{id}/activate` and
    record it. A profile the user deleted is created again on the next launch, but not made the default again.
+
+*(v3, B25: steps 3 and 4 as built. `needs_write` compares the owned fields and `acp_args`, which differ only when the
+`--home` pair moved, since every other argument is kept. After a write, setup reads `GET
+/api/agent-profiles/deep_reasoner` again for the id the server kept or minted; without a write, the first GET's id.
+Setup never lists the profiles: upstream's seeding needs an empty store, and setup has written ours before any listing
+could see one. `PROFILE_CREATED` is printed when setup activates, `PROFILE_UPDATED` when it only writes. In the app,
+Canvas `dr-3`'s onboarding offers the active profile first and keeps it (#29), so a first launch keeps
+`deep_reasoner` the default, and E12 pins that onboarding writes no profile.)*
 
 ### 4.6 The Library App
 
@@ -828,6 +1410,10 @@ ships its built files in the deep-reasoning wheel, under `deep_reasoning/canvas_
    ready → app_ready, else app_warning with the agent-server's detail
    ```
 
+   *(v3: as built, with two details. An install is also forced when `setup.json` has no record of one, so a lost
+   `setup.json` reinstalls rather than trusting what is there. `<digest>` is the SHA-256 over each staged file's path,
+   a NUL and the SHA-256 of its bytes, in the order manifest, `dist/index.js`, `panel.svg`, the artifact.)*
+
    Installed from a local path, the App's revision is the hash of its manifest (`backend.py:151–159`), so it
    changes only when the manifest does. Each failing call prints `app_warning` and setup still exits 0. *(v2)* A
    forced install is refused while **any** App's backend runs (`canvas_extensions_router.py:209–212`,
@@ -849,7 +1435,10 @@ choice to run it"); the Apps page lists it like any other, and the user can disa
 `--no-key-proxy` (D1's `DirectRoute`, for debugging). With the proxy, `main()` builds a `SpendLedger` and a
 `KeyProxy` over the same `PriceTable` the encoder uses, and passes `ProxyRoute(proxy, os.environ)` to
 `DrAcpAgent` as its route. The proxy's thread starts on the first grant, so a preview session (S2) that never
-prompts never starts it. At shutdown `main()` stops it with a 0.5 s budget inside D1's 1.4 s (D1 §4.2).
+prompts never starts it. At shutdown `main()` stops it with a 0.5 s budget inside D1's 1.4 s (D1 §4.2). *(v3: as
+built, B28: the default, `DEFAULT_SPEND_CAP_USD = 5.0`, and `PROXY_STOP_S = 0.5` are `acp/cli.py`'s, and the stop is
+in a `finally` around `serve()`. A grant that holds no key and no `ANTHROPIC_API_KEY` is empty and does not start the
+proxy either.)*
 
 Each run, D1's `RunHandle.start` (`supervisor.py:133–143`) calls `route.grant(session=…, run=…,
 upstream=source.client, tool_upstreams=source.tool_clients)` (the extension of §8.1), spawns the worker with
@@ -911,6 +1500,14 @@ POST /r/<route>/<rest>        (any other method on a metered path, or any other 
                                                       upstream unreachable: 502 upstream_unreachable, settle 0
 ```
 
+*(v3, as built. B5: a body that is not a JSON object of at most 32 MiB is 400 `bad_body`, before any price check;
+`Accept-Encoding` is not forwarded and `Content-Encoding` not returned, and the client's `Authorization` and
+`x-api-key` never travel. B4, Michael's ruling, changes `settle`'s second line: usage reported at any status is
+charged; no usage on a 2xx keeps the reservation; **no usage on a non-2xx settles at 0**, the reservation released.
+The order of refusals is 401, then 403, then `bad_body`, then (metered paths only) `unpriced`, then 402. A non-2xx
+event stream is read whole, not relayed. One `threading.Lock` guards the ledger and another the routes, B28; the
+ledger's file is rewritten after each settle and each refusal.)*
+
 The price is the provider's when the response reports one, otherwise the table's (D1's `PriceTable`: the package's
 `prices.yaml` under `$DR_HOME/prices.yaml`), and 0 for an unpriced model on a loopback upstream. Anthropic's cache
 tokens are counted as input tokens. A 402 is not retried by the OpenAI client (it retries 408, 409, 429 and 5xx)
@@ -942,12 +1539,16 @@ D2 §5.4).
 Without `DIR`: prints the data home and, on Linux, its filesystem type. With `DIR`: it must be absolute, on a
 local filesystem, and a directory the user owns (created 0700 if absent); setup records it, and the next launch
 updates the profile's `--home` and the App's manifest (a new approval, which setup gives). Nothing is moved:
-`home_set` says what to copy.
+`home_set` says what to copy. *(v3: a relative path or a network filesystem is `home_refused`, and a path too long
+for a Claude run's socket `home_too_long`, each exit 13, B3, B6. The README gives the limit: at most 55 bytes on
+Linux, 51 on macOS.)*
 
 #### 4.8.3 Uninstall (README)
 
 Delete the app; delete `~/.deep-reasoning` (and `/var/tmp/deep-reasoning-<uid>` if it was used). uv's cache and
-managed Pythons are shared with any other uv use and are left alone.
+managed Pythons are shared with any other uv use and are left alone. *(v3: the README adds a folder chosen with
+`dr-app home`, and Electron's own folders, `~/Library/Application Support/Deep Reasoning` and `~/.config/Deep
+Reasoning`, read, not run, as-built §7; B18.)*
 
 ### 4.9 The App-backend ingress
 
@@ -997,7 +1598,10 @@ tab row and posts nothing, D3 as-built §3.3); the frame shows D3's notice, whos
 `dr-notice-ack`, the Namespaces tab lists the Library's namespaces (`dr-node-<namespace>`), which only D2's API,
 reached through the bridge past D2's `Host` guard, can give; the cookie is listed with a partition key
 (`Network.getCookies`); and the frame's next request is answered 401 after `DELETE …/session`. The final part
-repeats it through C2's header button and D3's page (§7.5).
+repeats it through C2's header button and D3's page (§7.5). *(v3: it holds in Electron's Chromium, E12's
+`test_d3s_frame_works_through_the_bridge_in_electrons_chromium`: the cookie is `Secure; SameSite=None`, partitioned
+under `http://localhost`, and the frame's next request is 401 once the session is deleted; the header panel keeps
+working past its first five-minute session. Read with `Storage.getCookies`, B7.)*
 
 ---
 
@@ -1005,17 +1609,49 @@ repeats it through C2's header button and D3's page (§7.5).
 
 Valid Python, one field per line, ruff-formatted. Bodies are `...`; docstrings say what tests pin.
 
+*(v3: every block below is the code's at `3e9cee9`: the same names, parameters, defaults and docstrings, bodies
+elided. A line marked `# v3:` differs from v2's block, with the B-number of §3.1 that changed it. Private helpers
+(`_`-prefixed) are left out, as in v2.)*
+
 ### 5.1 `dr_app.layout`
 
 ```python
+# v3: the exit codes, one table, and SetupError live here (B27); 14 is new (B21).
+EXIT_USAGE: Final = 2  # as argparse's; after-ready without the launcher's variables
+EXIT_CHECK: Final = 10  # a check before the install: nothing was installed
+EXIT_INSTALL: Final = 11  # a step of the install: runtime/current is unchanged
+EXIT_AGENT_SERVER: Final = 12  # the agent-server refused what setup depends on
+EXIT_HOME: Final = 13  # the data home is unusable, or nothing is installed to export
+EXIT_STATE: Final = 14  # setup.json is unusable: a newer app's, or damaged
+
 ROOT_DIRNAME: Final = ".deep-reasoning"
 CANVAS_DIRNAME: Final = "canvas"  # the agent-server's persistence root
-STATE_DIRNAME: Final = "agent-canvas"  # C3's state directory, inside it
+# v3: no STATE_DIRNAME; AppLayout.state_dir is gone (B27).
 NETWORK_HOME_TEMPLATE: Final = "/var/tmp/deep-reasoning-{uid}"
-# D2's store.NETWORK_FILESYSTEMS; tests/app/test_layout.py pins that they are equal.
+# D2's store.NETWORK_FILESYSTEMS, mirrored: this package imports nothing of
+# deep-reasoning's, which uvx has not fetched when it runs.
 NETWORK_FILESYSTEMS: Final = frozenset(
     {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "fuse.sshfs"}
 )
+MOUNTS: Final = Path("/proc/self/mounts")
+# v3 (B3): sun_path's size less its terminating NUL: the longest path a Unix socket can bind.
+SOCKET_PATH_MAX: Final = {"Linux": 107, "Darwin": 103}
+# v3 (B3): the deepest socket setup makes room for under DR_HOME: a Claude-backed reasoner serves
+# <run_dir>/repl.sock (deep_reasoner), D1 runs it in runs/<run id>, and each Claude
+# sub-agent it spawns serves from children/<n> below it; room for one such level.
+DEEPEST_SOCKET: Final = "runs/20261004-173501-a1b2c3/children/1000/repl.sock"
+SETUP_STATE_VERSION: Final = 1
+
+
+class SetupError(Exception):
+    """A failure setup explains: its message is printed and dr-app exits with
+    exit_code."""
+
+    def __init__(
+        self,
+        exit_code: int,
+        message: str,
+    ) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -1028,9 +1664,6 @@ class AppLayout:
 
     @property
     def canvas(self) -> Path: ...
-
-    @property
-    def state_dir(self) -> Path: ...
 
     @property
     def runtime_dir(self) -> Path: ...
@@ -1061,9 +1694,24 @@ class HomeChoice:
 def filesystem_type(
     path: Path,
     *,
-    mounts: Path = Path("/proc/self/mounts"),
+    mounts: Path = MOUNTS,
 ) -> str | None:
     """The type of the longest mount point prefixing path.resolve(); None off Linux."""
+
+
+# v3 (B3)
+def deepest_socket(home: Path) -> int:
+    """The length in bytes of the deepest socket path setup makes room for under home."""
+
+
+# v3 (B3)
+def check_socket_room(
+    home: Path,
+    *,
+    system: str,
+) -> None:
+    """Raises SetupError(13, texts.home_too_long(...)) when a Claude run's socket under
+    home would be longer than the system lets a socket bind."""
 
 
 def choose_home(
@@ -1072,15 +1720,20 @@ def choose_home(
     *,
     system: str,
     uid: int,
-    mounts: Path = Path("/proc/self/mounts"),
+    mounts: Path = MOUNTS,
+    var_tmp: Path = Path(NETWORK_HOME_TEMPLATE).parent,  # v3: injectable for the tests
 ) -> HomeChoice:
-    """§4.4.1. Raises SetupError(13, texts.home_unsafe(...)) for a /var/tmp directory that is not ours."""
+    """§4.4.1: a recorded home that is still a local directory of ours; else the root,
+    unless (Linux) it is on a network filesystem; else /var/tmp/deep-reasoning-<uid>.
+    Raises SetupError(13, texts.home_unsafe(...)) for a /var/tmp directory that is not
+    ours, and SetupError(13, texts.home_too_long(...)) for a home too long for a Claude
+    run's socket."""
 
 
 @dataclass
 class RuntimeRecord:
-    commit: str
-    lock_sha256: str
+    commit: str  # deep-reasoning's, whose uv.lock fixes everything else installed
+    lock_sha256: str  # v3: that uv.lock's: what was synced, which no check reads (B22)
     path: str
 
 
@@ -1109,7 +1762,9 @@ class SetupState:
         cls,
         path: Path,
     ) -> "SetupState":
-        """A fresh state when the file is absent; raises on v != 1."""
+        """A fresh state when the file is absent. Raises SetupError(14, ...) with
+        texts.state_from_a_newer_app for a version above 1, and texts.state_unusable,
+        saying why, for a file no version of this app writes."""  # v3 (B21)
 
     def save(
         self,
@@ -1122,45 +1777,81 @@ class SetupState:
 
 ```python
 PYTHON_VERSION: Final = "3.12"
-LOCK_RESOURCE: Final = "runtime.lock.txt"
-
-
-class SetupError(Exception):
-    """A failure setup has explained; main() prints message and exits with exit_code."""
-
-    def __init__(
-        self,
-        exit_code: int,
-        message: str,
-    ) -> None: ...
-
-
-@dataclass(frozen=True)
-class RuntimeSpec:
-    repo: str  # https URL of deep-reasoning
-    commit: str  # 40 hex
-    lock_sha256: str
-    requirements: str  # runtime.lock.txt plus the two git lines of §4.4.3
-    deep_reasoner_url: str  # parsed from the lock's deep-reasoner line
-    deep_reasoner_commit: str
-
-    @classmethod
-    def for_commit(
-        cls,
-        repo: str,
-        commit: str,
-    ) -> "RuntimeSpec":
-        """Reads the packaged lock. Raises ValueError for a commit that is not 40 hex."""
-
-
-def git_environment(
-    base: Mapping[str, str],
-) -> dict[str, str]:
-    """base plus GIT_TERMINAL_PROMPT=0 and, unless set, GIT_SSH_COMMAND='ssh -o BatchMode=yes'."""
-
-
-# (v2, decision P) How long the line pump may run on after its process has exited.
+# v3: no LOCK_RESOURCE, RuntimeSpec or SetupError here: the runtime is the commit's own
+# tree (B22), and SetupError is dr_app.layout's (B27).
+COMMIT: Final = re.compile(r"[0-9a-f]{40}")
+DEEP_REASONER: Final = "deep-reasoner"  # its package name in uv.lock
+# The import check of §4.4.3: what dr-acp, dr-library and dr need at their start.
+IMPORT_CHECK: Final = (
+    "import deep_reasoning.acp.cli, deep_reasoning.library.cli, deep_reasoner"
+)
+# (decision P) How long the line pump may run on after its process has exited.
 PUMP_DRAIN_S: Final = 1.0
+READ_CHUNK: Final = 65536
+Step = tuple[str, Sequence[str], Path | None]  # its name in install_failed, argv, cwd
+
+
+def runtime_is_current(
+    layout: AppLayout,
+    record: RuntimeRecord | None,
+    commit: str,  # v3: the commit, not a RuntimeSpec (B22)
+) -> bool:
+    """The record is the commit's (which fixes its uv.lock), runtime/current resolves to
+    it, and its Python starts: one exec, offline."""
+
+
+# v3: no injected run; the tests put stub git and uv on PATH.
+def check_git() -> str:
+    """git's version string. Raises SetupError(10, texts.NO_GIT)."""
+
+
+def check_readable(url: str) -> None:
+    """git ls-remote url HEAD. Raises SetupError(10, texts.no_access_dr(...)). Its output
+    goes nowhere, so a credential helper that stays behind holds no pipe."""
+
+
+# v3 (B22)
+@dataclass(frozen=True)
+class Pin:
+    url: str  # https URL of the repository
+    commit: str  # 40 hex
+
+
+# v3 (B22)
+def deep_reasoner_pin(source: Path) -> Pin:
+    """deep_reasoner's repository and commit, as the tree's uv.lock pins them."""
+
+
+def host_path(url: str) -> str:
+    """https://github.com/a/b -> github.com/a/b, as the sentences name a repository."""
+
+
+# v3 (B22)
+@contextmanager
+def fetched_source(
+    layout: AppLayout,
+    repo: str,
+    commit: str,
+    *,
+    log: Callable[[str], None],
+) -> Iterator[Path]:
+    """deep-reasoning's tree at commit, fetched alone, in runtime/ while it is needed;
+    whatever an interrupted install left there is removed first. Raises
+    SetupError(11, texts.install_failed(...)) naming the git step that failed."""
+
+
+def install_runtime(
+    layout: AppLayout,
+    source: Path,  # v3: the fetched tree (B22)
+    commit: str,
+    *,
+    uv: str,
+    log: Callable[[str], None],
+) -> RuntimeRecord:
+    """§4.4.3: a venv on uv's own Python, every workspace package of source synced into
+    it from its uv.lock (no dev group, nothing editable), the import check, then the
+    rename and the link. Raises SetupError(11, texts.install_failed(...)) on any
+    non-zero step, leaving runtime/current as it was."""
 
 
 def run_logged(
@@ -1170,40 +1861,16 @@ def run_logged(
     log: Callable[[str], None],
     cwd: Path | None = None,
 ) -> int:
-    """argv's exit code. stdout and stderr share one pipe; each line goes to log as it arrives. Returns at the
-    process's exit, after at most PUMP_DRAIN_S more of reading: a grandchild that keeps the pipe never holds it.
-    Never starts a new session."""
+    """argv's exit code. stdout and stderr share one pipe; each line goes to log as it
+    arrives. Returns at the process's exit, after at most PUMP_DRAIN_S more of reading: a
+    grandchild that keeps the pipe never holds it. Never starts a new session."""
 
 
-def check_git(
-    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-) -> str:
-    """git's version string. Raises SetupError(10, texts.NO_GIT)."""
-
-
-def check_readable(
-    url: str,
-    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
-) -> None:
-    """git ls-remote url HEAD. Raises SetupError(10, texts.no_access_dr(...))."""
-
-
-def runtime_is_current(
-    layout: AppLayout,
-    record: RuntimeRecord | None,
-    spec: RuntimeSpec,
-) -> bool: ...
-
-
-def install_runtime(
-    layout: AppLayout,
-    spec: RuntimeSpec,
-    *,
-    uv: str,
-    log: Callable[[str], None],
-) -> RuntimeRecord:
-    """§4.4.3, every step through run_logged. Raises SetupError(11, texts.install_failed(...)) on any
-    non-zero step."""
+def git_environment(
+    base: Mapping[str, str],
+) -> dict[str, str]:
+    """base plus GIT_TERMINAL_PROMPT=0 and, unless set, GIT_SSH_COMMAND='ssh -o
+    BatchMode=yes'."""
 ```
 
 ### 5.3 `dr_app.agent_server`
@@ -1236,15 +1903,19 @@ class AgentServer:
         path: str,
         body: Any = None,
     ) -> Any:
-        """JSON in and out; 404 returns None; any other non-2xx raises AgentServerError."""
+        """JSON in and out; 404 returns None; any other non-2xx raises AgentServerError,
+        as does an agent-server that cannot be reached (status 0)."""  # v3: status 0
 
     @classmethod
     def from_env(
         cls,
         env: Mapping[str, str],
     ) -> "AgentServer":
-        """AGENT_SERVER_URL and SESSION_API_KEY (C3 §4.2). Raises SetupError(2, …) if either is missing."""
+        """AGENT_SERVER_URL and SESSION_API_KEY (C3 §4.2). Raises SetupError(2, …) if
+        either is missing."""  # v3: the sentence is texts.NO_AGENT_SERVER (B6)
 ```
+
+*(v3: the E12 and cross-repo harnesses use this class too, B29.)*
 
 ### 5.4 `dr_app.profile`
 
@@ -1254,6 +1925,7 @@ HOME_FLAG: Final = "--home"
 SPEND_CAP_FLAG: Final = "--spend-cap-usd"
 DEFAULT_SPEND_CAP_USD: Final = "5"
 OWNED_FIELDS: Final = ("agent_kind", "acp_server", "acp_command", "acp_subagents")
+PROFILES: Final = "/api/agent-profiles"  # v3
 
 
 def desired_profile(
@@ -1262,14 +1934,15 @@ def desired_profile(
     dr_acp: Path,
     home: Path,
 ) -> dict[str, Any]:
-    """§4.5.1's table: the owned fields (acp_subagents always true, v2) and the --home pair set, everything else
-    kept from existing."""
+    """§4.5.1's table: the owned fields (acp_subagents always true) and the --home pair
+    set, everything else kept from existing."""
 
 
 def needs_write(
     existing: Mapping[str, Any] | None,
     want: Mapping[str, Any],
-) -> bool: ...
+) -> bool:
+    """No profile yet, or an owned field or the arguments differ."""  # v3: and acp_args
 
 
 def ensure_profile(
@@ -1280,20 +1953,27 @@ def ensure_profile(
     home: Path,
     log: Callable[[str], None],
 ) -> ProfileRecord:
-    """§4.5.1, steps 1–5. Any refusal raises SetupError(12, texts.agent_server_failed(...)); v2 has no 422
-    fallback."""
+    """§4.5.1, steps 1–5. Any refusal raises SetupError(12,
+    texts.agent_server_failed(...))."""  # v3: the id from the profile's own GET (B25)
 ```
 
 ### 5.5 `dr_app.canvas_app` (*v2:* skeleton)
 
 ```python
-# D3's deep_reasoning.canvas_app.APP_NAME; tests/app/test_canvas_app.py pins that they are equal.
+# D3's deep_reasoning.canvas_app.APP_NAME, mirrored: this package imports nothing of
+# deep-reasoning's.
 APP_NAME: Final = "dr-library"
 # D3's built files, in the runtime (§8.3)
 APP_PACKAGE: Final = "deep_reasoning.canvas_app"
-# (v2) The only files staged; ui/ is served by dr-library serve itself (D3 §8.4 item 1).
+# The only files staged; ui/ is served by dr-library serve itself (D3 §8.4 item 1).
 STAGED_FILES: Final = ("canvas-extension.json", "dist/index.js", "panel.svg")
+MANIFEST: Final = STAGED_FILES[0]  # v3
 ARTIFACT_PATH: Final = "backend/dr-library.tar.gz"
+ARTIFACT_MEMBER: Final = "bin/dr-library"  # v3
+# The agent-server passes a backend only these (backend.py:38–40).
+INHERITED_ENVIRONMENT: Final = ("LANG", "LC_ALL", "LC_CTYPE", "PATH", "TMPDIR", "TZ")
+PLATFORMS: Final = {"Linux": "linux", "Darwin": "darwin"}  # v3
+INSTALLED: Final = f"/api/canvas-extensions/installed/{APP_NAME}"  # v3
 
 
 @dataclass(frozen=True)
@@ -1305,7 +1985,8 @@ class StagedApp:
 
 
 def backend_artifact(dr_library: Path) -> bytes:
-    """The deterministic .tar.gz of §4.6 step 2: equal inputs give equal bytes."""
+    """The deterministic .tar.gz of §4.6 step 2: equal inputs give equal bytes. One
+    member, bin/dr-library, a /bin/sh script that execs dr_library."""
 
 
 def backend_block(
@@ -1313,7 +1994,14 @@ def backend_block(
     system: str,
     sha256: str,
     home: Path,
-) -> dict[str, Any]: ...
+) -> dict[str, Any]:
+    """The manifest's backend: both architectures name the same script, which runs on
+    either; the home is a literal, since the backend gets no DR_HOME or HOME."""
+
+
+# v3
+def app_files(layout: AppLayout) -> Path:
+    """Where D3's built files are in the runtime."""
 
 
 def stage_canvas_app(
@@ -1321,7 +2009,9 @@ def stage_canvas_app(
     *,
     home: Path,
     system: str,
-) -> StagedApp: ...
+) -> StagedApp:
+    """§4.6 steps 1–4: the three files, the artifact and the manifest with its backend
+    under canvas-app/<digest>/, reused when it is there."""
 
 
 def ensure_canvas_app(
@@ -1331,7 +2021,8 @@ def ensure_canvas_app(
     *,
     log: Callable[[str], None],
 ) -> CanvasAppRecord | None:
-    """§4.6 step 5. Never raises for the agent-server's refusals: they become texts.app_warning(...)."""
+    """§4.6 step 5. Never raises for the agent-server's refusals: they become
+    texts.app_warning(...). The record is what is installed now."""
 ```
 
 *(v2: `ensure_ingress_config`, `DESKTOP_AGENT_SERVER_PORT` and `AGENT_SERVER_CONFIG_RELATIVE` are gone with §4.9's
@@ -1340,14 +2031,26 @@ fallback; `ensure_canvas_app` no longer serves a probe App, so it uses `APP_NAME
 ### 5.6 `dr_app.cli`
 
 ```python
-EXIT_CHECK: Final = 10
-EXIT_INSTALL: Final = 11
-EXIT_AGENT_SERVER: Final = 12
-EXIT_HOME: Final = 13
+# v3: the exit codes are dr_app.layout's (B27).
+PHASES: Final = ("before-start", "after-ready")
+PHASE_ENV: Final = "OH_CANVAS_SETUP_PHASE"
+LINKED: Final = ("dr-app", "dr")  # in bin/, to the runtime's own
+SECRETS: Final = "/api/settings/secrets"
+MODEL_KEY: Final = "OPENAI_API_KEY"
+NOT_A_MODEL_KEY: Final = "OPENHANDS_AUTOMATION_API_KEY"
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """dr-app setup [--phase PHASE] --repo URL --commit SHA | export DIR [--namespace NAME] | home [DIR]."""
+def say(line: str) -> None:
+    """One line of the startup log."""
+
+
+def duration(seconds: float) -> str:
+    """1m 52s, or 4s."""
+
+
+@contextmanager
+def setup_lock(layout: AppLayout) -> Iterator[None]:
+    """setup.lock held exclusively: a terminal run and a launch never interleave."""
 
 
 def before_start(
@@ -1356,48 +2059,97 @@ def before_start(
     commit: str,
     *,
     env: Mapping[str, str],
-) -> None: ...
+) -> None:
+    """§4.4: the data home, then the runtime when it is not current, then bin/'s links."""
+
+
+# v3 (B22, B23)
+def install(
+    layout: AppLayout,
+    repo: str,
+    commit: str,
+    *,
+    first: bool,
+    env: Mapping[str, str],
+) -> RuntimeRecord:
+    """§4.4 steps 4 and 5: the checks, which leave nothing installed when one fails,
+    then the runtime from the commit's own tree."""
+
+
+def model_key_missing(server: AgentServer) -> bool:
+    """No OPENAI_API_KEY, and no other secret named like a provider key."""
 
 
 def after_ready(
     layout: AppLayout,
     *,
     env: Mapping[str, str],
-) -> None: ...
+) -> None:
+    """§4.5: the agent profile, the model-key hint, the Library App."""
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """dr-app setup [--phase PHASE] --repo URL --commit SHA | export DIR [--namespace
+    NAME] | home [DIR]."""
 ```
 
 ### 5.7 `deep_reasoning.acp.proxy`
 
 ```python
-DEFAULT_SPEND_CAP_USD: Final = 5.0
+# v3: no DEFAULT_SPEND_CAP_USD here; dr-acp's cli.py holds it (B28).
 DEFAULT_RESERVED_OUTPUT_TOKENS: Final = 4096
 MAX_BODY_BYTES: Final = 32 * 1024 * 1024
 MIN_SECRET_LENGTH: Final = 16
 OPENAI_DEFAULT_BASE_URL: Final = "https://api.openai.com/v1"
 ANTHROPIC_DEFAULT_BASE_URL: Final = "https://api.anthropic.com"
 ANTHROPIC_KEY_ENV: Final = "ANTHROPIC_API_KEY"
+ANTHROPIC_BASE_URL_ENV: Final = "ANTHROPIC_BASE_URL"  # v3
+OPENAI_BASE_URL_ENV: Final = "OPENAI_BASE_URL"  # v3
 # build_client's fallback, config.py:256
 OPENAI_FALLBACK_KEY_ENV: Final = "OPENAI_API_KEY"
 # ClientConfig.api_key_env's default
 DEEP_REASONER_DEFAULT_KEY_ENV: Final = "NOVITA_API_KEY"
-# (v2) No AGENT_SERVER_SECRETS: the grant matches D1's route.ALWAYS_REMOVED (glob patterns, the launcher's
-# OPENHANDS_AUTOMATION_API_KEY among them) with fnmatch to find the values it removes under other names.
 LOOPBACK_HOSTS: Final = ("127.0.0.1", "::1", "localhost")
+NO_PROXY_HOSTS: Final = "127.0.0.1,localhost,::1"  # v3
+UPSTREAM_TIMEOUT: Final = httpx.Timeout(600.0, connect=10.0)  # v3
+# Not forwarded either way: the connection's own, and what the proxy sets itself.
+HOP_BY_HOP: Final = frozenset(
+    {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+    }
+)
+# v3 (B5): the token's headers and accept-encoding are never forwarded, content-encoding
+# never returned.
+NOT_FORWARDED: Final = HOP_BY_HOP | {
+    "host",
+    "cookie",
+    "content-length",
+    "authorization",
+    "x-api-key",
+    "accept-encoding",
+}
+NOT_RETURNED: Final = HOP_BY_HOP | {"content-length", "content-encoding"}
+REDACTED: Final = b"[redacted]"
 
 Dialect = Literal["openai", "anthropic"]
 
-METERED_PATHS: Final[Mapping[Dialect, frozenset[str]]] = MappingProxyType(
-    {
-        "openai": frozenset({"chat/completions", "completions", "embeddings"}),
-        "anthropic": frozenset({"v1/messages"}),
-    }
-)
-FREE_PATHS: Final[Mapping[Dialect, frozenset[str]]] = MappingProxyType(
-    {
-        "openai": frozenset(),
-        "anthropic": frozenset({"v1/messages/count_tokens"}),
-    }
-)
+# v3: plain dicts, not MappingProxyType (B28).
+METERED_PATHS: Final[Mapping[Dialect, frozenset[str]]] = {
+    "openai": frozenset({"chat/completions", "completions", "embeddings"}),
+    "anthropic": frozenset({"v1/messages"}),
+}
+FREE_PATHS: Final[Mapping[Dialect, frozenset[str]]] = {
+    "openai": frozenset(),
+    "anthropic": frozenset({"v1/messages/count_tokens"}),
+}
 
 
 @dataclass(frozen=True)
@@ -1417,18 +2169,21 @@ class Reservation:
     usd: float
 
 
-@dataclass(frozen=True)
+# v3 (B28): the ledger's own account, mutable; no session or cap in it.
+@dataclass
 class Spend:
-    session: str
-    cap_usd: float
-    spent_usd: float
-    reserved_usd: float
-    calls: int
-    refused: int
+    """One root session's account."""
+
+    spent_usd: float = 0.0
+    reserved_usd: float = 0.0
+    calls: int = 0
+    refused: int = 0
 
 
 class SpendLedger:
     """Per root session; persisted at <home>/spend/<session>.json; thread-safe."""
+
+    cap_usd: float  # v3 (B28): the cap in force, set from __init__'s
 
     def __init__(
         self,
@@ -1447,12 +2202,14 @@ class SpendLedger:
         self,
         reservation: Reservation,
         usd: float,
-    ) -> None: ...
+    ) -> None:
+        """The reservation replaced by the call's cost."""
 
     def spend(
         self,
         session: str,
-    ) -> Spend: ...
+    ) -> Spend:
+        """A copy of the session's account."""  # v3 (B28)
 
 
 class KeyProxy:
@@ -1466,7 +2223,9 @@ class KeyProxy:
         home: Home,
     ) -> None: ...
 
-    def ensure_started(self) -> None: ...
+    def ensure_started(self) -> None:
+        """Bind 127.0.0.1:0 (so the port is known), then serve on a thread of its own;
+        returns once the server accepts connections."""
 
     def stop(
         self,
@@ -1491,10 +2250,24 @@ class KeyProxy:
     def drop_run(
         self,
         run: str,
-    ) -> None: ...
+    ) -> None:
+        """The run's routes, and so its tokens, stop working; calls in flight finish."""
 
     def app(self) -> Starlette:
-        """The ASGI app of §4.7.3; tests drive it with httpx.ASGITransport."""
+        """The ASGI app of §4.7.3, which ensure_started serves."""
+
+
+def is_loopback(url: str) -> bool: ...
+
+
+def loopback_proxy_env(
+    env: Mapping[str, str],
+    *,
+    system: str,
+    system_proxies: Callable[[], Mapping[str, str]] = urllib.request.getproxies,
+) -> dict[str, str]:
+    """§4.7.2 step 5: NO_PROXY with the loopback hosts appended; on macOS with no proxy in
+    env, the system's http and https proxies as HTTP_PROXY and HTTPS_PROXY."""
 
 
 class ProxyRoute:
@@ -1512,45 +2285,69 @@ class ProxyRoute:
         session: str,
         run: str,
         upstream: Mapping[str, Any],
-        tool_upstreams: Mapping[str, Mapping[str, Any]] = MappingProxyType({}),
+        tool_upstreams: Mapping[str, Mapping[str, Any]] = NO_TOOL_UPSTREAMS,  # v3: route.py's
     ) -> RouteGrant: ...
 
     def release(
         self,
         run: str,
     ) -> None: ...
-
-
-def is_loopback(url: str) -> bool: ...
-
-
-def loopback_proxy_env(
-    env: Mapping[str, str],
-    *,
-    system: str,
-    system_proxies: Callable[[], Mapping[str, str]] = urllib.request.getproxies,
-) -> dict[str, str]:
-    """§4.7.2 step 5: NO_PROXY with the loopback hosts appended; on macOS with no proxy in env, the
-    system's http and https proxies as HTTP_PROXY and HTTPS_PROXY."""
 ```
 
-`deep_reasoning.acp.cli.Options` gains two fields after D1's five:
+`deep_reasoning.acp.cli` gains two constants and `Options` two fields after D1's five (*v3:* as built, B28):
 
 ```python
+DEFAULT_SPEND_CAP_USD = 5.0  # per conversation, through the key proxy
+PROXY_STOP_S = 0.5  # inside D1's shutdown budget
+
+
 @dataclass(frozen=True)
 class Options:
     ...  # D1's config, home, flat, heartbeat_s, log_level
-    key_proxy: (
-        bool  # --no-key-proxy: D1's DirectRoute, keys stay in the worker's environment
-    )
-    spend_cap_usd: (
-        float  # --spend-cap-usd USD: per conversation, through the key proxy; default 5
-    )
+    key_proxy: bool  # off with --no-key-proxy: the worker gets the keys themselves
+    spend_cap_usd: float  # --spend-cap-usd USD, default 5
 ```
 
 ### 5.8 `desktop/build.py`
 
 ```python
+REPO: Final = Path(__file__).resolve().parents[1]
+# What every user's setup fetches (§4.2.3).
+DEEP_REASONING: Final = "https://github.com/michaeltheologitis/deep-reasoning"
+GITHUB: Final = "https://github.com/"
+GITHUB_API: Final = "https://api.github.com"  # v3 (B24)
+GITHUB_RAW: Final = "https://raw.githubusercontent.com"  # v3 (B24)
+PINS: Final = REPO / "desktop" / "pins.toml"
+BOOTSTRAP: Final = REPO / "desktop" / "bootstrap.sh"
+WRAPPER_CONFIG: Final = REPO / "desktop" / "electron-builder.dr.mjs"
+COMMIT: Final = re.compile(r"[0-9a-f]{40}")
+# The branch every pinned fork commit must be on (§4.2.2 check 8).
+FORK_BRANCH: Final = "deep-reasoning"
+STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
+SETUP_PHASES: Final = ["before-start", "after-ready"]
+BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
+TYPESCRIPT_CLIENT: Final = "@openhands/typescript-client"
+ACP_PYTHON: Final = "agent-client-protocol"
+# v3 (B14): two targets, each built on its own machine; Macs are Apple silicon only.
+ARTIFACT_KINDS: Final = {
+    "linux": ("AppImage", "deb"),
+    "mac-arm64": ("dmg",),
+}
+BUILD_MACHINES: Final = {
+    "linux": ("Linux", "x86_64"),
+    "mac-arm64": ("Darwin", "arm64"),
+}
+MAC_ARCH: Final = "arm64"
+MAC_MINIMUM: Final = "14.0"  # v3 (B19)
+# What the .app carries that must run on Apple silicon: Electron, uv and Node.
+MAC_BINARIES: Final = (
+    "MacOS/{product}",
+    "Resources/bin/uv",
+    "Resources/node/bin/node",
+)
+FORBIDDEN_IN_PAYLOAD: Final = "deep_reasoner"
+
+
 @dataclass(frozen=True)
 class ForkPin:
     repo: str
@@ -1575,15 +2372,11 @@ class Pins:
     app: AppPin
 
 
-Target = Literal["linux", "mac", "mac-universal"]
+Target = Literal["linux", "mac-arm64"]  # v3 (B14): not linux, mac, mac-universal
 
 
 def load_pins(path: Path) -> Pins:
     """Raises ValueError naming the key for a commit that is not 40 hex."""
-
-
-# (v2) The branch every pinned fork commit must be on (§4.2.2 check 8).
-FORK_BRANCH: Final = "deep-reasoning"
 
 
 def check_pins(
@@ -1596,14 +2389,18 @@ def check_pins(
     is_on_branch: Callable[[str, str, str], bool],
 ) -> list[str]:
     """§4.2.2's checks; the problems as sentences, empty when the pins belong together.
-    is_on_branch(repo_url, branch, commit) answers check 8; build() passes one that fetches without blobs."""
+    The readers stand for the forks' repositories: ls_remote(url, refs) gives each ref's
+    commit, read_sdk_file(path) a file at the SDK fork's commit, and
+    is_on_branch(url, branch, commit) answers check 8."""
 
 
 def setup_command(
     repo_url: str,
     commit: str,
     bootstrap: str,
-) -> list[str]: ...
+) -> list[str]:
+    """The setup command C3's launcher runs: sh -c <bootstrap> with the dr-app package,
+    deep-reasoning's repository and the commit as $1, $2 and $3."""
 
 
 def patch_defaults(
@@ -1615,6 +2412,45 @@ def patch_defaults(
     """§4.2.3's four keys; every other key unchanged."""
 
 
+# v3 (B24): the readers of the forks' public repositories, git and GitHub's REST API.
+def git_ls_remote(
+    repo_url: str,
+    refs: Sequence[str],
+) -> dict[str, str]: ...
+
+
+def read_file_at(
+    repo_url: str,
+    commit: str,
+    path: str,
+) -> str: ...
+
+
+def is_on_branch(
+    repo_url: str,
+    branch: str,
+    commit: str,
+) -> bool:
+    """GitHub finds the branch identical to commit, or ahead of it; it knows no such
+    commit on none. GITHUB_TOKEN, when set, lifts the API's 60 requests an hour."""
+
+
+def checkout_canvas(
+    pins: Pins,
+    work: Path,
+) -> Path:
+    """The Canvas fork at its pinned commit under work/canvas, nothing else changed."""
+
+
+def check_checkouts(
+    pins: Pins,
+    *,
+    repo: Path,
+    work: Path,
+) -> tuple[Path, list[str]]:
+    """The Canvas checkout under work, and check_pins against the forks' repositories."""
+
+
 def build(
     target: Target,
     *,
@@ -1622,12 +2458,41 @@ def build(
     repo: Path,
     work: Path,
 ) -> list[Path]:
-    """Check out the Canvas fork at its commit under work/, check, patch, build, verify; the artifacts."""
+    """Check out the Canvas fork at its commit under work/, check, patch, build, verify;
+    the artifacts, copied to <repo>/dist/."""
+
+
+def payload_paths(
+    artifact: Path,
+    canvas: Path,
+) -> list[str]:
+    """Every path the package carries: a .deb's listing; for the rest, the unpacked tree
+    electron-builder made it from."""
+
+
+def macho_archs(path: Path) -> str:
+    """The architectures of a Mach-O file, as lipo names them ("arm64", "x86_64 arm64")."""
+
+
+# v3 (B14, B19)
+def verify(
+    target: Target,
+    pins: Pins,
+    canvas: Path,
+    *,
+    archs_of: Callable[[Path], str] = macho_archs,
+) -> list[Path]:
+    """Exactly the expected artifacts, named deep-reasoning-<version>-<arch>.<ext> (the
+    .dmg's arch arm64), no deep_reasoner inside any, and for the Mac the .app's Electron,
+    uv and Node arm64 only, and its Info.plist's minimum macOS MAC_MINIMUM."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """uv run desktop/build.py {linux|mac|mac-universal|check} [--work DIR]."""
+    """uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]."""
 ```
+
+*(v3: left out above, as private in all but name: the build's sentences, one function per refusal, which §6 lists, and
+the helpers `git`, `run` and `locked_version`.)*
 
 ---
 
@@ -1661,6 +2526,14 @@ the two profile sentences lose their `{on_off}`, with the flat fallback (§4.5.1
 | `APP_UNSUPPORTED` | `⚠ This agent-server cannot run the Library panel's backend on this platform; conversations still work.` |
 | `app_warning(detail)` | `⚠ The Library panel's backend did not start ({detail}); conversations still work. Its log is under Apps → dr-library.` |
 | `NOTHING_INSTALLED` | `✗ Nothing is installed yet: launch the app once, then run this again.` |
+| *(v3, B6)* `NO_AGENT_SERVER` | `✗ The after-ready phase needs AGENT_SERVER_URL and SESSION_API_KEY, which the app's launcher sets.` |
+| *(v3, B3)* `home_too_long(home, length, limit)` | `✗ {home} is too long a path for your data: deep_reasoner's Claude runs serve sockets under it up to {length} bytes long, and this system allows {limit}. Choose a shorter folder with dr-app home DIR.` |
+| *(v3, B6)* `home_refused(path, reason)` | `✗ {path} {reason}: choose an absolute path to a folder on this computer with dr-app home DIR.` (`reason`: `is not an absolute path`, or `is on a network filesystem ({fstype})`) |
+| *(v3, B21)* `state_from_a_newer_app(path, version)` | `✗ {path} was written by a newer Deep Reasoning (its version {version}; this one reads 1). Install the newer app again. To set this one up from the start instead, delete {path}: your data stays, but a folder chosen with dr-app home is forgotten.` |
+| *(v3, B21)* `state_unusable(path, reason)` | `✗ {path} cannot be used: {reason}. Delete it and launch the app again: setup then installs as on a first launch, which needs the network. Your data stays, but a folder chosen with dr-app home must be chosen again.` (`reason`, one of six: `it cannot be read ({strerror})`, `it is not JSON`, `it is not a JSON object`, `its version is {v as JSON}`, `it has no version`, `it holds a record this app does not write`) |
+
+*(v3: every sentence in both tables is the code's, verbatim; the as-built compared each, its §5.4. `install_failed`'s
+`step` is now one of `git init`, `git fetch`, `git checkout`, `uv venv`, `uv sync` or `the import check`, B22.)*
 
 The bootstrap's two lines are §4.3.1's. The key proxy (`deep_reasoning.acp.texts`, D1's module):
 
@@ -1671,6 +2544,7 @@ The bootstrap's two lines are §4.3.1's. The key proxy (`deep_reasoning.acp.text
 | `not_a_model_call(paths, method, rest)` | 403 | `The key proxy forwards only model calls ({paths}); {method} /{rest} was refused.` |
 | `BAD_TOKEN` | 401 | `The key proxy does not know this token.` |
 | `upstream_unreachable(host, error)` | 502 | `The key proxy could not reach {host}: {error}.` |
+| *(v3, B5)* `bad_body(rest, mib)` | 400 | `The key proxy forwards to /{rest} only a JSON object of at most {mib} MiB; this body was refused.` |
 
 Error bodies take the dialect's shape: `{"error": {"message", "type", "code"}}` for `openai`,
 `{"type": "error", "error": {"type", "message"}}` for `anthropic`, with `type` and `code` the name in lower case
@@ -1680,6 +2554,26 @@ formatted (`{spent:.2f}`); the rest take `str`.
 The build: `✗ Canvas fork {canvas_tag} runs the agent-server at {wired7} (its wiring commit), but desktop/pins.toml
 pins the SDK fork at {sdk_tag} ({sdk7}). Bump both, or neither.`, and one sentence per other check of §4.2.2,
 each naming the file and the two values that disagree.
+
+*(v3: as built, one function each in `build.py`; `{x7}` is the first seven characters of a commit.)*
+
+| Name | Text |
+|---|---|
+| `tag_moved(fork, tag, found, commit)` (check 1) | `✗ The {fork} tag {tag} resolves to {found7, or nothing}, but desktop/pins.toml pins {commit7}. Move the tag, or the pin.` |
+| `wired_to_another_repo(canvas_tag, wired_repo, sdk_repo)` (check 2) | `✗ Canvas fork {canvas_tag}'s config/defaults.json runs the agent-server from {wired_repo}, but desktop/pins.toml pins the SDK fork {sdk_repo}.` |
+| `wired_elsewhere(canvas_tag, wired, sdk_tag, sdk)` (check 2) | v2's sentence, above |
+| `client_from_elsewhere(canvas_tag, spec, sdk_tag)` (check 3) | `✗ Canvas fork {canvas_tag}'s package.json takes @openhands/typescript-client from {spec}, not from the SDK fork's release {sdk_tag}.` |
+| `acp_differs(sdk_tag, theirs, ours)` (check 4) | `✗ The SDK fork's uv.lock at {sdk_tag} locks agent-client-protocol {theirs}, but deep-reasoning's uv.lock locks {ours}: both ends must run one ACP Python.` |
+| `fork_sets_ours(canvas_tag, key, value)` (check 5) | `✗ Canvas fork {canvas_tag}'s config/defaults.json sets {key} to {value as JSON}; the fork must leave it null, for this build to write.` |
+| `checkout_dirty(changed)` (check 6) | `✗ This deep-reasoning checkout has {changed} uncommitted change(s): every user's setup fetches the commit, so build from a clean checkout.` |
+| `head_unpushed(head)` (check 6) | `✗ deep-reasoning's HEAD ({head7}) is on no branch of origin: every user's setup fetches it, so push it first.` |
+| `off_branch(fork, commit)` (check 8) | `✗ The {fork} commit {commit7} is not on its deep-reasoning branch: pin a commit its stacks merged there.` |
+| `wrong_machine(target, system, machine)` (B14) | `✗ desktop/build.py {target} builds for {its system} on {its machine}, the machine it runs on, and this one is {system} on {machine}.` |
+| `not_arm64(binary, archs)` (B14) | `✗ {binary} is {archs}, not arm64 only: Macs are Apple silicon only.` |
+| `opens_too_early(declared)` (B19) | `✗ The app's Info.plist declares LSMinimumSystemVersion {declared}, not 14.0: desktop/electron-builder.dr.mjs's mac block sets it.` |
+
+`build.py check` prints `the pins belong together ✓` when every check passes, and the problems, one per line, when
+not.
 
 What the startup log shows at a first launch (the splash prefixes each line with its service, C3 §3.3):
 
@@ -1703,6 +2597,10 @@ What the startup log shows at a first launch (the splash prefixes each line with
 
 *(v2)* The `[defaults]` names are sorted, and each phase is framed by the launcher's own `Running …` and `Done in …`
 lines (C3 v3 §3.3, B5); the App's version is deep-reasoning's package version, `0.1.0` today (D3 B5).
+
+*(v3: as built, the lines are these, in this order. `git fetch -q` and `git checkout -q` print nothing on success, so
+the fetch of the commit's tree before `checks_ok` is silent. The macOS runner's launch log at `3e9cee9` reads
+`installed in 12s` and `Done in 17s` for before-start, and `Done in 2s` for after-ready, as-built §5.2.)*
 
 ---
 
@@ -1757,6 +2655,19 @@ on a metered path) · `test_a_route_forwards_only_to_its_configured_upstream` ·
 E10 runs again in the final part with D4's MCP servers bound in the worker (the same assertions; D4's
 `echo_server.py` and its grant, §8.7), and inside the real app in E12.
 
+*(v3: built, all of it, at `3e9cee9`. E10 #2 as run: all three prompts (the first, a second, one after `dr-acp`
+restarted and reloaded the session) end `failed` with the proxy's sentence, the fake saw exactly the calls the ledger
+counted, `spent_usd` ≤ $0.014 and `refused` ≥ 3. E10 with D4's server is
+`test_an_mcp_server_gets_a_provider_key_only_when_its_settings_name_it_and_the_worker_never_does[unnamed, named]`, B9.
+`test_key_proxy.py` has the sixteen above and four more: `test_an_anthropic_route_swaps_the_x_api_key`,
+`test_provider_errors_release_their_reservations` and
+`test_a_call_costs_its_reported_usage_else_its_reservation_unless_refused` (B4), and
+`test_a_tool_with_its_own_client_gets_its_own_overrides`. D1's files gain
+`test_catalog.py::test_materialize_hands_the_worker_each_tools_own_client`,
+`test_runner.py::test_the_run_config_takes_the_namespace_and_every_clients_overrides` and
+`::test_a_start_without_tool_overrides_leaves_every_tool_as_configured`, and `test_texts.py`'s
+`test_the_key_proxys_sentences_are_d5s_verbatim`. No test pins `bad_body` or the uncompressed path, B5.)*
+
 ### 7.2 `dr-app`
 
 | File | Pins |
@@ -1769,6 +2680,29 @@ E10 runs again in the final part with D4's MCP servers bound in the worker (the 
 | `tests/canvas_app/test_notice.py` (D3's) | *(v2, decision O)* `test_the_notice_is_d5s_sentence_with_the_cap` compares with `texts.safety("7")`; it stops skipping once `dr_app` is a dev dependency, in the same commit |
 | `tests/app/test_bootstrap.py` | `sh` with stub `git` and `uvx`: `test_no_git_says_how_to_install_it`; `test_an_unreadable_deep_reasoning_says_so_and_keeps_uvx_status`; `test_dr_apps_own_failure_passes_through_without_the_access_line`; `test_the_arguments_reach_dr_app_unchanged` (a path with a space) |
 
+*(v3: as built, the table's names hold but these. `test_runtime.py`:
+`test_a_first_launch_checks_then_installs_the_commits_own_lock` and `test_a_new_commit_reinstalls` (renamed, B22);
+`test_the_runtime_lock_matches_uv_lock` gone with the file; new,
+`test_deep_reasoners_pin_is_read_from_uv_lock_as_pyproject_names_it`,
+`test_the_runtimes_uv_sync_reads_no_project_setting_that_changes_its_set` (B22),
+`test_the_runtimes_commands_run_from_where_the_install_leaves_them` (B2), `test_without_uv_nothing_is_installed` and
+`test_the_runtime_lock_installs_on_every_platform_the_app_ships_for` (B12, it reads PyPI). `test_layout.py`: new,
+`test_a_setup_state_this_app_could_not_have_written_says_why`, `test_a_setup_state_that_cannot_be_read_says_why`
+(B21), `test_a_home_too_long_for_a_claude_runs_socket_is_refused`,
+`test_setup_refuses_a_default_home_too_long_for_a_claude_runs_socket` and
+`test_linuxs_limit_is_where_a_socket_stops_binding` (B3). `test_canvas_app.py`: new,
+`test_an_unsupported_platform_says_so`; the `crossrepo` one is
+`test_the_staged_app_passes_prepare_and_its_backend_answers_health`. `test_cli.py`: new,
+`test_a_failed_check_exits_with_its_code_and_its_sentence`,
+`test_home_refuses_a_folder_too_long_for_a_claude_runs_socket`,
+`test_after_ready_without_the_agent_server_is_a_usage_error`, `test_the_bin_links_lead_to_the_runtime` and
+`test_a_setup_state_it_cannot_use_is_explained_and_exits_14` (B21). `test_bootstrap.py`: the second and third are
+`test_an_unreachable_deep_reasoning_says_so_and_keeps_uvx_status` and
+`test_dr_apps_own_failure_passes_through_without_the_fetch_line` (B15). `tests/app/test_texts.py` compares v2's
+sentences with fields. The stubs are scripts in `conftest.py`; the stub `git` lays a copy of this repository's
+`uv.lock` into the "fetched" tree; `fake_agent_server.py` answers as the agent-server does. Part 2 and Part 3 of
+"Which tests carry which property" map each to its property.)*
+
 ### 7.3 The build
 
 `tests/desktop/test_build.py`: `test_pins_with_a_short_commit_are_refused`;
@@ -1777,8 +2711,11 @@ E10 runs again in the final part with D4's MCP servers bound in the worker (the 
 `test_a_typescript_client_from_another_tag_is_refused`; `test_a_different_acp_python_is_refused`;
 `test_defaults_gain_only_d5s_four_keys`; `test_telemetry_is_off_in_the_built_defaults`;
 `test_the_setup_command_embeds_the_bootstrap_and_the_commit`; `test_a_dirty_or_unpushed_checkout_is_refused`.
-`ls_remote`, the SDK file reader and `is_on_branch` are passed in. The packaging itself is tested by building it, in §7.5 and
-§7.6.
+`ls_remote`, the SDK file reader and `is_on_branch` are passed in. The packaging itself is tested by building it, in
+§7.5 and §7.6. *(v3: twenty tests as built. Beside the above: `test_pins_that_belong_together_pass_every_check`,
+`test_a_tag_that_moved_is_refused`, `test_a_fork_that_carries_our_values_is_refused`, the committed pins' two (B12),
+`test_a_debs_payload_paths_keep_their_spaces`, and the Mac and machine tests of B14 and B19. The GitHub readers
+themselves have no unit test, B24.)*
 
 ### 7.4 `fork-live.yml`: S1's and S2's live tiers with `dr-acp` (built)
 
@@ -1800,6 +2737,11 @@ the real provider.
   (D1's file, D1's call). With the proxy on by default, the live tier also exercises it against the real provider
   (gpt-6-luna is priced: D1's live test asserts it).
 
+*(v3: dispatched on `v1-desktop` with `sdk_ref` `dr-2` at each revision's head; at `3e9cee9`,
+[run 37256842683](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37256842683): S1 2 of 2 in 38.8 s,
+S2 8 of 8 in 98.8 s, `dr-acp` with the key proxy on, since no flag turns it off. The file is `main`'s, unchanged by
+D5's stack.)*
+
 ### 7.5 `cross-repo.yml`: pins, E12, E5, E6
 
 Triggers: `pull_request` touching `desktop/**`, `packages/dr-app/**`, `pyproject.toml`, `uv.lock`,
@@ -1810,6 +2752,13 @@ which runs on a schedule (`cron: "17 6 * * *"`) with `permissions: actions: writ
 `gh workflow run cross-repo.yml --ref v1-desktop` (once D5 has merged, `--ref main`). No job calls a real model.
 Private access as in D1's CI: `DEEP_REASONER_TOKEN` for DeanLight, and the workflow token, through an `insteadOf`
 line, for deep-reasoning itself (the app's setup fetches it like a user's would).
+
+*(v3, B26, B15, as built. The triggers are `pull_request` on the paths above, `workflow_dispatch`, and a schedule of
+the file's own, `17 6 * * *`, which GitHub runs only from the default branch: until the stack merges, `main`'s
+`nightly.yml` keeps dispatching this file on `v1-desktop`, and #42 deletes `nightly.yml`. There is no `has-d5`. Only
+DeanLight needs an `insteadOf` line; deep-reasoning is public. `pins` checks out the commit itself, never a pull
+request's merge commit, since check 6 asks that it be on `origin`, and passes `GITHUB_TOKEN` to check 8. The jobs are
+the four below; `library-app`'s test runs in `bridge-replay`.)*
 
 | Job | Part | Does |
 |---|---|---|
@@ -1869,6 +2818,24 @@ Final flow, each part added with the pin bump that brings it (§1.2):
 - **D4** (D4 §11.4): an MCP server added through Canvas's settings API (D4's `echo_server.py`), ticked for the
   conversation's namespace in the Tools tab (D4 Appendix B's ids), is called by the next conversation's cell.
 
+*(v3, B7: both flows are built as one module of seventeen tests sharing one launch, in file order, on
+`ubuntu-24.04` (the job's limit 60 minutes). At `3e9cee9`: the build 4 min 2 s, the `.deb` 150 MB, **17 passed in
+416.1 s**, the first launch through both setup phases to the window 32.3 s, the header-panel test 320.5 s since it
+outlasts the bridge's five-minute session. The order: the launch (step 1); no consent asked; onboarding keeps
+`deep_reasoner` and its hello starts the first conversation (Canvas `dr-3`, which settles §11 item 10); E10 inside
+the app (steps 3 and 4); nothing records consent; D3's frame through the bridge (step 5); C1's tree, costs and Stop;
+C2's home screen, Create decomposition and the next conversation; D4's Tools tab and MCP server; the header panel past
+its first session; the quit (step 6); the offline relaunch (step 7). Where they
+differ from the text above: step 2's Library config is written by the test (no `e12/main.yaml`); Stop's plan spawns
+the done sibling first and holds the grandchild's call until `dr-acp` logs `stop.accepted` (TASK-38); costs are
+compared with the run log's at each sub-agent's end; the next conversation asks a plain question once the slash
+menu offers the command; the cookie is read with `Storage.getCookies`; D4's server is added with `POST
+/api/settings/mcp/echo` and the Tools tab reopened; the quit asks that no process's command line names the fresh
+HOME. The harness is `tests/desktop/app.py`, which the macOS smoke shares; it calls the agent-server through
+`dr_app`'s `AgentServer` (B29). E5's job, `bridge-replay`, is 12 tests (D1's ten recordings, the Library App's
+`crossrepo` test and D4's forwarding test, B26); E6's, `canvas-replay`, 10 of 10 on C1's replay spec at Canvas
+`4355a36`, with TASK-41's race (one run in five) still open in the Canvas fork.)*
+
 ### 7.6 `desktop-release.yml`
 
 `push` of a tag `v*` and `workflow_dispatch` (artifacts only). Jobs: `linux` (`ubuntu-latest`: `build.py
@@ -1879,13 +2846,24 @@ linux`, `.AppImage` and `.deb`) and `macos` (`macos-latest`: `build.py mac-unive
 `backend ready` in its log, which is S2 PR 3's falsifier on a real Mac ("the Library App's backend does not start
 on macOS", S2 §9). *(v2: skeleton, no longer final: D3 and S2's #3 are merged. The first release tag stays final.)*
 
+*(v3, B14, B15, B8, as built. The jobs are `cross-repo-green` (tags only), `linux`, `macos` and `release` (tags
+only). `macos` runs `build.py mac-arm64` on `macos-latest` (Apple silicon), copies the `.app` out of the `.dmg`, and
+runs `tests/desktop/test_launch_smoke.py` against it: two tests on one launch, the backend `ready` and a clean quit,
+and arm64-only Electron and uv; the app's log and macOS's crash reports are kept as an artifact whatever the result.
+There is no Intel job. `release` creates the tag's release if it is missing and uploads the packages with `--clobber`;
+the downloads are public, like the repository. No `v*` tag exists yet, so the release path has not run. At
+`3e9cee9`, [run 37256038987](https://github.com/michaeltheologitis/deep-reasoning/actions/runs/37256038987): `linux`
+and `macos` green, the smoke 2 passed in 56.7 s on the `macos-26-arm64` image, before-start `installed in 12s`.)*
+
 ---
 
 ## 8 · What other designs must change, and what D5 asks of D3, C1 and C2
 
 These are contract findings for the Conductor; none is settled sideways. *(v2: three of v1's asks are met (§8.2,
 §8.3, §8.5), one is half met (§8.1), §8.4's are adopted but not merged, and §8.6 is now the redone wiring. §8.7 is
-new.)*
+new.)* *(v3: every one is met. §8.1 and §8.7 are built in D5's stack (#37, #40, #42); §8.3's line is in #38; §8.4's
+and §8.6's landed in the Canvas fork, B1. Nothing here is owed to another design any more; D1's design names the
+tool-client half when it next revises.)*
 
 ### 8.1 D1: route tool clients through the seam
 
@@ -1951,7 +2929,10 @@ class Start(BaseModel):
 - D4 adds its own field to `Start` (`mcp_servers`, D4 §11.1); the two are independent, and `v1-desktop` merges
   `main` once D4 is on it.
 
-About 25 lines in D1's files, plus their tests.
+About 25 lines in D1's files, plus their tests. *(v3: built as written, in #37 (`f106a0c`): +128 net lines in D1's
+files with the options and the proxy's construction, +114 of tests. `DirectRoute` and `ProxyRoute` default
+`tool_upstreams` to `route.NO_TOOL_UPSTREAMS`, an empty `MappingProxyType`; the worker's merge is
+`worker/runner.py`'s `run_config(start)`.)*
 
 ### 8.2 S1: the opt-in on the agent profile (met)
 
@@ -1982,7 +2963,7 @@ died, by `start` of the prepared revision only. What D5 owes D3, D3 §8.4's seve
 7. D5's sentence and D3's stay equal: D3's `test_the_notice_is_d5s_sentence_with_the_cap` calls
    `texts.SAFETY.format(cap=7)`, which assumed a template (D3 B19). D5's `texts.safety(cap)` is a function
    (decision O), so D5's Implementer changes that one line to `texts.safety("7")` in the commit that makes `dr_app` a
-   dev dependency, when the test stops skipping.
+   dev dependency, when the test stops skipping. *(v3: done, in #38.)*
 
 ### 8.4 C1 and C2: adopted, not merged
 
@@ -2003,6 +2984,9 @@ died, by `start` of the prepared revision only. What D5 owes D3, D3 §8.4's seve
   `app_backend_ingress_url`. D3's page runs inside C2's frame; D5's E12 drives both.
 - Both are built on `wiring/dr-1` and merge the redone wiring (§8.6) before they merge into the Canvas fork's
   `deep-reasoning`; each merge is followed by a Canvas tag and a pin bump in D5 (§1.2).
+
+*(v3: PR #4 and PR #3 closed unmerged; C1 merged as Canvas #13–#19 and C2 as #20–#26, on the redone wiring, both in
+`dr-2` (`9d050ab`). The ids and helpers E12 relies on held: its C1 and C2 tests pass at `dr-3`, B7.)*
 
 ### 8.5 The Canvas fork's launcher: a default App-backend ingress (met)
 
@@ -2050,6 +3034,12 @@ must contain for D5:**
 **Files on `main`** (decision M): copies of `cross-repo.yml` and `desktop-release.yml`, and `nightly.yml`, placed
 the way `fork-live.yml` (`633a00d`) and `live.yml` were, with Michael's yes.
 
+*(v3: all of it is done. `dr-2` was pushed at `34c540c` and its release carries the tarball. The wiring was redone as
+the Canvas fork's #12 (`wiring/dr-2`) and tagged `dr-1` at its merge, `fc87687`; `launcher-live.yml` ran green on
+`wiring/dr-2` at `9035f9e` (run 37212550240). The
+files on `main` are #34 (`cross-repo.yml` and `nightly.yml`, `b2a74e0`) and #35 (`desktop-release.yml`, `f1ca641`);
+they are older than this branch's, and the stack replaces them, B11, B26.)*
+
 ### 8.7 D4 (v2)
 
 D4 (design v5 §11.4) asks four things of D5; none needs D5 to change before D4 merges into `main`:
@@ -2063,12 +3053,28 @@ D4 (design v5 §11.4) asks four things of D5; none needs D5 to change before D4 
 
 D4's optional "check every stored tool after an upgrade" in setup is not taken in v1 (§11 item 18).
 
+*(v3: the four are built: E10 with D4's server, which admits `LC_CTYPE` too (B9); §2.1's exception, stated; the
+profile's `mcp_server_refs: null`; and E12's MCP step with D4's forwarding test, which runs in `bridge-replay`'s job,
+B26.)*
+
 ---
 
 ## 9 · What D5 relies on
 
 *(v2: re-pinned. Canvas lines at `7c12afb`, SDK lines at `34c540c`, deep-reasoning lines at `main`'s `1f9fe52`.
 Row A6 is gone with §4.9's fallback; rows D3, T1, W1, C1, C2, D4, A7 and R5 are new.)*
+
+*(v3: the pins are now Canvas `4355a36` (`dr-3`) and SDK `34c540c` (`dr-2`, unchanged). Of the Canvas files the rows
+cite, only `src/services/telemetry.ts` changed between `7c12afb` and `4355a36` (#28 adds `isTelemetryAvailable`,
+`:709–716`, which hides consent where a build cannot report; L4's lines hold), so rows C3 and L1–L5 hold at the pin
+as cited, and `config/defaults.json` and `package.json` changed only by the wiring, W1. Rows A1–A7, S1, S2 and T1 are
+the SDK fork's, whose pin did not move. The rows marked *expected* landed: W1 as
+Canvas #12 (`dr-1`), C1 and C2 as #13–#26 (`dr-2`), D4 on `main` (`53c821b`). L6, unverified in v2, holds: E12's
+bridge test. U1 changed with B22: D5 no longer runs `uv pip sync` or `uv export`; it runs `uv venv --relocatable
+--managed-python` and `uv sync --frozen --no-dev --no-editable --all-packages` with `UV_PROJECT_ENVIRONMENT`, on the
+bundled uv 0.12.23 (E12, the smoke and the as-built's install, §5.4). G1 now also carries B26: `cross-repo.yml`'s own
+schedule takes effect only once the file is on the default branch. deep-reasoning's line numbers stay `1f9fe52`'s;
+D5's changes to D1's files are §8.1's v3 note.)*
 
 | # | Behaviour relied on | Their code |
 |---|---|---|
@@ -2129,9 +3135,25 @@ without them does not bound spending (decision I); the Library App's staging and
 the System Designer; the workflows and the E12 harness, which the spec costed at ≈100 together; and `dr-app`'s
 own package. About 2.5k of it is the skeleton; the final part is about 0.2k, all of it tests and one CI job.
 
+*(v3: as built, 6,512 reviewable lines, 2,589 of code and 3,923 of tests, and the README's 161: about 22 h at Gate C.
+§3.1's "Size" says where v2's estimate fell short.)*
+
 ---
 
 ## 11 · Open items, and what I was unsure about
+
+*(v3: where v2's items stand at `3e9cee9`. 1: built, #37. 2: done, B1. 3: stands; the Claude CLI behind the proxy is
+still unverified, and a `claude` on its own login still escapes the proxy and the cap. 4: the smoke ran on GitHub's
+`macos-26-arm64` image only; nothing ran on macOS 14 or on a Mac of ours, and the system-proxy export is unit-tested
+only (as-built §7). 5: measured, as-built §5.5: `uvx`'s start for `dr-app` 0.12 s warm, online or not; the first
+install 7 s on a Linux machine with a fast network and 12–16 s on the macOS runner, a 474 MB runtime; after-ready 2–4
+s. 6: the maintainer is Michael's git identity, his ruling; the icon is still upstream's, and the names a user reads
+are TASK-44's, B17. 7: stands. 8: done, #34 and #35, and the stack replaces them, B11, B26. 9: stands, a proposal for
+D1's run log. 10: settled by Canvas `dr-3` (#28, #29); E12 goes through onboarding, B7. 11: holds in E12. 12: the
+wrapper builds on both platforms. 13: the Canvas tags are `dr-1` to `dr-3`, numbered apart from the SDK fork's. 14:
+stands; the one hang seen was the test's own HOME on macOS, B8, and the splash's silence while git waits is TASK-39.
+15: answered, the bundled uv 0.12.23 runs D5's commands (E12, the smoke, as-built §5.4). 16: Gate B is done, B13.
+17: merged; E12's C1 and C2 tests pass at `dr-3`. 18: stands. Items 19 to 22 are new.)*
 
 1. ~~**S1's profile field** (§8.2)~~ *(v2: met, SDK #13.)* **D1's seam extension** (§8.1): its second half
    (`ALWAYS_REMOVED`) is built; the tool-client half is D5's Implementer's first step, in D1's files (§1.2). The
@@ -2197,3 +3219,21 @@ own package. About 2.5k of it is the skeleton; the final part is about 0.2k, all
 18. *(v2)* **D4's "check every stored tool after an upgrade"** (D4 §14 item 4) is not taken: it would put
     deep_reasoner's imports and every tool's factory on setup's path after each update, and Check already runs
     when a tool is saved. The Conductor may route it to D4's next revision.
+19. *(v3)* **Checks 4 and 8 read GitHub, and nothing tests their readers** (B24; as-built §1.3 #6). `read_file_at` and
+    `is_on_branch` run only in builds, the `pins` job and the as-built's probes, where both pins pass, and two commits
+    off their branches and one that does not exist are refused. An HTTP error other than check 8's 404, such as
+    GitHub's limit of 60 unauthenticated requests an hour, is not a sentence: `build.py` ends in a traceback. A local
+    `build.py check` without `GITHUB_TOKEN` can meet it. A test with a fake opener and one sentence for an unreadable
+    fork would close it, about 30 lines; for the Conductor to route.
+20. *(v3)* **No test pins `bad_body`, or that bodies pass uncompressed** (B5). Both are in the proxy's request path; a
+    unit test each, in `test_key_proxy.py`, about 25 lines.
+21. *(v3)* **Open tasks D5's runs found, none of which blocks D5:** TASK-38 (D1: whether `run_all`'s children progress
+    while one child's model call waits; E12 spawns the done sibling first); TASK-39 (the splash says nothing while
+    setup waits on a git credential prompt; the README tells the user what to run); TASK-41 (C1's replay spec reads
+    the DOM once and fails about one run in five; the as-built r3 cites it as TASK-40, which is r3con's row); TASK-49
+    (D1's golden recordings embed CPython 3.12.3's stdlib line numbers, so they fail on 3.12.15; CI runs 3.12.3);
+    TASK-46 (the agent-server's auto-title error on a first message, in the UX round).
+22. *(v3)* **For Michael at Gate C: one approved behaviour moved** (B23). Offline with no current runtime, setup now
+    fails naming `git fetch`, exit 11, where Gate B's build said `no_access_dr`, exit 10. This design takes the new
+    order as built; a ruling the other way means checking deep_reasoner's readability before the fetch, which needs
+    its URL from somewhere other than the fetched `uv.lock`.
