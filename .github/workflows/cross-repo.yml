@@ -1,6 +1,6 @@
 # D5's cross-repo checks (§7.5): the forks' code at their pins in desktop/pins.toml,
-# against this branch's. No job calls a real model. Dispatched by hand and nightly (through
-# main's nightly.yml), and on every pull request that moves a pin or the app.
+# against this branch's. No job calls a real model. Nightly, by hand, and on every pull
+# request that moves a pin or the app.
 name: cross-repo
 
 on:
@@ -12,30 +12,15 @@ on:
       - uv.lock
       - src/deep_reasoning/acp/proxy.py
       - .github/workflows/cross-repo.yml
+  schedule:
+    - cron: "17 6 * * *"
   workflow_dispatch:
 
 jobs:
-  # main carries this file before D5's code does (decision M): on a tree without
-  # desktop/pins.toml every job below is skipped, not failed.
-  has-d5:
-    runs-on: ubuntu-latest
-    outputs:
-      present: ${{ steps.look.outputs.present }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: desktop/pins.toml
-          sparse-checkout-cone-mode: false
-      - id: look
-        run: |
-          if [ -f desktop/pins.toml ]; then echo "present=true"; else echo "present=false"; fi >> "$GITHUB_OUTPUT"
-
   # The pins belong together (D5 §4.2.2): build.py check, every check against the real
   # forks. It checks out the commit itself, never a pull request's merge commit, since
   # check 6 asks that the commit every user's setup fetches is on origin.
   pins:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -58,8 +43,6 @@ jobs:
   # setup fetches deep-reasoning (this commit, public) and deep_reasoner_beta (private,
   # through the runner's insteadOf line) with git, as a user's would.
   desktop-e2e:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -96,48 +79,11 @@ jobs:
           path: /tmp/pytest-of-*/pytest-*/e12*/app.log
           if-no-files-found: ignore
 
-  # The staged Library App in a real agent-server from the SDK fork's pin: it installs,
-  # its artifact passes prepare and its backend answers /health (D5 §7.2).
-  library-app:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      DR_SDK_CHECKOUT: ${{ github.workspace }}/sdk
-    steps:
-      - uses: actions/checkout@v4
-      - name: The SDK fork's pin
-        id: pin
-        run: |
-          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
-          import tomllib
-          pin = tomllib.load(open("desktop/pins.toml", "rb"))["sdk_fork"]
-          print("repo=" + pin["repo"].removeprefix("https://github.com/"))
-          print("commit=" + pin["commit"])
-          EOF
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ steps.pin.outputs.repo }}
-          ref: ${{ steps.pin.outputs.commit }}
-          path: sdk
-      - uses: astral-sh/setup-uv@v6
-        with:
-          python-version: "3.12"
-      - name: Read access to deep_reasoner_beta (private)
-        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-      - run: uv sync --locked
-      - run: uv sync --frozen
-        working-directory: sdk
-      - run: uv run pytest -m crossrepo tests/app/test_canvas_app.py -v -rA
-
   # E6 (D5 §7.5, C1 §6.4): each of D1's native recordings, played by S1's scripted agent
   # with acp_subagents on, renders in the pinned Canvas as the pinned agent-server stored
   # it: C1's replay spec, one test per recording, in the Canvas fork's mock-LLM stack,
   # set up as its mock-llm-e2e.yml does. The mock LLM only serves the spec's profile.
   canvas-replay:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -226,13 +172,12 @@ jobs:
             canvas/playwright-report-mock-llm/
           if-no-files-found: ignore
 
-  # E5's second half: each of D1's native recordings, played by S1's scripted agent into
-  # the SDK fork's agent-server, is stored as the tree it records (D5 §7.5); and D4's
-  # forwarding test: an MCP server in that agent-server's settings reaches a cell through
-  # the deep_reasoner profile and dr-acp, its secret with it (D4 §10.6, D5 §8.7).
+  # Against the SDK fork's agent-server at its pin: E5's second half, each of D1's native
+  # recordings, played by S1's scripted agent, is stored as the tree it records (D5
+  # §7.5); D4's forwarding test, an MCP server in its settings reaches a cell through the
+  # deep_reasoner profile and dr-acp, its secret with it (D4 §10.6, D5 §8.7); and the
+  # staged Library App installs, passes prepare and answers /health (D5 §7.2).
   bridge-replay:
-    needs: has-d5
-    if: needs.has-d5.outputs.present == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -261,4 +206,4 @@ jobs:
       - run: uv sync --locked
       - run: uv sync --frozen
         working-directory: sdk
-      - run: uv run pytest -m crossrepo tests/crossrepo -v -rA
+      - run: uv run pytest -m crossrepo tests/app/test_canvas_app.py tests/crossrepo -v -rA
