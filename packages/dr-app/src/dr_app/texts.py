@@ -131,3 +131,12 @@ def app_warning(detail: str) -> str:
         f"⚠ The Library panel's backend did not start ({detail}); conversations still "
         "work. Its log is under Apps → dr-library."
     )
+
+
+def state_from_a_newer_app(path: str, version: str) -> str:
+    return (
+        f"✗ {path} was written by a newer Deep Reasoning (its version {version}; this one "
+        "reads 1). Install the newer app again. To set this one up from the start "
+        f"instead, delete {path}: your data stays, but a folder chosen with dr-app home "
+        "is forgotten."
+    )

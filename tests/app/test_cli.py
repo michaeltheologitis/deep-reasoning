@@ -187,3 +187,18 @@ def test_the_bin_links_lead_to_the_runtime(layout, stubs):
         assert Path(layout.bin_dir / name).resolve().parent == (
             layout.runtime_dir / COMMIT / "bin"
         )
+
+
+@pytest.mark.parametrize("command", [SETUP, ["home"]])
+def test_setup_state_from_a_newer_app_is_explained_and_exits_14(layout, stubs, command):
+    """A newer app's setup.json, met by this one: a sentence in the bootstrap's trusted
+    10-19 band, not a traceback."""
+    layout.root.mkdir(parents=True, exist_ok=True)
+    layout.setup_file.write_text('{"v": 2}')
+    done = dr_app_run(layout, *command, OH_CANVAS_SETUP_PHASE="before-start")
+    assert (done.returncode, done.stdout) == (
+        14,
+        texts.state_from_a_newer_app(str(layout.setup_file), "2") + "\n",
+    )
+    assert "Traceback" not in done.stderr
+    assert stubs.calls() == []

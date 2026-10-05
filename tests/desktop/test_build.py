@@ -4,6 +4,7 @@
 import copy
 import importlib.util
 import json
+import plistlib
 import shutil
 import subprocess
 import tomllib
@@ -286,9 +287,12 @@ def test_a_debs_payload_paths_keep_their_spaces(tmp_path):
 ARM64_DMG = "deep-reasoning-1.0.0-rc.1-arm64.dmg"
 
 
-def built_mac_app(canvas: Path, dmg: str = ARM64_DMG) -> Path:
+def built_mac_app(
+    canvas: Path, dmg: str = ARM64_DMG, plist: dict | None = None
+) -> Path:
     """dist-electron as electron-builder leaves it for the mac target: the .dmg, and
-    the .app it was made from, with the binaries the arm64 check reads."""
+    the .app it was made from, with the binaries the arm64 check reads and the
+    Info.plist the minimum-macOS check reads."""
     output = canvas / "dist-electron"
     app = output / "mac-arm64" / "Deep Reasoning.app" / "Contents"
     for binary in (
@@ -298,6 +302,10 @@ def built_mac_app(canvas: Path, dmg: str = ARM64_DMG) -> Path:
     ):
         (app / binary).parent.mkdir(parents=True, exist_ok=True)
         (app / binary).write_text("")
+    info = {"CFBundleName": "Deep Reasoning", "LSMinimumSystemVersion": "14.0"}
+    info |= plist or {}
+    declared = {key: value for key, value in info.items() if value is not None}
+    (app / "Info.plist").write_bytes(plistlib.dumps(declared))
     (output / dmg).write_text("")
     return output
 
@@ -327,6 +335,15 @@ def test_a_mac_build_that_is_not_arm64_only_is_refused(canvas, dmg, archs, refus
         build.verify("mac-arm64", PINS, canvas, archs_of=archs_of)
 
 
+@pytest.mark.parametrize("declared", ["12.0", "13.0", None])
+def test_a_mac_app_that_opens_before_macos_14_is_refused(canvas, declared):
+    """macOS 14 is the oldest the runtime's arm64 wheels install on: the app must say so
+    to macOS, which then refuses to open it on an older system."""
+    built_mac_app(canvas, plist={"LSMinimumSystemVersion": declared})
+    with pytest.raises(SystemExit, match="LSMinimumSystemVersion"):
+        build.verify("mac-arm64", PINS, canvas, archs_of=lambda path: "arm64")
+
+
 @pytest.mark.parametrize(
     ("target", "machine", "builds"),
     [
@@ -349,3 +366,39 @@ def test_the_build_offers_no_universal_or_intel_mac_target():
     with pytest.raises(SystemExit):
         build.main(["mac-universal"])
     assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}
+
+
+def commit_on(checkout: Path, message: str) -> str:
+    """A new commit on the checkout's deep-reasoning branch, pushed; its sha."""
+    (checkout / "f").write_text(message)
+    for argv in (["add", "-A"], ["commit", "-q", "-m", message]):
+        subprocess.run([*GIT, *argv], cwd=checkout, check=True)
+    subprocess.run(
+        ["git", "push", "-q", "origin", "deep-reasoning"], cwd=checkout, check=True
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=checkout,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def test_check_8_on_a_reused_work_dir_sees_commits_merged_since_its_first_clone(
+    tmp_path,
+):
+    """build.py's default --work persists: its fork caches must follow the branch."""
+    fork, checkout = tmp_path / "fork.git", tmp_path / "fork"
+    subprocess.run(["git", "init", "-q", "--bare", str(fork)], check=True)
+    subprocess.run(
+        [*GIT, "init", "-q", "-b", "deep-reasoning", str(checkout)], check=True
+    )
+    subprocess.run(
+        ["git", "remote", "add", "origin", fork.as_uri()], cwd=checkout, check=True
+    )
+    first = commit_on(checkout, "first")
+    is_on_branch = build.fork_has(tmp_path / "work")
+    assert is_on_branch(fork.as_uri(), "deep-reasoning", first)
+    merged_later = commit_on(checkout, "merged after the first clone")
+    assert is_on_branch(fork.as_uri(), "deep-reasoning", merged_later)

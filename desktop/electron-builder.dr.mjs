@@ -15,6 +15,8 @@ export default {
   appId: env.DR_APP_ID,
   productName,
   extraMetadata: { ...base.extraMetadata, name: executableName, productName, version },
+  // The oldest macOS the runtime's arm64 wheels install on: macOS refuses to open the app on an older one.
+  mac: { ...base.mac, minimumSystemVersion: "14.0" },
   dmg: { ...base.dmg, title: productName, artifactName },
   linux: { ...base.linux, executableName, artifactName, maintainer: env.DR_APP_MAINTAINER },
   win: undefined,

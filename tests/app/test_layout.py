@@ -116,9 +116,6 @@ def test_setup_state_round_trips_and_writes_atomically(layout):
     state.save(layout.setup_file)
     assert SetupState.load(layout.setup_file) == state
     assert sorted(p.name for p in layout.root.iterdir()) == ["setup.json"]
-    layout.setup_file.write_text('{"v": 2}')
-    with pytest.raises(ValueError, match="unknown version"):
-        SetupState.load(layout.setup_file)
 
 
 # The run directory's socket for the default homes: Linux's longest user name (32), the
