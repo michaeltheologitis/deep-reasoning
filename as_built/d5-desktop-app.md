@@ -20,7 +20,7 @@ are on `main`, through #34 and #35: the workflow copies decision M asked for.
 - **[run]**: executed on this machine at `3e9cee9` (§5.4): the default suite on Python 3.12.3, `build.py check` and
   check 8's GitHub reader against the forks, a real first install, setup's three failure cases on `3c923aa`'s and
   `3e9cee9`'s `dr-app`, `dr-app` against six `setup.json` files, `git` and GitHub's REST API.
-- **[run at 3c923aa]**, **[run at c9bb7fe]**: r1's and r2's probes, not repeated, where what they ran is unchanged.
+- **[run at 3c923aa]**, **[run at c9bb7fe]**: r1's and r2's probes, not repeated; §5.4 says what each ran.
 - **[CI]**: read from GitHub's logs of the runs in §5.1 and §5.3, and from the app logs the macOS jobs keep as
   artifacts. I dispatched no workflow and made no model call.
 - **[read]**: read in the code and **not executed**. This is weaker evidence than [run]. §7 lists the read claims
@@ -115,10 +115,11 @@ Moved by collaborators, or by D5's own progress [read, except where marked]:
 5. **Setup is silent while git waits on a credential dialog.** The macOS smoke's 15-minute hang (§5.3) was a keychain
    dialog under the test's fresh HOME; the fix (`269c7af`) is in the test, which gives that HOME an empty credential
    helper. The splash says nothing while setup waits (TASK-39) [read; CI].
-6. *(r3)* **Checks 4 and 8 read GitHub, and no unit test covers those readers.** `check_pins` is tested with
-   injected readers; `read_file_at` and `is_on_branch` run only in builds, the `pins` job and §5.4, where both forks'
-   pins pass and three commits off the branch are refused [run]. An HTTP error other than check 8's 404 (a rate limit:
-   GitHub allows 60 unauthenticated requests an hour) is not a sentence; it leaves `build.py` as a traceback [read].
+6. *(r3)* **Checks 4 and 8 read GitHub, and no unit test covers those readers.** `check_pins` is tested with injected
+   readers; `read_file_at` and `is_on_branch` run only in builds, the `pins` job and §5.4, where both forks' pins
+   pass, and two commits off the branch and one that does not exist are refused [run]. An HTTP error other than check
+   8's 404 (a rate limit: GitHub allows 60 unauthenticated requests an hour) is not a sentence; it leaves `build.py`
+   as a traceback [read].
 7. *(r3)* **TASK-49's four failing golden tests come from Python's patch version, not the path.** D1's recordings
    `failing` and `unanswered`, both modes, embed a traceback with CPython 3.12.3's stdlib line numbers
    (`asyncio/runners.py`, line 194). On 3.12.3 they pass and on 3.12.15 they fail, from this worktree (34 bytes) and
@@ -513,14 +514,16 @@ r1's numbers kept; the closed ones struck through.
     a bad `setup.json` is a traceback there; and its error paths are §6 #11's "before" column. On macOS 26, with the
     network and deep_reasoner_beta readable, none of this changes what an install shows [read].
 11. *(r3)* **For Gate C: two error paths of setup changed with the refactor (§1.1 #23).** This moves approved
-    behaviour; Michael has not seen it. What each case shows now, beside what it showed at `3c923aa` [run: §5.4]:
-    - **Offline, when `uvx` already has this `dr-app` and the runtime is not current** (an interrupted first launch,
-      a deleted runtime). Before: exit 10, "✗ Could not read github.com/DeanLight/deep_reasoner_beta with your git
+    behaviour (§4.4.2's order) through an adopted Scout finding. What each case shows now, beside what it showed at
+    `3c923aa` [run: §5.4]:
+    - **Offline, when `uvx` already has this `dr-app` and the runtime is not current** (an interrupted first launch, a
+      deleted runtime). Before: exit 10, "✗ Could not read github.com/DeanLight/deep_reasoner_beta with your git
       credentials. It is private: ask Dean for read access, then sign git in … Nothing was installed." Now: exit 11,
-      git's own "fatal: unable to access 'https://github.com/michaeltheologitis/deep-reasoning/': … Couldn't connect
-      to server", then "✗ Installing deep-reasoning 3e9cee9 failed (git fetch exited 128); its output is above.
-      After an update this needs the network once: connect and restart." A first launch offline with nothing cached
-      is unchanged: `uvx` cannot fetch `dr-app`, and the bootstrap says to check the network [read].
+      git's own "fatal: unable to access 'https://github.com/michaeltheologitis/deep-reasoning/': …" (the cause after
+      the colon is git's, which depends on how the machine is offline), then "✗ Installing deep-reasoning 3e9cee9
+      failed (git fetch exited 128); its output is above. After an update this needs the network once: connect and
+      restart." A first launch offline with nothing cached is unchanged: `uvx` cannot fetch `dr-app`, and the
+      bootstrap says to check the network [read].
     - **deep-reasoning unreachable** (a repository git cannot read). Before: exit 11 naming `uv pip sync`, after the
       `checks_ok` and safety lines had printed. Now: exit 11 naming `git fetch`, before any check line.
     - **deep_reasoner unreadable** (no access to deep_reasoner_beta). Before and now: exit 10, `no_access_dr`. Now it
@@ -570,7 +573,7 @@ Ten commits after the two small fixes; the raw diff `8125fa1..3e9cee9` is 25 fil
   the lock-digest comparison in `runtime_is_current`. The runtime syncs the commit's own `uv.lock` (§1.1 #22).
 - **The fork clones** (finding 4, `f28730d`): `fork_cache`, `fork_has` and the bare, blobless clones under `--work`,
   with the class of bug r1 found in them (§1.3 #1). Checks 4 and 8 read GitHub (§1.1 #14).
-- **The profile listing** (finding 5, `9002014`): one request fewer per launch (§1.1 #24).
+- **The profile listing** (finding 5, `9002014`): one request fewer on a relaunch (§1.1 #24).
 - **`has-d5`, `library-app` and `nightly.yml`** (findings 1 and 2, `146bbbf`): the workflows match §7.5's four jobs
   (§1.1 #10).
 - **Duplicates and leftovers** (`0f1d0e0`, `440e1ac`, `94683bd`, `6ee106c`, `9134faf`, `3e9cee9`): the exit codes
