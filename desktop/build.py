@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +28,9 @@ from typing import Any, Final, Literal
 REPO: Final = Path(__file__).resolve().parents[1]
 # What every user's setup fetches (§4.2.3).
 DEEP_REASONING: Final = "https://github.com/michaeltheologitis/deep-reasoning"
+GITHUB: Final = "https://github.com/"
+GITHUB_API: Final = "https://api.github.com"
+GITHUB_RAW: Final = "https://raw.githubusercontent.com"
 PINS: Final = REPO / "desktop" / "pins.toml"
 BOOTSTRAP: Final = REPO / "desktop" / "bootstrap.sh"
 WRAPPER_CONFIG: Final = REPO / "desktop" / "electron-builder.dr.mjs"
@@ -222,8 +227,9 @@ def check_pins(
     is_on_branch: Callable[[str, str, str], bool],
 ) -> list[str]:
     """§4.2.2's checks; the problems as sentences, empty when the pins belong together.
-    is_on_branch(repo_url, branch, commit) answers check 8; build() passes one that fetches
-    without blobs."""
+    The readers stand for the forks' repositories: ls_remote(url, refs) gives each ref's
+    commit, read_sdk_file(path) a file at the SDK fork's commit, and
+    is_on_branch(url, branch, commit) answers check 8."""
     problems: list[str] = []
     canvas_pin, sdk_pin = pins.canvas_fork, pins.sdk_fork
     forks = (("Canvas fork", canvas_pin), ("SDK fork", sdk_pin))
@@ -300,46 +306,33 @@ def patch_defaults(
     return patched
 
 
-# The readers build() passes check_pins: git, with the runner's credentials.
+# The readers of the forks' public repositories: git, and GitHub's REST API.
 def git_ls_remote(repo_url: str, refs: Sequence[str]) -> dict[str, str]:
     listed = git("ls-remote", repo_url, *refs)
     return {ref: sha for sha, ref in (line.split("\t") for line in listed.splitlines())}
 
 
-def fork_cache(work: Path, repo_url: str) -> Path:
-    """A blobless copy of the fork's deep-reasoning branch under work, fetched afresh:
-    blobs arrive only when read. A bare clone keeps no fetch refspec, so the refetch
-    names the branch's ref, or it would move only FETCH_HEAD."""
-    cache = work / "forks" / re.sub(r"[^A-Za-z0-9]+", "-", repo_url).strip("-")
-    if not cache.exists():
-        git(
-            "clone",
-            "--bare",
-            "--filter=blob:none",
-            "--single-branch",
-            "--branch",
-            FORK_BRANCH,
-            repo_url,
-            str(cache),
-        )
-    else:
-        branch = f"refs/heads/{FORK_BRANCH}"
-        git("fetch", "--filter=blob:none", "origin", f"+{branch}:{branch}", cwd=cache)
-    return cache
+def read_file_at(repo_url: str, commit: str, path: str) -> str:
+    url = f"{GITHUB_RAW}/{repo_url.removeprefix(GITHUB)}/{commit}/{path}"
+    with urllib.request.urlopen(url, timeout=30) as response:
+        return response.read().decode()
 
 
-def fork_has(work: Path) -> Callable[[str, str, str], bool]:
-    def is_on_branch(repo_url: str, branch: str, commit: str) -> bool:
-        cache = fork_cache(work, repo_url)
-        found = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", commit, f"refs/heads/{branch}"],
-            cwd=cache,
-            capture_output=True,
-            check=False,
-        )
-        return found.returncode == 0
-
-    return is_on_branch
+def is_on_branch(repo_url: str, branch: str, commit: str) -> bool:
+    """GitHub finds the branch identical to commit, or ahead of it; it knows no such
+    commit on none. GITHUB_TOKEN, when set, lifts the API's 60 requests an hour."""
+    compare = f"repos/{repo_url.removeprefix(GITHUB)}/compare/{commit}...{branch}"
+    headers = {"Accept": "application/vnd.github+json"}
+    if token := os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(f"{GITHUB_API}/{compare}", headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)["status"] in ("ahead", "identical")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise
 
 
 def run(
@@ -443,18 +436,16 @@ def verify(
 
 
 def check_checkouts(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, list[str]]:
-    """The Canvas checkout under work, and check_pins with git as every reader."""
+    """The Canvas checkout under work, and check_pins against the forks' repositories."""
     canvas = checkout_canvas(pins, work)
-    sdk_cache = fork_cache(work, pins.sdk_fork.repo)
+    sdk = pins.sdk_fork
     problems = check_pins(
         pins,
         canvas=canvas,
         repo=repo,
         ls_remote=git_ls_remote,
-        read_sdk_file=lambda path: git(
-            "show", f"{pins.sdk_fork.commit}:{path}", cwd=sdk_cache
-        ),
-        is_on_branch=fork_has(work),
+        read_sdk_file=lambda path: read_file_at(sdk.repo, sdk.commit, path),
+        is_on_branch=is_on_branch,
     )
     return canvas, problems
 
