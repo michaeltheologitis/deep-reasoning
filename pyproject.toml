@@ -2,7 +2,7 @@
 name = "deep-reasoning"
 version = "0.1.0"
 description = "deep_reasoner as an ACP agent"
-readme = "AGENTS.md"
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "deep-reasoner @ git+https://github.com/DeanLight/deep_reasoner_beta@d7334ae6ea884617a377d9f1ce872530d898484c",
