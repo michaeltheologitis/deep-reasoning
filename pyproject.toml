@@ -31,7 +31,14 @@ dev = [
     "referencing",
     "ruff",
     "playwright==1.56.0",
+    "deep-reasoning-app",
 ]
+
+[tool.uv.workspace]
+members = ["packages/dr-app"]
+
+[tool.uv.sources]
+deep-reasoning-app = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -57,3 +64,4 @@ addopts = "-m 'not live and not browser'"
 [tool.ruff]
 # docs: design notes; tests/mcp/fixtures: a stored shim, frozen as the Library holds it.
 extend-exclude = ["docs", "tests/mcp/fixtures"]
+src = [".", "src", "packages/dr-app/src"]
