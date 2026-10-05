@@ -1,8 +1,10 @@
-"""dr-app's harness: a stub uv and git on PATH that record their argv, and a layout under
-tmp_path (D5 §7.2)."""
+"""dr-app's harness: a stub uv and git on PATH that record their argv, a layout under
+tmp_path, and an in-test agent-server (D5 §7.2)."""
 
 import json
 import os
+import secrets
+import shutil
 import sys
 import tempfile
 from collections.abc import Iterator
@@ -13,6 +15,7 @@ from typing import Any
 import pytest
 
 from dr_app.layout import AppLayout
+from tests.app.fake_agent_server import FakeAgentServer
 
 REPO = "https://github.com/michaeltheologitis/deep-reasoning"
 COMMIT = "a1b2c3d4" * 5
@@ -20,6 +23,7 @@ NEXT_COMMIT = "e5f6a7b8" * 5
 DEV_BIN = Path(sys.executable).parent
 DR_APP = str(DEV_BIN / "dr-app")
 ROOT = Path(__file__).resolve().parents[2]
+D3_APP = ROOT / "src" / "deep_reasoning" / "canvas_app"
 
 # Each stub appends {"tool", "argv", "env"} to $STUB_LOG, does what the real tool would
 # leave behind, and exits with $STUB_<TOOL>_<COMMAND>_EXIT when that is set: the command
@@ -113,3 +117,28 @@ def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Stubs:
     monkeypatch.setenv("PATH", f"{bin_}{os.pathsep}{os.environ['PATH']}")
     monkeypatch.setenv("STUB_LOG", str(log))
     return Stubs(bin_, log)
+
+
+@pytest.fixture
+def agent_server() -> Iterator[FakeAgentServer]:
+    with FakeAgentServer(session_key=f"session-{secrets.token_hex(16)}") as fake:
+        yield fake
+
+
+@pytest.fixture
+def app_files(tmp_path: Path) -> Path:
+    """A copy of D3's built App, which a test may change."""
+    copy = tmp_path / "canvas_app"
+    shutil.copytree(D3_APP, copy, ignore=shutil.ignore_patterns("__pycache__"))
+    return copy
+
+
+@pytest.fixture
+def runtime(layout: AppLayout, app_files: Path) -> AppLayout:
+    """An installed runtime whose python answers where D3's files are with app_files."""
+    bin_ = layout.runtime_dir / COMMIT / "bin"
+    bin_.mkdir(parents=True)
+    (bin_ / "python").write_text(f"#!/bin/sh\necho {app_files}\n")
+    (bin_ / "python").chmod(0o755)
+    (layout.current_runtime).symlink_to(COMMIT)
+    return layout

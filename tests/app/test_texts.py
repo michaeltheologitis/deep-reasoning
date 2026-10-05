@@ -25,3 +25,9 @@ def test_sentences_with_fields_are_the_designs_verbatim():
         "✗ Installing deep-reasoning a1b2c3d failed (uv sync exited 2); its output is "
         "above. After an update this needs the network once: connect and restart."
     )
+    assert texts.app_ready("0.1.0", "installed") == (
+        "App dr-library 0.1.0 installed · backend ready"
+    )
+    assert texts.agent_server_failed("POST", "/api/x", "422", "bad") == (
+        "✗ The agent-server refused POST /api/x (422): bad"
+    )
