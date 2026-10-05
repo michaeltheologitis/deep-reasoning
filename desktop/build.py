@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tomllib
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,22 +28,14 @@ from typing import Any, Final, Literal
 REPO: Final = Path(__file__).resolve().parents[1]
 # What every user's setup fetches (§4.2.3).
 DEEP_REASONING: Final = "https://github.com/michaeltheologitis/deep-reasoning"
+GITHUB: Final = "https://github.com/"
+GITHUB_API: Final = "https://api.github.com"
+GITHUB_RAW: Final = "https://raw.githubusercontent.com"
 PINS: Final = REPO / "desktop" / "pins.toml"
 BOOTSTRAP: Final = REPO / "desktop" / "bootstrap.sh"
 WRAPPER_CONFIG: Final = REPO / "desktop" / "electron-builder.dr.mjs"
-RUNTIME_LOCK: Final = Path("packages/dr-app/src/dr_app/runtime.lock.txt")
-UV_EXPORT: Final = (
-    "uv",
-    "export",
-    "--frozen",
-    "--no-emit-workspace",
-    "--no-dev",
-    "--no-hashes",
-    "--no-header",
-    "--no-annotate",
-)
 COMMIT: Final = re.compile(r"[0-9a-f]{40}")
-# (v2) The branch every pinned fork commit must be on (§4.2.2 check 8).
+# The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
 STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
 SETUP_PHASES: Final = ["before-start", "after-ready"]
@@ -54,7 +48,7 @@ ARTIFACT_KINDS: Final = {
 }
 # The machine each target builds on (platform.system(), platform.machine()): the Canvas
 # fork packages its uv and Node runtimes for the machine it runs on. Macs are Apple
-# silicon only (Michael, 2026-10-04).
+# silicon only (Michael's ruling).
 BUILD_MACHINES: Final = {
     "linux": ("Linux", "x86_64"),
     "mac-arm64": ("Darwin", "arm64"),
@@ -157,13 +151,6 @@ def head_unpushed(head: str) -> str:
     )
 
 
-def lock_stale() -> str:
-    return (
-        f"✗ {RUNTIME_LOCK} is not uv export of uv.lock: run {' '.join(UV_EXPORT)} "
-        f"-o {RUNTIME_LOCK}."
-    )
-
-
 def off_branch(fork: str, commit: str) -> str:
     return (
         f"✗ The {fork} commit {commit[:7]} is not on its {FORK_BRANCH} branch: pin a "
@@ -240,8 +227,9 @@ def check_pins(
     is_on_branch: Callable[[str, str, str], bool],
 ) -> list[str]:
     """§4.2.2's checks; the problems as sentences, empty when the pins belong together.
-    is_on_branch(repo_url, branch, commit) answers check 8; build() passes one that fetches
-    without blobs."""
+    The readers stand for the forks' repositories: ls_remote(url, refs) gives each ref's
+    commit, read_sdk_file(path) a file at the SDK fork's commit, and
+    is_on_branch(url, branch, commit) answers check 8."""
     problems: list[str] = []
     canvas_pin, sdk_pin = pins.canvas_fork, pins.sdk_fork
     forks = (("Canvas fork", canvas_pin), ("SDK fork", sdk_pin))
@@ -283,16 +271,6 @@ def check_pins(
         problems.append(checkout_dirty(len(changed.strip().splitlines())))
     if not git("branch", "-r", "--contains", "HEAD", cwd=repo).strip():
         problems.append(head_unpushed(git("rev-parse", "HEAD", cwd=repo).strip()))
-    exported = subprocess.run(
-        UV_EXPORT, cwd=repo, capture_output=True, text=True, check=False
-    )
-    lock = repo / RUNTIME_LOCK
-    if (
-        exported.returncode != 0
-        or not lock.exists()
-        or lock.read_text() != (exported.stdout)
-    ):
-        problems.append(lock_stale())
     for fork, pin in forks:
         if not is_on_branch(pin.repo, FORK_BRANCH, pin.commit):
             problems.append(off_branch(fork, pin.commit))
@@ -328,53 +306,33 @@ def patch_defaults(
     return patched
 
 
-# The readers build() passes check_pins: git, with the runner's credentials.
+# The readers of the forks' public repositories: git, and GitHub's REST API.
 def git_ls_remote(repo_url: str, refs: Sequence[str]) -> dict[str, str]:
     listed = git("ls-remote", repo_url, *refs)
     return {ref: sha for sha, ref in (line.split("\t") for line in listed.splitlines())}
 
 
-def fork_cache(work: Path, repo_url: str) -> Path:
-    """A blobless copy of the fork's deep-reasoning branch under work, fetched afresh:
-    blobs arrive only when read. A bare clone keeps no fetch refspec, so the refetch
-    names the branch's ref, or it would move only FETCH_HEAD."""
-    cache = work / "forks" / re.sub(r"[^A-Za-z0-9]+", "-", repo_url).strip("-")
-    if not cache.exists():
-        git(
-            "clone",
-            "--bare",
-            "--filter=blob:none",
-            "--single-branch",
-            "--branch",
-            FORK_BRANCH,
-            repo_url,
-            str(cache),
-        )
-    else:
-        branch = f"refs/heads/{FORK_BRANCH}"
-        git("fetch", "--filter=blob:none", "origin", f"+{branch}:{branch}", cwd=cache)
-    return cache
+def read_file_at(repo_url: str, commit: str, path: str) -> str:
+    url = f"{GITHUB_RAW}/{repo_url.removeprefix(GITHUB)}/{commit}/{path}"
+    with urllib.request.urlopen(url, timeout=30) as response:
+        return response.read().decode()
 
 
-def fork_has(work: Path) -> Callable[[str, str, str], bool]:
-    def is_on_branch(repo_url: str, branch: str, commit: str) -> bool:
-        cache = fork_cache(work, repo_url)
-        found = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", commit, f"refs/heads/{branch}"],
-            cwd=cache,
-            capture_output=True,
-            check=False,
-        )
-        return found.returncode == 0
-
-    return is_on_branch
-
-
-def run(
-    argv: Sequence[str], *, cwd: Path, env: Mapping[str, str] | None = None
-) -> None:
-    print("$", " ".join(argv), flush=True)
-    subprocess.run(argv, cwd=cwd, env=None if env is None else dict(env), check=True)
+def is_on_branch(repo_url: str, branch: str, commit: str) -> bool:
+    """GitHub finds the branch identical to commit, or ahead of it; it knows no such
+    commit on none. GITHUB_TOKEN, when set, lifts the API's 60 requests an hour."""
+    compare = f"repos/{repo_url.removeprefix(GITHUB)}/compare/{commit}...{branch}"
+    headers = {"Accept": "application/vnd.github+json"}
+    if token := os.environ.get("GITHUB_TOKEN"):
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(f"{GITHUB_API}/{compare}", headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)["status"] in ("ahead", "identical")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise
 
 
 def checkout_canvas(pins: Pins, work: Path) -> Path:
@@ -395,6 +353,85 @@ def checkout_canvas(pins: Pins, work: Path) -> Path:
     git("checkout", "-q", "--force", "--detach", "FETCH_HEAD", cwd=canvas)
     git("clean", "-q", "-dffx", "-e", "node_modules", cwd=canvas)
     return canvas
+
+
+def check_checkouts(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, list[str]]:
+    """The Canvas checkout under work, and check_pins against the forks' repositories."""
+    canvas = checkout_canvas(pins, work)
+    sdk = pins.sdk_fork
+    problems = check_pins(
+        pins,
+        canvas=canvas,
+        repo=repo,
+        ls_remote=git_ls_remote,
+        read_sdk_file=lambda path: read_file_at(sdk.repo, sdk.commit, path),
+        is_on_branch=is_on_branch,
+    )
+    return canvas, problems
+
+
+def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
+    """Check out the Canvas fork at its commit under work/, check, patch, build, verify;
+    the artifacts, copied to <repo>/dist/."""
+    refusal = wrong_machine(target, platform.system(), platform.machine())
+    if refusal:
+        raise SystemExit(refusal)
+    canvas, problems = check_checkouts(pins, repo=repo, work=work)
+    if problems:
+        raise SystemExit("\n".join(problems))
+    head = git("rev-parse", "HEAD", cwd=repo).strip()
+    defaults_file = canvas / "config" / "defaults.json"
+    defaults = patch_defaults(
+        json.loads(defaults_file.read_text()),
+        state_dir=STATE_DIR,
+        command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
+    )
+    defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
+    # ELECTRON_ARCH unset: the fork builds for, and downloads runtimes for, this machine.
+    env = {k: v for k, v in os.environ.items() if k != "ELECTRON_ARCH"}
+    run(["npm", "ci"], cwd=canvas)
+    run(["npm", "run", "build:app"], cwd=canvas, env=env | {"VITE_DO_NOT_TRACK": "1"})
+    downloads = env | {"UV_VERSION": pins.app.uv_version}
+    run(["node", "scripts/download-uv.mjs"], cwd=canvas, env=downloads)
+    run(["node", "scripts/download-node.mjs"], cwd=canvas, env=downloads)
+    app = {
+        "DR_CANVAS_DIR": str(canvas),
+        "DR_APP_PRODUCT_NAME": pins.app.product_name,
+        "DR_APP_ID": pins.app.app_id,
+        "DR_APP_EXECUTABLE_NAME": pins.app.executable_name,
+        "DR_APP_VERSION": pins.app.version,
+        "DR_APP_MAINTAINER": pins.app.maintainer,
+    }
+    platform_flag = "--linux" if target == "linux" else "--mac"
+    shutil.rmtree(canvas / "dist-electron", ignore_errors=True)
+    run(
+        [
+            "npx",
+            "electron-builder",
+            "--config",
+            str(WRAPPER_CONFIG),
+            "--projectDir",
+            str(canvas),
+            "--publish",
+            "never",
+            platform_flag,
+        ],
+        cwd=canvas,
+        env=env | app,
+    )
+    dist = repo / "dist"
+    dist.mkdir(exist_ok=True)
+    copied = []
+    for artifact in verify(target, pins, canvas):
+        copied.append(Path(shutil.copy2(artifact, dist / artifact.name)))
+    return copied
+
+
+def run(
+    argv: Sequence[str], *, cwd: Path, env: Mapping[str, str] | None = None
+) -> None:
+    print("$", " ".join(argv), flush=True)
+    subprocess.run(argv, cwd=cwd, env=None if env is None else dict(env), check=True)
 
 
 def payload_paths(artifact: Path, canvas: Path) -> list[str]:
@@ -468,80 +505,6 @@ def verify(
         if declared != MAC_MINIMUM:
             raise SystemExit(opens_too_early(declared))
     return artifacts
-
-
-def check_checkouts(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, list[str]]:
-    """The Canvas checkout under work, and check_pins with git as every reader."""
-    canvas = checkout_canvas(pins, work)
-    sdk_cache = fork_cache(work, pins.sdk_fork.repo)
-    problems = check_pins(
-        pins,
-        canvas=canvas,
-        repo=repo,
-        ls_remote=git_ls_remote,
-        read_sdk_file=lambda path: git(
-            "show", f"{pins.sdk_fork.commit}:{path}", cwd=sdk_cache
-        ),
-        is_on_branch=fork_has(work),
-    )
-    return canvas, problems
-
-
-def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
-    """Check out the Canvas fork at its commit under work/, check, patch, build, verify;
-    the artifacts, copied to <repo>/dist/."""
-    refusal = wrong_machine(target, platform.system(), platform.machine())
-    if refusal:
-        raise SystemExit(refusal)
-    canvas, problems = check_checkouts(pins, repo=repo, work=work)
-    if problems:
-        raise SystemExit("\n".join(problems))
-    head = git("rev-parse", "HEAD", cwd=repo).strip()
-    defaults_file = canvas / "config" / "defaults.json"
-    defaults = patch_defaults(
-        json.loads(defaults_file.read_text()),
-        state_dir=STATE_DIR,
-        command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
-    )
-    defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
-    # ELECTRON_ARCH unset: the fork builds for, and downloads runtimes for, this machine.
-    env = {k: v for k, v in os.environ.items() if k != "ELECTRON_ARCH"}
-    run(["npm", "ci"], cwd=canvas)
-    run(["npm", "run", "build:app"], cwd=canvas, env=env | {"VITE_DO_NOT_TRACK": "1"})
-    downloads = env | {"UV_VERSION": pins.app.uv_version}
-    run(["node", "scripts/download-uv.mjs"], cwd=canvas, env=downloads)
-    run(["node", "scripts/download-node.mjs"], cwd=canvas, env=downloads)
-    app = {
-        "DR_CANVAS_DIR": str(canvas),
-        "DR_APP_PRODUCT_NAME": pins.app.product_name,
-        "DR_APP_ID": pins.app.app_id,
-        "DR_APP_EXECUTABLE_NAME": pins.app.executable_name,
-        "DR_APP_VERSION": pins.app.version,
-        "DR_APP_MAINTAINER": pins.app.maintainer,
-    }
-    platform_flag = "--linux" if target == "linux" else "--mac"
-    shutil.rmtree(canvas / "dist-electron", ignore_errors=True)
-    run(
-        [
-            "npx",
-            "electron-builder",
-            "--config",
-            str(WRAPPER_CONFIG),
-            "--projectDir",
-            str(canvas),
-            "--publish",
-            "never",
-            platform_flag,
-        ],
-        cwd=canvas,
-        env=env | app,
-    )
-    dist = repo / "dist"
-    dist.mkdir(exist_ok=True)
-    copied = []
-    for artifact in verify(target, pins, canvas):
-        copied.append(Path(shutil.copy2(artifact, dist / artifact.name)))
-    return copied
 
 
 def main(argv: Sequence[str] | None = None) -> int:

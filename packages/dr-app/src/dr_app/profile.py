@@ -8,14 +8,13 @@ from typing import Any, Final
 
 from dr_app import texts
 from dr_app.agent_server import AgentServer, AgentServerError
-from dr_app.layout import ProfileRecord, SetupError, SetupState
+from dr_app.layout import EXIT_AGENT_SERVER, ProfileRecord, SetupError, SetupState
 
 PROFILE_NAME: Final = "deep_reasoner"
 HOME_FLAG: Final = "--home"
 SPEND_CAP_FLAG: Final = "--spend-cap-usd"
 DEFAULT_SPEND_CAP_USD: Final = "5"
 OWNED_FIELDS: Final = ("agent_kind", "acp_server", "acp_command", "acp_subagents")
-EXIT_AGENT_SERVER: Final = 12
 PROFILES: Final = "/api/agent-profiles"
 
 
@@ -72,20 +71,16 @@ def ensure_profile(
 ) -> ProfileRecord:
     """§4.5.1, steps 1–5. Any refusal raises SetupError(12,
     texts.agent_server_failed(...))."""
+    profile = f"{PROFILES}/{PROFILE_NAME}"
     try:
-        found = server.request("GET", f"{PROFILES}/{PROFILE_NAME}")
+        found = server.request("GET", profile)
         existing = found["profile"] if found else None
         want = desired_profile(existing, dr_acp=dr_acp, home=home)
         written = needs_write(existing, want)
         if written:
-            server.request("POST", f"{PROFILES}/{PROFILE_NAME}", want)
-        listing = server.request("GET", PROFILES)
-        listed = [
-            str(p["id"]) for p in listing["profiles"] if p["name"] == PROFILE_NAME
-        ]
-        if not listed:
-            raise AgentServerError("GET", PROFILES, 200, f"no {PROFILE_NAME} listed")
-        profile_id = listed[0]
+            server.request("POST", profile, want)
+            existing = server.request("GET", profile)["profile"]  # the server's id
+        profile_id = str(existing["id"])
         activated = state.profile is not None and state.profile.activated_by_setup
         if not activated:
             server.request("POST", f"{PROFILES}/{profile_id}/activate")

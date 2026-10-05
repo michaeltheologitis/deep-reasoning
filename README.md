@@ -44,8 +44,9 @@ Nothing else: the app brings its own uv and Node, and uv brings Python 3.12.
 
 ### Download
 
-Each `v*` tag has a release on the
-[Releases page](https://github.com/michaeltheologitis/deep-reasoning/releases):
+A `v*` tag gets a release on the
+[Releases page](https://github.com/michaeltheologitis/deep-reasoning/releases) with these
+files; until the first tag, take them from a build run by hand (below).
 
 | File | For |
 |---|---|
@@ -87,8 +88,9 @@ A splash shows each line setup prints. Setup:
    with the spend cap;
 4. installs deep-reasoning and deep_reasoner, at the commits this app was built with and
    every dependency at its locked version, into `~/.deep-reasoning/runtime/`. It says this
-   takes a few minutes; on GitHub's macOS runner it took 15 s, and the whole first launch
-   under a minute;
+   takes a few minutes; on GitHub's macOS runner, with a fast network, the install takes
+   under 20 s, and setup's two phases, with the agent-server starting between them, about a
+   minute;
 5. once the agent-server is up, makes the **deep_reasoner** agent profile the default, and
    installs, approves and starts the Library App (`App dr-library … installed · backend ready`).
 
@@ -124,9 +126,11 @@ echo 'export PATH="$HOME/.deep-reasoning/bin:$PATH"' >> ~/.zshrc
 - `dr-app export DIR [--namespace NAME]` writes your Library to `DIR/main.yaml`, a config
   that deep_reasoner's `dr` runs unchanged. It works while the app runs.
 - `dr-app home` prints where your data lives (on Linux, with its filesystem type).
-  `dr-app home DIR` keeps it in `DIR` from the next launch; `DIR` must be an absolute path to
-  a folder on this computer that you own. Nothing is moved: copy `library.sqlite`, `runs/`,
-  `sessions/` and `spend/` yourself, or export the Library and import it there.
+  `dr-app home DIR` keeps it in `DIR` from the next launch. `DIR` must be an absolute path to
+  a folder on this computer that you own, of at most 55 bytes on Linux and 51 on macOS:
+  deep_reasoner's Claude runs serve sockets under it, and a longer path is refused. Nothing
+  is moved: copy `library.sqlite`, `runs/`, `sessions/` and `spend/` yourself, or export the
+  Library and import it there.
 - `dr` is deep_reasoner's own command line, from the same install.
 
 Both exist once the first launch has installed them.
@@ -138,7 +142,8 @@ Both exist once the first launch has installed them.
 | `~/.deep-reasoning/` | everything the app writes, readable only by you |
 | `~/.deep-reasoning/canvas/` | Canvas's settings, secrets (encrypted), agent profiles and Apps; `agent-canvas/` in it holds your conversations |
 | `~/.deep-reasoning/runtime/`, `bin/` | the installed deep-reasoning and deep_reasoner, and the two commands |
-| `~/.deep-reasoning/setup.json` | what setup last did, and the folder `dr-app home` chose |
+| `~/.deep-reasoning/canvas-app/` | the Library App as setup staged it for this computer: its manifest, panel and backend |
+| `~/.deep-reasoning/setup.json`, `setup.lock` | what setup last did, and the folder `dr-app home` chose; a lock held while setup runs, so a launch and a terminal run never overlap |
 | your data home | the Library (`library.sqlite`), `runs/`, `sessions/`, `prices.yaml`, and the spend ledgers (`spend/`) |
 
 Your data home is `~/.deep-reasoning` itself, unless you chose another folder with

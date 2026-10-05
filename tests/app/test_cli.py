@@ -189,16 +189,24 @@ def test_the_bin_links_lead_to_the_runtime(layout, stubs):
         )
 
 
+STATES = [
+    ('{"v": 2}', lambda path: texts.state_from_a_newer_app(path, "2")),
+    ('{"x": 1}', lambda path: texts.state_unusable(path, "it has no version")),
+    ("{", lambda path: texts.state_unusable(path, "it is not JSON")),
+]
+
+
 @pytest.mark.parametrize("command", [SETUP, ["home"]])
-def test_setup_state_from_a_newer_app_is_explained_and_exits_14(layout, stubs, command):
-    """A newer app's setup.json, met by this one: a sentence in the bootstrap's trusted
-    10-19 band, not a traceback."""
+@pytest.mark.parametrize(("content", "sentence"), STATES)
+def test_a_setup_state_it_cannot_use_is_explained_and_exits_14(
+    layout, stubs, command, content, sentence
+):
+    """A newer app's setup.json, or one no app wrote, met by this one: a sentence in the
+    bootstrap's trusted 10-19 band, not a traceback, and nothing run."""
     layout.root.mkdir(parents=True, exist_ok=True)
-    layout.setup_file.write_text('{"v": 2}')
+    layout.setup_file.write_text(content)
     done = dr_app_run(layout, *command, OH_CANVAS_SETUP_PHASE="before-start")
-    assert (done.returncode, done.stdout) == (
-        14,
-        texts.state_from_a_newer_app(str(layout.setup_file), "2") + "\n",
-    )
+    expected = sentence(str(layout.setup_file)) + "\n"
+    assert (done.returncode, done.stdout) == (14, expected)
     assert "Traceback" not in done.stderr
     assert stubs.calls() == []

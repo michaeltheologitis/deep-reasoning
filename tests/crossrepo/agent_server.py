@@ -1,11 +1,10 @@
 """An agent-server from the SDK fork's pinned commit, started directly: no Canvas, no
 launcher, no wiring (D5 §1.2 step 5).
 
-DR_SDK_CHECKOUT names a checkout of desktop/pins.toml's [sdk_fork] commit, synced
-(uv sync --frozen); cross-repo.yml makes one.
+DR_SDK_CHECKOUT names a checkout of desktop/pins.toml's [sdk_fork] commit, synced with
+uv sync --frozen.
 """
 
-import json
 import os
 import secrets
 import signal
@@ -13,15 +12,14 @@ import socket
 import subprocess
 import time
 import tomllib
-import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import pytest
+
+from dr_app.agent_server import AgentServer, AgentServerError
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK_PIN = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())["sdk_fork"]
@@ -50,15 +48,13 @@ def sdk_checkout() -> Path:
     return checkout
 
 
-@dataclass
-class RunningAgentServer:
-    url: str
-    session_key: str
-    checkout: Path
+class RunningAgentServer(AgentServer):
+    """The agent-server's REST API, as setup calls it, and the checkout it runs from."""
 
-    @property
-    def python(self) -> str:
-        return str(self.checkout / ".venv" / "bin" / "python")
+    def __init__(self, url: str, session_key: str, checkout: Path) -> None:
+        super().__init__(url, session_key)
+        self.checkout = checkout
+        self.python = str(checkout / ".venv" / "bin" / "python")
 
     def ask(self, conversation: str, text: str, deadline: float) -> None:
         """One user message, run; returns once the conversation has finished, by
@@ -77,21 +73,6 @@ class RunningAgentServer:
             assert time.monotonic() < deadline, f"still {status}"
             time.sleep(0.1)
         assert status == "finished", status
-
-    def request(self, method: str, path: str, body: Any = None) -> Any:
-        """JSON in and out; any non-2xx raises urllib's HTTPError."""
-        request = urllib.request.Request(
-            self.url + path,
-            data=None if body is None else json.dumps(body).encode(),
-            method=method,
-            headers={
-                "X-Session-API-Key": self.session_key,
-                "Content-Type": "application/json",
-            },
-        )
-        with OPENER.open(request, timeout=60) as response:
-            raw = response.read()
-        return json.loads(raw) if raw else None
 
 
 def free_port() -> int:
@@ -138,7 +119,7 @@ def agent_server(checkout: Path, root: Path) -> Iterator[RunningAgentServer]:
             try:
                 server.request("GET", "/server_info")
                 break
-            except (urllib.error.URLError, ConnectionError):
+            except AgentServerError:
                 assert process.poll() is None, (root / "agent-server.log").read_text()
                 assert time.monotonic() < deadline, "the agent-server did not answer"
                 time.sleep(0.2)

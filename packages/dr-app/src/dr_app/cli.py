@@ -17,8 +17,11 @@ from dr_app import texts
 from dr_app.agent_server import AgentServer, AgentServerError
 from dr_app.canvas_app import ensure_canvas_app, stage_canvas_app
 from dr_app.layout import (
+    EXIT_CHECK,
+    EXIT_HOME,
     NETWORK_FILESYSTEMS,
     AppLayout,
+    RuntimeRecord,
     SetupError,
     SetupState,
     check_socket_room,
@@ -27,19 +30,17 @@ from dr_app.layout import (
 )
 from dr_app.profile import DEFAULT_SPEND_CAP_USD, ensure_profile
 from dr_app.runtime import (
-    RuntimeSpec,
+    COMMIT,
     check_git,
     check_readable,
+    deep_reasoner_pin,
+    fetched_source,
     host_path,
     install_runtime,
     run_logged,
     runtime_is_current,
 )
 
-EXIT_CHECK: Final = 10
-EXIT_INSTALL: Final = 11
-EXIT_AGENT_SERVER: Final = 12
-EXIT_HOME: Final = 13
 PHASES: Final = ("before-start", "after-ready")
 PHASE_ENV: Final = "OH_CANVAS_SETUP_PHASE"
 LINKED: Final = ("dr-app", "dr")  # in bin/, to the runtime's own
@@ -91,26 +92,44 @@ def before_start(
             else texts.home_local(str(choice.path))
         )
         state.dr_home = str(choice.path)
-    spec = RuntimeSpec.for_commit(repo, commit)
-    if not runtime_is_current(layout, state.runtime, spec):
-        version = check_git()
-        check_readable(spec.deep_reasoner_url)
-        uv = shutil.which("uv", path=env.get("PATH"))
-        if uv is None:
-            raise SetupError(EXIT_CHECK, texts.NO_UV)
-        say(texts.checks_ok(version, host_path(spec.deep_reasoner_url)))
-        if state.runtime is None:
-            say(texts.safety(DEFAULT_SPEND_CAP_USD))
-        say(texts.installing(commit[:7], spec.deep_reasoner_commit[:7]))
-        started = time.monotonic()
-        state.runtime = install_runtime(layout, spec, uv=uv, log=say)
-        say(texts.installed(duration(time.monotonic() - started)))
+    if not COMMIT.fullmatch(commit):
+        raise ValueError(f"not a full commit: {commit!r}")
+    if not runtime_is_current(layout, state.runtime, commit):
+        first = state.runtime is None
+        state.runtime = install(layout, repo, commit, first=first, env=env)
     layout.bin_dir.mkdir(exist_ok=True)
     for name in LINKED:
         link = layout.bin_dir / name
         if not link.is_symlink():
             link.symlink_to(layout.current_runtime / "bin" / name)
     state.save(layout.setup_file)
+
+
+def install(
+    layout: AppLayout,
+    repo: str,
+    commit: str,
+    *,
+    first: bool,
+    env: Mapping[str, str],
+) -> RuntimeRecord:
+    """§4.4 steps 4 and 5: the checks, which leave nothing installed when one fails,
+    then the runtime from the commit's own tree."""
+    version = check_git()
+    uv = shutil.which("uv", path=env.get("PATH"))
+    if uv is None:
+        raise SetupError(EXIT_CHECK, texts.NO_UV)
+    with fetched_source(layout, repo, commit, log=say) as source:
+        pin = deep_reasoner_pin(source)
+        check_readable(pin.url)
+        say(texts.checks_ok(version, host_path(pin.url)))
+        if first:
+            say(texts.safety(DEFAULT_SPEND_CAP_USD))
+        say(texts.installing(commit[:7], pin.commit[:7]))
+        started = time.monotonic()
+        record = install_runtime(layout, source, commit, uv=uv, log=say)
+    say(texts.installed(duration(time.monotonic() - started)))
+    return record
 
 
 def model_key_missing(server: AgentServer) -> bool:
@@ -156,20 +175,15 @@ def _setup(layout: AppLayout, args: argparse.Namespace, env: Mapping[str, str]) 
             after_ready(layout, env=env)
 
 
-def _recorded_home(layout: AppLayout) -> Path | None:
-    state = SetupState.load(layout.setup_file)
-    return Path(state.dr_home) if state.dr_home else None
-
-
 def _export(layout: AppLayout, args: argparse.Namespace, env: Mapping[str, str]) -> int:
     """dr-library export DIR --home DR_HOME from the runtime, its output and exit code
     passed through."""
     dr_library = layout.current_runtime / "bin" / "dr-library"
-    home = _recorded_home(layout)
-    if home is None or not dr_library.exists():
+    home = SetupState.load(layout.setup_file).dr_home
+    if not home or not dr_library.exists():
         raise SetupError(EXIT_HOME, texts.NOTHING_INSTALLED)
     namespace = ("--namespace", args.namespace) if args.namespace else ()
-    argv = [str(dr_library), "export", str(args.dir), "--home", str(home), *namespace]
+    argv = [str(dr_library), "export", str(args.dir), "--home", home, *namespace]
     return run_logged(argv, env=env, log=say)
 
 

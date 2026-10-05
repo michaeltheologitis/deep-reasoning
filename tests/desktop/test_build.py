@@ -2,7 +2,6 @@
 (D5 §4.2, §7.3). The packaging itself is tested by building it (§7.5, §7.6)."""
 
 import copy
-import importlib.util
 import json
 import plistlib
 import shutil
@@ -12,10 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from desktop import build
+
 ROOT = Path(__file__).resolve().parents[2]
-_spec = importlib.util.spec_from_file_location("build", ROOT / "desktop" / "build.py")
-build = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(build)
 
 CANVAS_REPO = "https://github.com/michaeltheologitis/OpenHands"
 SDK_REPO = "https://github.com/michaeltheologitis/software-agent-sdk"
@@ -70,16 +68,10 @@ def canvas(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A deep-reasoning checkout: its lock files, committed and pushed to origin."""
+    """A deep-reasoning checkout of its pins and uv.lock, committed and pushed."""
     origin, checkout = tmp_path / "origin.git", tmp_path / "deep-reasoning"
     subprocess.run(["git", "init", "-q", "--bare", str(origin)], check=True)
-    for name in (
-        "desktop/pins.toml",
-        "pyproject.toml",
-        "uv.lock",
-        "packages/dr-app/pyproject.toml",
-        str(build.RUNTIME_LOCK),
-    ):
+    for name in ("desktop/pins.toml", "uv.lock"):
         (checkout / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / name, checkout / name)
     for argv in (
@@ -201,14 +193,6 @@ def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
         check=True,
     ).stdout.strip()
     assert problems(canvas, repo) == [build.head_unpushed(head)]
-
-
-def test_a_runtime_lock_that_is_not_uv_lock_is_refused(canvas, repo):
-    lock = repo / build.RUNTIME_LOCK
-    lock.write_text(lock.read_text().replace("httpx==", "httpx>="))
-    subprocess.run([*GIT, "commit", "-q", "-am", "stale"], cwd=repo, check=True)
-    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=repo, check=True)
-    assert problems(canvas, repo) == [build.lock_stale()]
 
 
 def test_defaults_gain_only_d5s_four_keys():
@@ -366,39 +350,3 @@ def test_the_build_offers_no_universal_or_intel_mac_target():
     with pytest.raises(SystemExit):
         build.main(["mac-universal"])
     assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}
-
-
-def commit_on(checkout: Path, message: str) -> str:
-    """A new commit on the checkout's deep-reasoning branch, pushed; its sha."""
-    (checkout / "f").write_text(message)
-    for argv in (["add", "-A"], ["commit", "-q", "-m", message]):
-        subprocess.run([*GIT, *argv], cwd=checkout, check=True)
-    subprocess.run(
-        ["git", "push", "-q", "origin", "deep-reasoning"], cwd=checkout, check=True
-    )
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=checkout,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
-
-
-def test_check_8_on_a_reused_work_dir_sees_commits_merged_since_its_first_clone(
-    tmp_path,
-):
-    """build.py's default --work persists: its fork caches must follow the branch."""
-    fork, checkout = tmp_path / "fork.git", tmp_path / "fork"
-    subprocess.run(["git", "init", "-q", "--bare", str(fork)], check=True)
-    subprocess.run(
-        [*GIT, "init", "-q", "-b", "deep-reasoning", str(checkout)], check=True
-    )
-    subprocess.run(
-        ["git", "remote", "add", "origin", fork.as_uri()], cwd=checkout, check=True
-    )
-    first = commit_on(checkout, "first")
-    is_on_branch = build.fork_has(tmp_path / "work")
-    assert is_on_branch(fork.as_uri(), "deep-reasoning", first)
-    merged_later = commit_on(checkout, "merged after the first clone")
-    assert is_on_branch(fork.as_uri(), "deep-reasoning", merged_later)

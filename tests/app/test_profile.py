@@ -51,10 +51,7 @@ def test_a_relaunch_writes_nothing(agent_server):
     agent_server.calls.clear()
     again, said = ensure(agent_server, after(FRESH, record))
     assert again == record
-    assert agent_server.requests() == [
-        ("GET", PROFILE),
-        ("GET", "/api/agent-profiles"),
-    ]
+    assert agent_server.requests() == [("GET", PROFILE)]
     assert said == []
 
 

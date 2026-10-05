@@ -1,5 +1,9 @@
 """Where the app keeps everything, where the user's data lives, and what setup last did
-(D5 §1, §4.4.1)."""
+(D5 §1, §4.4.1); and how setup fails.
+
+Every failure setup explains is a SetupError carrying one of the exit codes below; the
+bootstrap trusts a status from 10 to 19 to have been explained.
+"""
 
 import json
 import os
@@ -11,11 +15,18 @@ from typing import Final, Literal
 
 from dr_app import texts
 
+EXIT_USAGE: Final = 2  # as argparse's; after-ready without the launcher's variables
+EXIT_CHECK: Final = 10  # a check before the install: nothing was installed
+EXIT_INSTALL: Final = 11  # a step of the install: runtime/current is unchanged
+EXIT_AGENT_SERVER: Final = 12  # the agent-server refused what setup depends on
+EXIT_HOME: Final = 13  # the data home is unusable, or nothing is installed to export
+EXIT_STATE: Final = 14  # setup.json is unusable: a newer app's, or damaged
+
 ROOT_DIRNAME: Final = ".deep-reasoning"
 CANVAS_DIRNAME: Final = "canvas"  # the agent-server's persistence root
-STATE_DIRNAME: Final = "agent-canvas"  # C3's state directory, inside it
 NETWORK_HOME_TEMPLATE: Final = "/var/tmp/deep-reasoning-{uid}"
-# D2's store.NETWORK_FILESYSTEMS; tests/app/test_layout.py pins that they are equal.
+# D2's store.NETWORK_FILESYSTEMS, mirrored: this package imports nothing of
+# deep-reasoning's, which uvx has not fetched when it runs.
 NETWORK_FILESYSTEMS: Final = frozenset(
     {"nfs", "nfs4", "cifs", "smb3", "smbfs", "9p", "fuse.sshfs"}
 )
@@ -26,14 +37,12 @@ SOCKET_PATH_MAX: Final = {"Linux": 107, "Darwin": 103}
 # <run_dir>/repl.sock (deep_reasoner), D1 runs it in runs/<run id>, and each Claude
 # sub-agent it spawns serves from children/<n> below it; room for one such level.
 DEEPEST_SOCKET: Final = "runs/20261004-173501-a1b2c3/children/1000/repl.sock"
-EXIT_HOME: Final = 13
-EXIT_STATE: Final = 14  # setup.json from a newer app
 SETUP_STATE_VERSION: Final = 1
 
 
 class SetupError(Exception):
-    """A failure setup has explained; main() prints message and exits with exit_code.
-    dr_app.runtime exports it too."""
+    """A failure setup explains: its message is printed and dr-app exits with
+    exit_code."""
 
     def __init__(self, exit_code: int, message: str) -> None:
         super().__init__(message)
@@ -53,10 +62,6 @@ class AppLayout:
     @property
     def canvas(self) -> Path:
         return self.root / CANVAS_DIRNAME
-
-    @property
-    def state_dir(self) -> Path:
-        return self.canvas / STATE_DIRNAME
 
     @property
     def runtime_dir(self) -> Path:
@@ -190,8 +195,8 @@ def _choose_home(
 
 @dataclass
 class RuntimeRecord:
-    commit: str
-    lock_sha256: str
+    commit: str  # deep-reasoning's, whose uv.lock fixes everything else installed
+    lock_sha256: str  # that uv.lock's: what was synced, which no check reads
     path: str
 
 
@@ -217,26 +222,45 @@ class SetupState:
 
     @classmethod
     def load(cls, path: Path) -> "SetupState":
-        """A fresh state when the file is absent; raises SetupError(14,
-        texts.state_from_a_newer_app(...)) on v != 1."""
+        """A fresh state when the file is absent. Raises SetupError(14, ...) with
+        texts.state_from_a_newer_app for a version above 1, and texts.state_unusable,
+        saying why, for a file no version of this app writes."""
         if not path.exists():
             return cls(SETUP_STATE_VERSION, None, None, None, None)
-        raw = json.loads(path.read_text())
-        if raw.get("v") != SETUP_STATE_VERSION:
+
+        def unusable(reason: str) -> SetupError:
+            return SetupError(EXIT_STATE, texts.state_unusable(str(path), reason))
+
+        try:
+            raw = json.loads(path.read_text())
+        except OSError as error:
+            raise unusable(f"it cannot be read ({error.strerror})") from None
+        except ValueError:  # JSONDecodeError, UnicodeDecodeError
+            raise unusable("it is not JSON") from None
+        if not isinstance(raw, dict):
+            raise unusable("it is not a JSON object")
+        version = raw.get("v")
+        if isinstance(version, int) and version > SETUP_STATE_VERSION:
             raise SetupError(
-                EXIT_STATE, texts.state_from_a_newer_app(str(path), str(raw.get("v")))
+                EXIT_STATE, texts.state_from_a_newer_app(str(path), str(version))
             )
+        if version != SETUP_STATE_VERSION:
+            shown = f"its version is {json.dumps(version)}"
+            raise unusable(shown if "v" in raw else "it has no version")
 
         def record[T](kind: type[T], key: str) -> T | None:
             return kind(**raw[key]) if raw.get(key) else None
 
-        return cls(
-            SETUP_STATE_VERSION,
-            raw.get("dr_home"),
-            record(RuntimeRecord, "runtime"),
-            record(ProfileRecord, "profile"),
-            record(CanvasAppRecord, "canvas_app"),
-        )
+        try:
+            return cls(
+                SETUP_STATE_VERSION,
+                raw.get("dr_home"),
+                record(RuntimeRecord, "runtime"),
+                record(ProfileRecord, "profile"),
+                record(CanvasAppRecord, "canvas_app"),
+            )
+        except TypeError:
+            raise unusable("it holds a record this app does not write") from None
 
     def save(self, path: Path) -> None:
         """Atomic: a temporary file, then rename."""

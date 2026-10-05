@@ -2,7 +2,7 @@
 name = "deep-reasoning"
 version = "0.1.0"
 description = "deep_reasoner as an ACP agent"
-readme = "AGENTS.md"
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "deep-reasoner @ git+https://github.com/DeanLight/deep_reasoner_beta@d7334ae6ea884617a377d9f1ce872530d898484c",
@@ -13,7 +13,7 @@ dependencies = [
     "structlog",
     "starlette>=0.40",
     "uvicorn>=0.30",
-    # The key proxy forwards with it (D5 §4.7); deep_reasoner's dependency until then.
+    # The key proxy forwards with it (D5 §4.7).
     "httpx>=0.28",
     # deep_reasoner imports IPython.display at module level but declares it only in its dev group.
     "ipython",

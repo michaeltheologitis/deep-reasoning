@@ -118,6 +118,38 @@ def test_setup_state_round_trips_and_writes_atomically(layout):
     assert sorted(p.name for p in layout.root.iterdir()) == ["setup.json"]
 
 
+# setup.json files this app could not have written, and why each is unusable.
+UNUSABLE_STATES = [
+    (b"{", "it is not JSON"),
+    (b"\xff\xfe", "it is not JSON"),
+    (b"[]", "it is not a JSON object"),
+    (b'{"x": 1}', "it has no version"),
+    (b'{"v": "1"}', 'its version is "1"'),
+    (b'{"v": 0}', "its version is 0"),
+    (b'{"v": 1, "runtime": {"x": 1}}', "it holds a record this app does not write"),
+]
+
+
+@pytest.mark.parametrize(("content", "reason"), UNUSABLE_STATES)
+def test_a_setup_state_this_app_could_not_have_written_says_why(
+    layout, content, reason
+):
+    layout.root.mkdir(parents=True)
+    layout.setup_file.write_bytes(content)
+    with pytest.raises(SetupError) as raised:
+        SetupState.load(layout.setup_file)
+    assert raised.value.exit_code == 14
+    assert raised.value.message == texts.state_unusable(str(layout.setup_file), reason)
+
+
+def test_a_setup_state_that_cannot_be_read_says_why(layout):
+    layout.setup_file.mkdir(parents=True)
+    with pytest.raises(SetupError) as raised:
+        SetupState.load(layout.setup_file)
+    reason = "it cannot be read (Is a directory)"
+    assert raised.value.message == texts.state_unusable(str(layout.setup_file), reason)
+
+
 # The run directory's socket for the default homes: Linux's longest user name (32), the
 # network home's largest uid, a macOS user name at the limit and one past it, and a HOME
 # under macOS's $TMPDIR (a test's or a CI runner's).

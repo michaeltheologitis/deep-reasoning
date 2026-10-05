@@ -220,8 +220,7 @@ def test_the_staged_app_passes_prepare_and_its_backend_answers_health(tmp_path, 
     layout.current_runtime.symlink_to(COMMIT)
     home = tmp_path / "dr-home"
     staged = stage_canvas_app(layout, home=home, system=SYSTEM)
-    with agent_server(sdk_checkout(), tmp_path / "agent-server") as running:
-        server = AgentServer(running.url, running.session_key)
+    with agent_server(sdk_checkout(), tmp_path / "agent-server") as server:
         said: list[str] = []
         ensure_canvas_app(server, staged, FRESH, log=said.append)
         status = server.request("GET", f"{INSTALLED}/backend")
