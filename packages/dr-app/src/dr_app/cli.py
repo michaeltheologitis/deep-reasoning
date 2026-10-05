@@ -1,5 +1,5 @@
 """dr-app: the setup command the app's launcher runs on every launch, and export and home
-for the user (D5 §4.3.2, §4.4, §4.8)."""
+for the user (D5 §4.3.2, §4.4, §4.5, §4.8)."""
 
 import argparse
 import fcntl
@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Final
 
 from dr_app import texts
+from dr_app.agent_server import AgentServer, AgentServerError
+from dr_app.canvas_app import ensure_canvas_app, stage_canvas_app
 from dr_app.layout import (
     EXIT_CHECK,
     EXIT_HOME,
@@ -26,7 +28,7 @@ from dr_app.layout import (
     choose_home,
     filesystem_type,
 )
-from dr_app.profile import DEFAULT_SPEND_CAP_USD
+from dr_app.profile import DEFAULT_SPEND_CAP_USD, ensure_profile
 from dr_app.runtime import (
     COMMIT,
     check_git,
@@ -42,6 +44,9 @@ from dr_app.runtime import (
 PHASES: Final = ("before-start", "after-ready")
 PHASE_ENV: Final = "OH_CANVAS_SETUP_PHASE"
 LINKED: Final = ("dr-app", "dr")  # in bin/, to the runtime's own
+SECRETS: Final = "/api/settings/secrets"
+MODEL_KEY: Final = "OPENAI_API_KEY"
+NOT_A_MODEL_KEY: Final = "OPENHANDS_AUTOMATION_API_KEY"
 
 
 def say(line: str) -> None:
@@ -127,11 +132,47 @@ def install(
     return record
 
 
+def model_key_missing(server: AgentServer) -> bool:
+    """No OPENAI_API_KEY, and no other secret named like a provider key."""
+    names = [s["name"] for s in server.request("GET", SECRETS)["secrets"]]
+    return MODEL_KEY not in names and not any(
+        name.endswith("_API_KEY") and name != NOT_A_MODEL_KEY for name in names
+    )
+
+
+def after_ready(layout: AppLayout, *, env: Mapping[str, str]) -> None:
+    """§4.5: the agent profile, the model-key hint, the Library App."""
+    server = AgentServer.from_env(env)
+    state = SetupState.load(layout.setup_file)
+    home = Path(state.dr_home) if state.dr_home else layout.root
+    state.profile = ensure_profile(
+        server,
+        state,
+        dr_acp=layout.current_runtime / "bin" / "dr-acp",
+        home=home,
+        log=say,
+    )
+    try:
+        if model_key_missing(server):
+            say(texts.NO_MODEL_KEY)
+    except AgentServerError:
+        pass  # a hint, never a failure
+    try:
+        staged = stage_canvas_app(layout, home=home, system=platform.system())
+    except (OSError, ValueError, KeyError) as error:
+        say(texts.app_warning(f"{type(error).__name__}: {error}"))
+    else:
+        state.canvas_app = ensure_canvas_app(server, staged, state, log=say)
+    state.save(layout.setup_file)
+
+
 def _setup(layout: AppLayout, args: argparse.Namespace, env: Mapping[str, str]) -> None:
     phase = args.phase or env.get(PHASE_ENV)
     with setup_lock(layout):
         if phase in (None, "before-start"):
             before_start(layout, args.repo, args.commit, env=env)
+        if phase == "after-ready" or (phase is None and env.get("AGENT_SERVER_URL")):
+            after_ready(layout, env=env)
 
 
 def _export(layout: AppLayout, args: argparse.Namespace, env: Mapping[str, str]) -> int:

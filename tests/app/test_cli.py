@@ -37,6 +37,42 @@ def dr_app_run(layout, *args: str, **extra: str) -> subprocess.CompletedProcess[
     )
 
 
+def server_env(agent_server) -> dict[str, str]:
+    return {
+        "AGENT_SERVER_URL": agent_server.url,
+        "SESSION_API_KEY": agent_server.session_key,
+    }
+
+
+def test_the_phase_comes_from_the_launchers_variable(layout, stubs, agent_server):
+    before = dr_app_run(
+        layout, *SETUP, OH_CANVAS_SETUP_PHASE="before-start", **server_env(agent_server)
+    )
+    assert before.returncode == 0, before.stdout
+    assert stubs.argvs("uv") and agent_server.calls == []
+    installs = len(stubs.calls())
+    after = dr_app_run(
+        layout, *SETUP, OH_CANVAS_SETUP_PHASE="after-ready", **server_env(agent_server)
+    )
+    assert after.returncode == 0, after.stdout
+    assert len(stubs.calls()) == installs
+    assert texts.PROFILE_CREATED in after.stdout.splitlines()
+
+
+def test_a_hand_run_does_both_phases_when_the_agent_server_is_up(
+    layout, stubs, agent_server
+):
+    done = dr_app_run(layout, *SETUP, **server_env(agent_server))
+    said = done.stdout.splitlines()
+    assert done.returncode == 0, done.stdout
+    assert said.index(texts.home_local(str(layout.root))) < said.index(
+        texts.PROFILE_CREATED
+    )
+    assert texts.NO_MODEL_KEY in said
+    alone = dr_app_run(layout, *SETUP)
+    assert (alone.returncode, alone.stdout) == (0, "")
+
+
 def test_two_setups_never_run_at_once(layout, stubs):
     layout.root.mkdir(parents=True)
     with layout.lock_file.open("a") as held:
@@ -53,6 +89,12 @@ def test_two_setups_never_run_at_once(layout, stubs):
     out, _ = waiting.communicate(timeout=120)
     assert waiting.returncode == 0, out
     assert stubs.calls("uv")
+
+
+def test_nothing_secret_is_printed(layout, stubs, agent_server):
+    done = dr_app_run(layout, *SETUP, **server_env(agent_server))
+    assert done.returncode == 0, done.stdout
+    assert agent_server.session_key not in done.stdout + done.stderr
 
 
 def test_a_failed_check_exits_with_its_code_and_its_sentence(layout, stubs):
@@ -127,6 +169,16 @@ def test_home_refuses_a_folder_too_long_for_a_claude_runs_socket(layout, tmp_pat
     )
     assert not deep.exists()
     assert SetupState.load(layout.setup_file).dr_home is None
+
+
+@pytest.mark.parametrize("missing", ["AGENT_SERVER_URL", "SESSION_API_KEY"])
+def test_after_ready_without_the_agent_server_is_a_usage_error(
+    layout, agent_server, missing
+):
+    env = server_env(agent_server)
+    del env[missing]
+    done = dr_app_run(layout, *SETUP, "--phase", "after-ready", **env)
+    assert (done.returncode, done.stdout) == (2, texts.NO_AGENT_SERVER + "\n")
 
 
 def test_the_bin_links_lead_to_the_runtime(layout, stubs):

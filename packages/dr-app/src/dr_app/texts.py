@@ -11,8 +11,26 @@ NO_UV = (
     "✗ uv was not found on PATH. The app bundles it: reinstall the app. In a terminal, "
     "install uv from https://docs.astral.sh/uv/."
 )
+PROFILE_CREATED = "agent profile deep_reasoner created and made the default"
+PROFILE_UPDATED = "agent profile deep_reasoner updated"
+NO_MODEL_KEY = (
+    "No model key is saved yet: add OPENAI_API_KEY under Settings → Secrets before your "
+    "first question."
+)
+APP_DISABLED = (
+    "App dr-library is disabled, so Show decompositions is hidden. Enable it under Apps "
+    "to use it."
+)
+APP_UNSUPPORTED = (
+    "⚠ This agent-server cannot run the Library panel's backend on this platform; "
+    "conversations still work."
+)
 NOTHING_INSTALLED = (
     "✗ Nothing is installed yet: launch the app once, then run this again."
+)
+NO_AGENT_SERVER = (
+    "✗ The after-ready phase needs AGENT_SERVER_URL and SESSION_API_KEY, which the app's "
+    "launcher sets."
 )
 
 
@@ -97,6 +115,21 @@ def home_refused(path: str, reason: str) -> str:
     return (
         f"✗ {path} {reason}: choose an absolute path to a folder on this computer with "
         "dr-app home DIR."
+    )
+
+
+def agent_server_failed(method: str, path: str, status: str, detail: str) -> str:
+    return f"✗ The agent-server refused {method} {path} ({status}): {detail}"
+
+
+def app_ready(version: str, installed_or_current: str) -> str:
+    return f"App dr-library {version} {installed_or_current} · backend ready"
+
+
+def app_warning(detail: str) -> str:
+    return (
+        f"⚠ The Library panel's backend did not start ({detail}); conversations still "
+        "work. Its log is under Apps → dr-library."
     )
 
 
