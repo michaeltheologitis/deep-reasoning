@@ -13,8 +13,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-# proxy.DEFAULT_SPEND_CAP_USD, which imports too much for here; test_cli pins it.
-DEFAULT_SPEND_CAP_USD = 5.0
+DEFAULT_SPEND_CAP_USD = 5.0  # per conversation, through the key proxy
 PROXY_STOP_S = 0.5  # inside D1's shutdown budget
 
 
@@ -27,12 +26,8 @@ class Options:
     flat: bool  # --flat: never send sub-agent sessions, whatever the client advertises
     heartbeat_s: float  # --heartbeat SECONDS, default 60
     log_level: str  # --log-level, default WARNING
-    key_proxy: (
-        bool  # --no-key-proxy: D1's DirectRoute, keys stay in the worker's environment
-    )
-    spend_cap_usd: (
-        float  # --spend-cap-usd USD: per conversation, through the key proxy; default 5
-    )
+    key_proxy: bool  # off with --no-key-proxy: the worker gets the keys themselves
+    spend_cap_usd: float  # --spend-cap-usd USD, default 5
 
 
 def parse_options(argv: Sequence[str] | None) -> Options:

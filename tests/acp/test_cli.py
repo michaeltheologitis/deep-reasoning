@@ -3,7 +3,6 @@
 import sys
 from pathlib import Path
 
-from deep_reasoning.acp import proxy
 from deep_reasoning.acp.cli import Options, parse_options
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from tests.acp.harness import dr_acp, run
@@ -94,7 +93,7 @@ def test_options_default_to_native_a_minute_of_heartbeat_warnings_and_the_proxy(
         heartbeat_s=60.0,
         log_level="WARNING",
         key_proxy=True,
-        spend_cap_usd=proxy.DEFAULT_SPEND_CAP_USD,
+        spend_cap_usd=5.0,
     )
     assert parse_options(
         [

@@ -15,8 +15,7 @@ import socket
 import threading
 import urllib.request
 from collections.abc import AsyncIterator, Callable, Mapping
-from dataclasses import dataclass, field
-from types import MappingProxyType
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 from urllib.parse import urlsplit
 
@@ -35,7 +34,6 @@ from deep_reasoning.acp.runlog import Home
 
 logger = structlog.get_logger(__name__)
 
-DEFAULT_SPEND_CAP_USD: Final = 5.0
 DEFAULT_RESERVED_OUTPUT_TOKENS: Final = 4096
 MAX_BODY_BYTES: Final = 32 * 1024 * 1024
 MIN_SECRET_LENGTH: Final = 16
@@ -78,18 +76,14 @@ REDACTED: Final = b"[redacted]"
 
 Dialect = Literal["openai", "anthropic"]
 
-METERED_PATHS: Final[Mapping[Dialect, frozenset[str]]] = MappingProxyType(
-    {
-        "openai": frozenset({"chat/completions", "completions", "embeddings"}),
-        "anthropic": frozenset({"v1/messages"}),
-    }
-)
-FREE_PATHS: Final[Mapping[Dialect, frozenset[str]]] = MappingProxyType(
-    {
-        "openai": frozenset(),
-        "anthropic": frozenset({"v1/messages/count_tokens"}),
-    }
-)
+METERED_PATHS: Final[Mapping[Dialect, frozenset[str]]] = {
+    "openai": frozenset({"chat/completions", "completions", "embeddings"}),
+    "anthropic": frozenset({"v1/messages"}),
+}
+FREE_PATHS: Final[Mapping[Dialect, frozenset[str]]] = {
+    "openai": frozenset(),
+    "anthropic": frozenset({"v1/messages/count_tokens"}),
+}
 
 
 @dataclass(frozen=True)
@@ -109,18 +103,10 @@ class Reservation:
     usd: float
 
 
-@dataclass(frozen=True)
-class Spend:
-    session: str
-    cap_usd: float
-    spent_usd: float
-    reserved_usd: float
-    calls: int
-    refused: int
-
-
 @dataclass
-class _Account:
+class Spend:
+    """One root session's account."""
+
     spent_usd: float = 0.0
     reserved_usd: float = 0.0
     calls: int = 0
@@ -132,24 +118,24 @@ class SpendLedger:
 
     def __init__(self, home: Home, cap_usd: float) -> None:
         self._dir = home.root / "spend"
-        self._cap_usd = cap_usd
-        self._accounts: dict[str, _Account] = {}
+        self.cap_usd = cap_usd
+        self._accounts: dict[str, Spend] = {}
         self._lock = threading.Lock()
 
-    def _account(self, session: str) -> _Account:
+    def _account(self, session: str) -> Spend:
         """The session's account; its file is read the first time, so a restarted
         dr-acp continues the count."""
         if session not in self._accounts:
             path = self._dir / f"{session}.json"
             saved = json.loads(path.read_text()) if path.exists() else {}
-            self._accounts[session] = _Account(
+            self._accounts[session] = Spend(
                 spent_usd=float(saved.get("spent_usd", 0.0)),
                 calls=int(saved.get("calls", 0)),
                 refused=int(saved.get("refused", 0)),
             )
         return self._accounts[session]
 
-    def _save(self, session: str, account: _Account) -> None:
+    def _save(self, session: str, account: Spend) -> None:
         """Atomic: a temporary file, then rename."""
         self._dir.mkdir(parents=True, exist_ok=True)
         path = self._dir / f"{session}.json"
@@ -159,7 +145,7 @@ class SpendLedger:
                 {
                     "v": 1,
                     "session": session,
-                    "cap_usd": self._cap_usd,
+                    "cap_usd": self.cap_usd,
                     "spent_usd": account.spent_usd,
                     "calls": account.calls,
                     "refused": account.refused,
@@ -172,7 +158,7 @@ class SpendLedger:
         """None (and refused += 1) when spent + reserved + usd > cap."""
         with self._lock:
             account = self._account(session)
-            if account.spent_usd + account.reserved_usd + usd > self._cap_usd:
+            if account.spent_usd + account.reserved_usd + usd > self.cap_usd:
                 account.refused += 1
                 self._save(session, account)
                 return None
@@ -189,16 +175,9 @@ class SpendLedger:
             self._save(reservation.session, account)
 
     def spend(self, session: str) -> Spend:
+        """A copy of the session's account."""
         with self._lock:
-            account = self._account(session)
-            return Spend(
-                session,
-                self._cap_usd,
-                account.spent_usd,
-                account.reserved_usd,
-                account.calls,
-                account.refused,
-            )
+            return replace(self._account(session))
 
 
 def is_loopback(url: str) -> bool:
@@ -262,18 +241,6 @@ class _StreamMeter:
             self.usage = {**(self.usage or {}), **usage}
         elif event.get("type") == "message_delta" and event.get("usage"):
             self.usage = {**(self.usage or {}), **event["usage"]}
-
-
-def _refusal(dialect: Dialect, status: int, code: str, message: str) -> JSONResponse:
-    """A refusal in the dialect's own error shape."""
-    if dialect == "anthropic":
-        body: dict[str, Any] = {
-            "type": "error",
-            "error": {"type": code, "message": message},
-        }
-    else:
-        body = {"error": {"message": message, "type": code, "code": code}}
-    return JSONResponse(body, status_code=status)
 
 
 class KeyProxy:
@@ -359,7 +326,7 @@ class KeyProxy:
             self._routes = {k: r for k, r in self._routes.items() if r.run != run}
 
     def app(self) -> Starlette:
-        """The ASGI app of §4.7.3; tests drive it with httpx.ASGITransport."""
+        """The ASGI app of §4.7.3, which ensure_started serves."""
         methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
         return Starlette(
             routes=[
@@ -385,14 +352,22 @@ class KeyProxy:
         message: str,
         model: Any = None,
     ) -> JSONResponse:
+        """The refusal logged, without a key or a token, and answered in the dialect's
+        own error shape."""
         logger.warning(
             "dr_acp.key_proxy.refused",
             reason=code,
             model=model,
             session=route.session if route else None,
         )
-        dialect: Dialect = route.dialect if route else "openai"
-        return _refusal(dialect, status, code, message)
+        if route is not None and route.dialect == "anthropic":
+            body: dict[str, Any] = {
+                "type": "error",
+                "error": {"type": code, "message": message},
+            }
+        else:
+            body = {"error": {"message": message, "type": code, "code": code}}
+        return JSONResponse(body, status_code=status)
 
     async def _handle(self, request: Request) -> Response:
         rest = request.path_params["rest"]
@@ -463,7 +438,7 @@ class KeyProxy:
         reservation = self._ledger.reserve(route.session, estimate.usd or 0.0)
         if reservation is None:
             spend = self._ledger.spend(route.session)
-            message = texts.cap_reached(spend.spent_usd, spend.cap_usd)
+            message = texts.cap_reached(spend.spent_usd, self._ledger.cap_usd)
             return self._refuse(route, 402, "cap_reached", message, model)
         return await self._forward(request, route, rest, body, model, reservation)
 
