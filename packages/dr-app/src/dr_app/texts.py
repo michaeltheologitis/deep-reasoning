@@ -140,3 +140,11 @@ def state_from_a_newer_app(path: str, version: str) -> str:
         f"instead, delete {path}: your data stays, but a folder chosen with dr-app home "
         "is forgotten."
     )
+
+
+def state_unusable(path: str, reason: str) -> str:
+    return (
+        f"✗ {path} cannot be used: {reason}. Delete it and launch the app again: setup "
+        "then installs as on a first launch, which needs the network. Your data stays, "
+        "but a folder chosen with dr-app home must be chosen again."
+    )
