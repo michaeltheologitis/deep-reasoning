@@ -2,10 +2,10 @@
 the Library App's backend ready and Ctrl+C leaves nothing; and, on a Mac, the Python
 uvx picks reaches GitHub's release downloads (W4).
 
-desktop-release.yml's macos job runs it on the tarball it built (DR_WEB_TARBALL); its
-release-smoke job, after a release, with no tarball, so the command downloads the
-release's own as a user's does (DR_WEB_COMMIT, the tagged commit). It starts no
-conversation, so no model is called.
+DR_WEB_TARBALL names a tarball build.py web made to run the command on; without one,
+the command downloads the release's own, as a user's does, at DR_WEB_COMMIT (a release's
+commit; the checkout's HEAD by default). It starts no conversation, so no model is
+called.
 """
 
 import json

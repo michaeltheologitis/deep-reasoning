@@ -1,8 +1,9 @@
 """The app and the browser command on one computer (TASK-48 §7.5): port 18000 is the lock,
 so whichever starts second is refused before it writes anything under ~/.deep-reasoning.
 
-cross-repo.yml's desktop-e2e job runs this after E12, with the .deb it installed and the
-tarball built in the same run, so both carry the same setup command.
+It needs the app installed from the .deb and the tarball, both from one build, so both
+carry the same setup command: uv run pytest -m desktop tests/desktop/test_coexistence.py,
+under xvfb-run.
 """
 
 from collections.abc import Iterator

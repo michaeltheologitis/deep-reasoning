@@ -1,12 +1,13 @@
 """E13: the browser command, run as the README gives it from a fresh HOME, on a tarball
 build.py web made, and driven in Playwright's own browsers on a fake model (TASK-48 §7.4).
 
-cross-repo.yml's web-e2e job builds the tarball (desktop/build.py web) and runs this
-module. Its tests share one first start and run in order: the setup it ran; the stack's
-processes, environment and sockets; a conversation; the Library panel through the bridge
-in Chromium, Firefox and WebKit; a second start refused; Ctrl+C; then two restarts with
-the network cut. The terminal it starts from holds junk that a user's might: the command
-must keep all of it from the stack. No test calls a real model.
+Run it after uv run desktop/build.py web, as uv run pytest -m web
+tests/desktop/test_e13.py; without the tarball it skips. Its tests share one first start
+and run in order: the setup it ran; the stack's processes, environment and sockets; a
+conversation; the Library panel through the bridge in Chromium, Firefox and WebKit; a
+second start refused; Ctrl+C; then two restarts with the network cut. The terminal it
+starts from holds junk that a user's might: the command must keep all of it from the
+stack. No test calls a real model.
 """
 
 import json
