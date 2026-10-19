@@ -181,3 +181,13 @@ def test_the_readmes_browser_command_is_the_newest_releases():
         check=True,
     ).stdout.strip()
     assert commands == [newest], f"the README's command is not {tags[0]}'s ({newest})"
+
+
+def test_no_section_promises_an_offline_restart_past_ten_minutes():
+    """The agent-server's start asks PyPI again once uv's answers expire (TASK-48 F4),
+    for the app as for the browser, until TASK-66."""
+    window = "Within about ten minutes of the last start that had the network"
+    first_launch = " ".join(section("### The first launch").split())
+    browser = " ".join(browser_section().split())
+    assert window in first_launch and window in browser
+    assert "needs no network" not in PLAIN
