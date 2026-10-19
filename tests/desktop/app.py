@@ -4,6 +4,7 @@ driven over the agent-server's REST API and Electron's DevTools port (D5 §7.5, 
 DR_APP_EXECUTABLE names the installed executable; the default is where the .deb puts it.
 """
 
+import json
 import os
 import re
 import secrets
@@ -14,11 +15,13 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
+
+import nodejs_wheel
 
 from dr_app.agent_server import AgentServer
 
@@ -33,6 +36,13 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # The packaged app stays open on its failure screen after this line (Canvas's
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
+# The browser command's own last line when it fails (the launcher echoes setup's script,
+# which holds the same mark mid-line).
+WEB_FAILED = re.compile(r"^✗ ")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WEB_ENTRY = REPO_ROOT / "desktop" / "web.mjs"
+# The Node dr-web installs, as the dev group installs it.
+NODE = Path(nodejs_wheel.__file__).parent / "bin" / "node"
 LOG_TAIL_LINES = 40  # of the app's log, in a failed wait's message
 # An empty helper resets git's list of credential helpers, the system's included.
 NO_CREDENTIAL_HELPER = "\n[credential]\n\thelper =\n"
@@ -90,6 +100,8 @@ class LaunchedApp:
     home: Path
     log: Path
     debug_port: int
+    # A line it matches ends a wait at once: the launch failed.
+    failed: re.Pattern[str] = re.compile(re.escape(STARTUP_FAILED))
 
     @property
     def data(self) -> Path:
@@ -130,7 +142,7 @@ class LaunchedApp:
                     return line
             if self.process.poll() is not None:
                 self.fail(f"the app exited {self.process.returncode}")
-            if any(STARTUP_FAILED in line for line in lines):
+            if any(self.failed.search(line) for line in lines):
                 self.fail("the app reported its launch failed")
             time.sleep(1.0)
         self.fail(f"no {fragment!r} in the app's log in {timeout_s} s")
@@ -171,6 +183,49 @@ def launch(home: Path, log: Path) -> LaunchedApp:
             stderr=subprocess.STDOUT,
         )
     return LaunchedApp(process, home, log, port)
+
+
+def evaluate_web(expression: str) -> Any:
+    """expression, with desktop/web.mjs imported as web, evaluated by dr-web's Node."""
+    script = (
+        f"import * as web from {json.dumps(WEB_ENTRY.as_uri())};\n"
+        f"console.log(JSON.stringify(await ({expression})));"
+    )
+    done = subprocess.run(
+        [str(NODE), "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(done.stdout)
+
+
+def web_text(name: str, *args: Any) -> str:
+    """One of desktop/web.mjs's sentences, with its fields."""
+    call = f"({', '.join(map(json.dumps, args))})" if args else ""
+    return evaluate_web(f"web.texts.{name}{call}")
+
+
+def launch_web(
+    home: Path,
+    log: Path,
+    command: Sequence[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> LaunchedApp:
+    """The browser command with HOME home, in a session of its own (a terminal's process
+    group, for its Ctrl+C), its output in log."""
+    with log.open("ab") as out:
+        process = subprocess.Popen(
+            list(command),
+            env=env or user_environment(home),
+            cwd=home,
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    return LaunchedApp(process, home, log, 0, failed=WEB_FAILED)
 
 
 def processes_mentioning(text: str) -> list[str]:

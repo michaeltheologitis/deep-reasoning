@@ -32,6 +32,8 @@ dev = [
     "ruff",
     "playwright==1.56.0",
     "deep-reasoning-app",
+    # The Node the browser entry's tests run on: 22.12.0, the one the app bundles.
+    "nodejs-wheel-binaries==22.12.0",
 ]
 
 [tool.uv.workspace]
