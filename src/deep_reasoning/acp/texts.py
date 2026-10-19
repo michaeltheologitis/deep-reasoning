@@ -94,7 +94,7 @@ def build_failed(detail: str) -> str:
 
 
 def missing_model_key(names: Sequence[str]) -> str:
-    """names: the variables missing_model_keys found, at least one."""
+    """names: the key variables a run lacks, at least one."""
     listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
     pronoun = "it" if len(names) == 1 else "them"
     return (

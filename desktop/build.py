@@ -47,7 +47,7 @@ STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
 # dr_app.profile.PROFILE_NAME, mirrored: this file imports nothing of deep-reasoning's.
 LOCKED_PROFILE: Final = "deep_reasoner"
 # The defaults.json keys this build writes that the Canvas fork must declare, as null
-# (checks 5 and 5b).
+# (checks 5, 5b and 5c).
 FORK_NULL_KEYS: Final = (
     "paths.stateDir",
     "setup.command",
@@ -106,8 +106,8 @@ class Pins:
     canvas_fork: ForkPin
     sdk_fork: ForkPin
     app: AppPin
-    # "canvas_fork", "sdk_fork": the pins a hand or dispatch run replaced (with_commits);
-    # their tag and branch checks are skipped.
+    # "canvas_fork", "sdk_fork": the forks whose commits a hand or dispatch run gave in
+    # place of pins.toml's, which no tag or branch check vouches for.
     replaced: frozenset[str] = frozenset()
 
 
@@ -388,10 +388,10 @@ def patch_defaults(
     app_title: str,
     exclude_newer: str,
 ) -> dict[str, Any]:
-    """§4.2.3's four keys, agent.lockedProfile = LOCKED_PROFILE, branding.appTitle =
-    app_title (TASK-65 §4.1, §13; the callers pass pins.app.product_name) and
-    uv.excludeNewer = exclude_newer (TASK-66 §4.1; pins.app.uv_exclude_newer); every
-    other key unchanged."""
+    """§4.2.3's four keys, and the settings the Canvas fork declares null for a build
+    like this one: agent.lockedProfile = LOCKED_PROFILE, branding.appTitle = app_title
+    and uv.excludeNewer = exclude_newer (TASK-65 §4.1, §13; TASK-66 §4.1); every other
+    key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
