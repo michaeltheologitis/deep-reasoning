@@ -470,11 +470,10 @@ def start_conversation(page: Page, text: str, namespace: str | None = None) -> s
     return page.url.rsplit("/", 1)[-1]
 
 
-def library_frame(page: Page, session_key: str) -> tuple[FrameLocator, str | None]:
+def library_frame(page: Page, session_key: str) -> FrameLocator:
     """D3's panel in a frame over the page, through the bridge as C2's header panel opens
     it: a session made with credentials from the page, then the frame on its ingress URL.
-    The frame once it shows the panel, and the text of the safety notice it cleared there,
-    if one showed."""
+    The frame once it shows the panel."""
     made = page.evaluate(
         """async ([url, key]) => {
             const r = await fetch(url, {method: "POST", credentials: "include",
@@ -495,19 +494,12 @@ def library_frame(page: Page, session_key: str) -> tuple[FrameLocator, str | Non
         made["body"]["ingress_url"] + "ui/?tab=namespaces&cap=5",
     )
     frame = page.frame_locator("#dr-library-frame")
-    notice = frame.get_by_test_id("dr-notice")
     try:
-        expect(
-            frame.get_by_test_id("dr-notice-ack").or_(frame.locator("main")).first
-        ).to_be_visible()
+        expect(frame.locator("main")).to_be_visible()
     except AssertionError as missing:
         shown = [(f.url, f.content()[:400]) for f in page.frames[1:]]
         raise AssertionError(f"the frame shows no panel: {shown}") from missing
-    if not frame.get_by_test_id("dr-notice-ack").is_visible():
-        return frame, None
-    cleared = notice.inner_text()
-    frame.get_by_test_id("dr-notice-ack").click()
-    return frame, cleared
+    return frame
 
 
 def processes_mentioning(text: str) -> list[str]:
@@ -535,3 +527,11 @@ def processes_mentioning(text: str) -> list[str]:
 
 def secret(prefix: str) -> str:
     return f"{prefix}{secrets.token_hex(16)}"
+
+
+def spend_caps(app: LaunchedApp) -> dict[str, float]:
+    """Each root session's cap, as the key proxy's ledger in spend/ records it."""
+    return {
+        path.stem: json.loads(path.read_text())["cap_usd"]
+        for path in (app.data / "spend").glob("*.json")
+    }

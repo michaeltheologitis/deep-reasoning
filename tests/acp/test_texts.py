@@ -113,11 +113,11 @@ def test_a_stop_request_says_when_it_lands(mode, backbone, sentence):
     assert texts.stop_requested(mode, backbone) == sentence
 
 
-def test_the_key_proxys_sentences_are_d5s_verbatim():
+def test_the_key_proxys_sentences_are_the_designs_verbatim():
     assert texts.cap_reached(0.008, 5) == (
         "The key proxy refused this model call: this conversation has spent $0.01 of "
-        "its $5.00 cap. Start a new conversation, or raise the cap (--spend-cap-usd in "
-        "the deep_reasoner agent profile's arguments)."
+        "its $5.00 cap. Start a new conversation, or raise the cap for new "
+        "conversations under Show Decompositions → Tools → Spend cap."
     )
     assert texts.unpriced("m-x", "/h") == (
         "The key proxy refused a call to 'm-x': its price is unknown, so the spend cap "

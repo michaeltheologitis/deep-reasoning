@@ -15,6 +15,7 @@ from dr_app.layout import SOCKET_PATH_MAX, SetupState, deepest_socket
 from tests.app.conftest import COMMIT, DR_APP, REPO
 
 SETUP = ["setup", "--repo", REPO, "--commit", COMMIT]
+SECRETS = "/api/settings/secrets"
 
 
 def dr_app_env(layout, **extra: str) -> dict[str, str]:
@@ -68,9 +69,17 @@ def test_a_hand_run_does_both_phases_when_the_agent_server_is_up(
     assert said.index(texts.home_local(str(layout.root))) < said.index(
         texts.PROFILE_CREATED
     )
-    assert texts.NO_MODEL_KEY in said
     alone = dr_app_run(layout, *SETUP)
     assert (alone.returncode, alone.stdout) == (0, "")
+
+
+def test_after_ready_reads_no_secrets_and_prints_no_key_line(
+    layout, stubs, agent_server
+):
+    done = dr_app_run(layout, *SETUP, **server_env(agent_server))
+    assert done.returncode == 0, done.stdout
+    assert [c for c in agent_server.calls if c.path.startswith(SECRETS)] == []
+    assert not [line for line in done.stdout.splitlines() if "_API_KEY" in line]
 
 
 def test_two_setups_never_run_at_once(layout, stubs):

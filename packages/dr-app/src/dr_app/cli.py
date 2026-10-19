@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Final
 
 from dr_app import texts
-from dr_app.agent_server import AgentServer, AgentServerError
+from dr_app.agent_server import AgentServer
 from dr_app.canvas_app import ensure_canvas_app, stage_canvas_app
 from dr_app.layout import (
     EXIT_CHECK,
@@ -28,7 +28,7 @@ from dr_app.layout import (
     choose_home,
     filesystem_type,
 )
-from dr_app.profile import DEFAULT_SPEND_CAP_USD, ensure_profile
+from dr_app.profile import ensure_profile
 from dr_app.runtime import (
     COMMIT,
     check_git,
@@ -45,9 +45,6 @@ from dr_app.runtime import (
 PHASES: Final = ("before-start", "after-ready")
 PHASE_ENV: Final = "OH_CANVAS_SETUP_PHASE"
 LINKED: Final = ("dr-app", "dr")  # in bin/, to the runtime's own
-SECRETS: Final = "/api/settings/secrets"
-MODEL_KEY: Final = "OPENAI_API_KEY"
-NOT_A_MODEL_KEY: Final = "OPENHANDS_AUTOMATION_API_KEY"
 
 
 def say(line: str) -> None:
@@ -98,8 +95,7 @@ def before_start(
     if runtime_is_current(layout, state.runtime, commit):
         prune_runtimes(layout, state.runtime.commit)
     else:
-        first = state.runtime is None
-        state.runtime = install(layout, repo, commit, first=first, env=env)
+        state.runtime = install(layout, repo, commit, env=env)
     layout.bin_dir.mkdir(exist_ok=True)
     for name in LINKED:
         link = layout.bin_dir / name
@@ -113,7 +109,6 @@ def install(
     repo: str,
     commit: str,
     *,
-    first: bool,
     env: Mapping[str, str],
 ) -> RuntimeRecord:
     """§4.4 steps 4 and 5: the checks, which leave nothing installed when one fails,
@@ -126,8 +121,6 @@ def install(
         pin = deep_reasoner_pin(source)
         check_readable(pin.url)
         say(texts.checks_ok(version, host_path(pin.url)))
-        if first:
-            say(texts.safety(DEFAULT_SPEND_CAP_USD))
         say(texts.installing(commit[:7], pin.commit[:7]))
         started = time.monotonic()
         record = install_runtime(layout, source, commit, uv=uv, log=say)
@@ -135,16 +128,8 @@ def install(
     return record
 
 
-def model_key_missing(server: AgentServer) -> bool:
-    """No OPENAI_API_KEY, and no other secret named like a provider key."""
-    names = [s["name"] for s in server.request("GET", SECRETS)["secrets"]]
-    return MODEL_KEY not in names and not any(
-        name.endswith("_API_KEY") and name != NOT_A_MODEL_KEY for name in names
-    )
-
-
 def after_ready(layout: AppLayout, *, env: Mapping[str, str]) -> None:
-    """§4.5: the agent profile, the model-key hint, the Library App."""
+    """§4.5: the agent profile, the Library App."""
     server = AgentServer.from_env(env)
     state = SetupState.load(layout.setup_file)
     home = Path(state.dr_home) if state.dr_home else layout.root
@@ -155,11 +140,6 @@ def after_ready(layout: AppLayout, *, env: Mapping[str, str]) -> None:
         home=home,
         log=say,
     )
-    try:
-        if model_key_missing(server):
-            say(texts.NO_MODEL_KEY)
-    except AgentServerError:
-        pass  # a hint, never a failure
     try:
         staged = stage_canvas_app(layout, home=home, system=platform.system())
     except (OSError, ValueError, KeyError) as error:

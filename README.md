@@ -86,14 +86,12 @@ A splash shows each line setup prints. Setup:
 
 1. says where your data will live (`your data: …`);
 2. checks git, and that your credentials can read deep_reasoner_beta;
-3. says what the app protects and what it does not ([below](#what-the-app-protects-and-what-it-does-not)),
-   with the spend cap;
-4. installs deep-reasoning and deep_reasoner, at the commits this app was built with and
+3. installs deep-reasoning and deep_reasoner, at the commits this app was built with and
    every dependency at its locked version, into `~/.deep-reasoning/runtime/`. It says this
    takes a few minutes; on GitHub's macOS runner, with a fast network, the install takes
    under 20 s, and setup's two phases, with the agent-server starting between them, about a
    minute;
-5. once the agent-server is up, makes the **deep_reasoner** agent profile the default, and
+4. once the agent-server is up, makes the **deep_reasoner** agent profile the default, and
    installs, approves and starts the Library App (`App dr-library … installed · backend ready`).
 
 A later launch with nothing changed installs nothing. Within about ten minutes of the last
@@ -114,7 +112,6 @@ Then, in the window:
    Canvas's secrets.
 2. On **Say hello**, press **Close** instead of sending, since deep_reasoner has no key yet:
    add `OPENAI_API_KEY` under **Settings → Secrets**, with your OpenAI API key as its value.
-   Until one is saved, every launch's setup says so.
 3. Start a conversation and ask.
 
 ### `dr-app` and `dr` in a terminal
@@ -227,10 +224,6 @@ remove everything, do as [Uninstall](#uninstall) says.
 
 ## What the app protects, and what it does not
 
-Setup says this at the first install, and the Library panel says it the first time it opens:
-
-> deep_reasoner runs as you. It can read and change any file you can, and code it writes can find your model keys on this computer if it tries. Spend through the key proxy stops at $5 per conversation.
-
 **It protects against accidents** (a key that ends up in a log, a transcript or a printout;
 a loop that spends without end): `dr-acp`'s worker gets a token instead of your provider
 key, so the key is not in its environment, in a process it starts, in the transcript or in
@@ -263,5 +256,5 @@ And, by design:
   downloaded. deep-reasoning and its releases are public; deep_reasoner_beta is private, is
   in no package, and is installed on your computer with your own git credentials.
 
-The cap is `$5` per conversation, set by the **deep_reasoner** agent profile's arguments
-(`--spend-cap-usd 5`); change it there, and setup keeps your change.
+The cap is $5 per conversation unless you change it under **Show Decompositions → Tools →
+Spend cap**. New conversations use the new cap, and setup keeps it.

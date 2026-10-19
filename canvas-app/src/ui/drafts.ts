@@ -1,7 +1,6 @@
 // Unsaved edits, in the frame's localStorage: a storage that throws loses the draft and nothing else.
 
 export const DRAFT_PREFIX = "dr-library.draft.";
-export const SAFETY_ACK_KEY = "dr-library.safety-acknowledged";
 
 // Reading or writing the storage throws in a private window, when it is full, or when the
 // browser blocks site data for the frame; a draft is a convenience, so it is then dropped.
@@ -38,12 +37,4 @@ export function saveDraft(key: string, value: unknown): void {
 
 export function clearDraft(key: string): void {
   write(DRAFT_PREFIX + key, null);
-}
-
-export function safetyAcknowledged(): boolean {
-  return read(SAFETY_ACK_KEY) === "1";
-}
-
-export function acknowledgeSafety(): void {
-  write(SAFETY_ACK_KEY, "1");
 }

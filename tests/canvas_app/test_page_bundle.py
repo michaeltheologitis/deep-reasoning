@@ -7,7 +7,7 @@ from importlib import resources
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.canvas_app.conftest import SAFETY_ACK, write_new
+from tests.canvas_app.conftest import write_new
 
 pytestmark = pytest.mark.browser
 
@@ -18,6 +18,8 @@ BUNDLE = resources.files("deep_reasoning.canvas_app").joinpath("dist", "index.js
 # module-qualified class name, and TIMESTAMP_DESC with limit 1 is the newest match
 # (S2 §3.2 B2). mountFrame appends the frame at the backend's address, as C2's does at the
 # ingress; selectTab disposes the tab's page and mounts the next one, as C2's panel does.
+# A POST of the profile replaces it and is recorded in window.posted, and
+# window.profileMissing makes the profile answer 404.
 PARENT = """<!doctype html>
 <meta charset="utf-8">
 <style>
@@ -46,12 +48,25 @@ PARENT = """<!doctype html>
     if (query.get("sort_order") === "TIMESTAMP_DESC") found.reverse();
     return { items: found.slice(0, Number(query.get("limit") ?? 100)), next_page_id: null };
   }
-  function answer({ path }) {
+  let profile = {
+    id: "p1", name: "deep_reasoner", agent_kind: "acp",
+    acp_args: ["--home", "/home/u/.deep-reasoning", "--spend-cap-usd", "7"],
+  };
+  window.posted = [];
+  window.profileMissing = false;
+  function answer({ method, path, body }) {
     if (path === "/api/canvas-extensions/installed/dr-library/backend") {
       return { name: "dr-library", state: "ready", revision: "r1", prepared_revision: "r1", detail: null };
     }
     if (path === "/api/agent-profiles/deep_reasoner") {
-      return { name: "deep_reasoner", profile: { acp_args: ["--spend-cap-usd", "7"] } };
+      if (window.profileMissing) {
+        throw Object.assign(new Error("HTTP 404"), { status: 404, response: { detail: "Not Found" } });
+      }
+      if (method === "POST") {
+        window.posted.push(body);
+        profile = body;
+      }
+      return { name: "deep_reasoner", profile };
     }
     const url = new URL(path, location.origin);
     return search(url.pathname.split("/")[3], url.searchParams);
@@ -104,7 +119,7 @@ PARENT = """<!doctype html>
 
 @pytest.fixture
 def canvas(browser, library_server, parent_site):
-    """Canvas's page with the App activated; the frames it mounts acknowledge the notice."""
+    """Canvas's page with the App activated."""
     origin = parent_site(
         {
             "parent.html": PARENT % {"backend": json.dumps(library_server.url)},
@@ -112,7 +127,6 @@ def canvas(browser, library_server, parent_site):
         }
     )
     context = browser.new_context()
-    context.add_init_script(SAFETY_ACK)
     page = context.new_page()
     page.goto(f"{origin}/parent.html")
     page.wait_for_function("window.registered !== undefined")
@@ -163,3 +177,38 @@ def test_the_frame_takes_canvas_theme(canvas):
         "(body) => getComputedStyle(body).backgroundColor"
     )
     assert background == "rgb(1, 2, 3)"
+
+
+def test_the_spend_cap_field_writes_the_profiles_cap_and_keeps_its_other_arguments(
+    canvas,
+):
+    mount(canvas, "tools", "c1")
+    frame = canvas.frame_locator("#panel iframe")
+    expect(frame.get_by_test_id("dr-spend-cap-input")).to_have_value("7")
+    frame.get_by_test_id("dr-spend-cap-input").fill("12.50")
+    frame.get_by_test_id("dr-spend-cap-save").click()
+    expect(frame.get_by_test_id("dr-spend-cap-status")).to_have_text(
+        "✓ Saved: new conversations stop at $12.50."
+    )
+    [posted] = canvas.evaluate("window.posted")
+    assert posted == {
+        "id": "p1",
+        "name": "deep_reasoner",
+        "agent_kind": "acp",
+        "acp_args": ["--home", "/home/u/.deep-reasoning", "--spend-cap-usd", "12.50"],
+    }
+    mount(canvas, "tools", "c1")
+    expect(frame.get_by_test_id("dr-spend-cap-input")).to_have_value("12.50")
+
+
+def test_a_cap_the_page_cannot_write_says_why_in_the_field(canvas):
+    canvas.evaluate("window.profileMissing = true")
+    mount(canvas, "tools", "c1")
+    frame = canvas.frame_locator("#panel iframe")
+    frame.get_by_test_id("dr-spend-cap-input").fill("9")
+    frame.get_by_test_id("dr-spend-cap-save").click()
+    expect(frame.get_by_test_id("dr-spend-cap-status")).to_have_text(
+        "Deep Reasoning's agent profile is missing. Restart Deep Reasoning, which "
+        "creates it again."
+    )
+    assert canvas.evaluate("window.posted") == []

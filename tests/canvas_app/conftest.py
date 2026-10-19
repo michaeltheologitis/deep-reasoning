@@ -15,10 +15,17 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import pytest
-from playwright.sync_api import Browser, Error, Page, expect, sync_playwright
+from playwright.sync_api import (
+    Browser,
+    Error,
+    FrameLocator,
+    Page,
+    expect,
+    sync_playwright,
+)
 
 from deep_reasoning.library import Library, library_path, store
 
@@ -27,7 +34,18 @@ DR_LIBRARY = Path(sys.executable).parent / "dr-library"
 # The agent-server starts an App backend with only these variables from its environment.
 BACKEND_ENV = ("PATH", "LANG", "TMPDIR")
 READY_S = 30
-SAFETY_ACK = "localStorage.setItem('dr-library.safety-acknowledged', '1')"
+# Canvas's page, reduced to what the frame talks to: it frames the UI and records the
+# messages the frame posts to it.
+RECORDING_PARENT = """<!doctype html>
+<meta charset="utf-8">
+<iframe id="frame" style="width: 600px; height: 600px"></iframe>
+<script>
+  window.received = [];
+  window.addEventListener("message", (event) => window.received.push(event.data));
+  const frame = document.getElementById("frame");
+  frame.src = new URLSearchParams(location.search).get("frame");
+</script>
+"""
 # The frame polls /health every 3 s; a change made elsewhere shows within one poll.
 expect.set_options(timeout=10_000)
 
@@ -135,17 +153,38 @@ def open_ui(
     browser: Browser, library_server: LibraryServer
 ) -> Iterator[Callable[..., Page]]:
     """open_ui(tab="create", namespace="router", started=True, cap="5") → a page at /ui/?…,
-    standalone, notice acknowledged unless notice=True is passed."""
+    standalone."""
     contexts = []
 
-    def open_page(*, notice: bool = False, **params: str | bool) -> Page:
+    def open_page(**params: str | bool) -> Page:
         context = browser.new_context()
         contexts.append(context)
-        if not notice:
-            context.add_init_script(SAFETY_ACK)
         page = context.new_page()
         page.goto(ui_url(library_server.url, **params))
         return page
+
+    yield open_page
+    for context in contexts:
+        context.close()
+
+
+@pytest.fixture
+def open_framed_ui(
+    browser: Browser, library_server: LibraryServer, parent_site
+) -> Iterator[Callable[..., tuple[Page, FrameLocator]]]:
+    """open_framed_ui(tab="tools", cap="5") → (page, frame): the UI framed, as Canvas
+    frames it, by a page on another site, which is its parent and records in
+    window.received every message the frame posts."""
+    origin = parent_site({"parent.html": RECORDING_PARENT})
+    contexts = []
+
+    def open_page(**params: str | bool) -> tuple[Page, FrameLocator]:
+        context = browser.new_context()
+        contexts.append(context)
+        page = context.new_page()
+        frame_url = ui_url(library_server.url, parent=origin, **params)
+        page.goto(f"{origin}/parent.html?frame={quote(frame_url, safe='')}")
+        return page, page.frame_locator("#frame")
 
     yield open_page
     for context in contexts:

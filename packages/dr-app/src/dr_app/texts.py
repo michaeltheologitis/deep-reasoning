@@ -13,10 +13,6 @@ NO_UV = (
 )
 PROFILE_CREATED = "agent profile deep_reasoner created and made the default"
 PROFILE_UPDATED = "agent profile deep_reasoner updated"
-NO_MODEL_KEY = (
-    "No model key is saved yet: add OPENAI_API_KEY under Settings → Secrets before your "
-    "first question."
-)
 APP_DISABLED = (
     "App dr-library is disabled, so Show decompositions is hidden. Enable it under Apps "
     "to use it."
@@ -46,14 +42,6 @@ def no_access_dr(host_path: str) -> str:
 
 def checks_ok(version: str, host_path: str) -> str:
     return f"git {version} ✓ · {host_path} readable ✓"
-
-
-def safety(cap: str) -> str:
-    return (
-        "deep_reasoner runs as you. It can read and change any file you can, and code it "
-        "writes can find your model keys on this computer if it tries. Spend through the "
-        f"key proxy stops at ${cap} per conversation."
-    )
 
 
 def installing(commit7: str, dr_commit7: str) -> str:

@@ -210,7 +210,7 @@ def cap_reached(spent: float, cap: float) -> str:
     return (
         f"The key proxy refused this model call: this conversation has spent "
         f"${spent:.2f} of its ${cap:.2f} cap. Start a new conversation, or raise the cap "
-        "(--spend-cap-usd in the deep_reasoner agent profile's arguments)."
+        "for new conversations under Show Decompositions → Tools → Spend cap."
     )
 
 
