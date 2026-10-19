@@ -12,14 +12,14 @@ import time
 from collections.abc import Iterator
 
 import pytest
-from playwright.sync_api import Browser, Error, expect, sync_playwright
+from playwright.sync_api import expect
 
 from deep_reasoning.acp.runlog import AgentStart, Home, PromptEnd, RunLog
+from tests.crossrepo.agent_server import conversation_events
 from tests.desktop.app import (
     APP,
     FIRST_LAUNCH_S,
     LaunchedApp,
-    conversation_events,
     fresh_home,
     launch,
 )
@@ -57,24 +57,6 @@ def app(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
         finally:
             launched.stop()
             print(f"the app's log: {log}")
-
-
-@pytest.fixture(scope="module")
-def browser(app: LaunchedApp) -> Iterator[Browser]:
-    """Playwright attached to the app's own Chromium over its DevTools port."""
-    with sync_playwright() as playwright:
-        deadline = time.monotonic() + FIRST_LAUNCH_S
-        while True:
-            try:
-                cdp = playwright.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{app.debug_port}"
-                )
-                break
-            except Error:
-                assert app.process.poll() is None, "the app exited before its window"
-                assert time.monotonic() < deadline, "no DevTools port"
-                time.sleep(1.0)
-        yield cdp
 
 
 def logged(app: LaunchedApp, before: set[str]) -> list:

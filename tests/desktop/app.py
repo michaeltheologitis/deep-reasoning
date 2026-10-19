@@ -262,20 +262,6 @@ def secret(prefix: str) -> str:
     return f"{prefix}{secrets.token_hex(16)}"
 
 
-def conversation_events(app: LaunchedApp, conversation_id: str) -> list[dict]:
-    """Every event the agent-server stored for the conversation, oldest first."""
-    events, page = [], None
-    while True:
-        query = f"limit=100&page_id={page}" if page else "limit=100"
-        found = app.request(
-            "GET", f"/api/conversations/{conversation_id}/events/search?{query}"
-        )
-        events += found["items"]
-        page = found.get("next_page_id")
-        if not page:
-            return events
-
-
 def spend_caps(app: LaunchedApp) -> dict[str, float]:
     """Each root session's cap, as the key proxy's ledger in spend/ records it."""
     return {

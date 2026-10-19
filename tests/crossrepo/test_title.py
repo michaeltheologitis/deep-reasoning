@@ -9,7 +9,12 @@ import time
 import pytest
 
 from dr_app.profile import PROFILE_NAME
-from tests.crossrepo.agent_server import agent_server, recording_proxy, sdk_checkout
+from tests.crossrepo.agent_server import (
+    agent_server,
+    conversation_events,
+    recording_proxy,
+    sdk_checkout,
+)
 
 QUESTION = "What is 2 + 2?"
 TITLE_PROFILE = "gpt-5-5"
@@ -70,9 +75,7 @@ def test_a_title_profile_without_a_key_is_never_called_and_the_first_message_tit
             ]
         ) != QUESTION and time.monotonic() < deadline:
             time.sleep(0.2)
-        events = server.request(
-            "GET", f"/api/conversations/{conversation}/events/search?limit=100"
-        )["items"]
+        events = conversation_events(server, conversation)
     assert (before, proxy.attempts) == ([], [])
     assert title == QUESTION
     assert [e for e in events if e["kind"] == "ConversationErrorEvent"] == []

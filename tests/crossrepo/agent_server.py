@@ -20,6 +20,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -185,3 +186,19 @@ def agent_server(
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
         log.close()
+
+
+def conversation_events(server, conversation: str) -> list[dict[str, Any]]:
+    """Every event the agent-server stored for the conversation, oldest first, asked
+    through server.request(method, path)."""
+    events: list[dict[str, Any]] = []
+    page = None
+    while True:
+        query = "?limit=100" + (f"&page_id={page}" if page else "")
+        found = server.request(
+            "GET", f"/api/conversations/{conversation}/events/search{query}"
+        )
+        events += found["items"]
+        page = found.get("next_page_id")
+        if not page:
+            return events

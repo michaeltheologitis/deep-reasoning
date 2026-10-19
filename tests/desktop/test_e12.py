@@ -32,12 +32,10 @@ import pytest
 import yaml
 from playwright.sync_api import (
     Browser,
-    Error,
     FrameLocator,
     Locator,
     Page,
     expect,
-    sync_playwright,
 )
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -48,6 +46,7 @@ from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from desktop import build
 from dr_app import texts
 from tests.acp.scenarios import repl, scripted, task_and_turn
+from tests.crossrepo.agent_server import conversation_events
 from tests.desktop.app import (
     APP,
     CANVAS_URL,
@@ -57,7 +56,6 @@ from tests.desktop.app import (
     STARTUP_FAILED,
     LaunchedApp,
     age_uv_index_answers,
-    conversation_events,
     fresh_home,
     get_with_host,
     launch,
@@ -224,24 +222,6 @@ def app(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
         finally:
             launched.stop()
             print(f"the app's log: {log}")
-
-
-@pytest.fixture(scope="module")
-def browser(app: LaunchedApp) -> Iterator[Browser]:
-    """Playwright attached to the app's own Chromium over its DevTools port."""
-    with sync_playwright() as playwright:
-        deadline = time.monotonic() + FIRST_LAUNCH_S
-        while True:
-            try:
-                cdp = playwright.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{app.debug_port}"
-                )
-                break
-            except Error:
-                assert app.process.poll() is None, "the app exited before its window"
-                assert time.monotonic() < deadline, "no DevTools port"
-                time.sleep(1.0)
-        yield cdp
 
 
 def window(browser: Browser) -> Page:
