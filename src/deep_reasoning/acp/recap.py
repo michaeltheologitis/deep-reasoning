@@ -3,14 +3,15 @@ from the run logs, as one user message (TASK-57)."""
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Literal
 
 from deep_reasoning.acp.runlog import (
     Home,
     PromptEnd,
+    PromptEndOutcome,
     PromptStart,
     RecapNote,
     RunEnd,
+    RunEndReason,
     RunEvent,
     RunLog,
     RunStart,
@@ -30,16 +31,7 @@ STOPPED = "(none: the user stopped the run before it answered)"
 CUT_OFF = "(none: the run was cut off before it answered)"
 CUT_MARK = " … (cut short)"
 
-TurnEnd = Literal[
-    "answered",
-    "exhausted",
-    "failed",
-    "build_failed",
-    "stopped",
-    "crashed",
-    "closed",
-    "lost",
-]
+TurnEnd = PromptEndOutcome | RunEndReason
 _WITHOUT_ANSWER = {
     "exhausted": EXHAUSTED,
     "stopped": STOPPED,
@@ -100,8 +92,8 @@ def turns_of(events: Iterable[RunEvent], first: int = 1) -> list[Turn]:
                     namespace,
                     asked.task,
                     ev.outcome,
-                    ev.answer if ev.outcome in ("answered", "exhausted") else None,
-                    ev.detail if ev.outcome in ("failed", "build_failed") else None,
+                    ev.answer,
+                    ev.detail,
                 )
             )
             asked = None
