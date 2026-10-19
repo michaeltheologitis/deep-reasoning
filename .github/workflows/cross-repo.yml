@@ -104,8 +104,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      # The oldest uv the README promises, on which the design measured the command; its
+      # cached index answers are a format claim 9's ageing knows (uv 0.13's are not).
       - uses: astral-sh/setup-uv@v6
         with:
+          version: "0.8.17"
           python-version: "3.12"
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"

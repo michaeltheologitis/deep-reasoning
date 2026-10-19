@@ -548,9 +548,13 @@ def library_frame(page: Page, session_key: str) -> tuple[FrameLocator, str | Non
     )
     frame = page.frame_locator("#dr-library-frame")
     notice = frame.get_by_test_id("dr-notice")
-    expect(
-        frame.get_by_test_id("dr-notice-ack").or_(frame.locator("main")).first
-    ).to_be_visible()
+    try:
+        expect(
+            frame.get_by_test_id("dr-notice-ack").or_(frame.locator("main")).first
+        ).to_be_visible()
+    except AssertionError as missing:
+        shown = [(f.url, f.content()[:400]) for f in page.frames[1:]]
+        raise AssertionError(f"the frame shows no panel: {shown}") from missing
     if not frame.get_by_test_id("dr-notice-ack").is_visible():
         return frame, None
     cleared = notice.inner_text()

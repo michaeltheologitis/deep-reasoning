@@ -41,6 +41,7 @@ from tests.desktop.app import (
     cmdline,
     descendants,
     environ,
+    eventually,
     example,
     executable,
     fresh_home,
@@ -98,6 +99,7 @@ NAMESPACE = "e13"
 IMPORTED = "e13 triage"
 KEY = secret("sk-e13-")
 CONSENT_SHOWS_S = 5
+AUTOMATION_UP_S = 180.0
 expect.set_options(timeout=60_000)
 ENVIRONMENT_CELL = repl(
     "import os",
@@ -244,13 +246,16 @@ def test_the_stack_runs_the_pinned_agent_server_on_the_wheels_node_with_nothing_
 
 
 def test_every_socket_the_stack_listens_on_is_loopback(first):
-    listening = listening_sockets(
-        [first.web.process.pid, *descendants(first.web.process.pid)]
+    """Once every service listens: the automation backend may still be installing when
+    the page first answers."""
+    command = first.web.process.pid
+    expected = {f"127.0.0.1:{port}" for port in STACK_PORTS}
+    eventually(
+        lambda: expected <= set(listening_sockets([command, *descendants(command)])),
+        AUTOMATION_UP_S,
     )
-    assert {f"127.0.0.1:{port}" for port in STACK_PORTS} <= set(listening)
-    assert [
-        address for address in listening if not address.startswith("127.0.0.1:")
-    ] == []
+    listening = listening_sockets([command, *descendants(command)])
+    assert [a for a in listening if not a.startswith("127.0.0.1:")] == []
 
 
 def test_a_conversation_answers_and_the_key_stays_out(first, fake, chromium, tmp_path):
@@ -306,9 +311,8 @@ def test_the_library_panel_works_through_the_bridge(first, playwright, engine):
             timeout=60_000
         )
         if engine == "chromium":
-            cookies = browser.new_browser_cdp_session().send("Storage.getCookies")[
-                "cookies"
-            ]
+            cdp = context.new_cdp_session(page)
+            cookies = cdp.send("Network.getAllCookies")["cookies"]
             [session] = [c for c in cookies if c["path"] == "/app-backends/dr-library"]
             assert session["partitionKey"]["topLevelSite"] == "http://localhost"
     finally:
@@ -328,7 +332,9 @@ def test_a_second_start_is_refused_and_changes_nothing(first, tmp_path):
 
 
 def bindable(port: int) -> bool:
+    """As a server binds it: a closed connection's TIME_WAIT does not hold the port."""
     with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("127.0.0.1", port))
         except OSError:
@@ -390,16 +396,17 @@ def test_a_restart_offline_installs_nothing_and_serves_the_page_within_30_s(
     assert done.returncode == 0, log[-4000:]
 
 
-def uvx_offline(first: FirstStart, *args: str) -> int:
+def uvx_offline(first: FirstStart, *args: str) -> subprocess.CompletedProcess:
     """uvx inside the cut network, from the HOME's uv cache."""
     return subprocess.run(
         [*NETWORK_CUT, "uvx", *args],
         env=first.env,
         cwd=first.web.home,
         capture_output=True,
+        text=True,
         timeout=SERVED_S * 4,
         check=False,
-    ).returncode
+    )
 
 
 def test_aged_index_answers_send_uv_to_the_network_and_offline_uv_still_runs(first):
@@ -415,10 +422,13 @@ def test_aged_index_answers_send_uv_to_the_network_and_offline_uv_still_runs(fir
         defaults["packages"]["automation"],
         defaults["versions"]["automation"],
     )
-    probe = ("--from", f"{package}=={version}", "python", "-c", "pass")
+    # The launcher's own uvx of it (dev-with-automation.mjs, buildAutomationCommand).
+    probe = ("--from", f"{package}=={version}", "uvicorn", "--version")
     assert aged > 0
-    assert uvx_offline(first, *probe) != 0
-    assert uvx_offline(first, "--offline", *probe) == 0
+    online_first = uvx_offline(first, *probe)
+    assert online_first.returncode != 0, online_first.stdout
+    offline = uvx_offline(first, "--offline", *probe)
+    assert offline.returncode == 0, offline.stderr
 
 
 @pytest.mark.xfail(
