@@ -1,6 +1,9 @@
 # D5's cross-repo checks (§7.5): the forks' code at their pins in desktop/pins.toml,
 # against this branch's. No job calls a real model. Nightly, by hand, and on every pull
-# request that moves a pin, the app or the browser command.
+# request that moves a pin, the app or the browser command, or changes E12 or a
+# cross-repo test. A run by hand may name fork commits no tag names yet (canvas_commit,
+# sdk_commit): every job then runs them in place of the pins, and build.py skips only
+# their tag and branch checks.
 name: cross-repo
 
 on:
@@ -12,10 +15,26 @@ on:
       - pyproject.toml
       - uv.lock
       - src/deep_reasoning/acp/proxy.py
+      - tests/desktop/**
+      - tests/crossrepo/**
       - .github/workflows/cross-repo.yml
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
+    inputs:
+      canvas_commit:
+        description: "A Canvas fork commit (40 hex) to run in place of the pin; empty: the pin"
+        type: string
+        default: ""
+      sdk_commit:
+        description: "An SDK fork commit (40 hex) to run in place of the pin; empty: the pin"
+        type: string
+        default: ""
+
+# Empty on every other event, and on a run by hand that names none.
+env:
+  CANVAS_COMMIT: ${{ inputs.canvas_commit }}
+  SDK_COMMIT: ${{ inputs.sdk_commit }}
 
 jobs:
   # The pins belong together (D5 §4.2.2): build.py check, every check against the real
@@ -34,7 +53,7 @@ jobs:
           python-version: "3.12"
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-      - run: uv run desktop/build.py check
+      - run: uv run desktop/build.py check ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
         env:
           GITHUB_TOKEN: ${{ github.token }}
       # TASK-48 W14: the README's browser command is the newest release's.
@@ -63,7 +82,7 @@ jobs:
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
       - name: Build the Linux packages and the browser tarball
-        run: uv run desktop/build.py linux web
+        run: uv run desktop/build.py linux web ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Install the .deb
@@ -113,7 +132,7 @@ jobs:
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
       - name: Build the browser tarball
-        run: uv run desktop/build.py web
+        run: uv run desktop/build.py web ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - run: uv run playwright install --with-deps chromium firefox webkit
@@ -138,15 +157,17 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: The forks' pins
+      - name: The forks' pins, or the run's commits in their place
         id: pin
         run: |
           python3 - >> "$GITHUB_OUTPUT" <<'EOF'
-          import tomllib
+          import os, re, tomllib
           pins = tomllib.load(open("desktop/pins.toml", "rb"))
-          for fork in ("canvas_fork", "sdk_fork"):
+          for fork, given in (("canvas_fork", "CANVAS_COMMIT"), ("sdk_fork", "SDK_COMMIT")):
+              commit = os.environ[given] or pins[fork]["commit"]
+              assert re.fullmatch("[0-9a-f]{40}", commit), f"{given} is not 40 hex"
               print(f"{fork}_repo=" + pins[fork]["repo"].removeprefix("https://github.com/"))
-              print(f"{fork}_commit=" + pins[fork]["commit"])
+              print(f"{fork}_commit=" + commit)
           EOF
       - uses: actions/checkout@v4
         with:
@@ -234,14 +255,16 @@ jobs:
       DR_SDK_CHECKOUT: ${{ github.workspace }}/sdk
     steps:
       - uses: actions/checkout@v4
-      - name: The SDK fork's pin
+      - name: The SDK fork's pin, or the run's commit in its place
         id: pin
         run: |
           python3 - >> "$GITHUB_OUTPUT" <<'EOF'
-          import tomllib
+          import os, re, tomllib
           pin = tomllib.load(open("desktop/pins.toml", "rb"))["sdk_fork"]
+          commit = os.environ["SDK_COMMIT"] or pin["commit"]
+          assert re.fullmatch("[0-9a-f]{40}", commit), "SDK_COMMIT is not 40 hex"
           print("repo=" + pin["repo"].removeprefix("https://github.com/"))
-          print("commit=" + pin["commit"])
+          print("commit=" + commit)
           EOF
       - uses: actions/checkout@v4
         with:
@@ -257,3 +280,5 @@ jobs:
       - run: uv sync --frozen
         working-directory: sdk
       - run: uv run pytest -m crossrepo tests/app/test_canvas_app.py tests/crossrepo -v -rA
+        env:
+          DR_SDK_COMMIT: ${{ steps.pin.outputs.commit }}
