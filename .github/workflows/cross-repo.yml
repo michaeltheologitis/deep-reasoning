@@ -4,6 +4,10 @@
 # request that moves a pin or the app, or changes E12 or a cross-repo test. A run by hand
 # may name fork commits no tag names yet (canvas_commit, sdk_commit): every job then runs
 # them in place of the pins, and build.py skips only their tag and branch checks.
+# THROWAWAY: TASK-41's proof (design §5 P2), on branch proof/task-41. Never merged.
+# Only canvas-replay runs: 6 shards, each the replay spec with --repeat-each=5, so
+# 300 executions of D1's ten recordings, plus 30 of each guard. Dispatch it with
+# canvas_commit set to fix/replay-spec-settles's head.
 name: cross-repo
 
 on:
@@ -44,6 +48,7 @@ jobs:
   # forks. It checks out the commit itself, never a pull request's merge commit, since
   # check 6 asks that the commit every user's setup fetches is on origin.
   pins:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -66,6 +71,7 @@ jobs:
   # setup fetches deep-reasoning (this commit, public) and deep_reasoner_beta (private,
   # through the runner's insteadOf line) with git, as a user's would.
   desktop-e2e:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -121,6 +127,10 @@ jobs:
   canvas-replay:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - name: The forks' pins, or the run's commits in their place
@@ -180,7 +190,7 @@ jobs:
           # The stack's teardown can hang after the last test (the fork's workflow says
           # so): once the reporter marks the tests done, Playwright gets 30 s to exit,
           # and the reporter's results, written after every test, are the verdict.
-          npx playwright test --config=playwright.mock-llm.config.ts \
+          npx playwright test --config=playwright.mock-llm.config.ts --repeat-each=5 \
             tests/e2e/mock-llm/conversations/mock-llm-acp-replay.spec.ts &
           playwright=$!
           while kill -0 "$playwright" 2>/dev/null && [ ! -f .mock-llm-markers/.tests-done ]; do sleep 2; done
@@ -189,21 +199,54 @@ jobs:
           python3 - "$OH_ACP_REPLAY_TRANSCRIPTS" <<'EOF'
           import json, os, sys
           recordings = sorted(os.path.basename(p) for p in sys.argv[1].split(":"))
-          tests = json.load(open(".mock-llm-markers/.results.json"))["tests"]
-          for test in tests:
-              print(f"{test['status']:>8}  {test['title']}")
-          passed = sorted(
-              name for name in recordings for test in tests
-              if test["status"] == "passed" and f"nests {name} as" in test["title"]
-          )
           assert len(recordings) == 10, recordings
-          assert passed == recordings, f"passed {len(passed)} of {len(recordings)}"
+          runs = []
+          def walk(suite):
+              for spec in suite.get("specs", []):
+                  for test in spec["tests"]:
+                      runs.extend((spec["title"], test["status"], result) for result in test["results"])
+              for child in suite.get("suites", []):
+                  walk(child)
+          for suite in json.load(open("test-results-mock-llm/results.json"))["suites"]:
+              walk(suite)
+          def notes(result):
+              return [a["description"] for a in result.get("annotations", []) if a["type"] == "subagent-tree"]
+          def warnings(result):
+              return sum(chunk.get("text", "").count("transient 502;") for chunk in result.get("stderr", []))
+          for title, outcome, result in runs:
+              print(f"{result['status']:>8}  {outcome:>10}  {title}  {'; '.join(notes(result))}  502 retries: {warnings(result)}")
+          replays = [(t, o, r) for t, o, r in runs if t.startswith("nests ") and t.endswith(" as the agent-server stored it")]
+          guards = [(t, o, r) for t, o, r in runs if not (t.startswith("nests ") and t.endswith(" as the agent-server stored it"))]
+          failures = [(t, o, r) for t, o, r in runs if r["status"] != "passed" or o != "expected"]
+          counts = (
+              f"shard ${{ matrix.shard }}: executions {len(replays)}, failures {len(failures)}, "
+              f"first read differed {sum('first read differed' in n for _, _, r in replays for n in notes(r))}, "
+              f"transient 502 warnings {sum(warnings(r) for _, _, r in replays)}, guard executions {len(guards)}"
+          )
+          print(counts)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write(counts + "\n")
+          passed = sorted(
+              name for name in recordings for title, _, result in replays
+              if result["status"] == "passed" and f"nests {name} as" in title
+          )
+          assert len(replays) == 5 * len(recordings), f"{len(replays)} executions"
+          assert len(guards) == 5 * 2, f"{len(guards)} guard executions"
+          assert not failures, f"{len(failures)} executions did not pass"
+          assert passed == sorted(recordings * 5), f"passed {len(passed)} of {5 * len(recordings)}"
           EOF
+      - name: The shard's results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-results-shard-${{ matrix.shard }}
+          path: canvas/test-results-mock-llm/results.json
+          if-no-files-found: ignore
       - name: The replay's report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e6-canvas-replay
+          name: e6-canvas-replay-shard-${{ matrix.shard }}
           path: |
             canvas/test-results-mock-llm/
             canvas/playwright-report-mock-llm/
@@ -215,6 +258,7 @@ jobs:
   # deep_reasoner profile and dr-acp, its secret with it (D4 §10.6, D5 §8.7); and the
   # staged Library App installs, passes prepare and answers /health (D5 §7.2).
   bridge-replay:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
