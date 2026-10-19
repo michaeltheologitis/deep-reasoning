@@ -147,9 +147,16 @@ def install_runtime(
 ) -> RuntimeRecord:
     """§4.4.3: a venv on uv's own Python, every workspace package of source synced into
     it from its uv.lock (no dev group, nothing editable), the import check, then the
-    rename and the link. Raises SetupError(11, texts.install_failed(...)) on any
-    non-zero step, leaving runtime/current as it was."""
+    rename and the link. Keeps the runtime runtime/current pointed at before, which a
+    stack still starting may run (TASK-48 W10), and removes every other. Raises
+    SetupError(11, texts.install_failed(...)) on any non-zero step, leaving
+    runtime/current as it was."""
     runtime = layout.runtime_dir
+    previous = (
+        os.readlink(layout.current_runtime)
+        if layout.current_runtime.is_symlink()
+        else None
+    )
     building = runtime / f"{commit}.tmp-{os.getpid()}"
     lock_sha256 = hashlib.sha256((source / "uv.lock").read_bytes()).hexdigest()
     env = git_environment(os.environ) | {"UV_PROJECT_ENVIRONMENT": str(building)}
@@ -183,9 +190,23 @@ def install_runtime(
     link.symlink_to(commit)
     link.replace(layout.current_runtime)
     for other in runtime.iterdir():
-        if other.name not in (commit, layout.current_runtime.name, source.name):
+        if other.name not in (
+            commit,
+            layout.current_runtime.name,
+            source.name,
+            previous,
+        ):
             _remove(other)
     return RuntimeRecord(commit, lock_sha256, str(final))
+
+
+def prune_runtimes(layout: AppLayout, keep: str) -> None:
+    """Every entry of runtime/ but keep and current removed, an interrupted install's
+    included. Only a start that installs nothing calls it, under setup.lock: it passed
+    the port check, so no stack can be running the runtime before."""
+    for other in layout.runtime_dir.iterdir():
+        if other.name not in (keep, layout.current_runtime.name):
+            _remove(other)
 
 
 def _run_steps(

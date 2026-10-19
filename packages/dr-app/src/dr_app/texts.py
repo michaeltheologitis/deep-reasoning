@@ -26,11 +26,12 @@ APP_UNSUPPORTED = (
     "conversations still work."
 )
 NOTHING_INSTALLED = (
-    "✗ Nothing is installed yet: launch the app once, then run this again."
+    "✗ Nothing is installed yet: start Deep Reasoning once (the app, or its browser "
+    "command), then run this again."
 )
 NO_AGENT_SERVER = (
-    "✗ The after-ready phase needs AGENT_SERVER_URL and SESSION_API_KEY, which the app's "
-    "launcher sets."
+    "✗ The after-ready phase needs AGENT_SERVER_URL and SESSION_API_KEY, which Deep "
+    "Reasoning's launcher sets."
 )
 
 
@@ -136,15 +137,15 @@ def app_warning(detail: str) -> str:
 def state_from_a_newer_app(path: str, version: str) -> str:
     return (
         f"✗ {path} was written by a newer Deep Reasoning (its version {version}; this one "
-        "reads 1). Install the newer app again. To set this one up from the start "
-        f"instead, delete {path}: your data stays, but a folder chosen with dr-app home "
-        "is forgotten."
+        "reads 1). Start the newer one again: the app, or its browser command. To set "
+        f"this one up from the start instead, delete {path}: your data stays, but a "
+        "folder chosen with dr-app home is forgotten."
     )
 
 
 def state_unusable(path: str, reason: str) -> str:
     return (
-        f"✗ {path} cannot be used: {reason}. Delete it and launch the app again: setup "
-        "then installs as on a first launch, which needs the network. Your data stays, "
-        "but a folder chosen with dr-app home must be chosen again."
+        f"✗ {path} cannot be used: {reason}. Delete it and start Deep Reasoning again: "
+        "setup then installs as on a first start, which needs the network. Your data "
+        "stays, but a folder chosen with dr-app home must be chosen again."
     )

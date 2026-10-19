@@ -31,3 +31,27 @@ def test_sentences_with_fields_are_the_designs_verbatim():
     assert texts.agent_server_failed("POST", "/api/x", "422", "bad") == (
         "✗ The agent-server refused POST /api/x (422): bad"
     )
+
+
+def test_the_sentences_that_named_the_app_name_both_doors():
+    """A browser user is not told to reinstall an app (TASK-48 V5)."""
+    assert texts.NOTHING_INSTALLED == (
+        "✗ Nothing is installed yet: start Deep Reasoning once (the app, or its browser "
+        "command), then run this again."
+    )
+    assert texts.NO_AGENT_SERVER == (
+        "✗ The after-ready phase needs AGENT_SERVER_URL and SESSION_API_KEY, which Deep "
+        "Reasoning's launcher sets."
+    )
+    assert texts.state_from_a_newer_app("/h/setup.json", "2") == (
+        "✗ /h/setup.json was written by a newer Deep Reasoning (its version 2; this one "
+        "reads 1). Start the newer one again: the app, or its browser command. To set "
+        "this one up from the start instead, delete /h/setup.json: your data stays, but a "
+        "folder chosen with dr-app home is forgotten."
+    )
+    assert texts.state_unusable("/h/setup.json", "it is not JSON") == (
+        "✗ /h/setup.json cannot be used: it is not JSON. Delete it and start Deep "
+        "Reasoning again: setup then installs as on a first start, which needs the "
+        "network. Your data stays, but a folder chosen with dr-app home must be chosen "
+        "again."
+    )
