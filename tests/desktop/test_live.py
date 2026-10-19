@@ -33,6 +33,7 @@ QUESTION = "Use one sub-agent to add 2 and 2, then answer with its result."
 TITLE = f"{QUESTION[:47]}..."
 ANSWERED_S = 600.0  # a real model, a sub-agent and its turns
 COST = re.compile(r"\$\d+\.\d+")
+COSTS_SETTING = "openhands-show-subagent-costs"  # C1's saved "Show sub-agent costs"
 
 pytestmark = [
     pytest.mark.desktop,
@@ -105,6 +106,8 @@ def test_a_question_to_the_real_model_is_answered_titled_and_costed_with_no_erro
     app.request("POST", "/api/profiles/gpt-5-5", {"llm": {"model": "gpt-5.5"}})
     app.request("POST", "/api/profiles/gpt-5-5/activate")
     page = window(browser)
+    costs_setting = f"localStorage.getItem({COSTS_SETTING!r})"
+    assert page.evaluate(costs_setting) is None, "the app's profile is not a fresh one"
     before = run_ids(app)
     conversation = start_conversation(page, QUESTION)
     ended = first_prompt_end(app, before, page)

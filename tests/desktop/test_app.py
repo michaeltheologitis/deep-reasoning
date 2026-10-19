@@ -77,3 +77,20 @@ def test_git_under_the_fresh_home_stores_no_credentials_whatever_the_systems_hel
             timeout=30,
         )
     assert not stored.exists()
+
+
+def test_a_fresh_home_holds_the_apps_config_cache_data_and_state(monkeypatch, tmp_path):
+    """GitHub's runners point XDG_CONFIG_HOME at the runner's own home: kept, every
+    launch would share one Electron profile, and E12's settings would reach the live
+    tier's app."""
+    for name in (
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_DATA_HOME",
+        "XDG_STATE_HOME",
+    ):
+        monkeypatch.setenv(name, str(tmp_path / "runner" / name.lower()))
+    with fresh_home() as home:
+        env = user_environment(home)
+    assert env["HOME"] == str(home)
+    assert not [name for name in env if name.startswith("XDG_") and "HOME" in name]
