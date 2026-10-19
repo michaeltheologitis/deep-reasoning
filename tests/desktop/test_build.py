@@ -260,23 +260,6 @@ def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
     assert problems(canvas, repo) == [build.head_unpushed(head)]
 
 
-def changed(before: dict, after: dict, prefix: str = "") -> dict:
-    """Each dotted key whose value after differs from before's, with its new value."""
-    found = {}
-    for key, value in after.items():
-        old = before.get(key) if isinstance(before, dict) else None
-        if isinstance(value, dict) and isinstance(old, dict):
-            found |= changed(old, value, f"{prefix}{key}.")
-        elif value != old:
-            found[f"{prefix}{key}"] = value
-    return found
-
-
-def dotted(defaults: dict, key: str):
-    block, name = key.split(".")
-    return defaults[block][name]
-
-
 def test_defaults_gain_only_the_keys_the_build_writes():
     before = copy.deepcopy(DEFAULTS)
     command = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
@@ -302,8 +285,11 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         "setup.phases",
         "telemetry.posthogApiKey",
     }
-    assert {key: dotted(patched, key) for key in written} == written
-    assert set(changed(DEFAULTS, patched)) <= set(written)
+    expected = copy.deepcopy(DEFAULTS)
+    for key, value in written.items():
+        block, name = key.split(".")
+        expected.setdefault(block, {})[name] = value
+    assert patched == expected
 
 
 def written_defaults(pins, *, canvas, repo, work, monkeypatch) -> dict:
