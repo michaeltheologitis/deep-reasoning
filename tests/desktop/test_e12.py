@@ -3,23 +3,25 @@
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
 linux), installs the .deb and runs this module under xvfb-run. Its tests share one first
-launch and run in order: the launch onto the home screen, with no onboarding; the page
-refusing a host name that is not this machine; no telemetry consent; no screen offering
-another agent or an agent profile; a question asked before the model key is saved,
-answered with where it goes; the first answered conversation, from deep_reasoner
-although another profile is active, the window title naming the product after its title
-and alone at home, and its key kept out; a keyless LLM profile titling no chat with an
-error; nothing recording consent; D3's frame through the bridge; then the final part:
-C1's nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
-picker, slash menu and header panel with Create decomposition, the Spend cap set in D4's
-Tools tab capping the next conversation, an MCP server granted there, and the panel past
-its first session; then the quit and an offline relaunch of setup. No test calls a real
-model.
+launch and run in order: the launch onto the home screen, with no onboarding, and the
+automation backend answering; the page refusing a host name that is not this machine; no
+telemetry consent; no screen offering another agent or an agent profile; a question
+asked before the model key is saved, answered with where it goes; the first answered
+conversation, from deep_reasoner although another profile is active, the window title
+naming the product after its title and alone at home, and its key kept out; a keyless
+LLM profile titling no chat with an error; nothing recording consent; D3's frame through
+the bridge; then the final part: C1's nested sub-agents, their costs shown by default
+and a Stop of one, C2's namespace picker, slash menu and header panel with Create
+decomposition, the Spend cap set in D4's Tools tab capping the next conversation, an MCP
+server granted there, and the panel past its first session; then the quit, an offline
+relaunch of setup, and, uv's index answers aged an hour, an offline relaunch of the app.
+No test calls a real model.
 """
 
 import json
 import os
 import re
+import signal
 import subprocess
 import threading
 import time
@@ -50,8 +52,11 @@ from tests.desktop.app import (
     APP,
     CANVAS_URL,
     FIRST_LAUNCH_S,
+    NETWORK_CUT,
     QUIT_S,
+    STARTUP_FAILED,
     LaunchedApp,
+    age_uv_index_answers,
     conversation_events,
     fresh_home,
     get_with_host,
@@ -108,6 +113,12 @@ ANSWER = secret("e12-answer-")
 E12_MODEL = "e12-model"
 NAMESPACE = "e12"
 OFFLINE_S = 5.0
+INSTALLED_DEFAULTS = APP.parent / "resources" / "app" / "config" / "defaults.json"
+APP_UVX = APP.parent / "resources" / "bin" / "uvx"
+AUTOMATION_S = 120.0
+RELAUNCH_S = 180.0
+STARTING_OFFLINE = "Starting from uv's cache, offline"  # the fork's uvx-start.mjs
+AUTOMATION_STARTED = "Application startup complete"  # uvicorn's, in its JSON log line
 ENVIRONMENT_CELL = repl(
     "import os",
     "print(dict(os.environ))",
@@ -343,6 +354,27 @@ def worker_environ(app: LaunchedApp) -> str:
         if event["kind"] == "worker.ready":
             return Path(f"/proc/{event['pid']}/environ").read_bytes().decode()
     raise AssertionError("no worker.ready in the run log")
+
+
+def installed_defaults() -> dict:
+    return json.loads(INSTALLED_DEFAULTS.read_text())
+
+
+def test_the_automation_backend_answers_after_the_first_launch(app):
+    """It would not install at a cutoff before versions.automation's release, and no
+    other step asks it (TASK-66 §5.4)."""
+    port = installed_defaults()["ports"]["automation"]
+    url = f"http://127.0.0.1:{port}/health"
+    deadline = time.monotonic() + AUTOMATION_S
+    while True:
+        try:
+            status, body = get_with_host(url, f"127.0.0.1:{port}")
+        except OSError as error:  # not listening yet
+            status, body = None, str(error)
+        if status == 200 or time.monotonic() > deadline:
+            break
+        time.sleep(2.0)
+    assert status == 200, f"{url}: {status} {body}"
 
 
 @pytest.mark.parametrize("port", [8000, 3001], ids=["ingress", "frontend"])
@@ -875,17 +907,14 @@ def test_closing_the_window_quits_the_app_and_leaves_nothing_running(app, browse
 
 
 def test_setup_relaunches_offline_from_its_cache_and_installs_nothing(app):
-    defaults = APP.parent / "resources" / "app" / "config" / "defaults.json"
-    command = json.loads(defaults.read_text())["setup"]["command"]
+    command = installed_defaults()["setup"]["command"]
     env = user_environment(app.home) | {
         "OH_CANVAS_SETUP_PHASE": "before-start",
         "PATH": f"{APP.parent / 'resources' / 'bin'}{os.pathsep}{os.environ['PATH']}",
     }
-    offline = ["unshare", "--map-root-user", "-n", "sh", "-c"]
-    loopback_up = 'ip link set lo up && exec "$@"'
     started = time.monotonic()
     done = subprocess.run(
-        [*offline, loopback_up, "offline", *command],
+        [*NETWORK_CUT, *command],
         env=env,
         cwd=app.data / "canvas" / "agent-canvas",
         capture_output=True,
@@ -899,3 +928,67 @@ def test_setup_relaunches_offline_from_its_cache_and_installs_nothing(app):
     assert not [
         line for line in done.stdout.splitlines() if line.startswith(INSTALLING)
     ]
+
+
+def uvx_in_the_cut(app: LaunchedApp, *args: str) -> subprocess.CompletedProcess:
+    """The app's own uvx inside the cut network, from the HOME's uv cache."""
+    return subprocess.run(
+        [*NETWORK_CUT, str(APP_UVX), *args],
+        env=user_environment(app.home),
+        cwd=app.home,
+        capture_output=True,
+        text=True,
+        timeout=RELAUNCH_S,
+        check=False,
+    )
+
+
+def wait_for_a_line(app: LaunchedApp, test: Callable[[str], bool], what: str) -> None:
+    deadline = time.monotonic() + RELAUNCH_S
+    while not any(test(line) for line in app.lines()):
+        if app.process.poll() is not None or time.monotonic() > deadline:
+            app.fail(f"no {what} in {RELAUNCH_S} s")
+        time.sleep(1.0)
+
+
+def test_the_app_relaunches_offline_an_hour_after_uv_last_asked_pypi(app, tmp_path):
+    """uv's index answers aged an hour, as uv finds them past their ten minutes (TASK-66
+    §5.4). The negative control: the automation backend's uvx then needs the network,
+    and runs from the cache only offline; the app's relaunch inside the cut starts both
+    services offline and installs nothing."""
+    aged = age_uv_index_answers(app.home / ".cache" / "uv", app.started_at - 60, 3600)
+    defaults = installed_defaults()
+    automation = (
+        *("--exclude-newer", defaults["uv"]["excludeNewer"]),
+        "--from",
+        f"{defaults['packages']['automation']}=={defaults['versions']['automation']}",
+        *("python", "-c", "pass"),
+    )
+    online_first = uvx_in_the_cut(app, *automation)
+    assert online_first.returncode != 0, f"uv ran with {aged} answers aged"
+    offline = uvx_in_the_cut(app, "--offline", *automation)
+    assert offline.returncode == 0, offline.stderr
+    started = time.monotonic()
+    relaunched = launch(app.home, tmp_path / "relaunch.log", network=False)
+    try:
+        relaunched.wait_for_line("[agent-server] Ready at", RELAUNCH_S)
+        ready = time.monotonic() - started
+        wait_for_a_line(
+            relaunched,
+            lambda line: "[automation]" in line and AUTOMATION_STARTED in line,
+            "automation start",
+        )
+        lines = relaunched.lines()
+        for service in ("agent-server", "automation"):
+            assert [line for line in lines if f"[{service}] {STARTING_OFFLINE}" in line]
+        assert not [line for line in lines if INSTALLING in line]
+        assert not [line for line in lines if STARTUP_FAILED in line]
+        relaunched.process.send_signal(signal.SIGTERM)
+        relaunched.process.wait(timeout=QUIT_S)
+        deadline = time.monotonic() + QUIT_S
+        while processes_mentioning(str(app.home)) and time.monotonic() < deadline:
+            time.sleep(0.2)
+        assert processes_mentioning(str(app.home)) == []
+        print(f"offline relaunch: the agent-server ready in {ready:.1f} s")
+    finally:
+        relaunched.stop()

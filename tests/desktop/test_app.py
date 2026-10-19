@@ -2,6 +2,7 @@
 and a launch the app itself reports failed ends the wait at once, since the packaged
 app stays open on its failure screen."""
 
+import struct
 import subprocess
 import sys
 import threading
@@ -14,6 +15,7 @@ import pytest
 from tests.desktop.app import (
     LOG_TAIL_LINES,
     LaunchedApp,
+    age_uv_index_answers,
     fresh_home,
     get_with_host,
     user_environment,
@@ -135,3 +137,33 @@ def test_a_get_with_a_host_sends_that_name_and_gives_any_status_with_its_body(
     monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
     monkeypatch.setenv("no_proxy", "")
     assert get_with_host(host_echo, host) == (status, f"host {host}")
+
+
+def answer(path, fetched: int, *, padding: int = 600) -> None:
+    """A cached index answer as uv lays one out: its fetch time a u64 near the end."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"\x07" * padding + struct.pack("<Q", fetched) + b"\0" * 16)
+
+
+def fetched(path) -> int:
+    return struct.unpack_from("<Q", path.read_bytes(), 600)[0]
+
+
+def test_ageing_uvs_index_answers_moves_each_fetch_time_back_and_says_when_it_cannot(
+    tmp_path,
+):
+    """TASK-66 M8: uv's answers expire as if fetched an hour ago, without the wait."""
+    now = int(time.time())
+    answers = [tmp_path / "simple-v17" / "pypi" / f"{n}.rkyv" for n in ("a", "b")]
+    for path in answers:
+        answer(path, now - 30)
+    answer(tmp_path / "simple-v17" / "pypi" / "old.rkyv", now - 7200)
+    with pytest.raises(AssertionError, match="old.rkyv"):
+        age_uv_index_answers(tmp_path, now - 60, 3600)
+    (tmp_path / "simple-v17" / "pypi" / "old.rkyv").unlink()
+    for path in answers:
+        answer(path, now - 30)
+    assert age_uv_index_answers(tmp_path, now - 60, 3600) == 2
+    assert [fetched(path) for path in answers] == [now - 30 - 3600] * 2
+    with pytest.raises(AssertionError, match="no index answers"):
+        age_uv_index_answers(tmp_path / "empty", now - 60, 3600)

@@ -111,7 +111,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e12-app-log
-          path: /tmp/pytest-of-*/pytest-*/e12*/app.log
+          path: |
+            /tmp/pytest-of-*/pytest-*/e12*/app.log
+            /tmp/pytest-of-*/pytest-*/test_the_app_relaunches_*/relaunch.log
           if-no-files-found: ignore
 
   # E6 (D5 §7.5, C1 §6.4): each of D1's native recordings, played by S1's scripted agent

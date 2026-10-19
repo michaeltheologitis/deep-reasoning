@@ -11,6 +11,7 @@ import secrets
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -19,9 +20,9 @@ import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, Final, NoReturn
 
 from dr_app.agent_server import AgentServer
 
@@ -36,6 +37,15 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # The packaged app stays open on its failure screen after this line (Canvas's
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
+# A command run after these words has loopback and no other network (Ubuntu 24.04 needs
+# kernel.apparmor_restrict_unprivileged_userns=0).
+NETWORK_CUT: Final = [
+    *("unshare", "--map-root-user", "-n", "sh", "-c"),
+    'ip link set lo up && exec "$@"',
+    "offline",
+]
+# Where uv keeps a cached index answer's fetch time: a u64 of Unix seconds near its end.
+ANSWER_TAIL_BYTES = 512
 LOG_TAIL_LINES = 40  # of the app's log, in a failed wait's message
 # An empty helper resets git's list of credential helpers, the system's included.
 NO_CREDENTIAL_HELPER = "\n[credential]\n\thelper =\n"
@@ -104,6 +114,7 @@ class LaunchedApp:
     home: Path
     log: Path
     debug_port: int
+    started_at: float = field(default_factory=time.time)  # made right after the Popen
 
     @property
     def data(self) -> Path:
@@ -169,12 +180,17 @@ class LaunchedApp:
                 self.process.wait()
 
 
-def launch(home: Path, log: Path) -> LaunchedApp:
-    """The installed app with HOME home and a DevTools port, its output in log."""
-    port = free_port()
-    argv = [str(APP), f"--remote-debugging-port={port}"]
-    if os.geteuid() == 0:
-        argv.append("--no-sandbox")  # Chromium refuses root without it
+def launch(home: Path, log: Path, *, network: bool = True) -> LaunchedApp:
+    """The installed app with HOME home, its output in log: with a DevTools port, or,
+    with network=False, inside NETWORK_CUT, where the port would be out of reach."""
+    port = free_port() if network else 0
+    argv = (
+        [str(APP), f"--remote-debugging-port={port}"]
+        if network
+        else [*NETWORK_CUT, str(APP)]
+    )
+    if os.geteuid() == 0 or not network:
+        argv.append("--no-sandbox")  # Chromium refuses root, the cut's mapped one too
     with log.open("wb") as out:
         process = subprocess.Popen(
             argv,
@@ -198,6 +214,33 @@ def get_with_host(url: str, host: str, timeout_s: float = 10.0) -> tuple[int, st
             return response.status, response.read().decode(errors="replace")
     except urllib.error.HTTPError as error:
         return error.code, error.read().decode(errors="replace")
+
+
+def age_uv_index_answers(cache: Path, since: float, seconds: int) -> int:
+    """Move every index answer under cache/simple-v* back by seconds, as if uv had
+    fetched it then: each u64 in an answer's last 512 bytes between since and now. The
+    number aged; AssertionError naming the answers in which it found no such time, since
+    then this uv keeps them otherwise and nothing was aged."""
+    answers = sorted(cache.glob("simple-v*/**/*.rkyv"))
+    assert answers, f"no index answers under {cache}/simple-v*"
+    now = time.time()
+    unaged = []
+    for answer in answers:
+        data = bytearray(answer.read_bytes())
+        offset, aged = max(0, len(data) - ANSWER_TAIL_BYTES), False
+        while offset + 8 <= len(data):
+            (value,) = struct.unpack_from("<Q", data, offset)
+            if since <= value <= now:
+                struct.pack_into("<Q", data, offset, value - seconds)
+                offset, aged = offset + 8, True
+            else:
+                offset += 1
+        if aged:
+            answer.write_bytes(data)
+        else:
+            unaged.append(str(answer))
+    assert not unaged, f"no fetch time since {since:.0f} in {unaged}"
+    return len(answers)
 
 
 def processes_mentioning(text: str) -> list[str]:
