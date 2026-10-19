@@ -108,10 +108,6 @@ COMMAND_AT = re.compile(
 )
 
 
-def browser_section() -> str:
-    return README.split(f"\n{BROWSER}\n", 1)[1].split("\n## ", 1)[0]
-
-
 def slug(heading: str) -> str:
     """GitHub's anchor for a heading."""
     words = re.sub(r"[^\w\- ]", "", heading.strip().lower())
@@ -127,12 +123,12 @@ def test_the_browser_command_is_dr_webs_at_a_commit_or_the_checkout_form():
         return
     checkout_form = command_for("0" * 40).replace("0" * 40, "<commit>")
     tarball = web_tarball_name("<version>")
-    assert f"{checkout_form} --tarball dist/{tarball}" in browser_section()
-    assert "uv run desktop/build.py web" in browser_section()
+    assert f"{checkout_form} --tarball dist/{tarball}" in section(BROWSER)
+    assert "uv run desktop/build.py web" in section(BROWSER)
 
 
 def test_the_browser_section_names_its_flags_ports_cache_and_uv():
-    words = " ".join(browser_section().replace("`", "").replace("**", "").split())
+    words = " ".join(section(BROWSER).replace("`", "").replace("**", "").split())
     for named in (
         "--port",
         "--no-open",
@@ -148,7 +144,7 @@ def test_the_browser_section_names_its_flags_ports_cache_and_uv():
 
 def test_the_browser_sections_links_to_other_headings_resolve():
     anchors = {slug(h) for h in re.findall(r"^#+ (.+)$", README, re.MULTILINE)}
-    linked = re.findall(r"\]\(#([^)]+)\)", browser_section())
+    linked = re.findall(r"\]\(#([^)]+)\)", section(BROWSER))
     assert linked
     assert [anchor for anchor in linked if anchor not in anchors] == []
 
@@ -188,6 +184,6 @@ def test_no_section_promises_an_offline_restart_past_ten_minutes():
     for the app as for the browser, until TASK-66."""
     window = "Within about ten minutes of the last start that had the network"
     first_launch = " ".join(section("### The first launch").split())
-    browser = " ".join(browser_section().split())
+    browser = " ".join(section(BROWSER).split())
     assert window in first_launch and window in browser
     assert "needs no network" not in PLAIN
