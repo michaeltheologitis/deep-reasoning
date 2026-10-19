@@ -129,15 +129,6 @@ def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Release
         served.stop()
 
 
-def test_the_unpacking_sentence_is_the_designs_verbatim():
-    assert texts.unpack_failed(
-        "/t/x.tgz", "/h/.deep-reasoning/web", "No space left"
-    ) == (
-        "✗ Could not unpack /t/x.tgz into /h/.deep-reasoning/web (No space left). "
-        "Nothing was changed."
-    )
-
-
 def test_the_command_is_dr_webs_at_a_commit_and_its_constants_are_the_builds():
     assert cli.command_for(COMMIT) == (
         "uvx --from git+https://github.com/michaeltheologitis/deep-reasoning"
@@ -154,6 +145,59 @@ def test_the_command_is_dr_webs_at_a_commit_and_its_constants_are_the_builds():
     assert cache.ROOT_DIRNAME == app_layout.ROOT_DIRNAME
     dev = tomllib.loads((ROOT / "pyproject.toml").read_text())["dependency-groups"]
     assert f"{cache.NODE_WHEEL}=={cache.NODE_VERSION}" in dev["dev"]
+
+
+def test_node_installs_once_with_both_hashes_and_working_npm_links(web, uv):
+    said: list[str] = []
+    node = cache.ensure_node(
+        web, uv=str(uv.path), python=sys.executable, log=said.append
+    )
+    again = cache.ensure_node(
+        web, uv=str(uv.path), python=sys.executable, log=said.append
+    )
+    [call] = uv.calls()
+    argv = call["argv"]
+    assert argv[:2] == ["pip", "install"]
+    assert argv[argv.index("--python") + 1] == sys.executable
+    assert {"--target", "--require-hashes", "--no-deps"} <= set(argv)
+    assert call["requirements"].split() == [
+        f"{cache.NODE_WHEEL}=={cache.NODE_VERSION}",
+        *(f"--hash=sha256:{sha}" for sha in cache.NODE_WHEEL_SHA256),
+    ]
+    assert node == again == web.node
+    for name, target in cache.NPM_LINKS.items():
+        link = node.parent / name
+        assert link.readlink() == Path(target)
+        assert link.resolve().is_file()
+    assert said == [
+        texts.installing_node(cache.NODE_VERSION),
+        "Resolved 1 package",
+        "Installed 1 package",
+        "v22.12.0",
+    ]
+    assert list(web.root.iterdir()) == [web.node_dir]
+
+
+@pytest.mark.parametrize(
+    ("failing", "step", "code"),
+    [
+        ({"STUB_UV_EXIT": "2"}, "uv pip install", "2"),
+        ({"STUB_NODE_VERSION": "v20.11.1"}, "node --version", "0"),
+    ],
+    ids=["install", "another-node"],
+)
+def test_a_failed_node_install_leaves_no_folder(
+    web, uv, monkeypatch, failing, step, code
+):
+    for name, value in failing.items():
+        monkeypatch.setenv(name, value)
+    with pytest.raises(FetchError) as failed:
+        cache.ensure_node(web, uv=str(uv.path), python=sys.executable, log=print)
+    assert (failed.value.exit_code, failed.value.message) == (
+        23,
+        texts.node_failed(step, code),
+    )
+    assert list(web.root.iterdir()) == []
 
 
 def test_a_release_tarball_downloads_once_and_a_restart_needs_no_server(web, release):
@@ -174,6 +218,73 @@ def test_a_release_tarball_downloads_once_and_a_restart_needs_no_server(web, rel
     assert first == again
     assert (first / "bin" / "deep-reasoning.mjs").read_bytes() == ENTRY_SOURCE
     assert web.downloaded(cli.RELEASE).read_bytes() == published.read_bytes()
+
+
+def test_a_failed_download_names_the_file_and_keeps_nothing(web, release):
+    with pytest.raises(FetchError) as missing:
+        cache.released_tarball(web, cli.RELEASE, log=lambda line: None)
+    release.stop()
+    with pytest.raises(FetchError) as refused:
+        cache.released_tarball(web, cli.RELEASE, log=lambda line: None)
+    page = release.url.removeprefix("http://") + f"/tag/v{cli.RELEASE}"
+    name = cache.tarball_name(cli.RELEASE)
+    assert (missing.value.exit_code, missing.value.message) == (
+        23,
+        texts.fetch_failed(name, page, "HTTP 404"),
+    )
+    assert refused.value.message == texts.fetch_failed(name, page, "connection refused")
+    assert list(web.root.iterdir()) == []
+
+
+@pytest.fixture
+def ca(tmp_path: Path) -> Path:
+    """A self-signed certificate for 127.0.0.1 that is also its own CA, as PEM; its key
+    beside it in key.pem."""
+    pem = tmp_path / "ca.pem"
+    subprocess.run(
+        [
+            *("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes"),
+            *("-keyout", str(tmp_path / "key.pem"), "-out", str(pem), "-days", "1"),
+            *("-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"),
+            *("-addext", "basicConstraints=critical,CA:TRUE"),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return pem
+
+
+@pytest.fixture
+def https(ca: Path) -> Iterator[str]:
+    handler = lambda *a: http.server.SimpleHTTPRequestHandler(
+        *a, directory=str(ca.parent)
+    )
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    served = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    served.load_cert_chain(ca, ca.parent / "key.pem")
+    server.socket = served.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"https://127.0.0.1:{server.server_address[1]}/ca.pem"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="makes a CA with openssl")
+def test_tls_falls_back_to_a_system_bundle_when_the_default_store_is_empty(
+    tmp_path, ca, https, monkeypatch
+):
+    """As on a python.org interpreter whose "Install Certificates" never ran."""
+    empty = tmp_path / "no-certificates"
+    empty.mkdir()
+    monkeypatch.setenv("SSL_CERT_FILE", str(empty / "none.pem"))
+    monkeypatch.setenv("SSL_CERT_DIR", str(empty))
+    with pytest.raises(urllib.error.URLError, match="CERTIFICATE_VERIFY_FAILED"):
+        urllib.request.urlopen(https, context=cache.tls_context(fallbacks=()))
+    fallback = cache.tls_context(fallbacks=(str(tmp_path / "missing.pem"), str(ca)))
+    with urllib.request.urlopen(https, context=fallback) as response:
+        assert response.status == 200
 
 
 @pytest.mark.parametrize(
@@ -260,73 +371,13 @@ def test_a_tarball_that_cannot_be_written_out_says_why_and_leaves_nothing(
     assert list(web.root.glob("tree-*")) == []
 
 
-def test_a_failed_download_names_the_file_and_keeps_nothing(web, release):
-    with pytest.raises(FetchError) as missing:
-        cache.released_tarball(web, cli.RELEASE, log=lambda line: None)
-    release.stop()
-    with pytest.raises(FetchError) as refused:
-        cache.released_tarball(web, cli.RELEASE, log=lambda line: None)
-    page = release.url.removeprefix("http://") + f"/tag/v{cli.RELEASE}"
-    name = cache.tarball_name(cli.RELEASE)
-    assert (missing.value.exit_code, missing.value.message) == (
-        23,
-        texts.fetch_failed(name, page, "HTTP 404"),
+def test_the_unpacking_sentence_is_the_designs_verbatim():
+    assert texts.unpack_failed(
+        "/t/x.tgz", "/h/.deep-reasoning/web", "No space left"
+    ) == (
+        "✗ Could not unpack /t/x.tgz into /h/.deep-reasoning/web (No space left). "
+        "Nothing was changed."
     )
-    assert refused.value.message == texts.fetch_failed(name, page, "connection refused")
-    assert list(web.root.iterdir()) == []
-
-
-def test_node_installs_once_with_both_hashes_and_working_npm_links(web, uv):
-    said: list[str] = []
-    node = cache.ensure_node(
-        web, uv=str(uv.path), python=sys.executable, log=said.append
-    )
-    again = cache.ensure_node(
-        web, uv=str(uv.path), python=sys.executable, log=said.append
-    )
-    [call] = uv.calls()
-    argv = call["argv"]
-    assert argv[:2] == ["pip", "install"]
-    assert argv[argv.index("--python") + 1] == sys.executable
-    assert {"--target", "--require-hashes", "--no-deps"} <= set(argv)
-    assert call["requirements"].split() == [
-        f"{cache.NODE_WHEEL}=={cache.NODE_VERSION}",
-        *(f"--hash=sha256:{sha}" for sha in cache.NODE_WHEEL_SHA256),
-    ]
-    assert node == again == web.node
-    for name, target in cache.NPM_LINKS.items():
-        link = node.parent / name
-        assert link.readlink() == Path(target)
-        assert link.resolve().is_file()
-    assert said == [
-        texts.installing_node(cache.NODE_VERSION),
-        "Resolved 1 package",
-        "Installed 1 package",
-        "v22.12.0",
-    ]
-    assert list(web.root.iterdir()) == [web.node_dir]
-
-
-@pytest.mark.parametrize(
-    ("failing", "step", "code"),
-    [
-        ({"STUB_UV_EXIT": "2"}, "uv pip install", "2"),
-        ({"STUB_NODE_VERSION": "v20.11.1"}, "node --version", "0"),
-    ],
-    ids=["install", "another-node"],
-)
-def test_a_failed_node_install_leaves_no_folder(
-    web, uv, monkeypatch, failing, step, code
-):
-    for name, value in failing.items():
-        monkeypatch.setenv(name, value)
-    with pytest.raises(FetchError) as failed:
-        cache.ensure_node(web, uv=str(uv.path), python=sys.executable, log=print)
-    assert (failed.value.exit_code, failed.value.message) == (
-        23,
-        texts.node_failed(step, code),
-    )
-    assert list(web.root.iterdir()) == []
 
 
 def test_leftovers_of_a_start_that_died_are_removed_and_a_running_ones_kept(web):
@@ -412,54 +463,3 @@ def test_main_without_uv_says_how_to_run_it_and_exits_22(tmp_path, monkeypatch, 
     monkeypatch.setenv("PATH", str(tmp_path / "nothing"))
     assert cli.main(["--no-open"]) == 22
     assert capsys.readouterr().out == texts.NO_UV + "\n"
-
-
-@pytest.fixture
-def ca(tmp_path: Path) -> Path:
-    """A self-signed certificate for 127.0.0.1 that is also its own CA, as PEM; its key
-    beside it in key.pem."""
-    pem = tmp_path / "ca.pem"
-    subprocess.run(
-        [
-            *("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes"),
-            *("-keyout", str(tmp_path / "key.pem"), "-out", str(pem), "-days", "1"),
-            *("-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"),
-            *("-addext", "basicConstraints=critical,CA:TRUE"),
-        ],
-        check=True,
-        capture_output=True,
-    )
-    return pem
-
-
-@pytest.fixture
-def https(ca: Path) -> Iterator[str]:
-    handler = lambda *a: http.server.SimpleHTTPRequestHandler(
-        *a, directory=str(ca.parent)
-    )
-    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    served = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    served.load_cert_chain(ca, ca.parent / "key.pem")
-    server.socket = served.wrap_socket(server.socket, server_side=True)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    try:
-        yield f"https://127.0.0.1:{server.server_address[1]}/ca.pem"
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@pytest.mark.skipif(shutil.which("openssl") is None, reason="makes a CA with openssl")
-def test_tls_falls_back_to_a_system_bundle_when_the_default_store_is_empty(
-    tmp_path, ca, https, monkeypatch
-):
-    """As on a python.org interpreter whose "Install Certificates" never ran."""
-    empty = tmp_path / "no-certificates"
-    empty.mkdir()
-    monkeypatch.setenv("SSL_CERT_FILE", str(empty / "none.pem"))
-    monkeypatch.setenv("SSL_CERT_DIR", str(empty))
-    with pytest.raises(urllib.error.URLError, match="CERTIFICATE_VERIFY_FAILED"):
-        urllib.request.urlopen(https, context=cache.tls_context(fallbacks=()))
-    fallback = cache.tls_context(fallbacks=(str(tmp_path / "missing.pem"), str(ca)))
-    with urllib.request.urlopen(https, context=fallback) as response:
-        assert response.status == 200
