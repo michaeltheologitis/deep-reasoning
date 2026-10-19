@@ -375,12 +375,13 @@ def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
     for hidden in HIDDEN_SETTINGS:
         page.goto(CANVAS_URL + hidden)
         page.wait_for_url(CANVAS_URL + "settings/app")
-    page.keyboard.press("ControlOrMeta+K")
+    page.goto(CANVAS_URL)
+    page.get_by_test_id("command-menu-trigger").click()
+    expect(page.get_by_test_id("command-menu")).to_be_visible()
     expect(page.get_by_test_id("command-menu-item-secrets-settings")).to_be_visible()
     for item in ("agent-settings", "llm-settings", "condenser-settings"):
         expect(page.get_by_test_id(f"command-menu-item-{item}")).to_have_count(0)
     page.keyboard.press("Escape")
-    page.goto(CANVAS_URL)
     checklist = "sidebar-onboarding-checklist-item-"
     expect(page.get_by_test_id(f"{checklist}start-conversation")).to_be_attached()
     for item in ("configure-llm", "customize-agent"):
