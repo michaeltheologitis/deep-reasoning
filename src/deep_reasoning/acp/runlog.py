@@ -15,6 +15,7 @@ from deep_reasoning.mcp.wire import McpServerStatus
 
 Mode = Literal["native", "flat"]
 RunEndReason = Literal["closed", "stopped", "crashed", "failed", "build_failed", "lost"]
+PromptEndOutcome = Literal["answered", "exhausted", "failed", "build_failed"]
 DETAIL_CAP = 2000
 
 
@@ -161,7 +162,7 @@ class McpStatus(_Ev):
 class PromptEnd(_Ev):
     kind: Literal["prompt.end"] = "prompt.end"
     prompt: int
-    outcome: Literal["answered", "exhausted", "failed", "build_failed"]
+    outcome: PromptEndOutcome
     answer: str | None
     detail: str | None
 
