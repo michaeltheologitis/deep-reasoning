@@ -3,13 +3,14 @@ build.py web made, and driven in Playwright's own browsers on a fake model (TASK
 
 Run it after uv run desktop/build.py web, as uv run pytest -m web
 tests/desktop/test_e13.py; without the tarball it skips. Its tests share one first start
-and run in order: the setup it ran; the stack's processes, environment and sockets; a
-conversation; the Library panel through the bridge in Chromium, Firefox and WebKit; a
-second start refused; Ctrl+C; then a restart with the network cut. Last, from a second
-first start whose uv index answers expire a second after each fetch, the same restart,
-which starts both services from uv's cache at the tarball's PyPI cutoff (TASK-66).
-The terminal it starts from holds junk that a user's might: the command must keep all of
-it from the stack. No test calls a real model.
+and run in order: the setup it ran; the stack's processes, environment and sockets; the
+page refusing a host name that is not this machine; a conversation; the Library panel
+through the bridge in Chromium, Firefox and WebKit; a second start refused; Ctrl+C; then
+a restart with the network cut. Last, from a second first start whose uv index answers
+expire a second after each fetch, the same restart, which starts both services from uv's
+cache at the tarball's PyPI cutoff (TASK-66). The terminal it starts from holds junk
+that a user's might: the command must keep all of it from the stack. No test calls a
+real model.
 """
 
 import json
@@ -51,6 +52,7 @@ from tests.desktop.app import (
     executable,
     expire_uv_index_answers_quickly,
     fresh_home,
+    get_with_host,
     interrupt,
     launch_web,
     library_frame,
@@ -89,7 +91,8 @@ JUNK = {
 # A Node first on PATH that fails loudly: nothing of the stack may run a system Node.
 SYSTEM_NODE_MARKER = "e13: a system node ran"
 RUNNING = "Deep Reasoning is running at "
-STACK_PORTS = (8000, 3001, 18000, 18001)
+PAGE_PORT = 8000  # the ingress, without --port
+STACK_PORTS = (PAGE_PORT, 3001, 18000, 18001)
 REFUSED_S = 10.0
 STOPPED_S = 10.0
 SERVED_S = 30.0
@@ -280,6 +283,18 @@ def test_every_socket_the_stack_listens_on_is_loopback(first):
     )
     listening = listening_sockets([command, *descendants(command)])
     assert [a for a in listening if not a.startswith("127.0.0.1:")] == []
+
+
+def test_the_page_refuses_a_host_name_that_is_not_this_machine(first):
+    """A DNS-rebound page's requests name its own host; the page carries the session key
+    (TASK-64)."""
+    url = f"http://127.0.0.1:{PAGE_PORT}/"
+    status, body = get_with_host(url, f"rebound.example:{PAGE_PORT}")
+    assert status == 403
+    assert first.web.session_key not in body
+    status, body = get_with_host(url, f"localhost:{PAGE_PORT}")
+    assert status == 200
+    assert first.web.session_key in body
 
 
 def test_a_conversation_answers_and_the_key_stays_out(first, fake, chromium, tmp_path):
