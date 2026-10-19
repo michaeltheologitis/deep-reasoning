@@ -3,10 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   DRAFT_PREFIX,
-  acknowledgeSafety,
   clearDraft,
   loadDraft,
-  safetyAcknowledged,
   saveDraft,
 } from "../src/ui/drafts";
 
@@ -41,20 +39,10 @@ describe("drafts", () => {
     expect(() => saveDraft("create", { name: "rank" })).not.toThrow();
     expect(loadDraft("create")).toBeNull();
     expect(() => clearDraft("create")).not.toThrow();
-    expect(() => acknowledgeSafety()).not.toThrow();
-    expect(safetyAcknowledged()).toBe(false);
   });
 
   it("are lost when what is stored is not JSON", () => {
     localStorage.setItem(`${DRAFT_PREFIX}create`, "{not json");
     expect(loadDraft("create")).toBeNull();
-  });
-});
-
-describe("the safety notice's acknowledgement", () => {
-  it("is remembered", () => {
-    expect(safetyAcknowledged()).toBe(false);
-    acknowledgeSafety();
-    expect(safetyAcknowledged()).toBe(true);
   });
 });

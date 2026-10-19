@@ -1,10 +1,5 @@
 // The frame's sentences (§4.7), verbatim; tests assert these.
 
-export const SAFETY = (cap: string) =>
-  `deep_reasoner runs as you. It can read and change any file you can, and code it writes can find your model keys on this computer if it tries. Spend through the key proxy stops at $${cap} per conversation.`;
-export const SAFETY_NO_CAP =
-  "deep_reasoner runs as you. It can read and change any file you can, and code it writes can find your model keys on this computer if it tries. The key proxy is off for this agent (--no-key-proxy), so nothing caps what a conversation spends.";
-export const UNDERSTAND = "I understand";
 export const SAVED_STARTED = (
   name: string,
   version: number,
@@ -105,8 +100,6 @@ export const LABELS = {
 } as const;
 
 // D4's sentences (D4 §9.3), verbatim.
-export const TOOLS_RISK =
-  "Tools and MCP servers run as you, with your files and network: your tools inside the agent's process, a stdio MCP server as a program started for each conversation that can use it. Check runs your code too. Add only code and servers you trust.";
 export const YOUR_TOOLS = "Your tools";
 export const NEW_TOOL = "+ New tool";
 export const MCP_SERVERS = "MCP servers (from Canvas's settings)";
@@ -172,3 +165,18 @@ export const TOOL_LABELS = {
   tools: "Tools",
   back: "← Tools",
 } as const;
+
+// The Spend cap field (TASK-65 §6.3), verbatim.
+export const SPEND_CAP = "Spend cap";
+export const SPEND_CAP_HELP =
+  "The most one conversation may spend on model calls through the key proxy. New conversations use it; a conversation already started keeps its cap.";
+export const SPEND_CAP_SAVE = "Save";
+export const SPEND_CAP_SAVING = "Saving…";
+export const SPEND_CAP_SAVED = (cap: string) =>
+  `✓ Saved: new conversations stop at $${cap}.`;
+export const SPEND_CAP_INVALID =
+  "Enter an amount in dollars above 0, such as 5 or 12.50.";
+export const SPEND_CAP_OFF =
+  "No cap: the key proxy is off for Deep Reasoning (--no-key-proxy), so nothing caps what a conversation spends.";
+export const SPEND_CAP_STANDALONE =
+  "Change it in the app, under Show Decompositions → Tools.";

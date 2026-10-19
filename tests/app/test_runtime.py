@@ -75,10 +75,9 @@ def test_a_first_launch_checks_then_installs_the_commits_own_lock(
         lock_sha256,
     )
     said = lines(capsys)
-    assert said[:4] == [
+    assert said[:3] == [
         texts.home_local(str(layout.root)),
         texts.checks_ok("2.39.5", "github.com/DeanLight/deep_reasoner_beta"),
-        texts.safety("5"),
         texts.installing(COMMIT[:7], DR_COMMIT[:7]),
     ]
     assert "Resolved 173 packages" in said
@@ -129,7 +128,6 @@ def test_a_new_commit_reinstalls(layout, stubs, capsys):
     capsys.readouterr()
     setup(layout, NEXT_COMMIT)
     said = lines(capsys)
-    assert texts.safety("5") not in said, "the safety line is for a first install"
     assert said[1] == texts.installing(NEXT_COMMIT[:7], DR_COMMIT[:7])
     assert len(stubs.argvs("uv")) == 4
     assert layout.current_runtime.resolve() == layout.runtime_dir / NEXT_COMMIT

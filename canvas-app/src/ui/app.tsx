@@ -1,5 +1,5 @@
-// The frame's app: the safety notice, the tab (with its own tab row on the standalone page), the
-// Library's problems, the /health poll that refetches on a new revision, and the backend-loss footer.
+// The frame's app: the tab (with its own tab row on the standalone page), the Library's problems, the
+// /health poll that refetches on a new revision, and the backend-loss footer.
 
 import { useEffect, useState } from "preact/hooks";
 
@@ -11,8 +11,7 @@ import {
   TAB_TITLES,
 } from "../shared/protocol";
 import { BackendUnavailable, getHealth } from "./api";
-import { ProblemsBanner, SafetyNotice } from "./components/notices";
-import { acknowledgeSafety, safetyAcknowledged } from "./drafts";
+import { ProblemsBanner } from "./components/notices";
 import { BrowseTab } from "./tabs/browse";
 import { CreateTab } from "./tabs/create";
 import { NamespacesTab } from "./tabs/namespaces";
@@ -66,24 +65,10 @@ function useHealth(
 
 export function App(props: { params: FrameParams }) {
   const { params } = props;
-  const [acknowledged, setAcknowledged] = useState(safetyAcknowledged);
   const [tab, setTab] = useState<TabId>(params.tab);
   const [focus, setFocus] = useState<string | null>(params.focus);
   const [lost, setLost] = useState<BackendUnavailable | null>(null);
   const health = useHealth(setLost);
-
-  if (!acknowledged) {
-    return (
-      <SafetyNotice
-        cap={params.cap}
-        variant="first-open"
-        onUnderstood={() => {
-          acknowledgeSafety();
-          setAcknowledged(true);
-        }}
-      />
-    );
-  }
 
   const navigateTab = (next: TabId, nextFocus: string | null) => {
     if (params.parent !== null)

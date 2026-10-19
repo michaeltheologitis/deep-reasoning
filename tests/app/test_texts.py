@@ -2,11 +2,6 @@ from dr_app import texts
 
 
 def test_sentences_with_fields_are_the_designs_verbatim():
-    assert texts.safety("5") == (
-        "deep_reasoner runs as you. It can read and change any file you can, and code it "
-        "writes can find your model keys on this computer if it tries. Spend through the "
-        "key proxy stops at $5 per conversation."
-    )
     assert texts.no_access_dr("github.com/DeanLight/deep_reasoner_beta") == (
         "✗ Could not read github.com/DeanLight/deep_reasoner_beta with your git "
         "credentials. It is private: ask Dean for read access, then sign git in for https "

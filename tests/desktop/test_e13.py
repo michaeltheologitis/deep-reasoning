@@ -337,7 +337,7 @@ def test_the_library_panel_works_through_the_bridge(first, playwright, engine):
         page = context.new_page()
         page.goto(CANVAS_URL)
         expect(page.get_by_test_id("chat-input")).to_be_visible(timeout=60_000)
-        frame, _ = library_frame(page, web.session_key)
+        frame = library_frame(page, web.session_key)
         expect(frame.get_by_test_id(f"dr-node-{NAMESPACE}")).to_be_visible(
             timeout=60_000
         )

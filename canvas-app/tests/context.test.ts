@@ -8,7 +8,14 @@ import {
   readSpendCap,
   readTheme,
   spendCapFromArgs,
+  withSpendCap,
+  writeSpendCap,
 } from "../src/page/context";
+import {
+  CAP_NOT_SAVED,
+  CAP_NO_PROXY,
+  CAP_PROFILE_MISSING,
+} from "../src/page/texts";
 import {
   HttpError,
   controlsEvent,
@@ -49,6 +56,96 @@ describe("readSpendCap", () => {
       throw new HttpError(404, { detail: "Not Found" });
     });
     expect(await readSpendCap(server.request)).toBe("5");
+  });
+});
+
+describe("withSpendCap", () => {
+  it.each([
+    [
+      ["--home", "/h", "--spend-cap-usd", "5", "--verbose"],
+      ["--home", "/h", "--spend-cap-usd", "12.50", "--verbose"],
+    ],
+    [
+      ["--home", "/h", "--spend-cap-usd=5", "--verbose"],
+      ["--home", "/h", "--spend-cap-usd", "12.50", "--verbose"],
+    ],
+    [
+      ["--home", "/h"],
+      ["--home", "/h", "--spend-cap-usd", "12.50"],
+    ],
+    [[], ["--spend-cap-usd", "12.50"]],
+    [["--home", "/h", "--no-key-proxy"], null],
+  ])(
+    "sets the pair and keeps every other argument in place: %j",
+    (args, set) => {
+      expect(withSpendCap(args, "12.50")).toEqual(set);
+    },
+  );
+});
+
+describe("writeSpendCap", () => {
+  const PROFILE = {
+    id: "p1",
+    name: "deep_reasoner",
+    agent_kind: "acp",
+    acp_command: "/home/u/.deep-reasoning/runtime/current/bin/dr-acp",
+    acp_args: ["--home", "/h", "--spend-cap-usd", "5"],
+    mcp_server_refs: ["echo"],
+  };
+  const PATH = "/api/agent-profiles/deep_reasoner";
+
+  it("reads the profile, then posts it whole with the new cap", async () => {
+    const server = fakeAgentServer((call) =>
+      call.method === "POST" ? { profile: call.body } : { profile: PROFILE },
+    );
+    expect(await writeSpendCap(server.request, "12.50")).toEqual({
+      ok: true,
+      cap: "12.50",
+    });
+    expect(server.calls).toEqual([
+      { path: PATH },
+      {
+        method: "POST",
+        path: PATH,
+        body: {
+          ...PROFILE,
+          acp_args: ["--home", "/h", "--spend-cap-usd", "12.50"],
+        },
+      },
+    ]);
+  });
+
+  it("says the profile is missing when there is none, and posts nothing", async () => {
+    const server = fakeAgentServer(() => {
+      throw new HttpError(404, { detail: "Not Found" });
+    });
+    expect(await writeSpendCap(server.request, "7")).toEqual({
+      ok: false,
+      message: CAP_PROFILE_MISSING,
+    });
+    expect(server.calls).toEqual([{ path: PATH }]);
+  });
+
+  it("refuses without posting when the key proxy is off", async () => {
+    const server = fakeAgentServer(() => ({
+      profile: { ...PROFILE, acp_args: ["--no-key-proxy"] },
+    }));
+    expect(await writeSpendCap(server.request, "7")).toEqual({
+      ok: false,
+      message: CAP_NO_PROXY,
+    });
+    expect(server.calls).toEqual([{ path: PATH }]);
+  });
+
+  it("says why the agent-server refused the write", async () => {
+    const server = fakeAgentServer((call) => {
+      if (call.method !== "POST") return { profile: PROFILE };
+      throw new HttpError(422, { detail: "acp_args must be strings" });
+    });
+    expect(await writeSpendCap(server.request, "7")).toEqual({
+      ok: false,
+      message: CAP_NOT_SAVED("acp_args must be strings"),
+    });
   });
 });
 

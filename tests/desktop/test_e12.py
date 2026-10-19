@@ -7,8 +7,9 @@ first launch and run in order: the launch; onboarding, which asks no telemetry c
 and keeps deep_reasoner; the conversation its hello starts; nothing recording consent;
 D3's frame through the bridge; then the final part: C1's nested sub-agents and a Stop
 of one, C2's namespace picker, slash menu and header panel with Create decomposition,
-an MCP server granted in D4's Tools tab, and the panel past its first session; then
-the quit and an offline relaunch of setup. No test calls a real model.
+the Spend cap set in D4's Tools tab capping the next conversation, an MCP server granted
+there, and the panel past its first session; then the quit and an offline relaunch of
+setup. No test calls a real model.
 """
 
 import json
@@ -56,6 +57,7 @@ from tests.desktop.app import (
     run_ids,
     secret,
     setup_lines,
+    spend_caps,
     start_conversation,
     user_environment,
     worker_environ,
@@ -79,6 +81,10 @@ ANSWER = secret("e12-answer-")
 E12_MODEL = "e12-model"
 NAMESPACE = "e12"
 OFFLINE_S = 5.0
+# Q3: the Tools tab's Spend cap, set, then the next conversation's cap.
+CAP = "7.50"
+CAP_QUESTION = "What does E12 spend under its cap?"
+CAP_ANSWER = secret("e12-cap-")
 ENVIRONMENT_CELL = repl(
     "import os",
     "print(dict(os.environ))",
@@ -138,12 +144,18 @@ PLAN = {
     PANEL_QUESTION: [repl(f"FinalAnswer({PANEL_ANSWER!r})")],
     NEXT_TASK: [repl(f"FinalAnswer({NEXT_ANSWER!r})")],
     MCP_QUESTION: [repl(f"FinalAnswer(echo.echo({MCP_REPLY!r}))")],
+    CAP_QUESTION: [repl(f"FinalAnswer({CAP_ANSWER!r})")],
 }
 # $0.002 a call at E12_MODEL's price, so each sub-agent's cost has a few digits.
 USAGE = {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500}
 KEY = secret("sk-e12-")
 STOPPED = threading.Event()  # E12 has pressed Stop and dr-acp has accepted it
 expect.set_options(timeout=60_000)
+
+
+def spend_cap_saved(cap: str) -> str:
+    """The Spend cap field's line after a save (TASK-65 §6.3)."""
+    return f"✓ Saved: new conversations stop at ${cap}."
 
 
 def holding_the_grandchild(respond: Callable[[list], str]) -> Callable[[list], str]:
@@ -218,10 +230,11 @@ def test_the_first_launch_installs_everything_and_opens_the_window(app, browser)
     expect(page.get_by_test_id("first-run-onboarding-screen")).to_be_visible()
     before, after = setup_lines(app, "before-start"), setup_lines(app, "after-ready")
     assert texts.home_local(str(app.data)) in before
-    assert texts.safety("5") in before
     assert any(line.startswith("installed in ") for line in before)
     assert texts.PROFILE_CREATED in after
     assert texts.app_ready("0.1.0", "installed") in after
+    unwanted = ("runs as you", "OPENAI_API_KEY")
+    assert [line for line in before + after if any(u in line for u in unwanted)] == []
     assert app.request("GET", BACKEND)["state"] == "ready"
     info = app.request("GET", "/server_info")
     assert info["app_backend_ingress_url"] == INGRESS
@@ -309,9 +322,9 @@ def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switc
 
 def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
     page = window(browser)
-    frame, notice = library_frame(page, app.session_key)
-    assert texts.safety("5") in " ".join((notice or "").split())
+    frame = library_frame(page, app.session_key)
     expect(frame.get_by_test_id(f"dr-node-{NAMESPACE}")).to_be_visible()
+    expect(frame.get_by_test_id("dr-notice")).to_have_count(0)
     cookies = browser.new_browser_cdp_session().send("Storage.getCookies")["cookies"]
     [session] = [c for c in cookies if c["path"] == "/app-backends/dr-library"]
     assert session["partitionKey"]["topLevelSite"] == "http://localhost"
@@ -480,17 +493,14 @@ def test_the_home_screen_offers_the_namespaces_and_each_ones_decompositions(
 
 
 def panel_tab(page: Page, tab: str) -> FrameLocator:
-    """D3's frame in C2's header panel, on tab; the safety notice acknowledged.
-    Clicking the selected tab would close the panel."""
+    """D3's frame in C2's header panel, on tab. Clicking the selected tab would close
+    the panel."""
     content = page.get_by_test_id("conversation-app-panel-content")
     if content.get_attribute("data-tab-id") != tab:
         page.get_by_test_id(f"conversation-app-panel-tab-{tab}").click()
     expect(content).to_have_attribute("data-tab-id", tab)
     frame = page.frame_locator('[data-testid="conversation-app-panel-content"] iframe')
-    shown = frame.get_by_test_id("dr-notice-ack").or_(frame.locator("main"))
-    expect(shown.first).to_be_visible()
-    if frame.get_by_test_id("dr-notice-ack").is_visible():
-        frame.get_by_test_id("dr-notice-ack").click()
+    expect(frame.locator("main")).to_be_visible()
     return frame
 
 
@@ -544,15 +554,30 @@ def test_the_next_conversation_in_the_namespace_offers_the_decomposition_and_use
     assert any(CREATED_TASK in str(m.get("content")) for m in first.messages)
 
 
-def test_the_tools_tab_shows_the_safety_notice_with_d4s_risk_line_under_it(
-    app, browser
-):
+def test_the_spend_cap_set_in_the_tools_tab_caps_the_next_conversation(app, browser):
+    """Q3: the field writes the profile's --spend-cap-usd, keeping --home, and the key
+    proxy of the next conversation holds it to that cap."""
     page = window(browser)
     open_panel(page)
     tools = panel_tab(page, "tools")
-    expect(tools.get_by_test_id("dr-notice")).to_contain_text(texts.safety("5"))
-    risk_under_notice = '[data-testid="dr-notice"] + [data-testid="dr-tools-risk"]'
-    expect(tools.locator(risk_under_notice)).to_be_visible()
+    expect(tools.get_by_test_id("dr-spend-cap-input")).to_have_value("5")
+    expect(tools.get_by_test_id("dr-notice")).to_have_count(0)
+    expect(tools.get_by_test_id("dr-tools-risk")).to_have_count(0)
+    tools.get_by_test_id("dr-spend-cap-input").fill(CAP)
+    tools.get_by_test_id("dr-spend-cap-save").click()
+    expect(tools.get_by_test_id("dr-spend-cap-status")).to_have_text(
+        spend_cap_saved(CAP)
+    )
+    profile = "/api/agent-profiles/deep_reasoner"
+    args = app.request("GET", profile)["profile"]["acp_args"]
+    assert args[:2] == ["--home", str(app.data)]
+    assert args[-2:] == ["--spend-cap-usd", CAP]
+    before = spend_caps(app)
+    start_conversation(page, CAP_QUESTION)
+    expect(answer(page, CAP_ANSWER)).to_be_visible()
+    eventually(lambda: spend_caps(app).keys() - before.keys())
+    caps = spend_caps(app)
+    assert [caps[s] for s in caps.keys() - before.keys()] == [float(CAP)]
 
 
 def test_an_mcp_server_granted_in_the_tools_tab_is_called_by_the_next_conversation(
