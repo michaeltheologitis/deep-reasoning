@@ -1,14 +1,20 @@
 """The README's install section names what the build and setup really use (D5 §2.3,
-§4.2.6, §4.8.3, §3 item 12): the app, its packages, the key, the commands, the paths."""
+§4.2.6, §4.8.3, §3 item 12): the app, its packages, the key, the commands, the paths;
+and its browser section, what the browser command does (TASK-48 §3.5)."""
 
 import os
 import re
 import shlex
 from pathlib import Path
 
+import pytest
+
 from desktop import build
 from dr_app import cli, layout, profile, texts
 from dr_app.runtime import deep_reasoner_pin, git_environment
+from dr_web.cache import WEB_DIRNAME
+from dr_web.cli import command_for
+from tests.desktop.app import evaluate_web
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -86,3 +92,79 @@ def test_dr_app_home_says_how_long_a_folder_may_be():
     below = len(os.fsencode(f"/{layout.DEEPEST_SOCKET}"))
     linux, mac = (layout.SOCKET_PATH_MAX[s] - below for s in ("Linux", "Darwin"))
     assert f"at most {linux} bytes on Linux and {mac} on macOS" in PLAIN
+
+
+# The browser version (TASK-48 §3.5).
+BROWSER = "## Run it in your browser"
+COMMAND_AT = re.compile(
+    re.escape(command_for("0" * 40)).replace("0" * 40, "(?P<commit>[0-9a-f]{40})")
+)
+
+
+def slug(heading: str) -> str:
+    """GitHub's anchor for a heading."""
+    words = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return words.replace(" ", "-")
+
+
+def test_the_browser_command_is_dr_webs_at_a_commit_or_the_checkout_form():
+    """One command per release, at its commit (W1); before the first, the form for a
+    tarball built from a checkout."""
+    commands = COMMAND_AT.findall(README)
+    if commands:
+        assert len(commands) == 1
+        return
+    checkout_form = command_for("0" * 40).replace("0" * 40, "<commit>")
+    tarball = build.web_tarball_name("<version>")
+    assert f"{checkout_form} --tarball dist/{tarball}" in section(BROWSER)
+    assert "uv run desktop/build.py web" in section(BROWSER)
+
+
+def test_the_browser_section_names_its_flags_ports_cache_and_uv():
+    words = " ".join(section(BROWSER).replace("`", "").replace("**", "").split())
+    for named in (
+        "--port",
+        "--no-open",
+        "18000",
+        "Ctrl+C",
+        "~/.deep-reasoning/web",
+        "ten minutes",
+        "curl -LsSf https://astral.sh/uv/install.sh | sh",
+        f"uv {evaluate_web('web.MINIMUM.uv')} or later",
+    ):
+        assert named in words, named
+
+
+def test_the_browser_sections_links_to_other_headings_resolve():
+    anchors = {slug(h) for h in re.findall(r"^#+ (.+)$", README, re.MULTILINE)}
+    linked = re.findall(r"\]\(#([^)]+)\)", section(BROWSER))
+    assert linked
+    assert [anchor for anchor in linked if anchor not in anchors] == []
+
+
+def test_the_data_table_names_the_browser_cache():
+    table = section("### Where your data lives")
+    assert f"`~/{layout.ROOT_DIRNAME}/{WEB_DIRNAME}/`" in table
+
+
+@pytest.mark.crossrepo
+def test_the_readmes_browser_command_is_the_newest_releases():
+    """W14: the tagged commit cannot name itself, so the README is updated after each
+    tag; until it is, the nightly check fails. None before the first tag."""
+    tags = build.git("tag", "-l", "v*", "--sort=-v:refname", cwd=ROOT).split()
+    commands = COMMAND_AT.findall(README)
+    if not tags:
+        assert commands == []
+        return
+    newest = build.git("rev-list", "-n", "1", tags[0], cwd=ROOT).strip()
+    assert commands == [newest], f"the README's command is not {tags[0]}'s ({newest})"
+
+
+def test_no_section_promises_an_offline_restart_past_ten_minutes():
+    """The agent-server's start asks PyPI again once uv's answers expire (TASK-48 F4),
+    for the app as for the browser, until TASK-66."""
+    window = "Within about ten minutes of the last start that had the network"
+    first_launch = " ".join(section("### The first launch").split())
+    browser = " ".join(section(BROWSER).split())
+    assert window in first_launch and window in browser
+    assert "needs no network" not in PLAIN
