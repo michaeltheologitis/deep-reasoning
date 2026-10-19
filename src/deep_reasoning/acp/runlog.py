@@ -30,6 +30,14 @@ class _Ev(BaseModel):
     t: float = 0.0
 
 
+class RecapNote(BaseModel):
+    """TASK-57: what a fresh run was given of its conversation, for its notice."""
+
+    turns: int  # the turns in the recap
+    left_out: int  # the oldest turns not in it, to fit RECAP_MAX_CHARS
+    shortened: bool  # a message or answer in it was cut at TEXT_CAP
+
+
 class RunStart(_Ev):
     kind: Literal["run.start"] = "run.start"
     run: str
@@ -41,6 +49,7 @@ class RunStart(_Ev):
     mode: Mode
     decomposition: str | None
     source: dict[str, Any]
+    recap: RecapNote | None = None  # None: no earlier turns, or logged before TASK-57
 
 
 class PromptStart(_Ev):
