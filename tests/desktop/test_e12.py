@@ -6,8 +6,8 @@ linux), installs the .deb and runs this module under xvfb-run. Its tests share o
 first launch and run in order: the launch onto the home screen, with no onboarding and
 no telemetry consent; no screen offering another agent or an agent profile; a question
 asked before the model key is saved, answered with where it goes; the first answered
-conversation, from deep_reasoner although another profile is active, and its key kept
-out; a keyless LLM profile titling no chat with an error; nothing recording consent;
+conversation, from deep_reasoner although another profile is active, the window title
+naming the product after its title and alone at home, and its key kept out; a keyless LLM profile titling no chat with an error; nothing recording consent;
 D3's frame through the bridge; then the final part: C1's nested sub-agents, their costs
 shown by default and a Stop of one, C2's namespace picker, slash menu and header panel
 with Create decomposition, the Spend cap set in D4's Tools tab capping the next
@@ -41,6 +41,7 @@ from deep_reasoning.acp import texts as acp_texts
 from deep_reasoning.acp.catalog import slug
 from deep_reasoning.acp.runlog import Home, McpStatus, PromptStart, RunLog, RunStart
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
+from desktop import build
 from dr_app import texts
 from tests.acp.scenarios import repl, scripted, task_and_turn
 from tests.desktop.app import (
@@ -422,6 +423,19 @@ def test_every_conversation_starts_from_deep_reasoner_whatever_profile_is_active
     assert launched["launched_agent_profile"]["agent_profile_id"] == (
         locked_profile_id(app)
     )
+
+
+def test_the_window_title_names_deep_reasoning_at_home_and_after_a_conversations_title(
+    browser,
+):
+    """Step 5's conversation is still open."""
+    product = build.load_pins(build.PINS).app.product_name
+    page = window(browser)
+    expect(page).to_have_title(
+        re.compile(rf"{re.escape(QUESTION)} \| {re.escape(product)}$")
+    )
+    page.goto(CANVAS_URL)
+    expect(page).to_have_title(product)
 
 
 def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(

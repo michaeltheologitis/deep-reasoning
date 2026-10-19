@@ -35,7 +35,7 @@ PINS = build.Pins(
     ),
 )
 # The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
-# and the agent lock that TASK-65's fork declares.
+# and the settings TASK-65's fork declares: the agent lock and the app's title.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -48,6 +48,7 @@ DEFAULTS = {
         "posthogHost": "https://us.i.posthog.com",
     },
     "agent": {"lockedProfile": None},
+    "branding": {"appTitle": None},
 }
 GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -188,6 +189,7 @@ def change_defaults(canvas: Path, change) -> None:
         ("paths", "stateDir", "~/.elsewhere/agent-canvas"),
         ("setup", "command", ["sh", "-c", "true"]),
         ("agent", "lockedProfile", "someone_elses_agent"),
+        ("branding", "appTitle", "Someone Else's Canvas"),
     ],
 )
 def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, value):
@@ -197,17 +199,16 @@ def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, val
     ]
 
 
-@pytest.mark.parametrize(
-    "unlockable",
-    [lambda d: d.pop("agent"), lambda d: d["agent"].pop("lockedProfile")],
-    ids=["no-agent-block", "no-lockedProfile-key"],
-)
-def test_a_canvas_fork_that_cannot_lock_the_agent_is_refused(canvas, repo, unlockable):
-    change_defaults(canvas, unlockable)
+@pytest.mark.parametrize("key", ["agent.lockedProfile", "branding.appTitle"])
+def test_a_canvas_fork_that_lacks_a_setting_the_build_writes_is_refused(
+    canvas, repo, key
+):
+    block, name = key.split(".")
+    change_defaults(canvas, lambda defaults: defaults[block].pop(name))
     assert problems(canvas, repo) == [
         (
-            "✗ Canvas fork dr-1's config/defaults.json has no agent.lockedProfile, so "
-            "it cannot lock the app to Deep Reasoning: pin dr-4 or later."
+            f"✗ Canvas fork dr-1's config/defaults.json has no {key}, so this build "
+            "cannot set it: pin dr-4 or later."
         )
     ]
 
@@ -226,17 +227,75 @@ def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
     assert problems(canvas, repo) == [build.head_unpushed(head)]
 
 
-def test_defaults_gain_only_the_builds_five_keys():
+def changed(before: dict, after: dict, prefix: str = "") -> dict:
+    """Each dotted key whose value after differs from before's, with its new value."""
+    found = {}
+    for key, value in after.items():
+        old = before.get(key) if isinstance(before, dict) else None
+        if isinstance(value, dict) and isinstance(old, dict):
+            found |= changed(old, value, f"{prefix}{key}.")
+        elif value != old:
+            found[f"{prefix}{key}"] = value
+    return found
+
+
+def dotted(defaults: dict, key: str):
+    block, name = key.split(".")
+    return defaults[block][name]
+
+
+def test_defaults_gain_only_the_keys_the_build_writes():
     before = copy.deepcopy(DEFAULTS)
     command = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
-    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=command)
+    patched = build.patch_defaults(
+        DEFAULTS, state_dir=build.STATE_DIR, command=command, app_title="A Product"
+    )
     assert DEFAULTS == before
-    expected = copy.deepcopy(DEFAULTS)
-    expected["paths"]["stateDir"] = "~/.deep-reasoning/canvas/agent-canvas"
-    expected["setup"] = {"command": command, "phases": ["before-start", "after-ready"]}
-    expected["telemetry"]["posthogApiKey"] = ""
-    expected["agent"]["lockedProfile"] = "deep_reasoner"
-    assert patched == expected
+    written = {
+        "paths.stateDir": "~/.deep-reasoning/canvas/agent-canvas",
+        "setup.command": command,
+        "setup.phases": ["before-start", "after-ready"],
+        "telemetry.posthogApiKey": "",
+        "agent.lockedProfile": "deep_reasoner",
+        "branding.appTitle": "A Product",
+    }
+    assert set(written) == {
+        *build.FORK_NULL_KEYS,
+        "setup.phases",
+        "telemetry.posthogApiKey",
+    }
+    assert {key: dotted(patched, key) for key in written} == written
+    assert set(changed(DEFAULTS, patched)) <= set(written)
+
+
+def written_defaults(pins, *, canvas, repo, work, monkeypatch) -> dict:
+    """The defaults.json build() writes into the Canvas checkout before it packages: its
+    checkout and checks stand on canvas, and it stops at its first npm."""
+
+    class Packaging(Exception):
+        pass
+
+    def npm(argv, **_):
+        raise Packaging(argv)
+
+    monkeypatch.setattr(build, "check_checkouts", lambda *_, **__: (canvas, []))
+    monkeypatch.setattr(build, "wrong_machine", lambda *_: None)
+    monkeypatch.setattr(build, "run", npm)
+    with pytest.raises(Packaging):
+        build.build("linux", pins=pins, repo=repo, work=work)
+    return json.loads((canvas / "config" / "defaults.json").read_text())
+
+
+def test_the_title_the_build_writes_is_the_product_name(
+    canvas, repo, tmp_path, monkeypatch
+):
+    named = dataclasses.replace(
+        PINS, app=dataclasses.replace(PINS.app, product_name="A Product")
+    )
+    written = written_defaults(
+        named, canvas=canvas, repo=repo, work=tmp_path, monkeypatch=monkeypatch
+    )
+    assert written["branding"]["appTitle"] == "A Product"
 
 
 def test_the_locked_profile_is_the_one_setup_creates():
@@ -244,7 +303,9 @@ def test_the_locked_profile_is_the_one_setup_creates():
 
 
 def test_telemetry_is_off_in_the_built_defaults():
-    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=[])
+    patched = build.patch_defaults(
+        DEFAULTS, state_dir=build.STATE_DIR, command=[], app_title="Deep Reasoning"
+    )
     assert patched["telemetry"] == {
         "posthogApiKey": "",
         "posthogHost": "https://us.i.posthog.com",
@@ -416,7 +477,9 @@ def test_a_replaced_sdk_commit_skips_only_its_own_tag_and_branch_checks(canvas, 
 def test_a_replaced_canvas_commit_must_still_be_able_to_lock(canvas, repo):
     pins = build.with_commits(PINS, canvas=NEW_CANVAS)
     change_defaults(canvas, lambda defaults: defaults.pop("agent"))
-    assert problems(canvas, repo, pins) == [build.fork_lacks_lock("eeeeeee")]
+    assert problems(canvas, repo, pins) == [
+        build.fork_lacks_setting("eeeeeee", "agent.lockedProfile")
+    ]
 
 
 def test_the_launcher_installs_the_replaced_sdk_commit(tmp_path):
