@@ -43,6 +43,8 @@ const MOVABLE = Object.freeze([
   ["automation", "OH_CANVAS_SAFE_AUTOMATION_PORT"],
 ]);
 const SETUP_EXPLAINED = Object.freeze({ lowest: 10, highest: 19 }); // dr-app's own exit codes
+// Where the launcher's message for a setup it could not spawn names the cause, after the whole command.
+const SPAWN_CAUSE = /could not be started \((.*)\) (?:before|after) the [^(]*$/s;
 const POLL_MS = 500;
 
 /** Every sentence the entry prints, verbatim from TASK-48 §5.2. */
@@ -78,6 +80,7 @@ export const texts = Object.freeze({
     "✗ Setup was still running after 15 minutes, so it was stopped. Run the same command again: it goes on from " +
     "what it already downloaded.",
   setup_killed: (signal) => `✗ Setup was stopped by ${signal} before Deep Reasoning started.`,
+  setup_not_started: (program, cause) => `✗ Setup could not be started: ${program} did not run (${cause}).`,
   NOT_READY:
     "✗ The agent-server did not answer within 10 minutes, so everything was stopped. A first start downloads " +
     "Python and its packages: check that this computer is online, then run the same command again.",
@@ -213,7 +216,8 @@ export async function choosePorts({ agentServer, ingress, frontend, automation }
 }
 
 /** {line, code} for a rejection of main(): a SetupCommandError by its phase, reason and exitCode (setup's own
- *  10–19 pass through); anything else by agentServerHeldNow, then its first line. */
+ *  10–19 pass through), or for one that could not be spawned by its program and cause; anything else by
+ *  agentServerHeldNow, then its first line. */
 export function failure(error, { agentServerHeldNow }) {
   if (error?.name === "SetupCommandError") {
     const { phase, reason, exitCode, signal } = error;
@@ -221,6 +225,10 @@ export function failure(error, { agentServerHeldNow }) {
     const code = explained ? exitCode : EXIT.start;
     if (reason === "timeout") return { line: texts.SETUP_TIMED_OUT, code };
     if (reason === "signal") return { line: texts.setup_killed(signal), code };
+    if (reason === "spawn") {
+      const cause = SPAWN_CAUSE.exec(String(error.message))?.[1] ?? "no cause given";
+      return { line: texts.setup_not_started(error.command?.[0] ?? "the setup command", cause), code };
+    }
     if (reason === "exit") {
       const stopped = phase === "after-ready" ? texts.setup_stopped_after : texts.setup_stopped_before;
       return { line: stopped(exitCode), code };

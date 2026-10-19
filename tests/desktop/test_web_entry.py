@@ -310,6 +310,34 @@ def test_a_failed_setup_ends_in_one_line(tree, details, code, line):
     assert not [line for line in lines if "bootstrap" in line]
 
 
+# The launcher's message for a setup command that could not be spawned, as dr-3 forms it
+# (setupFailureMessage): the whole command, its script's lines included, then the cause.
+UNSPAWNABLE = (
+    "Setup command `sh -c # The setup command (C3 §4.2): explain the two failures\n"
+    'set -u\nexit "$status"\n dr-app-bootstrap git+https://example.invalid/x` could not '
+    "be started (spawn sh ENOENT) before the stack started."
+)
+
+
+def test_a_setup_that_cannot_be_started_names_why_in_one_line(tree):
+    details = {
+        "phase": "before-start",
+        "reason": "spawn",
+        "exitCode": None,
+        "signal": None,
+        "command": ["sh", "-c", "# The setup command (C3 §4.2)"],
+    }
+    tree.does(
+        does="throw", name="SetupCommandError", message=UNSPAWNABLE, details=details
+    )
+    exited, lines = tree.run("--port", str(tree.ingress), "--no-open")
+    assert (exited, lines[-1]) == (
+        24,
+        web_text("setup_not_started", "sh", "spawn sh ENOENT"),
+    )
+    assert not [line for line in lines if "setup command" in line.lower()]
+
+
 @pytest.mark.parametrize(
     ("does", "code", "line"),
     [
@@ -402,6 +430,9 @@ def test_versions_compare_by_their_three_numbers(found, minimum, at_least):
 
 
 def test_the_entrys_sentences_are_the_designs_verbatim():
+    assert web_text("setup_not_started", "sh", "spawn sh ENOENT") == (
+        "✗ Setup could not be started: sh did not run (spawn sh ENOENT)."
+    )
     assert web_text("ready_line", "1.0.0", "22.12.0", "0.8.17", "2.43.0") == (
         "Deep Reasoning 1.0.0 · Node 22.12.0 ✓ · uv 0.8.17 ✓ · git 2.43.0 ✓"
     )
