@@ -13,14 +13,13 @@ import secrets
 import shutil
 import signal
 import socket
-import struct
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, NoReturn
 
@@ -66,8 +65,12 @@ NETWORK_CUT: Final = [
     'ip link set lo up && exec "$@"',
     "offline",
 ]
-# Where uv keeps a cached index answer's fetch time: a u64 of Unix seconds near its end.
-ANSWER_TAIL_BYTES = 512
+# uv's own setting for how long PyPI's index answers stay fresh, here a second.
+EXPIRING_INDEX_ANSWERS: Final = """[[index]]
+url = "https://pypi.org/simple"
+default = true
+cache-control = { api = "max-age=1" }
+"""
 LOG_TAIL_LINES = 40  # of the app's log, in a failed wait's message
 # An empty helper resets git's list of credential helpers, the system's included.
 NO_CREDENTIAL_HELPER = "\n[credential]\n\thelper =\n"
@@ -138,7 +141,6 @@ class LaunchedApp:
     debug_port: int
     # A line it matches ends a wait at once: the launch failed.
     failed: re.Pattern[str] = re.compile(re.escape(STARTUP_FAILED))
-    started_at: float = field(default_factory=time.time)  # made right after the Popen
 
     @property
     def data(self) -> Path:
@@ -337,31 +339,14 @@ def snapshot(data: Path) -> dict[str, str]:
     return kept
 
 
-def age_uv_index_answers(cache: Path, since: float, seconds: int) -> int:
-    """Move every index answer under cache/simple-v* back by seconds, as if uv had
-    fetched it then: each u64 in an answer's last 512 bytes between since and now. The
-    number aged; AssertionError naming the answers in which it found no such time, since
-    then this uv keeps them otherwise and nothing was aged."""
-    answers = sorted(cache.glob("simple-v*/**/*.rkyv"))
-    assert answers, f"no index answers under {cache}/simple-v*"
-    now = time.time()
-    unaged = []
-    for answer in answers:
-        data = bytearray(answer.read_bytes())
-        offset, aged = max(0, len(data) - ANSWER_TAIL_BYTES), False
-        while offset + 8 <= len(data):
-            (value,) = struct.unpack_from("<Q", data, offset)
-            if since <= value <= now:
-                struct.pack_into("<Q", data, offset, value - seconds)
-                offset, aged = offset + 8, True
-            else:
-                offset += 1
-        if aged:
-            answer.write_bytes(data)
-        else:
-            unaged.append(str(answer))
-    assert not unaged, f"no fetch time since {since:.0f} in {unaged}"
-    return len(answers)
+def expire_uv_index_answers_quickly(home: Path) -> None:
+    """uv under home keeps each index answer fresh for a second, as if every later run
+    came long after the fetch: home's ~/.config/uv/uv.toml says so. uv stores the setting
+    with each answer as it fetches it, so write this before uv's first fetch under home;
+    answers fetched earlier keep their ten minutes, removing it later changes none."""
+    config = home / ".config" / "uv" / "uv.toml"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(EXPIRING_INDEX_ANSWERS)
 
 
 def mark_onboarded(context: BrowserContext) -> None:

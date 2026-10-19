@@ -5,9 +5,10 @@ Run it after uv run desktop/build.py web, as uv run pytest -m web
 tests/desktop/test_e13.py; without the tarball it skips. Its tests share one first start
 and run in order: the setup it ran; the stack's processes, environment and sockets; a
 conversation; the Library panel through the bridge in Chromium, Firefox and WebKit; a
-second start refused; Ctrl+C; then two restarts with the network cut. The terminal it
-starts from holds junk that a user's might: the command must keep all of it from the
-stack. No test calls a real model.
+second start refused; Ctrl+C; then a restart with the network cut. Last, from a second
+first start whose uv index answers expire a second after each fetch, the same restart.
+The terminal it starts from holds junk that a user's might: the command must keep all of
+it from the stack. No test calls a real model.
 """
 
 import json
@@ -18,6 +19,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,7 +39,6 @@ from tests.desktop.app import (
     LIBRARY_APP_VERSION,
     NETWORK_CUT,
     LaunchedApp,
-    age_uv_index_answers,
     answer,
     cmdline,
     descendants,
@@ -45,6 +46,7 @@ from tests.desktop.app import (
     eventually,
     example,
     executable,
+    expire_uv_index_answers_quickly,
     fresh_home,
     interrupt,
     launch_web,
@@ -150,11 +152,14 @@ def fake() -> Iterator[FakeOpenAI]:
         yield model
 
 
-@pytest.fixture(scope="module")
-def first(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstStart]:
-    """The first start, from a fresh HOME: a cold uv cache, nothing installed."""
+@contextmanager
+def started_fresh(logs: Path, *, expiring: bool = False) -> Iterator[FirstStart]:
+    """The command's first start from a fresh HOME, running, from a terminal holding JUNK
+    and a system Node that fails; stopped on the way out. When expiring, uv's index
+    answers under that HOME stay fresh for a second only."""
     with fresh_home() as home:
-        logs = tmp_path_factory.mktemp("e13")
+        if expiring:
+            expire_uv_index_answers_quickly(home)
         env = user_environment(home) | JUNK
         env["PATH"] = f"{system_node(logs / 'system-node')}{os.pathsep}{env['PATH']}"
         started = time.monotonic()
@@ -168,6 +173,24 @@ def first(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstStart]:
                 interrupt(web)
                 web.stop()
             print(f"the command's log: {web.log}")
+
+
+@pytest.fixture(scope="module")
+def first(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstStart]:
+    """The first start, from a fresh HOME: a cold uv cache, nothing installed."""
+    with started_fresh(tmp_path_factory.mktemp("e13")) as started:
+        yield started
+
+
+@pytest.fixture(scope="module")
+def expiring(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstStart]:
+    """Another first start, from a HOME whose uv index answers stay fresh for a second,
+    as if every later start came past their ten minutes; stopped once it runs."""
+    logs = tmp_path_factory.mktemp("e13-expiring")
+    with started_fresh(logs, expiring=True) as started:
+        interrupt(started.web)
+        assert started.web.process.wait(timeout=STOPPED_S) == 0
+        yield started
 
 
 @pytest.fixture(scope="module")
@@ -360,7 +383,7 @@ def test_ctrl_c_stops_everything_within_10_s(first):
 
 
 def start_offline(
-    first: FirstStart, log: Path
+    start: FirstStart, log: Path
 ) -> tuple[subprocess.CompletedProcess, str]:
     done = subprocess.run(
         [
@@ -370,10 +393,10 @@ def start_offline(
             "-c",
             OFFLINE_START,
             str(log),
-            *first.command,
+            *start.command,
         ],
-        env=first.env,
-        cwd=first.web.home,
+        env=start.env,
+        cwd=start.web.home,
         capture_output=True,
         text=True,
         timeout=SERVED_S * 4,
@@ -402,12 +425,12 @@ def test_a_restart_offline_installs_nothing_and_serves_the_page_within_30_s(
     assert done.returncode == 0, log[-4000:]
 
 
-def uvx_offline(first: FirstStart, *args: str) -> subprocess.CompletedProcess:
-    """uvx inside the cut network, from the HOME's uv cache."""
+def uvx_offline(start: FirstStart, *args: str) -> subprocess.CompletedProcess:
+    """uvx inside the cut network, from the start's HOME and its uv cache."""
     return subprocess.run(
         [*NETWORK_CUT, "uvx", *args],
-        env=first.env,
-        cwd=first.web.home,
+        env=start.env,
+        cwd=start.web.home,
         capture_output=True,
         text=True,
         timeout=SERVED_S * 4,
@@ -415,14 +438,13 @@ def uvx_offline(first: FirstStart, *args: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_aged_index_answers_send_uv_to_the_network_and_offline_uv_still_runs(first):
-    """The negative control for claim 9: once the first start's index answers are aged
-    an hour, as uv would find them past their ten minutes, uvx of the automation backend
-    it installed needs the network, and --offline still runs it from the cache."""
-    aged = age_uv_index_answers(
-        first.web.home / ".cache" / "uv", first.web.started_at - 60, 3600
-    )
-    [tree] = (first.web.data / cache.WEB_DIRNAME).glob("tree-*")
+def test_with_index_answers_that_expire_uv_goes_to_the_network_and_offline_uv_still_runs(
+    expiring,
+):
+    """The negative control for claim 9: where uv's index answers expire a second after
+    each fetch, uvx of the automation backend the first start there installed needs the
+    network, and --offline still runs it from the cache."""
+    [tree] = (expiring.web.data / cache.WEB_DIRNAME).glob("tree-*")
     defaults = json.loads((tree / "package" / "config" / "defaults.json").read_text())
     package, version = (
         defaults["packages"]["automation"],
@@ -430,10 +452,9 @@ def test_aged_index_answers_send_uv_to_the_network_and_offline_uv_still_runs(fir
     )
     # The launcher's own uvx of it (dev-with-automation.mjs, buildAutomationCommand).
     probe = ("--from", f"{package}=={version}", "uvicorn", "--version")
-    assert aged > 0
-    online_first = uvx_offline(first, *probe)
+    online_first = uvx_offline(expiring, *probe)
     assert online_first.returncode != 0, online_first.stdout
-    offline = uvx_offline(first, "--offline", *probe)
+    offline = uvx_offline(expiring, "--offline", *probe)
     assert offline.returncode == 0, offline.stderr
 
 
@@ -441,9 +462,9 @@ def test_aged_index_answers_send_uv_to_the_network_and_offline_uv_still_runs(fir
     strict=True,
     reason="the launcher's uvx asks PyPI once its answers expire: TASK-66",
 )
-def test_an_offline_restart_once_uvs_index_answers_have_expired(first, tmp_path):
-    """The answers aged by the control above, then the same restart as claim 8's."""
-    done, log = start_offline(first, tmp_path / "expired.log")
+def test_an_offline_restart_once_uvs_index_answers_have_expired(expiring, tmp_path):
+    """Claim 8's restart, from the HOME whose index answers expire."""
+    done, log = start_offline(expiring, tmp_path / "expired.log")
     took = served_within(done)
     assert took is not None and took < SERVED_S, (done.stdout, done.stderr, log[-4000:])
     assert done.returncode == 0, log[-4000:]
