@@ -2,20 +2,21 @@
 (D5 §7.5, TASK-65 §7.4).
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
-linux), installs the .deb and runs this module under xvfb-run. Its tests share one first
-launch and run in order: the launch onto the home screen, with no onboarding, and the
-automation backend answering; the page refusing a host name that is not this machine; no
-telemetry consent; no screen offering another agent or an agent profile; a question
-asked before the model key is saved, answered with where it goes; the first answered
-conversation, from deep_reasoner although another profile is active, its key kept out,
-and the window title naming the product after its title and alone at home; a keyless LLM
-profile titling no chat with an error; nothing recording consent; D3's frame through the
-bridge; then the final part: C1's nested sub-agents, their costs shown by default and a
-Stop of one, C2's namespace picker, slash menu and header panel with Create
-decomposition, the Spend cap set in D4's Tools tab capping the next conversation, an MCP
-server granted there, and the panel past its first session; then the quit, an offline
-relaunch of setup, and, uv's index answers aged an hour, an offline relaunch of the app.
-No test calls a real model.
+linux), installs the .deb and runs this module under xvfb-run. Its tests run in order
+and share one first launch, all but the last two: the launch onto the home screen, with
+no onboarding, and the automation backend answering; the page refusing a host name that
+is not this machine; no telemetry consent; no screen offering another agent or an agent
+profile; a question asked before the model key is saved, answered with where it goes;
+the first answered conversation, from deep_reasoner although another profile is active,
+its key kept out, and the window title naming the product after its title and alone at
+home; a keyless LLM profile titling no chat with an error; nothing recording consent;
+D3's frame through the bridge; then the final part: C1's nested sub-agents, their costs
+shown by default and a Stop of one, C2's namespace picker, slash menu and header panel
+with Create decomposition, the Spend cap set in D4's Tools tab capping the next
+conversation, an MCP server granted there, and the panel past its first session; then
+the quit and an offline relaunch of setup. Last, a second first launch, from a HOME
+whose uv index answers expire a second after their fetch, and its offline relaunch. No
+test calls a real model.
 """
 
 import json
@@ -26,6 +27,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -55,7 +57,7 @@ from tests.desktop.app import (
     QUIT_S,
     STARTUP_FAILED,
     LaunchedApp,
-    age_uv_index_answers,
+    expire_uv_index_answers_quickly,
     fresh_home,
     get_with_host,
     launch,
@@ -115,6 +117,7 @@ APP_UVX = APP.parent / "resources" / "bin" / "uvx"
 AUTOMATION_S = 120.0
 RELAUNCH_S = 180.0
 STARTING_OFFLINE = "Starting from uv's cache, offline"  # the fork's uvx-start.mjs
+UVX_STARTS = "uvx-starts"  # the same file's records, one per service started online
 AUTOMATION_STARTED = "Application startup complete"  # uvicorn's, in its JSON log line
 ENVIRONMENT_CELL = repl(
     "import os",
@@ -210,17 +213,43 @@ def fake() -> Iterator[FakeOpenAI]:
         yield model
 
 
-@pytest.fixture(scope="module")
-def app(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
-    """The first launch, with a fresh HOME: a cold uv cache, nothing installed."""
+@contextmanager
+def first_launch(logs: Path, *, expiring: bool = False) -> Iterator[LaunchedApp]:
+    """A first launch, with a fresh HOME: a cold uv cache, nothing installed; stopped on
+    the way out. When expiring, uv's index answers under that HOME stay fresh for a
+    second only."""
     with fresh_home() as home:
-        log = tmp_path_factory.mktemp("e12") / "app.log"
+        if expiring:
+            expire_uv_index_answers_quickly(home)
+        log = logs / "app.log"
         launched = launch(home, log)
         try:
             yield launched
         finally:
             launched.stop()
             print(f"the app's log: {log}")
+
+
+@pytest.fixture(scope="module")
+def app(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
+    """The first launch, which every step but the last two shares."""
+    with first_launch(tmp_path_factory.mktemp("e12")) as launched:
+        yield launched
+
+
+@pytest.fixture(scope="module")
+def expiring(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
+    """Another first launch, from a HOME whose uv index answers stay fresh for a second,
+    as if every later launch came past their ten minutes; quit once setup is done and
+    both services have recorded their online start."""
+    logs = tmp_path_factory.mktemp("e12-expiring")
+    with first_launch(logs, expiring=True) as launched:
+        launched.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
+        records = launched.data / "canvas" / "agent-canvas" / UVX_STARTS
+        eventually(lambda: len(list(records.glob("*"))) >= 2, AUTOMATION_S)
+        launched.stop()
+        eventually(lambda: processes_mentioning(str(launched.home)) == [], QUIT_S)
+        yield launched
 
 
 def window(browser: Browser) -> Page:
@@ -929,12 +958,12 @@ def wait_for_a_line(app: LaunchedApp, test: Callable[[str], bool], what: str) ->
         time.sleep(1.0)
 
 
-def test_the_app_relaunches_offline_an_hour_after_uv_last_asked_pypi(app, tmp_path):
-    """uv's index answers aged an hour, as uv finds them past their ten minutes (TASK-66
-    §5.4). The negative control: the automation backend's uvx then needs the network,
-    and runs from the cache only offline; the app's relaunch inside the cut starts both
-    services offline and installs nothing."""
-    aged = age_uv_index_answers(app.home / ".cache" / "uv", app.started_at - 60, 3600)
+def test_with_index_answers_that_expire_uv_goes_to_the_network_and_offline_uv_still_runs(
+    expiring,
+):
+    """The negative control for the next step: where uv's index answers expire a second
+    after each fetch, uvx of the automation backend the first launch there installed
+    needs the network, and --offline still runs it from the cache."""
     defaults = installed_defaults()
     automation = (
         *("--exclude-newer", defaults["uv"]["excludeNewer"]),
@@ -942,12 +971,20 @@ def test_the_app_relaunches_offline_an_hour_after_uv_last_asked_pypi(app, tmp_pa
         f"{defaults['packages']['automation']}=={defaults['versions']['automation']}",
         *("python", "-c", "pass"),
     )
-    online_first = uvx_in_the_cut(app, *automation)
-    assert online_first.returncode != 0, f"uv ran with {aged} answers aged"
-    offline = uvx_in_the_cut(app, "--offline", *automation)
+    online_first = uvx_in_the_cut(expiring, *automation)
+    assert online_first.returncode != 0, "uv ran on expired answers without PyPI"
+    offline = uvx_in_the_cut(expiring, "--offline", *automation)
     assert offline.returncode == 0, offline.stderr
+
+
+def test_the_app_relaunches_offline_once_uvs_index_answers_have_expired(
+    expiring, tmp_path
+):
+    """From the HOME whose index answers expire, as after uv's ten minutes (TASK-66
+    §5.4): the relaunch inside the cut starts both services offline and installs
+    nothing."""
     started = time.monotonic()
-    relaunched = launch(app.home, tmp_path / "relaunch.log", network=False)
+    relaunched = launch(expiring.home, tmp_path / "relaunch.log", network=False)
     try:
         relaunched.wait_for_line("[agent-server] Ready at", RELAUNCH_S)
         ready = time.monotonic() - started
@@ -964,9 +1001,9 @@ def test_the_app_relaunches_offline_an_hour_after_uv_last_asked_pypi(app, tmp_pa
         relaunched.process.send_signal(signal.SIGTERM)
         relaunched.process.wait(timeout=QUIT_S)
         deadline = time.monotonic() + QUIT_S
-        while processes_mentioning(str(app.home)) and time.monotonic() < deadline:
+        while processes_mentioning(str(expiring.home)) and time.monotonic() < deadline:
             time.sleep(0.2)
-        assert processes_mentioning(str(app.home)) == []
+        assert processes_mentioning(str(expiring.home)) == []
         print(f"offline relaunch: the agent-server ready in {ready:.1f} s")
     finally:
         relaunched.stop()
