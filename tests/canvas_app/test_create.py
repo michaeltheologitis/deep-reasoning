@@ -226,7 +226,7 @@ def test_validation_errors_show_on_the_card_they_name(open_ui, library_server):
     expect(page.get_by_test_id("dr-card-0-errors")).to_have_count(0)
     page.get_by_test_id("dr-save").click()
     expect(page.get_by_test_id("dr-errors")).to_contain_text(
-        "'bad role' is not a valid deep_reasoner Decomposition"
+        "'bad role' is not a valid Deep Reasoning Decomposition"
     )
     assert [d.name for d in library_server.library().decompositions()] == [
         "catalog lookup",

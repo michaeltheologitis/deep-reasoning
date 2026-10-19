@@ -196,7 +196,7 @@ def test_errors_carry_code_message_and_details(client):
         422,
         {
             "error": "invalid",
-            "message": "'x' is not a valid deep_reasoner Decomposition:\n"
+            "message": "'x' is not a valid Deep Reasoning Decomposition:\n"
             "  use_when: Extra inputs are not permitted\n"
             "Use-when text is stored beside the YAML: pass use_when=... instead.",
             "errors": [{"loc": "use_when", "msg": "Extra inputs are not permitted"}],

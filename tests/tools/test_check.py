@@ -248,7 +248,7 @@ def test_a_name_d2_refuses_is_invalid_in_d2s_words(no_process):
     report = check_tool("word count", "factory: make", source("word_count"))
     assert report.outcome == "invalid"
     assert report.message.startswith(
-        "'word count' is not a valid deep_reasoner tool:\n  name: 'word count' is not a tool name"
+        "'word count' is not a valid Deep Reasoning tool:\n  name: 'word count' is not a tool name"
     )
 
 

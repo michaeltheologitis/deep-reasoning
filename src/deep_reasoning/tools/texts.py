@@ -10,7 +10,7 @@ BUILT = "builds"
 
 def reserved_name(name: str) -> str:
     return (
-        f"'{name}' is one of deep_reasoner's own names in the REPL (subagent, run_all, "
+        f"'{name}' is one of Deep Reasoning's own names in the REPL (subagent, run_all, "
         "FinalAnswer, Var, Func, task); a tool by that name would hide it. Choose another "
         "name."
     )
@@ -54,7 +54,7 @@ def build_timeout(name: str, seconds: float) -> str:
 
 def ready_timeout(seconds: float) -> str:
     return (
-        f"Check could not start deep_reasoner within {seconds:g} s, so it did not build "
+        f"Check could not start Deep Reasoning within {seconds:g} s, so it did not build "
         "the tool. Try again."
     )
 
@@ -70,7 +70,7 @@ def example_timeout(seconds: float) -> str:
 
 def builtin(factory: str) -> str:
     return (
-        f"'{factory}' is one of deep_reasoner's own factories. It is built when a "
+        f"'{factory}' is one of Deep Reasoning's own factories. It is built when a "
         "conversation starts, with your model and files, so Check does not build it here."
     )
 
