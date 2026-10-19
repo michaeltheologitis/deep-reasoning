@@ -20,6 +20,7 @@ class Start(BaseModel):
     mcp_servers: list[
         McpServerSpec
     ] = []  # D4: the forwarded servers the run's MCP blocks name
+    recap: str | None = None  # TASK-57: sent to the reasoner before its first drive
 
 
 class Prompt(BaseModel):

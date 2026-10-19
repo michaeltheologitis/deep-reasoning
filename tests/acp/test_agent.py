@@ -148,7 +148,8 @@ REPLAY_PLAN = {
 def test_load_replays_every_run_and_marks_a_killed_one_lost(tmp_path, home, work):
     """dr-acp killed mid-run, then session/load on a new one: the replayed tree equals the
     live one (a lost run gains its closing message), the response comes after the whole
-    replay, nothing about children follows it, and the next prompt starts fresh."""
+    replay, nothing about children follows it, and the next prompt starts fresh, given
+    every earlier turn."""
 
     async def body():
         async with FakeOpenAI(scripted(REPLAY_PLAN)) as model:
@@ -174,10 +175,12 @@ def test_load_replays_every_run_and_marks_a_killed_one_lost(tmp_path, home, work
                     cwd=str(work), session_id=root, mcp_servers=[]
                 )
                 replayed = list(second.printer.updates)
+                called = len(model.calls)
                 after = await second.ask(root, "What next?")
-        return first, second, root, replayed, after
+                given = model.calls[called].messages[1]["content"]
+        return first, second, root, replayed, after, given
 
-    first, second, _, replayed, after = run(body())
+    first, second, _, replayed, after, given = run(body())
     live = tree(first.printer.updates)
     again = tree(replayed)
     assert len(again.runs) == 2
@@ -208,8 +211,35 @@ def test_load_replays_every_run_and_marks_a_killed_one_lost(tmp_path, home, work
         for m in later
     )
     assert after.field_meta["deep_reasoner"]["outcome"] == "answered"
+    runs = run_ids(second.printer.updates)
+    [_, stopped_after, lost_after] = [second.run_log(r)[0].recap for r in runs]
+    assert stopped_after.model_dump() == {"turns": 2, "left_out": 0, "shortened": False}
+    assert lost_after.model_dump() == {"turns": 4, "left_out": 0, "shortened": False}
+    replayed_notices = [
+        u["content"]["text"]
+        for _, u in replayed
+        if u["sessionUpdate"] == "agent_message_chunk" and "_meta" not in u
+    ]
+    assert replayed_notices == [
+        texts.fresh_run_notice("stopped", stopped_after) + "\n\n"
+    ]
     _, notice = second.printer.updates[len(replayed)]
-    assert notice["content"]["text"] == texts.FRESH_AFTER_RESTART + "\n\n"
+    assert (
+        notice["content"]["text"] == texts.fresh_run_notice("lost", lost_after) + "\n\n"
+    )
+    [first_answer] = [
+        e.answer for e in second.run_log(runs[0]) if e.kind == "prompt.end"
+    ]
+    assert [
+        line.split(": ", 1)[1]
+        for line in given.splitlines()
+        if line.startswith("Answer ")
+    ] == [
+        first_answer,
+        "(none: the user stopped the run before it answered)",
+        "next",
+        "(none: the run was cut off before it answered)",
+    ]
 
 
 def _hung_cells(printer, root: str) -> int:
@@ -267,7 +297,9 @@ def test_close_ends_the_live_run_closed_and_load_then_starts_fresh(
 
     ended, notice = run(body())
     assert (ended.kind, ended.reason) == ("run.end", "closed")
-    assert notice["content"]["text"] == texts.FRESH_AFTER_CLOSE + "\n\n"
+    assert (
+        notice["content"]["text"] == f"{texts.FRESH_AFTER_CLOSE} {texts.RECAP_ALL}\n\n"
+    )
 
 
 def test_cancel_with_an_unknown_id_is_ignored_and_logged(tmp_path, home, work):

@@ -6,14 +6,12 @@ cell."""
 import secrets
 import sys
 import time
-from pathlib import Path
 
 import pytest
 
 from deep_reasoning.acp.runlog import CellEnd, Home, McpStatus, RunLog
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, library_path
-from dr_app.profile import PROFILE_NAME, desired_profile
 from tests.acp.scenarios import BASE_CONFIG, repl, scripted
 from tests.crossrepo.agent_server import agent_server, sdk_checkout
 from tests.library.conftest import write_config
@@ -58,18 +56,7 @@ def test_an_mcp_server_in_the_agent_servers_settings_reaches_a_cell_with_its_sec
                 "env": {"ECHO_TOKEN": token},
             },
         )
-        dr_acp = Path(sys.executable).parent / "dr-acp"
-        profile = desired_profile(None, dr_acp=dr_acp, home=home)
-        server.request("POST", f"/api/agent-profiles/{PROFILE_NAME}", profile)
-        saved = server.request("GET", f"/api/agent-profiles/{PROFILE_NAME}")["profile"]
-        conversation = server.request(
-            "POST",
-            "/api/conversations",
-            {
-                "agent_profile_id": saved["id"],
-                "workspace": {"kind": "LocalWorkspace", "working_dir": str(work)},
-            },
-        )["id"]
+        conversation = server.open_conversation(home, work)
         server.ask(conversation, QUESTION, time.monotonic() + TIMEOUT_S)
     [run_id] = [path.name for path in (home / "runs").iterdir()]
     events = list(RunLog.read(Home(home), run_id))

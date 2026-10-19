@@ -4,9 +4,17 @@ import asyncio
 import time
 
 from deep_reasoning.acp import texts
+from deep_reasoning.acp.recap import Turn, recap_of
+from deep_reasoning.acp.runlog import RecapNote
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from tests.acp.harness import dr_acp, run, run_ids
-from tests.acp.scenarios import BY_NAME, repl, scripted
+from tests.acp.scenarios import (
+    BY_NAME,
+    FIRST_QUESTION,
+    answering_from_the_recap,
+    repl,
+    scripted,
+)
 
 CHILDREN = [f"K{i}" for i in range(20)]
 PLAN = {
@@ -20,7 +28,9 @@ PLAN = {
     "Die.": [repl("import os", "os._exit(1)")],
     "Sleep.": [repl("import time", "time.sleep(2)"), repl("FinalAnswer('rested')")],
     "Again.": [repl("FinalAnswer('fresh')")],
+    "Which course is lightest?": [repl("FinalAnswer('STAT101')")],
 }
+ONE_TURN = RecapNote(turns=1, left_out=0, shortened=False)
 
 
 async def stop_root_when(client, root, text, ready):
@@ -70,7 +80,9 @@ def test_root_stop_in_a_busy_cell_answers_cancelled_within_two_seconds(
     assert closing["content"]["text"] == texts.ROOT_STOPPED
     assert closing["_meta"]["deep_reasoner"]["outcome"] == "stopped"
     assert usage["sessionUpdate"] == "usage_update"
-    assert notice["content"]["text"] == texts.FRESH_AFTER_STOP + "\n\n"
+    assert notice["content"]["text"] == (
+        texts.fresh_run_notice("stopped", ONE_TURN) + "\n\n"
+    )
 
 
 def test_root_stop_under_twenty_spinning_children_ends_each_within_two_seconds(
@@ -128,7 +140,9 @@ def test_a_worker_that_dies_mid_prompt_is_reported_crashed_and_the_next_prompt_i
         home / "runs" / crashed.field_meta["deep_reasoner"]["run"] / "worker.log"
     )
     assert closing["content"]["text"] == texts.crashed(1, str(worker_log))
-    assert notice["content"]["text"] == texts.FRESH_AFTER_ERROR + "\n\n"
+    assert notice["content"]["text"] == (
+        texts.fresh_run_notice("crashed", ONE_TURN) + "\n\n"
+    )
     assert fresh.field_meta["deep_reasoner"]["outcome"] == "answered"
 
 
@@ -148,3 +162,46 @@ def test_a_long_cell_keeps_the_root_sending_usage_on_the_heartbeat(
     start = kinds.index("tool_call")
     end = kinds.index("tool_call_update")
     assert kinds[start:end].count("usage_update") >= 2
+
+
+def spinning(printer) -> bool:
+    """The spinning cell has started; the earlier prompt's cells are tool calls too."""
+    return any(
+        u["sessionUpdate"] == "tool_call"
+        and u["rawInput"]["command"].endswith("while True: pass")
+        for _, u in printer.updates
+    )
+
+
+def test_after_a_root_stop_the_next_message_is_given_the_earlier_messages_and_answers(
+    tmp_path, home, work
+):
+    async def body():
+        async with FakeOpenAI(answering_from_the_recap(PLAN)) as model:
+            config = BY_NAME["linear"].write_config(tmp_path / "config", model.base_url)
+            async with dr_acp(config, home) as client:
+                root = await client.open_session(work)
+                await client.ask(root, "Which course is lightest?")
+                await stop_root_when(client, root, "Spin.", spinning)
+                seen, called = len(client.updates_on(root)), len(model.calls)
+                await client.ask(root, FIRST_QUESTION)
+                notice = client.updates_on(root)[seen]
+                _, fresh = run_ids(client.printer.updates)
+                return notice, client.run_log(fresh), model.calls[called].messages
+
+    notice, log, first_call = run(body())
+    [answer] = [e.answer for e in log if e.kind == "prompt.end"]
+    assert answer == "Which course is lightest?"
+    assert [m["role"] for m in first_call] == ["system", "user", "user"]
+    earlier = [
+        Turn(1, "root", "Which course is lightest?", "answered", "STAT101", None),
+        Turn(2, "root", "Spin.", "stopped", None, None),
+    ]
+    assert first_call[1]["content"] == recap_of(earlier, "root").text
+    assert first_call[2]["content"] == FIRST_QUESTION
+    [root_start] = [e for e in log if e.kind == "agent.start" and e.parent is None]
+    assert root_start.task == FIRST_QUESTION
+    given = RecapNote(turns=2, left_out=0, shortened=False)
+    assert (
+        notice["content"]["text"] == texts.fresh_run_notice("stopped", given) + "\n\n"
+    )
