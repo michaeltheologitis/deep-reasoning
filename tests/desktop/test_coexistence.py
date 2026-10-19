@@ -5,7 +5,6 @@ cross-repo.yml's desktop-e2e job runs this after E12, with the .deb it installed
 tarball built in the same run, so both carry the same setup command.
 """
 
-import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -35,13 +34,7 @@ pytestmark = [
     pytest.mark.skipif(not TARBALL.exists(), reason=f"no {TARBALL}: build.py web"),
 ]
 
-HEAD = subprocess.run(
-    ["git", "rev-parse", "HEAD"],
-    cwd=build.REPO,
-    capture_output=True,
-    text=True,
-    check=True,
-).stdout.strip()
+HEAD = build.git("rev-parse", "HEAD", cwd=build.REPO).strip()
 COMMAND = web_command(HEAD, TARBALL, "--no-open")
 RUNNING = "Deep Reasoning is running at "
 REFUSED_S = 10.0

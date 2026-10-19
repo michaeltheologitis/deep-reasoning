@@ -5,23 +5,16 @@ and its browser section, what the browser command does (TASK-48 §3.5)."""
 import os
 import re
 import shlex
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from desktop import build
-from desktop.build import web_tarball_name
 from dr_app import cli, layout, profile, texts
 from dr_app.runtime import deep_reasoner_pin, git_environment
 from dr_web.cache import WEB_DIRNAME
 from dr_web.cli import command_for
 from tests.desktop.app import evaluate_web
-
-
-def web_minimum(tool: str) -> str:
-    return evaluate_web(f"web.MINIMUM.{tool}")
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -122,7 +115,7 @@ def test_the_browser_command_is_dr_webs_at_a_commit_or_the_checkout_form():
         assert len(commands) == 1
         return
     checkout_form = command_for("0" * 40).replace("0" * 40, "<commit>")
-    tarball = web_tarball_name("<version>")
+    tarball = build.web_tarball_name("<version>")
     assert f"{checkout_form} --tarball dist/{tarball}" in section(BROWSER)
     assert "uv run desktop/build.py web" in section(BROWSER)
 
@@ -137,7 +130,7 @@ def test_the_browser_section_names_its_flags_ports_cache_and_uv():
         "~/.deep-reasoning/web",
         "ten minutes",
         "curl -LsSf https://astral.sh/uv/install.sh | sh",
-        f"uv {web_minimum('uv')} or later",
+        f"uv {evaluate_web('web.MINIMUM.uv')} or later",
     ):
         assert named in words, named
 
@@ -158,24 +151,12 @@ def test_the_data_table_names_the_browser_cache():
 def test_the_readmes_browser_command_is_the_newest_releases():
     """W14: the tagged commit cannot name itself, so the README is updated after each
     tag; until it is, the nightly check fails. None before the first tag."""
-    tags = subprocess.run(
-        ["git", "tag", "-l", "v*", "--sort=-v:refname"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
+    tags = build.git("tag", "-l", "v*", "--sort=-v:refname", cwd=ROOT).split()
     commands = COMMAND_AT.findall(README)
     if not tags:
         assert commands == []
         return
-    newest = subprocess.run(
-        ["git", "rev-list", "-n", "1", tags[0]],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    newest = build.git("rev-list", "-n", "1", tags[0], cwd=ROOT).strip()
     assert commands == [newest], f"the README's command is not {tags[0]}'s ({newest})"
 
 

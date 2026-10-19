@@ -40,13 +40,7 @@ TARBALL = (
 )
 COMMIT = (
     os.environ.get("DR_WEB_COMMIT")
-    or subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=build.REPO,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    or build.git("rev-parse", "HEAD", cwd=build.REPO).strip()
 )
 STOPPED_S = 10.0
 DOWNLOAD_S = 120.0

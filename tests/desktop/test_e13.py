@@ -71,13 +71,7 @@ pytestmark = [
     pytest.mark.skipif(not TARBALL.exists(), reason=f"no {TARBALL}: build.py web"),
 ]
 
-HEAD = subprocess.run(
-    ["git", "rev-parse", "HEAD"],
-    cwd=build.REPO,
-    capture_output=True,
-    text=True,
-    check=True,
-).stdout.strip()
+HEAD = build.git("rev-parse", "HEAD", cwd=build.REPO).strip()
 # What a user's terminal may hold, which the stack must never see.
 JUNK = {
     "PYTHONPATH": "/nonexistent/e13",
