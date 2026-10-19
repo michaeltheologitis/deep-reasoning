@@ -55,6 +55,7 @@ from tests.desktop.app import (
     NETWORK_CUT,
     QUIT_S,
     SESSION,
+    STARTING_OFFLINE,
     STARTUP_FAILED,
     LaunchedApp,
     answer,
@@ -74,6 +75,7 @@ from tests.desktop.app import (
     spend_caps,
     start_conversation,
     user_environment,
+    uvx_start_records,
     worker_environ,
 )
 from tests.desktop.e12.subagents import (
@@ -127,8 +129,6 @@ INSTALLED_DEFAULTS = APP.parent / "resources" / "app" / "config" / "defaults.jso
 APP_UVX = APP.parent / "resources" / "bin" / "uvx"
 AUTOMATION_S = 120.0
 RELAUNCH_S = 180.0
-STARTING_OFFLINE = "Starting from uv's cache, offline"  # the fork's uvx-start.mjs
-UVX_STARTS = "uvx-starts"  # the same file's records, one per service started online
 AUTOMATION_STARTED = "Application startup complete"  # uvicorn's, in its JSON log line
 ENVIRONMENT_CELL = repl(
     "import os",
@@ -256,8 +256,7 @@ def expiring(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
     logs = tmp_path_factory.mktemp("e12-expiring")
     with first_launch(logs, expiring=True) as launched:
         launched.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
-        records = launched.data / "canvas" / "agent-canvas" / UVX_STARTS
-        eventually(lambda: len(list(records.glob("*"))) >= 2, AUTOMATION_S)
+        eventually(lambda: len(uvx_start_records(launched)) >= 2, AUTOMATION_S)
         launched.stop()
         eventually(lambda: processes_mentioning(str(launched.home)) == [], QUIT_S)
         yield launched

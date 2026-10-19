@@ -46,6 +46,10 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # The packaged app stays open on its failure screen after this line (Canvas's
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
+# The Canvas fork's uvx-start.mjs (TASK-66): its line for a service started from uv's
+# cache, offline, and its records, one per service started online that then served.
+STARTING_OFFLINE: Final = "Starting from uv's cache, offline"
+UVX_STARTS: Final = "uvx-starts"
 # The browser command's own last line when it fails (the launcher echoes setup's script,
 # which holds the same mark mid-line).
 WEB_FAILED = re.compile(r"^✗ ")
@@ -547,6 +551,12 @@ def processes_mentioning(text: str) -> list[str]:
 
 def secret(prefix: str) -> str:
     return f"{prefix}{secrets.token_hex(16)}"
+
+
+def uvx_start_records(app: LaunchedApp) -> list[Path]:
+    """The launcher's records of the services it started online and saw serve, in the
+    Canvas state directory the build writes: a later start of each runs offline."""
+    return list((app.data / "canvas" / "agent-canvas" / UVX_STARTS).glob("*"))
 
 
 def spend_caps(app: LaunchedApp) -> dict[str, float]:
