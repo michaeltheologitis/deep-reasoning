@@ -4,7 +4,10 @@ app stays open on its failure screen."""
 
 import subprocess
 import sys
+import threading
 import time
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -12,6 +15,7 @@ from tests.desktop.app import (
     LOG_TAIL_LINES,
     LaunchedApp,
     fresh_home,
+    get_with_host,
     user_environment,
 )
 
@@ -77,3 +81,40 @@ def test_git_under_the_fresh_home_stores_no_credentials_whatever_the_systems_hel
             timeout=30,
         )
     assert not stored.exists()
+
+
+class HostEcho(BaseHTTPRequestHandler):
+    """Answers with the Host it was sent: 200 for localhost, 403 for any other name."""
+
+    def do_GET(self):
+        host = self.headers["Host"]
+        self.send_response(200 if host.startswith("localhost:") else 403)
+        self.end_headers()
+        self.wfile.write(f"host {host}".encode())
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def host_echo() -> Iterator[str]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), HostEcho)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}/"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize(
+    ("host", "status"), [("localhost:8000", 200), ("rebound.example:8000", 403)]
+)
+def test_a_get_with_a_host_sends_that_name_and_gives_any_status_with_its_body(
+    host_echo, monkeypatch, host, status
+):
+    """As a DNS-rebound page's request reaches the listener (TASK-64 §5.2), whatever
+    proxy the environment names."""
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
+    monkeypatch.setenv("no_proxy", "")
+    assert get_with_host(host_echo, host) == (status, f"host {host}")

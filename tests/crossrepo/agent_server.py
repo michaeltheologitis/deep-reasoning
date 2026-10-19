@@ -9,14 +9,18 @@ import os
 import secrets
 import signal
 import socket
+import socketserver
 import subprocess
 import sys
+import threading
 import time
 import tomllib
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -30,6 +34,11 @@ COMMIT_ENV = "DR_SDK_COMMIT"
 STARTUP_S = 60.0
 # Loopback, so never through a proxy.
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+PROXY_VARIABLES = ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy")
+LOOPBACK = {"NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost"}
+# LiteLLM's bundled price map, instead of the one it fetches from GitHub at start-up.
+LOCAL_COST_MAP = {"LITELLM_LOCAL_MODEL_COST_MAP": "True"}
+REFUSED = b"HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
 
 
 def sdk_checkout() -> Path:
@@ -113,14 +122,56 @@ def free_port() -> int:
         return sock.getsockname()[1]
 
 
+@dataclass
+class RecordingProxy:
+    url: str
+    attempts: list[str] = field(default_factory=list)
+
+
 @contextmanager
-def agent_server(checkout: Path, root: Path) -> Iterator[RunningAgentServer]:
+def recording_proxy() -> Iterator[RecordingProxy]:
+    """A loopback HTTP proxy that records each request line's target
+    (api.openai.com:443 for a CONNECT), answers 403 and forwards nothing."""
+    recorded: list[str] = []
+
+    class Recorder(socketserver.StreamRequestHandler):
+        def handle(self) -> None:
+            line = self.rfile.readline().decode(errors="replace").split()
+            if len(line) > 1:
+                recorded.append(line[1])
+            self.wfile.write(REFUSED)
+
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Recorder)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield RecordingProxy(f"http://127.0.0.1:{server.server_address[1]}", recorded)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def outbound_through(proxy: str, env: dict[str, str]) -> dict[str, str]:
+    """env with every proxy variable set to proxy, loopback exempt, no *_API_KEY, and
+    nothing fetched at start-up."""
+    kept = {k: v for k, v in env.items() if not k.endswith("_API_KEY")}
+    return kept | dict.fromkeys(PROXY_VARIABLES, proxy) | LOOPBACK | LOCAL_COST_MAP
+
+
+@contextmanager
+def agent_server(
+    checkout: Path, root: Path, *, outbound_proxy: str | None = None
+) -> Iterator[RunningAgentServer]:
     """python -m openhands.agent_server from the checkout's environment, with its
-    persistence root, working directory and HOME under root; stopped on exit."""
+    persistence root, working directory and HOME under root; stopped on exit. With
+    outbound_proxy, every outbound connection goes through it and no model key is
+    inherited."""
     root.mkdir(parents=True, exist_ok=True)
     port, key = free_port(), f"session-{secrets.token_hex(16)}"
+    inherited = dict(os.environ)
+    if outbound_proxy is not None:
+        inherited = outbound_through(outbound_proxy, inherited)
     env = {
-        **os.environ,
+        **inherited,
         "HOME": str(root),
         "OH_PERSISTENCE_DIR": str(root / "canvas"),
         "OH_SESSION_API_KEYS_0": key,
@@ -164,3 +215,19 @@ def agent_server(checkout: Path, root: Path) -> Iterator[RunningAgentServer]:
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
         log.close()
+
+
+def conversation_events(server, conversation: str) -> list[dict[str, Any]]:
+    """Every event the agent-server stored for the conversation, oldest first, asked
+    through server.request(method, path)."""
+    events: list[dict[str, Any]] = []
+    page = None
+    while True:
+        query = "?limit=100" + (f"&page_id={page}" if page else "")
+        found = server.request(
+            "GET", f"/api/conversations/{conversation}/events/search{query}"
+        )
+        events += found["items"]
+        page = found.get("next_page_id")
+        if not page:
+            return events
