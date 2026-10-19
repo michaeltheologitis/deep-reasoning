@@ -2,7 +2,6 @@
 fork's agent-server and its ACP bridge, the next message's fresh run is given the
 conversation, whichever way the bridge delivers that message to dr-acp."""
 
-import sys
 import threading
 import time
 from pathlib import Path
@@ -19,7 +18,6 @@ from deep_reasoning.acp.runlog import (
 )
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, library_path
-from dr_app.profile import PROFILE_NAME, desired_profile
 from tests.acp.scenarios import (
     BASE_CONFIG,
     FIRST_QUESTION,
@@ -76,36 +74,13 @@ def test_after_a_stop_through_the_bridge_the_next_message_is_given_the_first(
         library.import_config(
             write_config(tmp_path / "config", BASE_CONFIG | {"client": client})
         )
-        dr_acp = Path(sys.executable).parent / "dr-acp"
-        profile = desired_profile(None, dr_acp=dr_acp, home=home)
-        server.request("POST", f"/api/agent-profiles/{PROFILE_NAME}", profile)
-        saved = server.request("GET", f"/api/agent-profiles/{PROFILE_NAME}")["profile"]
-        conversation = server.request(
-            "POST",
-            "/api/conversations",
-            {
-                "agent_profile_id": saved["id"],
-                "workspace": {"kind": "LocalWorkspace", "working_dir": str(work)},
-            },
-        )["id"]
+        conversation = server.open_conversation(home, work)
         server.ask(conversation, FIRST, time.monotonic() + TIMEOUT_S)
-        server.request(
-            "POST",
-            f"/api/conversations/{conversation}/events",
-            {"role": "user", "content": [{"type": "text", "text": WAIT}], "run": True},
-        )
+        server.post(conversation, WAIT)
         deadline = time.monotonic() + TIMEOUT_S
         until(lambda: sleeping(home), deadline)
         server.request("POST", f"/api/conversations/{conversation}/interrupt")
-        until(
-            lambda: (
-                server.request("GET", f"/api/conversations/{conversation}")[
-                    "execution_status"
-                ]
-                in ("paused", "finished", "error")
-            ),
-            deadline,
-        )
+        server.wait(conversation, ("paused", "finished", "error"), deadline)
         server.ask(conversation, FIRST_QUESTION, time.monotonic() + TIMEOUT_S)
     [session] = (home / "sessions").glob("*.json")
     runs = SessionIndex.model_validate_json(session.read_text()).runs
