@@ -6,6 +6,7 @@ carry the same setup command: uv run pytest -m desktop tests/desktop/test_coexis
 under xvfb-run.
 """
 
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from tests.desktop.app import (
     APP,
     FIRST_LAUNCH_S,
     STARTUP_FAILED,
+    LaunchedApp,
     fresh_home,
     interrupt,
     launch,
@@ -41,6 +43,26 @@ RUNNING = "Deep Reasoning is running at "
 REFUSED_S = 10.0
 APP_REFUSED_S = 120.0
 STOP_S = 30.0
+# Every load of Canvas reads the settings. A window's first load against a HOME no page
+# has opened then saves them once (Canvas's enabled-skills migration): the app's own
+# write, a few seconds after setup is done.
+WINDOW_READ = '"GET /api/settings HTTP/1.1" 200'
+QUIET_S = 5.0
+SETTLE_S = 60.0
+
+
+def settled(app: LaunchedApp) -> dict[str, str]:
+    """snapshot(app.data) once the window has loaded and nothing changed for QUIET_S."""
+    app.wait_for_line(WINDOW_READ, FIRST_LAUNCH_S)
+    deadline = time.monotonic() + SETTLE_S
+    last, since = snapshot(app.data), time.monotonic()
+    while time.monotonic() - since < QUIET_S:
+        assert time.monotonic() < deadline, f"{app.data} kept changing"
+        time.sleep(0.5)
+        now = snapshot(app.data)
+        if now != last:
+            last, since = now, time.monotonic()
+    return last
 
 
 @pytest.fixture(scope="module")
@@ -72,7 +94,7 @@ def test_the_browser_will_not_start_beside_the_app_and_writes_nothing(home, tmp_
     try:
         app.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
         assert not [line for line in app.lines() if "installing deep-reasoning" in line]
-        before = snapshot(app.data)
+        before = settled(app)
         web = launch_web(home, tmp_path / "web.log", COMMAND)
         code = web.process.wait(timeout=REFUSED_S)
         refused = web_text("already_running", AGENT_SERVER_PORT)
