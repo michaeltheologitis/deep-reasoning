@@ -2,6 +2,10 @@
 checkout of the Canvas fork, build the frontend and package it under our name (D5 §4.2).
 
 uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]
+                        [--canvas-commit SHA] [--sdk-commit SHA]
+
+--canvas-commit and --sdk-commit are for hand and dispatch runs only, never a release:
+they build a fork commit no tag names yet, in place of desktop/pins.toml's.
 
 Standard library only. Neither fork gets a commit: every change is made to a build
 checkout under --work.
@@ -21,7 +25,7 @@ import tomllib
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -90,6 +94,17 @@ class Pins:
     canvas_fork: ForkPin
     sdk_fork: ForkPin
     app: AppPin
+    # "canvas_fork", "sdk_fork": the pins a hand or dispatch run replaced (with_commits);
+    # their tag and branch checks are skipped.
+    replaced: frozenset[str] = frozenset()
+
+
+def fork_pins(pins: Pins) -> tuple[tuple[str, str, ForkPin], ...]:
+    """(key in pins.toml, name in the sentences, pin) for each fork."""
+    return (
+        ("canvas_fork", "Canvas fork", pins.canvas_fork),
+        ("sdk_fork", "SDK fork", pins.sdk_fork),
+    )
 
 
 Target = Literal["linux", "mac-arm64"]
@@ -143,6 +158,18 @@ def fork_lacks_lock(canvas_tag: str) -> str:
     return (
         f"✗ Canvas fork {canvas_tag}'s config/defaults.json has no agent.lockedProfile, "
         "so it cannot lock the app to Deep Reasoning: pin dr-4 or later."
+    )
+
+
+def replaced_pins(pins: Pins) -> str:
+    named = " and ".join(
+        f"the {name} at {pin.commit[:7]}"
+        for key, name, pin in fork_pins(pins)
+        if key in pins.replaced
+    )
+    return (
+        f"⚠ This run builds {named} in place of desktop/pins.toml's, without their tag "
+        "and branch checks: never a release."
     )
 
 
@@ -205,6 +232,27 @@ def load_pins(path: Path) -> Pins:
     )
 
 
+def with_commits(
+    pins: Pins, *, canvas: str | None = None, sdk: str | None = None
+) -> Pins:
+    """pins with the forks' commits replaced where given, and named in replaced. A
+    replaced Canvas pin is named by its short commit; a replaced SDK pin keeps its tag,
+    the release the Canvas fork's TypeScript client comes from (check 3). Raises
+    ValueError naming the option for a commit that is not 40 hex."""
+    for option, commit in (("--canvas-commit", canvas), ("--sdk-commit", sdk)):
+        if commit is not None and not COMMIT.fullmatch(commit):
+            raise ValueError(f"{option} must be a full 40-hex commit, not {commit!r}")
+    replaced = set(pins.replaced)
+    if canvas is not None:
+        canvas_pin = replace(pins.canvas_fork, commit=canvas, tag=canvas[:7])
+        pins = replace(pins, canvas_fork=canvas_pin)
+        replaced.add("canvas_fork")
+    if sdk is not None:
+        pins = replace(pins, sdk_fork=replace(pins.sdk_fork, commit=sdk))
+        replaced.add("sdk_fork")
+    return replace(pins, replaced=frozenset(replaced))
+
+
 def git(*args: str, cwd: Path | None = None) -> str:
     return subprocess.run(
         ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
@@ -238,10 +286,13 @@ def check_pins(
     """§4.2.2's checks; the problems as sentences, empty when the pins belong together.
     The readers stand for the forks' repositories: ls_remote(url, refs) gives each ref's
     commit, read_sdk_file(path) a file at the SDK fork's commit, and
-    is_on_branch(url, branch, commit) answers check 8."""
+    is_on_branch(url, branch, commit) answers check 8. Checks 1 and 8 skip a pin in
+    pins.replaced."""
     problems: list[str] = []
     canvas_pin, sdk_pin = pins.canvas_fork, pins.sdk_fork
-    forks = (("Canvas fork", canvas_pin), ("SDK fork", sdk_pin))
+    forks = [
+        (name, pin) for key, name, pin in fork_pins(pins) if key not in pins.replaced
+    ]
     for fork, pin in forks:
         refs = ls_remote(
             pin.repo, [f"refs/tags/{pin.tag}", f"refs/tags/{pin.tag}^{{}}"]
@@ -351,7 +402,8 @@ def is_on_branch(repo_url: str, branch: str, commit: str) -> bool:
 
 
 def checkout_canvas(pins: Pins, work: Path) -> Path:
-    """The Canvas fork at its pinned commit under work/canvas, nothing else changed."""
+    """The Canvas fork at its pinned commit under work/canvas, nothing else changed but,
+    when the SDK pin was replaced, the launcher's agentServerGitRef set to its commit."""
     canvas = work / "canvas"
     if not (canvas / ".git").exists():
         canvas.mkdir(parents=True, exist_ok=True)
@@ -367,6 +419,11 @@ def checkout_canvas(pins: Pins, work: Path) -> Path:
     )
     git("checkout", "-q", "--force", "--detach", "FETCH_HEAD", cwd=canvas)
     git("clean", "-q", "-dffx", "-e", "node_modules", cwd=canvas)
+    if "sdk_fork" in pins.replaced:
+        path = canvas / "config" / "defaults.json"
+        defaults = json.loads(path.read_text())
+        defaults.setdefault("sources", {})["agentServerGitRef"] = pins.sdk_fork.commit
+        path.write_text(json.dumps(defaults, indent=2) + "\n")
     return canvas
 
 
@@ -523,16 +580,27 @@ def verify(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]."""
-    parser = argparse.ArgumentParser(prog="desktop/build.py", description=__doc__)
+    """uv run desktop/build.py {linux|mac-arm64|check} [--work DIR] [--canvas-commit SHA]
+    [--sdk-commit SHA]."""
+    parser = argparse.ArgumentParser(
+        prog="desktop/build.py",
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("target", choices=[*ARTIFACT_KINDS, "check"])
     parser.add_argument("--work", type=Path, default=REPO / ".desktop-work")
+    parser.add_argument("--canvas-commit", help="hand and dispatch runs only")
+    parser.add_argument("--sdk-commit", help="hand and dispatch runs only")
     args = parser.parse_args(argv)
     try:
-        pins = load_pins(PINS)
+        pins = with_commits(
+            load_pins(PINS), canvas=args.canvas_commit, sdk=args.sdk_commit
+        )
     except ValueError as error:
         print(f"✗ {error}", file=sys.stderr)
         return 1
+    if pins.replaced:
+        print(replaced_pins(pins), flush=True)
     args.work.mkdir(parents=True, exist_ok=True)
     if args.target == "check":
         _, problems = check_checkouts(pins, repo=REPO, work=args.work)

@@ -2,6 +2,7 @@
 (D5 §4.2, §7.3). The packaging itself is tested by building it (§7.5, §7.6)."""
 
 import copy
+import dataclasses
 import json
 import plistlib
 import shutil
@@ -385,3 +386,75 @@ def test_the_build_offers_no_universal_or_intel_mac_target():
     with pytest.raises(SystemExit):
         build.main(["mac-universal"])
     assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}
+
+
+# ── A hand or dispatch run's replaced pins (--canvas-commit, --sdk-commit) ─────────
+
+NEW_CANVAS = "e" * 40
+NEW_SDK = "f" * 40
+
+
+def test_a_replaced_canvas_commit_skips_only_its_own_tag_and_branch_checks(
+    canvas, repo
+):
+    pins = build.with_commits(PINS, canvas=NEW_CANVAS)
+    assert pins.canvas_fork.commit == NEW_CANVAS
+    assert problems(canvas, repo, pins) == []
+    moved = problems(canvas, repo, pins, tags={"refs/tags/dr-2^{}": "b" * 40})
+    assert moved == [build.tag_moved("SDK fork", "dr-2", "b" * 40, SDK_COMMIT)]
+
+
+def test_a_replaced_sdk_commit_skips_only_its_own_tag_and_branch_checks(canvas, repo):
+    pins = build.with_commits(PINS, sdk=NEW_SDK)
+    rewire(canvas, agentServerGitRef=NEW_SDK)  # as checkout_canvas writes it
+    assert problems(canvas, repo, pins) == []
+    assert problems(canvas, repo, pins, on_branch={SDK_COMMIT, NEW_SDK}) == [
+        build.off_branch("Canvas fork", CANVAS_COMMIT)
+    ]
+
+
+def test_a_replaced_canvas_commit_must_still_be_able_to_lock(canvas, repo):
+    pins = build.with_commits(PINS, canvas=NEW_CANVAS)
+    change_defaults(canvas, lambda defaults: defaults.pop("agent"))
+    assert problems(canvas, repo, pins) == [build.fork_lacks_lock("eeeeeee")]
+
+
+def test_the_launcher_installs_the_replaced_sdk_commit(tmp_path):
+    fork = tmp_path / "canvas-fork"
+    (fork / "config").mkdir(parents=True)
+    (fork / "config" / "defaults.json").write_text(json.dumps(DEFAULTS))
+    for argv in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "a fork"]):
+        subprocess.run([*GIT, *argv], cwd=fork, check=True)
+    head = build.git("rev-parse", "HEAD", cwd=fork).strip()
+    pins = build.with_commits(
+        dataclasses.replace(
+            PINS, canvas_fork=build.ForkPin(str(fork), CANVAS_COMMIT, "dr-1")
+        ),
+        canvas=head,
+        sdk=NEW_SDK,
+    )
+    checkout = build.checkout_canvas(pins, tmp_path / "work")
+    defaults = json.loads((checkout / "config" / "defaults.json").read_text())
+    assert defaults["sources"] == DEFAULTS["sources"] | {"agentServerGitRef": NEW_SDK}
+
+
+def test_the_run_says_which_pins_it_replaced():
+    pins = build.with_commits(PINS, canvas=NEW_CANVAS, sdk=NEW_SDK)
+    assert build.replaced_pins(pins) == (
+        "⚠ This run builds the Canvas fork at eeeeeee and the SDK fork at fffffff in "
+        "place of desktop/pins.toml's, without their tag and branch checks: never a "
+        "release."
+    )
+
+
+def test_a_replacement_that_is_not_a_full_commit_is_refused_before_anything_runs(
+    capsys,
+):
+    assert build.main(["check", "--canvas-commit", "ee7a150"]) == 1
+    assert "--canvas-commit must be a full 40-hex commit" in capsys.readouterr().err
+
+
+def test_a_release_never_builds_from_replaced_pins():
+    release = (ROOT / ".github" / "workflows" / "desktop-release.yml").read_text()
+    assert "desktop/build.py" in release
+    assert "--canvas-commit" not in release and "--sdk-commit" not in release
