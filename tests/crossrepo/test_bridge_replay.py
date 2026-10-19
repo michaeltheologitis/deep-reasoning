@@ -12,7 +12,7 @@ import pytest
 from deep_reasoning.acp.testing.tree import AgentNode, CellNode, Tree
 from tests.acp.golden import GOLDEN, as_tree, read_golden
 from tests.acp.scenarios import BY_NAME
-from tests.crossrepo.agent_server import agent_server, sdk_checkout
+from tests.crossrepo.agent_server import agent_server, conversation_events, sdk_checkout
 
 RECORDINGS = sorted(
     p.name.removesuffix(".native.jsonl") for p in GOLDEN.glob("*.native.jsonl")
@@ -71,20 +71,6 @@ def stored_shape(events: Iterable[Mapping[str, Any]]) -> Shape:
     return shape
 
 
-def stored_events(server, conversation: str) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
-    page = None
-    while True:
-        query = "?limit=100" + (f"&page_id={page}" if page else "")
-        found = server.request(
-            "GET", f"/api/conversations/{conversation}/events/search{query}"
-        )
-        events += found["items"]
-        page = found.get("next_page_id")
-        if not page:
-            return events
-
-
 def replay(server, recording: Path, prompts: Iterable[str], work: Path) -> list[Any]:
     """One conversation whose ACP agent plays the recording; one message per recorded
     prompt; the events once they have settled."""
@@ -110,10 +96,10 @@ def replay(server, recording: Path, prompts: Iterable[str], work: Path) -> list[
     deadline = time.monotonic() + TIMEOUT_S
     for text in prompts:
         server.ask(conversation, text, deadline)
-    events, settled_at = stored_events(server, conversation), time.monotonic()
+    events, settled_at = conversation_events(server, conversation), time.monotonic()
     while time.monotonic() - settled_at < SETTLE_S:
         time.sleep(0.2)
-        again = stored_events(server, conversation)
+        again = conversation_events(server, conversation)
         if len(again) != len(events):
             events, settled_at = again, time.monotonic()
     return events

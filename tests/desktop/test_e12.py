@@ -3,13 +3,15 @@
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
 linux), installs the .deb and runs this module under xvfb-run. Its tests share one
-first launch and run in order: the launch; onboarding, which asks no telemetry consent
-and keeps deep_reasoner; the conversation its hello starts; nothing recording consent;
-D3's frame through the bridge; then the final part: C1's nested sub-agents and a Stop
-of one, C2's namespace picker, slash menu and header panel with Create decomposition,
-the Spend cap set in D4's Tools tab capping the next conversation, an MCP server granted
-there, and the panel past its first session; then the quit and an offline relaunch of
-setup. No test calls a real model.
+first launch and run in order: the launch; the page refusing a host name that is not
+this machine; onboarding, which asks no telemetry consent and keeps deep_reasoner; the
+conversation its hello starts; a keyless LLM profile titling no chat with an error;
+nothing recording consent; D3's frame through the bridge; then the final part: C1's
+nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
+picker, slash menu and header panel with Create decomposition, the Spend cap set in
+D4's Tools tab capping the next conversation, an MCP server granted there, and the
+panel past its first session; then the quit and an offline relaunch of setup. No test
+calls a real model.
 """
 
 import json
@@ -38,6 +40,7 @@ from deep_reasoning.acp.runlog import Home, McpStatus, PromptStart, RunLog, RunS
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from dr_app import texts
 from tests.acp.scenarios import repl, scripted, task_and_turn
+from tests.crossrepo.agent_server import conversation_events
 from tests.desktop.app import (
     APP,
     CANVAS_URL,
@@ -49,6 +52,7 @@ from tests.desktop.app import (
     eventually,
     example,
     fresh_home,
+    get_with_host,
     launch,
     library_frame,
     pick_namespace,
@@ -81,6 +85,10 @@ ANSWER = secret("e12-answer-")
 E12_MODEL = "e12-model"
 NAMESPACE = "e12"
 OFFLINE_S = 5.0
+# TASK-46: an LLM profile as Canvas's Settings → LLM saves it, with no key.
+KEYLESS_LLM_PROFILE = "gpt-5-5"
+TITLE_QUESTION = "What titles the e12 chat?"  # at most 50 characters: the whole title
+TITLE_ANSWER = secret("e12-title-")
 # Q3: the Tools tab's Spend cap, set, then the next conversation's cap.
 CAP = "7.50"
 CAP_QUESTION = "What does E12 spend under its cap?"
@@ -144,6 +152,7 @@ PLAN = {
     PANEL_QUESTION: [repl(f"FinalAnswer({PANEL_ANSWER!r})")],
     NEXT_TASK: [repl(f"FinalAnswer({NEXT_ANSWER!r})")],
     MCP_QUESTION: [repl(f"FinalAnswer(echo.echo({MCP_REPLY!r}))")],
+    TITLE_QUESTION: [repl(f"FinalAnswer({TITLE_ANSWER!r})")],
     CAP_QUESTION: [repl(f"FinalAnswer({CAP_ANSWER!r})")],
 }
 # $0.002 a call at E12_MODEL's price, so each sub-agent's cost has a few digits.
@@ -243,6 +252,19 @@ def test_the_first_launch_installs_everything_and_opens_the_window(app, browser)
     assert profiles["active_agent_profile_id"] == ours["id"]
 
 
+@pytest.mark.parametrize("port", [8000, 3001], ids=["ingress", "frontend"])
+def test_the_page_refuses_a_host_name_that_is_not_this_machine(app, port):
+    """A DNS-rebound page's requests name its own host; the page carries the session key
+    (TASK-64)."""
+    url = f"http://127.0.0.1:{port}/"
+    status, body = get_with_host(url, f"rebound.example:{port}")
+    assert status == 403
+    assert app.session_key not in body
+    status, body = get_with_host(url, f"localhost:{port}")
+    assert status == 200
+    assert app.session_key in body
+
+
 def test_the_first_launch_asks_for_no_telemetry_consent(app, browser):
     """Our build cannot report (decision K), so Canvas has nothing to ask (dr-3, #28).
     The consent dialog is lazy-loaded; where a build shows it, it is up within a few
@@ -303,6 +325,27 @@ def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
     for value in (KEY, app.session_key, app.secret_key):
         assert value not in environ
         assert not [text for text in stored if value in text]
+
+
+def test_a_new_chats_first_message_shows_no_title_error_with_a_keyless_llm_profile(
+    app, browser
+):
+    """TASK-46: Canvas sends the active LLM profile as the title profile; one with no
+    key is never called, and the chat is titled by its first message."""
+    llm = f"/api/profiles/{KEYLESS_LLM_PROFILE}"
+    app.request("POST", llm, {"llm": {"model": "gpt-5.5"}})
+    app.request("POST", f"{llm}/activate")
+    page = window(browser)
+    conversation = start_conversation(page, TITLE_QUESTION)
+    expect(answer(page, TITLE_ANSWER)).to_be_visible()
+    eventually(
+        lambda: (
+            app.request("GET", f"/api/conversations/{conversation}")["title"]
+            == TITLE_QUESTION
+        )
+    )
+    events = conversation_events(app, conversation)
+    assert [e for e in events if e["kind"] == "ConversationErrorEvent"] == []
 
 
 def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switch(
@@ -428,19 +471,14 @@ def test_sub_agents_nest_under_the_cells_that_spawned_them_as_the_run_log_record
         expect(row.get_by_test_id("subagent-status").first).to_have_text("done")
 
 
-def test_each_sub_agent_shows_its_latest_cost_once_the_setting_is_on(app, browser):
+def test_each_sub_agent_shows_its_latest_cost_by_default_and_none_once_turned_off(
+    app, browser
+):
+    """TASK-51: the setting untouched, costs show; turned off, none does."""
     page = window(browser)
     conversation = page.url
     _, costs = recorded_subagent_tree(app.data, run_asked(app, TREE_QUESTION))
     assert expanded_rows(page) == 3
-    expect(page.get_by_test_id("subagent-cost")).to_have_count(0)
-    page.goto(CANVAS_URL + "settings/app")
-    switch = page.get_by_test_id("show-subagent-costs-switch")
-    page.locator("label", has=switch).click()
-    expect(switch).to_be_checked()
-    page.goto(conversation)
-    expect(page.get_by_test_id("subagent-block-toggle")).to_be_visible()
-    eventually(lambda: expanded_rows(page) == 3)
     for session, cost in costs.items():
         row = page.locator(
             f'[data-testid="subagent-row"][data-acp-session-id="{session}"]'
@@ -448,6 +486,15 @@ def test_each_sub_agent_shows_its_latest_cost_once_the_setting_is_on(app, browse
         expect(row.get_by_test_id("subagent-cost").first).to_have_text(
             subagent_cost(cost)
         )
+    page.goto(CANVAS_URL + "settings/app")
+    switch = page.get_by_test_id("show-subagent-costs-switch")
+    expect(switch).to_be_checked()
+    page.locator("label", has=switch).click()
+    expect(switch).not_to_be_checked()
+    page.goto(conversation)
+    expect(page.get_by_test_id("subagent-block-toggle")).to_be_visible()
+    eventually(lambda: expanded_rows(page) == 3)
+    expect(page.get_by_test_id("subagent-cost")).to_have_count(0)
 
 
 def test_stop_on_one_sub_agent_stops_it_and_its_branch(app, browser):
