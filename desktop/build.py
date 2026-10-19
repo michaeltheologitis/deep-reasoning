@@ -1,7 +1,8 @@
 """The desktop app's build: check that the pins belong together, write D5's values into a
-checkout of the Canvas fork, build the frontend and package it under our name (D5 §4.2).
+checkout of the Canvas fork, build the frontend and package it under our name (D5 §4.2);
+and the browser version's tarball from the same build (TASK-48 §3.3).
 
-uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]
+uv run desktop/build.py {linux|mac-arm64|web}... | check [--work DIR]
 
 Standard library only. Neither fork gets a commit: every change is made to a build
 checkout under --work.
@@ -17,10 +18,11 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tomllib
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Literal
@@ -76,6 +78,15 @@ ELECTRON_CALL: Final = (
     "skipNpmCheck: true",
     "agentServerReadyTimeoutMs: 10 * 60_000",
 )
+WEB_ENTRY: Final = REPO / "desktop" / "web.mjs"
+# What the packaged app carries of the checkout (electron-builder.config.mjs `files`, less
+# electron/), and its filter for scripts/.
+WEB_TREES: Final = ("build", "config", "scripts", "tools")
+WEB_SCRIPT_SUFFIXES: Final = (".mjs", ".cjs")
+WEB_LICENSE: Final = "LICENSE"  # the fork's MIT licence, with the fork's files
+# The packages the launcher's scripts import, whose closure the app's afterPack restores
+# (the fork's RUNTIME_PACKAGES), mirrored and checked.
+WEB_RUNTIME_PACKAGES: Final = ("sirv", "httpxy")
 
 
 @dataclass(frozen=True)
@@ -102,7 +113,8 @@ class Pins:
     app: AppPin
 
 
-Target = Literal["linux", "mac-arm64"]
+Target = Literal["linux", "mac-arm64", "web"]
+DesktopTarget = Literal["linux", "mac-arm64"]
 
 
 # The build's sentences (§6): each names the file and the two values that disagree.
@@ -171,7 +183,10 @@ def off_branch(fork: str, commit: str) -> str:
 
 
 def wrong_machine(target: Target, system: str, machine: str) -> str | None:
-    """The refusal for a build on a machine the target is not for; None when it is."""
+    """The refusal for a build on a machine the target is not for; None when it is, and
+    for web, which builds on any machine."""
+    if target not in BUILD_MACHINES:
+        return None
     want_system, want_machine = BUILD_MACHINES[target]
     if (system, machine) == (want_system, want_machine):
         return None
@@ -190,6 +205,37 @@ def opens_too_early(declared: str | None) -> str:
         f"✗ The app's Info.plist declares LSMinimumSystemVersion {declared}, not "
         f"{MAC_MINIMUM}: desktop/electron-builder.dr.mjs's mac block sets it."
     )
+
+
+def runtime_packages_changed(found: Sequence[str]) -> str:
+    return (
+        "✗ The Canvas fork's electron-builder.config.mjs strips the app's node_modules to "
+        f"{_and(found)}, but desktop/build.py bundles sirv and httpxy for the browser: "
+        "bundle the same."
+    )
+
+
+def electron_call_changed(missing: Sequence[str]) -> str:
+    return (
+        "✗ The Canvas fork's electron/main.mjs no longer calls main() with "
+        f"{_and(missing)}, which desktop/web.mjs copies: make them agree."
+    )
+
+
+def web_tarball_wrong(name: str, why: str) -> str:
+    """why: carries deep_reasoner: <paths>, has a member outside package/: <path>,
+    bundles <paths> beyond sirv's and httpxy's closure, carries other defaults than this
+    build wrote, carries another bin/deep-reasoning.mjs than desktop/web.mjs, carries
+    another package.json than the build writes."""
+    return f"✗ {name} {why}."
+
+
+def _and(names: Sequence[str]) -> str:
+    """sirv, httpxy and winston; nothing for none."""
+    names = list(names)
+    if len(names) < 2:
+        return names[0] if names else "nothing"
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def web_tarball_name(version: str) -> str:
@@ -322,6 +368,85 @@ def patch_defaults(
     return patched
 
 
+def runtime_closure(lock: Mapping[str, Any], roots: Sequence[str]) -> dict[str, str]:
+    """The package-lock.json (v3) paths and versions of roots and of everything their
+    "dependencies" and "optionalDependencies" resolve to, npm's way: the nearest
+    node_modules/<name> from the dependent's own path upwards. Raises ValueError naming
+    a dependency the lock does not hold."""
+    packages = lock["packages"]
+    closure: dict[str, str] = {}
+    pending = [("", name) for name in roots]
+    while pending:
+        dependent, name = pending.pop(0)
+        path = _resolve(packages, dependent, name)
+        if path is None:
+            raise ValueError(
+                f"package-lock.json holds no {name} for {dependent or 'the root'}"
+            )
+        if path in closure:
+            continue
+        package = packages[path]
+        closure[path] = package["version"]
+        for kind in ("dependencies", "optionalDependencies"):
+            pending += [(path, dependency) for dependency in package.get(kind, {})]
+    return closure
+
+
+def _resolve(packages: Mapping[str, Any], dependent: str, name: str) -> str | None:
+    """The lock's path for name as dependent's own require finds it."""
+    base = dependent
+    while True:
+        path = f"{base}/node_modules/{name}" if base else f"node_modules/{name}"
+        if path in packages:
+            return path
+        if not base:
+            return None
+        base = base.rsplit("/node_modules/", 1)[0] if "/node_modules/" in base else ""
+
+
+def web_package_json(version: str, closure: Mapping[str, str]) -> dict[str, Any]:
+    """The tarball's package.json: a private npm package whose bin is the entry, its two
+    runtime packages bundled, so npm's registry is never asked."""
+    return {
+        "name": WEB_PACKAGE_NAME,
+        "version": version,
+        "description": (
+            "Deep Reasoning in your browser: the desktop app's Canvas build and launcher, "
+            "started from a terminal"
+        ),
+        "private": True,
+        "license": f"SEE LICENSE IN {WEB_LICENSE}",
+        "type": "module",
+        "bin": {"deep-reasoning": "bin/deep-reasoning.mjs"},
+        "engines": {"node": ">=22.12.0"},
+        "files": ["bin", *WEB_TREES, WEB_LICENSE],
+        "dependencies": {
+            name: closure[f"node_modules/{name}"] for name in WEB_RUNTIME_PACKAGES
+        },
+        "bundleDependencies": list(WEB_RUNTIME_PACKAGES),
+    }
+
+
+def check_web_contract(canvas: Path) -> list[str]:
+    """W13: the fork's app still bundles only sirv and httpxy, and Electron still calls
+    main() with each option web.mjs copies; the problems as sentences."""
+    problems: list[str] = []
+    config = (canvas / "electron-builder.config.mjs").read_text()
+    declared = re.search(r"\bRUNTIME_PACKAGES\s*=\s*\[([^\]]*)\]", config)
+    found = re.findall(r'"([^"]+)"', declared[1]) if declared else []
+    if found != list(WEB_RUNTIME_PACKAGES):
+        problems.append(runtime_packages_changed(found))
+    main_js = (canvas / "electron" / "main.mjs").read_text()
+    call = re.search(r"\bawait main\(\{(.*?)\}\);", main_js, re.DOTALL)
+    options = {
+        line.strip().rstrip(",") for line in (call[1] if call else "").splitlines()
+    }
+    missing = [option for option in ELECTRON_CALL if option not in options]
+    if missing:
+        problems.append(electron_call_changed(missing))
+    return problems
+
+
 # The readers of the forks' public repositories: git, and GitHub's REST API.
 def git_ls_remote(repo_url: str, refs: Sequence[str]) -> dict[str, str]:
     listed = git("ls-remote", repo_url, *refs)
@@ -386,12 +511,30 @@ def check_checkouts(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, list[s
     return canvas, problems
 
 
-def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
-    """Check out the Canvas fork at its commit under work/, check, patch, build, verify;
-    the artifacts, copied to <repo>/dist/."""
-    refusal = wrong_machine(target, platform.system(), platform.machine())
-    if refusal:
-        raise SystemExit(refusal)
+def build(
+    targets: Sequence[Target], *, pins: Pins, repo: Path, work: Path
+) -> list[Path]:
+    """Each target's machine checked first, then prepare() once, then each target's
+    packages; the artifacts, copied to <repo>/dist/."""
+    for target in targets:
+        refusal = wrong_machine(target, platform.system(), platform.machine())
+        if refusal:
+            raise SystemExit(refusal)
+    canvas, defaults = prepare(pins, repo=repo, work=work)
+    artifacts: list[Path] = []
+    for target in targets:
+        if target == "web":
+            web = package_web(pins=pins, repo=repo, canvas=canvas, defaults=defaults)
+            artifacts.append(web)
+        else:
+            artifacts += package_desktop(target, pins=pins, repo=repo, canvas=canvas)
+    return artifacts
+
+
+def prepare(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, dict[str, Any]]:
+    """The Canvas fork at its commit under work/, checked, its defaults patched and its
+    frontend built: the checkout, and the defaults written. Raises SystemExit with
+    check_pins's sentences."""
     canvas, problems = check_checkouts(pins, repo=repo, work=work)
     if problems:
         raise SystemExit("\n".join(problems))
@@ -403,10 +546,24 @@ def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
-    # ELECTRON_ARCH unset: the fork builds for, and downloads runtimes for, this machine.
-    env = {k: v for k, v in os.environ.items() if k != "ELECTRON_ARCH"}
+    env = machine_environment()
     run(["npm", "ci"], cwd=canvas)
     run(["npm", "run", "build:app"], cwd=canvas, env=env | {"VITE_DO_NOT_TRACK": "1"})
+    return canvas, defaults
+
+
+def machine_environment() -> dict[str, str]:
+    """ELECTRON_ARCH unset: the fork builds for, and downloads runtimes for, this
+    machine."""
+    return {k: v for k, v in os.environ.items() if k != "ELECTRON_ARCH"}
+
+
+def package_desktop(
+    target: DesktopTarget, *, pins: Pins, repo: Path, canvas: Path
+) -> list[Path]:
+    """The target's packages from the prepared checkout, verified, copied to
+    <repo>/dist/."""
+    env = machine_environment()
     downloads = env | {"UV_VERSION": pins.app.uv_version}
     run(["node", "scripts/download-uv.mjs"], cwd=canvas, env=downloads)
     run(["node", "scripts/download-node.mjs"], cwd=canvas, env=downloads)
@@ -443,6 +600,62 @@ def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
     return copied
 
 
+def package_web(
+    *, pins: Pins, repo: Path, canvas: Path, defaults: Mapping[str, Any]
+) -> Path:
+    """The browser version's tarball from the prepared checkout: what the app carries of
+    it, the launcher's runtime closure, desktop/web.mjs as its entry, npm-packed into
+    <repo>/dist/ and verified."""
+    problems = check_web_contract(canvas)
+    if problems:
+        raise SystemExit("\n".join(problems))
+    closure = runtime_closure(
+        json.loads((canvas / "package-lock.json").read_text()), WEB_RUNTIME_PACKAGES
+    )
+    package = canvas.parent / "web" / "package"
+    shutil.rmtree(package.parent, ignore_errors=True)
+    for tree in WEB_TREES:
+        shutil.copytree(canvas / tree, package / tree, ignore=_web_ignored)
+    shutil.copy2(canvas / WEB_LICENSE, package / WEB_LICENSE)
+    for path in closure:
+        shutil.copytree(
+            canvas / path, package / path, ignore=shutil.ignore_patterns("node_modules")
+        )
+    entry = package / "bin" / "deep-reasoning.mjs"
+    entry.parent.mkdir()
+    shutil.copyfile(WEB_ENTRY, entry)
+    entry.chmod(0o755)
+    manifest = web_package_json(pins.app.version, closure)
+    (package / "package.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    dist = repo / "dist"
+    dist.mkdir(exist_ok=True)
+    tarball = dist / web_tarball_name(pins.app.version)
+    tarball.unlink(missing_ok=True)
+    run(["npm", "pack", "--pack-destination", str(dist)], cwd=package)
+    verify_web(
+        tarball,
+        version=pins.app.version,
+        defaults=defaults,
+        closure=closure,
+        entry=WEB_ENTRY.read_bytes(),
+    )
+    return tarball
+
+
+def _web_ignored(folder: str, names: list[str]) -> list[str]:
+    """What the app's files filter leaves out: in scripts/, all but .mjs and .cjs files;
+    anywhere, Python's caches."""
+    ignored = [name for name in names if name == "__pycache__"]
+    if Path(folder).name == "scripts":
+        ignored += [
+            name
+            for name in names
+            if (Path(folder) / name).is_file()
+            and not name.endswith(WEB_SCRIPT_SUFFIXES)
+        ]
+    return ignored
+
+
 def run(
     argv: Sequence[str], *, cwd: Path, env: Mapping[str, str] | None = None
 ) -> None:
@@ -476,7 +689,7 @@ def macho_archs(path: Path) -> str:
 
 
 def verify(
-    target: Target,
+    target: DesktopTarget,
     pins: Pins,
     canvas: Path,
     *,
@@ -523,23 +736,90 @@ def verify(
     return artifacts
 
 
+def verify_web(
+    tarball: Path,
+    *,
+    version: str,
+    defaults: Mapping[str, Any],
+    closure: Mapping[str, str],
+    entry: bytes,
+) -> None:
+    """Every member under package/, none naming deep_reasoner, node_modules/ exactly the
+    closure, and the defaults, the entry and the package.json this build wrote. Paths
+    only for deep_reasoner, as for the desktop packages: the defaults name its profile.
+    Raises SystemExit(web_tarball_wrong(...))."""
+
+    def wrong(why: str) -> SystemExit:
+        return SystemExit(web_tarball_wrong(tarball.name, why))
+
+    with tarfile.open(tarball, "r:gz") as archive:
+        members = {member.name: member for member in archive.getmembers()}
+
+        def read(path: str) -> bytes | None:
+            member = members.get(f"package/{path}")
+            file = archive.extractfile(member) if member else None
+            return file.read() if file else None
+
+        outside = [
+            p for p in members if p != "package" and not p.startswith("package/")
+        ]
+        if outside:
+            raise wrong(f"has a member outside package/: {outside[0]}")
+        leaked = sorted(p for p in members if FORBIDDEN_IN_PAYLOAD in p)
+        if leaked:
+            raise wrong(f"carries {FORBIDDEN_IN_PAYLOAD}: {leaked[:3]}")
+        beyond = sorted(_bundled(members) - set(closure))
+        if beyond:
+            raise wrong(f"bundles {beyond} beyond sirv's and httpxy's closure")
+        if _json(read("config/defaults.json")) != defaults:
+            raise wrong("carries other defaults than this build wrote")
+        if read("bin/deep-reasoning.mjs") != entry:
+            raise wrong("carries another bin/deep-reasoning.mjs than desktop/web.mjs")
+        if _json(read("package.json")) != web_package_json(version, closure):
+            raise wrong("carries another package.json than the build writes")
+
+
+def _bundled(paths: Iterable[str]) -> set[str]:
+    """The package folders under node_modules/ that paths lie in, nested ones included:
+    node_modules/sirv, node_modules/@polka/url, node_modules/sirv/node_modules/totalist."""
+    found: set[str] = set()
+    for path in paths:
+        parts = path.removeprefix("package/").split("/")
+        for index, part in enumerate(parts[:-1]):
+            if part == "node_modules":
+                width = 3 if parts[index + 1].startswith("@") else 2
+                if index + width <= len(parts) - 1:
+                    found.add("/".join(parts[: index + width]))
+    return found
+
+
+def _json(data: bytes | None) -> Any:
+    try:
+        return json.loads(data) if data is not None else None
+    except ValueError:
+        return None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """uv run desktop/build.py {linux|mac-arm64|check} [--work DIR]."""
+    """uv run desktop/build.py {linux|mac-arm64|web}... | check [--work DIR]."""
     parser = argparse.ArgumentParser(prog="desktop/build.py", description=__doc__)
-    parser.add_argument("target", choices=[*ARTIFACT_KINDS, "check"])
+    parser.add_argument("targets", nargs="+", choices=[*ARTIFACT_KINDS, "web", "check"])
     parser.add_argument("--work", type=Path, default=REPO / ".desktop-work")
     args = parser.parse_args(argv)
+    if "check" in args.targets and len(args.targets) > 1:
+        parser.error("check combines with no other target")
     try:
         pins = load_pins(PINS)
     except ValueError as error:
         print(f"✗ {error}", file=sys.stderr)
         return 1
     args.work.mkdir(parents=True, exist_ok=True)
-    if args.target == "check":
+    if args.targets == ["check"]:
         _, problems = check_checkouts(pins, repo=REPO, work=args.work)
         print("\n".join(problems) if problems else "the pins belong together ✓")
         return 1 if problems else 0
-    for artifact in build(args.target, pins=pins, repo=REPO, work=args.work):
+    targets = list(dict.fromkeys(args.targets))
+    for artifact in build(targets, pins=pins, repo=REPO, work=args.work):
         print(artifact)
     return 0
 
