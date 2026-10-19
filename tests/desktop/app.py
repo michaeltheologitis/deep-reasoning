@@ -511,7 +511,15 @@ def library_frame(page: Page, session_key: str) -> tuple[FrameLocator, str | Non
 
 
 def processes_mentioning(text: str) -> list[str]:
-    """The command lines of live processes that hold text (Linux: /proc)."""
+    """The command lines of live processes that hold text (Linux: /proc; macOS: ps)."""
+    if sys.platform == "darwin":
+        listed = subprocess.run(
+            ["ps", "-axww", "-o", "pid=,command="],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        return [line.strip() for line in listed.splitlines() if text in line]
     found = []
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():
