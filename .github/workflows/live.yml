@@ -5,6 +5,11 @@ name: live
 
 on:
   workflow_dispatch:
+    inputs:
+      tests:
+        description: "The live tests to run, as pytest paths or node ids; empty runs them all"
+        required: false
+        default: ""
 
 jobs:
   live:
@@ -34,7 +39,10 @@ jobs:
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
-      - run: uv run pytest -m live -v -rA --basetemp="$RUNNER_TEMP/live"
+      # TESTS is split into words on purpose: each is one path or node id.
+      - run: uv run pytest -m live -v -rA --basetemp="$RUNNER_TEMP/live" $TESTS
+        env:
+          TESTS: ${{ inputs.tests }}
       # On a failure, every test's dr home is kept: its runs (run log, model calls,
       # deep_reasoner's trace, each MCP server's log, all redacted) and the MCP test's
       # transcript. They are uploaded only once grep has read every file in them and
