@@ -82,6 +82,15 @@ RUNNER_ONLY = (
     "UV_TOOL_BIN_DIR",
     "UV_PROJECT_ENVIRONMENT",
 )
+# The runner's own per-user directories (GitHub's runners set XDG_CONFIG_HOME): without
+# them the app's config, cache, data and state live under the fresh HOME, Electron's
+# profile with its localStorage included, so one launch's settings never reach the next.
+XDG_BASE_DIRECTORIES = (
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
+    "XDG_STATE_HOME",
+)
 
 
 def free_port() -> int:
@@ -110,12 +119,14 @@ def fresh_home() -> Iterator[Path]:
 
 def user_environment(home: Path) -> dict[str, str]:
     """This process's environment as a user's would be: HOME the fresh one, and without
-    the runner's uv settings or this test environment's bin directory on PATH."""
+    the runner's uv settings, its per-user directories or this test environment's bin
+    directory on PATH."""
     dev_bin = str(Path(sys.executable).parent)
     path = os.pathsep.join(
         p for p in os.environ.get("PATH", "").split(os.pathsep) if p != dev_bin
     )
-    env = {k: v for k, v in os.environ.items() if k not in RUNNER_ONLY}
+    dropped = (*RUNNER_ONLY, *XDG_BASE_DIRECTORIES)
+    env = {k: v for k, v in os.environ.items() if k not in dropped}
     return env | {"HOME": str(home), "PATH": path}
 
 
