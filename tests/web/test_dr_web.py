@@ -4,7 +4,6 @@ for the release, and a stub uv on PATH for Node's install."""
 import errno
 import gzip
 import http.server
-import io
 import json
 import os
 import shutil
@@ -16,7 +15,7 @@ import threading
 import tomllib
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +25,7 @@ from desktop import build
 from dr_app import layout as app_layout
 from dr_web import cache, cli, texts
 from dr_web.cache import FetchError, WebLayout
+from tests.tarballs import write_tarball
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMIT = "9e8109e8" * 5
@@ -85,21 +85,16 @@ def web_tarball(
     *,
     name: str = cache.PACKAGE_NAME,
     version: str = cli.RELEASE,
-    extra: tarfile.TarInfo | None = None,
+    extra: Mapping[str, bytes] | None = None,
+    links: Mapping[str, str] | None = None,
 ) -> Path:
-    """A tarball as build.py web packs it, as far as dr-web reads it."""
-    members = {
+    """A tarball as build.py web packs it, as far as dr-web reads it, and extra files
+    and links beside."""
+    files = {
         "package/package.json": json.dumps({"name": name, "version": version}).encode(),
         "package/bin/deep-reasoning.mjs": ENTRY_SOURCE,
     }
-    with tarfile.open(path, "w:gz") as archive:
-        for member, data in members.items():
-            info = tarfile.TarInfo(member)
-            info.size = len(data)
-            archive.addfile(info, io.BytesIO(data))
-        if extra is not None:
-            archive.addfile(extra, io.BytesIO(b"x" * extra.size))
-    return path
+    return write_tarball(path, files | (extra or {}), links=links)
 
 
 class Release:
@@ -181,19 +176,6 @@ def test_a_release_tarball_downloads_once_and_a_restart_needs_no_server(web, rel
     assert web.downloaded(cli.RELEASE).read_bytes() == published.read_bytes()
 
 
-def symlink(name: str, target: str) -> tarfile.TarInfo:
-    info = tarfile.TarInfo(name)
-    info.type = tarfile.SYMTYPE
-    info.linkname = target
-    return info
-
-
-def member(name: str) -> tarfile.TarInfo:
-    info = tarfile.TarInfo(name)
-    info.size = 1
-    return info
-
-
 @pytest.mark.parametrize(
     ("make", "expect_version", "reason"),
     [
@@ -210,17 +192,17 @@ def member(name: str) -> tarfile.TarInfo:
             "not a tar archive",
         ),
         (
-            lambda p: web_tarball(p, extra=member("../x")),
+            lambda p: web_tarball(p, extra={"../x": b"x"}),
             None,
             "a member outside package/",
         ),
         (
-            lambda p: web_tarball(p, extra=member("/etc/x")),
+            lambda p: web_tarball(p, extra={"/etc/x": b"x"}),
             None,
             "a member outside package/",
         ),
         (
-            lambda p: web_tarball(p, extra=symlink("package/out", "../../../etc")),
+            lambda p: web_tarball(p, links={"package/out": "../../../etc"}),
             None,
             "unsafe member package/out",
         ),

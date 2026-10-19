@@ -2,7 +2,6 @@
 (D5 §4.2, §7.3). The packaging itself is tested by building it (§7.5, §7.6)."""
 
 import copy
-import io
 import json
 import plistlib
 import shutil
@@ -14,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from desktop import build
+from tests.tarballs import write_tarball
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -521,15 +521,6 @@ def test_a_fork_that_changed_its_runtime_packages_or_electrons_call_is_refused(
     assert build.check_web_contract(canvas) == [problem]
 
 
-def crafted_tarball(path: Path, members: dict[str, bytes]) -> Path:
-    with tarfile.open(path, "w:gz") as archive:
-        for name, data in members.items():
-            info = tarfile.TarInfo(name)
-            info.size = len(data)
-            archive.addfile(info, io.BytesIO(data))
-    return path
-
-
 ENTRY = (ROOT / "desktop" / "web.mjs").read_bytes()
 PATCHED = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND)
 GOOD_TARBALL = {
@@ -587,7 +578,7 @@ def test_a_web_tarball_is_refused_for_each_thing_it_must_not_carry(
 
     def verify(members: dict[str, bytes]) -> None:
         build.verify_web(
-            crafted_tarball(tmp_path / name, members),
+            write_tarball(tmp_path / name, members),
             version="1.0.0-rc.1",
             defaults=PATCHED,
             closure=SIRV_CLOSURE,
