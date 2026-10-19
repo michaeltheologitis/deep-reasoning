@@ -591,19 +591,16 @@ def test_a_web_tarball_is_refused_for_each_thing_it_must_not_carry(
     assert str(refused.value) == build.web_tarball_wrong(name, why)
 
 
-@pytest.mark.parametrize(
-    "machine",
-    [
+def test_web_builds_on_any_machine_and_check_combines_with_no_target():
+    """The tarball is static files and scripts, so no machine is the wrong one. check
+    stands alone, and some target must be named."""
+    machines = [
         ("Linux", "x86_64"),
         ("Darwin", "arm64"),
         ("Darwin", "x86_64"),
         ("Linux", "aarch64"),
-    ],
-)
-def test_targets_combine_and_only_desktop_targets_check_the_machine(machine):
-    """The tarball is static files and scripts: web builds on any machine, beside a
-    desktop target or alone; check combines with nothing."""
-    assert build.wrong_machine("web", *machine) is None
+    ]
+    assert [build.wrong_machine("web", *machine) for machine in machines] == [None] * 4
     for together in (["check", "web"], ["linux", "check"], []):
         with pytest.raises(SystemExit) as refused:
             build.main(together)
