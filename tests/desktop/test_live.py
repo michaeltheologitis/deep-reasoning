@@ -2,9 +2,8 @@
 HOME, one question to the starter Library's real model (gpt-6-luna, through the key
 proxy) with a keyless LLM profile active, as an install that has one is.
 
-cross-repo.yml runs it after E12 when its dispatch input live is true. OPENAI_API_KEY is
-in that step's environment only; the test saves it as a Canvas secret, as a user does,
-and the app is launched without it."""
+Run it with -m "desktop and live" and OPENAI_API_KEY set: the test saves the key as a
+Canvas secret, as a user does, and launches the app without it."""
 
 import os
 import re

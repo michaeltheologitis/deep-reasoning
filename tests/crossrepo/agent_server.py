@@ -2,8 +2,7 @@
 launcher, no wiring (D5 §1.2 step 5).
 
 DR_SDK_CHECKOUT names a checkout of desktop/pins.toml's [sdk_fork] commit, synced with
-uv sync --frozen; DR_SDK_COMMIT, when set, names the commit it holds instead (a dispatch
-run's sdk_commit).
+uv sync --frozen; DR_SDK_COMMIT, when set, names the commit it holds instead of the pin.
 """
 
 import os
