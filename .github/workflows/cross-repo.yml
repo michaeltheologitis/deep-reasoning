@@ -37,6 +37,8 @@ jobs:
       - run: uv run desktop/build.py check
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # TASK-48 W14: the README's browser command is the newest release's.
+      - run: uv run pytest -m crossrepo tests/desktop/test_readme.py -v -rA
 
   # E12's skeleton flow (D5 §7.5): the Linux packages built from the pins, the .deb
   # installed, and the app launched with a fresh HOME under Xvfb and driven over its

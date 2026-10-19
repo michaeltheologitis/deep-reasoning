@@ -38,7 +38,9 @@ command (`packages/dr-app`) and the build (`desktop/`). The app's design is
   On a Mac, a credential helper git names without a path (`gh`, `git-credential-manager`)
   must be in Homebrew's `/opt/homebrew/bin` or `/usr/local/bin`: beyond the system's own
   folders, an app opened from Finder looks nowhere else.
-- **The network**, on the first launch and the first launch after an update.
+- **The network**, on the first launch, the first launch after an update, and any launch not
+  within about ten minutes of the last start that had the network
+  ([below](#the-first-launch)).
 
 Nothing else: the app brings its own uv and Node, and uv brings Python 3.12.
 
@@ -94,8 +96,10 @@ A splash shows each line setup prints. Setup:
 5. once the agent-server is up, makes the **deep_reasoner** agent profile the default, and
    installs, approves and starts the Library App (`App dr-library … installed · backend ready`).
 
-A later launch with nothing changed installs nothing and needs no network. After an update,
-setup installs once more.
+A later launch with nothing changed installs nothing. Within about ten minutes of the last
+start that had the network it needs none; after that, the agent-server's start asks PyPI
+again, so a launch then needs the network until a later Canvas build lifts it. After an
+update, setup installs once more.
 
 If setup fails, the window stays on the failure, and setup's last line says why and what to
 do. A setup still running at 15 minutes is stopped and the launch fails; the next launch
@@ -141,7 +145,8 @@ Both exist once the first launch has installed them.
 |---|---|
 | `~/.deep-reasoning/` | everything the app writes, readable only by you |
 | `~/.deep-reasoning/canvas/` | Canvas's settings, secrets (encrypted), agent profiles and Apps; `agent-canvas/` in it holds your conversations |
-| `~/.deep-reasoning/runtime/`, `bin/` | the installed deep-reasoning and deep_reasoner, and the two commands |
+| `~/.deep-reasoning/runtime/`, `bin/` | the installed deep-reasoning and deep_reasoner, and the two commands; after an update, the version before stays until the next start that installs nothing |
+| `~/.deep-reasoning/web/` | Node, and the browser version's files, from its command ([Run it in your browser](#run-it-in-your-browser)) |
 | `~/.deep-reasoning/canvas-app/` | the Library App as setup staged it for this computer: its manifest, panel and backend |
 | `~/.deep-reasoning/setup.json`, `setup.lock` | what setup last did, and the folder `dr-app home` chose; a lock held while setup runs, so a launch and a terminal run never overlap |
 | your data home | the Library (`library.sqlite`), `runs/`, `sessions/`, `prices.yaml`, and the spend ledgers (`spend/`) |
@@ -165,6 +170,60 @@ another folder. A `dr-acp` or `dr-library` run in a terminal without `--home` us
    `~/.config/Deep Reasoning` on Linux.
 
 uv's cache and the Pythons it manages are shared with any other use of uv, and stay.
+
+## Run it in your browser
+
+The same Deep Reasoning, without the app: one command in a terminal starts it, and you talk
+to it at `http://localhost:8000` in your own browser. It is the app's build without its
+window, so it sets up, runs and keeps your data exactly as the app does.
+
+**What you need:** the same computer and the same read access to deep_reasoner_beta as the
+app ([What you need](#what-you-need)), and **uv 0.8.17 or later**:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Nothing else: uv brings Python, and the command brings its own Node (22.12.0, the app's).
+
+**The command.** Each release has its own, which names the release's commit; its release
+page on the [Releases page](https://github.com/michaeltheologitis/deep-reasoning/releases)
+gives it. There is no release yet: build the browser tarball from a clean, pushed checkout
+(`uv run desktop/build.py web`, which needs Node and npm), then run, with `<commit>` the
+checkout's commit:
+
+```sh
+uvx --from git+https://github.com/michaeltheologitis/deep-reasoning@<commit>#subdirectory=packages/dr-web deep-reasoning --tarball dist/deep-reasoning-web-<version>.tgz
+```
+
+**The first start** installs Node and fetches the release's files, once, then does what the
+app's [first launch](#the-first-launch) does, printing setup's lines in the terminal. Once
+everything is up it opens `http://localhost:8000` in your browser and says so.
+
+**Stopping:** `Ctrl+C`, or closing the terminal, stops everything it started. Closing the
+browser tab stops nothing.
+
+**Restarting and updating:** the same command again installs nothing. Within about ten
+minutes of the last start that had the network it needs none; after that, the agent-server's
+start asks PyPI again, so a restart then needs the network until a later Canvas build lifts
+it.
+The next release's command updates, installing once, as an update of the app does.
+
+**Ports:** the page is on 8000, or on the port you give with `--port N`. The agent-server's
+port, 18000, never moves: it is why only one Deep Reasoning runs on a computer at a time.
+The other two, 3001 and 18001, move on their own when another program has them.
+`--no-open` starts it without opening a browser (for an SSH session, say).
+
+**Beside the app:** never both at once: whichever starts second says the other is running
+and changes nothing. They share everything under `~/.deep-reasoning` (conversations,
+settings, secrets, the Library), except what a browser keeps per browser: onboarding's done
+flag and the Show sub-agent costs switch.
+
+**Browsers:** Chrome, Edge and Firefox. In Safari the Library panel (Show Decompositions)
+does not open: Safari does not send the panel its sign-in cookie.
+
+**Removing it:** `rm -rf ~/.deep-reasoning/web` removes the command's Node and files; to
+remove everything, do as [Uninstall](#uninstall) says.
 
 ## What the app protects, and what it does not
 
