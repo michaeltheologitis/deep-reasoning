@@ -181,6 +181,84 @@ def test_the_launcher_gets_electrons_options_one_port_and_a_clean_environment(tr
     ]
 
 
+def test_once_ready_it_says_where_and_ctrl_c_exits_0(tree):
+    running = tree.start("--port", str(tree.ingress), "--no-open")
+    running.wait_for_line(
+        web_text("running", f"http://localhost:{tree.ingress}"), RUN_S
+    )
+    running.process.send_signal(signal.SIGINT)
+    assert running.process.wait(timeout=RUN_S) == 0
+    assert running.lines()[-1] == "Shutting down..."
+
+
+@pytest.mark.parametrize(
+    ("args", "what"),
+    [
+        (["--x"], "Unknown option --x"),
+        (["serve"], "Unknown option serve"),
+        (["--no-open=1"], "Unknown option --no-open"),
+        (["--port", "0"], "--port needs a number from 1 to 65535"),
+        (["--port", "65536"], "--port needs a number from 1 to 65535"),
+        (["--port", "eighty"], "--port needs a number from 1 to 65535"),
+        (["--port"], "--port needs a number from 1 to 65535"),
+        (
+            ["--port", "AGENT_SERVER"],
+            "--port cannot be AGENT_SERVER: Deep Reasoning's agent-server uses it",
+        ),
+    ],
+)
+def test_unknown_options_and_bad_ports_are_refused(tree, args, what):
+    """AGENT_SERVER stands for the tree's agent-server port."""
+    port = str(tree.agent_server)
+    refused = tree.run(*(arg.replace("AGENT_SERVER", port) for arg in args))
+    assert refused == (2, [web_text("usage", what.replace("AGENT_SERVER", port))])
+    assert tree.record() is None
+
+
+@pytest.mark.parametrize(
+    ("tool", "script", "problem"),
+    [
+        ("uv", "echo 'uv 0.8.16'", ("uv_too_old", "0.8.16")),
+        ("uv", None, ("NO_UV",)),
+        ("uvx", None, ("NO_UV",)),
+        ("git", None, ("NO_GIT",)),
+        ("git", "exit 1", ("NO_GIT",)),
+    ],
+    ids=["old-uv", "no-uv", "no-uvx", "no-git", "git-shim"],
+)
+def test_a_missing_or_old_requirement_is_named_and_nothing_starts(
+    tree, tool, script, problem
+):
+    tree.tool(tool, script)
+    code, lines = tree.run("--port", str(tree.ingress), "--no-open")
+    assert (code, lines) == (22, [web_text(*problem)])
+    assert tree.record() is None
+
+
+def test_a_node_older_than_the_apps_is_named():
+    """Only a door other than dr-web (npx) can run the entry on another Node."""
+    found = {"node": "20.11.1", "uv": "0.8.17", "uvx": True, "git": "2.43.0"}
+    problems = evaluate_web(f"web.requirementProblems({json.dumps(found)})")
+    assert problems == [web_text("node_too_old", "20.11.1")]
+
+
+@pytest.mark.parametrize(
+    ("found", "minimum", "at_least"),
+    [
+        ("22.12.0", "22.12.0", True),
+        ("v22.22.0", "22.12.0", True),
+        ("0.8.17 (8c62bb3 2025-09-10)", "0.8.17", True),
+        ("22.9.1", "22.12.0", False),
+        ("20.11.1", "22.12.0", False),
+        ("0.10.0", "0.8.17", True),
+        ("no version", "0.8.17", False),
+    ],
+)
+def test_versions_compare_by_their_three_numbers(found, minimum, at_least):
+    expression = f"web.versionAtLeast({json.dumps(found)}, {json.dumps(minimum)})"
+    assert evaluate_web(expression) is at_least
+
+
 def test_a_held_agent_server_port_is_refused_and_nothing_starts(tree):
     with held(tree.agent_server):
         code, lines = tree.run("--port", str(tree.ingress), "--no-open")
@@ -210,33 +288,6 @@ def test_a_held_automation_port_moves_to_a_free_one(tree):
     assert moved not in (tree.automation, tree.ingress, tree.agent_server)
     with held(moved):
         pass
-
-
-@pytest.mark.parametrize(
-    ("tool", "script", "problem"),
-    [
-        ("uv", "echo 'uv 0.8.16'", ("uv_too_old", "0.8.16")),
-        ("uv", None, ("NO_UV",)),
-        ("uvx", None, ("NO_UV",)),
-        ("git", None, ("NO_GIT",)),
-        ("git", "exit 1", ("NO_GIT",)),
-    ],
-    ids=["old-uv", "no-uv", "no-uvx", "no-git", "git-shim"],
-)
-def test_a_missing_or_old_requirement_is_named_and_nothing_starts(
-    tree, tool, script, problem
-):
-    tree.tool(tool, script)
-    code, lines = tree.run("--port", str(tree.ingress), "--no-open")
-    assert (code, lines) == (22, [web_text(*problem)])
-    assert tree.record() is None
-
-
-def test_a_node_older_than_the_apps_is_named():
-    """Only a door other than dr-web (npx) can run the entry on another Node."""
-    found = {"node": "20.11.1", "uv": "0.8.17", "uvx": True, "git": "2.43.0"}
-    problems = evaluate_web(f"web.requirementProblems({json.dumps(found)})")
-    assert problems == [web_text("node_too_old", "20.11.1")]
 
 
 @pytest.mark.parametrize(
@@ -315,8 +366,9 @@ def test_a_setup_that_cannot_be_started_names_why_in_one_line(tree):
     ids=["agent-server-exited", "started-elsewhere"],
 )
 def test_a_launch_that_fails_otherwise_says_why_in_one_line(tree, does, code, line):
-    """The second of two starts passes the port check, then its agent-server cannot bind
-    the port the first one bound meanwhile."""
+    """A rejection that is not setup's: its message's first line; or, when the
+    agent-server's port was bound meanwhile (a second start that passed the port check
+    while the first was starting), started_elsewhere."""
     message = "agent-server exited with code 2\n  last lines: …"
     tree.does(does=does, name="Error", message=message, agentServer=tree.agent_server)
     exited, lines = tree.run("--port", str(tree.ingress), "--no-open")
@@ -329,38 +381,6 @@ def test_an_agent_server_that_never_answers_stops_everything_and_exits_24(tree):
     assert code == 24
     assert web_text("NOT_READY") in lines
     assert (tree.scripts / "stopped.json").exists()
-
-
-def test_once_ready_it_says_where_and_ctrl_c_exits_0(tree):
-    running = tree.start("--port", str(tree.ingress), "--no-open")
-    running.wait_for_line(
-        web_text("running", f"http://localhost:{tree.ingress}"), RUN_S
-    )
-    running.process.send_signal(signal.SIGINT)
-    assert running.process.wait(timeout=RUN_S) == 0
-    assert running.lines()[-1] == "Shutting down..."
-
-
-@pytest.mark.parametrize(
-    ("args", "what"),
-    [
-        (["--x"], "Unknown option --x"),
-        (["serve"], "Unknown option serve"),
-        (["--no-open=1"], "Unknown option --no-open"),
-        (["--port", "0"], "--port needs a number from 1 to 65535"),
-        (["--port", "65536"], "--port needs a number from 1 to 65535"),
-        (["--port", "eighty"], "--port needs a number from 1 to 65535"),
-        (["--port"], "--port needs a number from 1 to 65535"),
-        (["--port", "AGENT_SERVER"], None),
-    ],
-)
-def test_unknown_options_and_bad_ports_are_refused(tree, args, what):
-    args = [str(tree.agent_server) if a == "AGENT_SERVER" else a for a in args]
-    what = what or (
-        f"--port cannot be {tree.agent_server}: Deep Reasoning's agent-server uses it"
-    )
-    assert tree.run(*args) == (2, [web_text("usage", what)])
-    assert tree.record() is None
 
 
 @pytest.mark.parametrize(
@@ -380,23 +400,6 @@ def test_the_browser_opens_only_where_a_session_can_show_it(platform, env, comma
         evaluate_web(f"web.opener({json.dumps(platform)}, {json.dumps(env)})")
         == command
     )
-
-
-@pytest.mark.parametrize(
-    ("found", "minimum", "at_least"),
-    [
-        ("22.12.0", "22.12.0", True),
-        ("v22.22.0", "22.12.0", True),
-        ("0.8.17 (8c62bb3 2025-09-10)", "0.8.17", True),
-        ("22.9.1", "22.12.0", False),
-        ("20.11.1", "22.12.0", False),
-        ("0.10.0", "0.8.17", True),
-        ("no version", "0.8.17", False),
-    ],
-)
-def test_versions_compare_by_their_three_numbers(found, minimum, at_least):
-    expression = f"web.versionAtLeast({json.dumps(found)}, {json.dumps(minimum)})"
-    assert evaluate_web(expression) is at_least
 
 
 def test_the_entrys_sentences_are_the_designs_verbatim():
