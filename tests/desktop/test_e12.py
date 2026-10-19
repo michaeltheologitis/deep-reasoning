@@ -1,13 +1,17 @@
 """E12: the installed Linux app, launched as a user would launch it, on a fake model
-(D5 §7.5).
+(D5 §7.5, TASK-65 §7.4).
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
 linux), installs the .deb and runs this module under xvfb-run. Its tests share one
-first launch and run in order: the launch; onboarding, which asks no telemetry consent
-and keeps deep_reasoner; the conversation its hello starts; nothing recording consent;
-D3's frame through the bridge; then the final part: C1's nested sub-agents and a Stop
-of one, C2's namespace picker, slash menu and header panel with Create decomposition,
-an MCP server granted in D4's Tools tab, and the panel past its first session; then
+first launch and run in order: the launch onto the home screen, with no onboarding and
+no telemetry consent; no screen offering another agent or an agent profile; a question
+asked before the model key is saved, answered with where it goes; the first answered
+conversation, from deep_reasoner although another profile is active, and its key kept
+out; a keyless LLM profile titling no chat with an error; nothing recording consent;
+D3's frame through the bridge; then the final part: C1's nested sub-agents, their costs
+shown by default and a Stop of one, C2's namespace picker, slash menu and header panel
+with Create decomposition, the Spend cap set in D4's Tools tab capping the next
+conversation, an MCP server granted there, and the panel past its first session; then
 the quit and an offline relaunch of setup. No test calls a real model.
 """
 
@@ -33,6 +37,7 @@ from playwright.sync_api import (
 )
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
+from deep_reasoning.acp import texts as acp_texts
 from deep_reasoning.acp.catalog import slug
 from deep_reasoning.acp.runlog import Home, McpStatus, PromptStart, RunLog, RunStart
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
@@ -44,10 +49,12 @@ from tests.desktop.app import (
     FIRST_LAUNCH_S,
     QUIT_S,
     LaunchedApp,
+    conversation_events,
     fresh_home,
     launch,
     processes_mentioning,
     secret,
+    spend_caps,
     user_environment,
 )
 from tests.desktop.e12.subagents import (
@@ -63,6 +70,33 @@ pytestmark = [
 ]
 
 INGRESS = "http://127.0.0.1:18000"
+LOCKED_PROFILE = "deep_reasoner"
+# TASK-50: the pages a locked build hides, and the ones it keeps, in the navigation's order.
+HIDDEN_SETTINGS = (
+    "settings/agents",
+    "settings/agent",
+    "settings/llm",
+    "settings/meta-llm",
+    "settings/condenser",
+)
+SHOWN_SETTINGS = [
+    "/settings/agent-context",
+    "/settings/verification",
+    "/settings/app",
+    "/settings/secrets",
+]
+# An automation of the pinned @openhands/extensions catalog whose setup needs no integration.
+AUTOMATION_TEMPLATE = "custom-automation"
+# Q1: asked before the model key is saved; dr-acp answers it before any run.
+NO_KEY_QUESTION = "What does E12 ask before its key?"
+# TASK-46: an LLM profile as Canvas's Settings → LLM saves it, with no key.
+KEYLESS_LLM_PROFILE = "gpt-5-5"
+TITLE_QUESTION = "What titles the e12 chat?"  # at most 50 characters: the whole title
+TITLE_ANSWER = secret("e12-title-")
+# Q3: the Tools tab's Spend cap, set, then the next conversation's cap.
+CAP = "7.50"
+CAP_QUESTION = "What does E12 spend under its cap?"
+CAP_ANSWER = secret("e12-cap-")
 SESSION = f"{INGRESS}/app-backends/dr-library/session"
 BACKEND = "/api/canvas-extensions/installed/dr-library/backend"
 QUESTION = "What does E12 answer?"
@@ -101,6 +135,7 @@ CONSENT_SHOWS_S = 5  # a lazy-loaded consent dialog would be up by then
 CONSENT_STORAGE_KEY = (
     "openhands-telemetry-consent"  # Canvas's src/services/telemetry.ts
 )
+INSTALLING = texts.installing("", "").partition(" with ")[0]
 PLAN = {
     QUESTION: [ENVIRONMENT_CELL, repl(f"FinalAnswer({ANSWER!r})")],
     TREE_QUESTION: [
@@ -129,12 +164,19 @@ PLAN = {
     PANEL_QUESTION: [repl(f"FinalAnswer({PANEL_ANSWER!r})")],
     NEXT_TASK: [repl(f"FinalAnswer({NEXT_ANSWER!r})")],
     MCP_QUESTION: [repl(f"FinalAnswer(echo.echo({MCP_REPLY!r}))")],
+    TITLE_QUESTION: [repl(f"FinalAnswer({TITLE_ANSWER!r})")],
+    CAP_QUESTION: [repl(f"FinalAnswer({CAP_ANSWER!r})")],
 }
 # $0.002 a call at E12_MODEL's price, so each sub-agent's cost has a few digits.
 USAGE = {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500}
 KEY = secret("sk-e12-")
 STOPPED = threading.Event()  # E12 has pressed Stop and dr-acp has accepted it
 expect.set_options(timeout=60_000)
+
+
+def spend_cap_saved(cap: str) -> str:
+    """The Spend cap field's line after a save (TASK-65 §6.3)."""
+    return f"✓ Saved: new conversations stop at ${cap}."
 
 
 def holding_the_grandchild(respond: Callable[[list], str]) -> Callable[[list], str]:
@@ -209,22 +251,33 @@ def setup_lines(app: LaunchedApp, phase: str) -> list[str]:
     return [line.split(marker, 1)[1] for line in app.lines() if marker in line]
 
 
-def test_the_first_launch_installs_everything_and_opens_the_window(app, browser):
+def test_the_first_launch_installs_everything_and_opens_on_the_home_screen(
+    app, browser
+):
     app.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
     page = window(browser)
-    expect(page.get_by_test_id("first-run-onboarding-screen")).to_be_visible()
+    expect(page.get_by_test_id("chat-input")).to_be_visible()
+    expect(page.get_by_test_id("first-run-onboarding-screen")).to_have_count(0)
+    expect(page.get_by_test_id("onboarding-modal")).to_have_count(0)
     before, after = setup_lines(app, "before-start"), setup_lines(app, "after-ready")
     assert texts.home_local(str(app.data)) in before
-    assert texts.safety("5") in before
     assert any(line.startswith("installed in ") for line in before)
     assert texts.PROFILE_CREATED in after
     assert texts.app_ready("0.1.0", "installed") in after
+    unwanted = ("runs as you", "OPENAI_API_KEY")
+    assert [line for line in before + after if any(u in line for u in unwanted)] == []
     assert app.request("GET", BACKEND)["state"] == "ready"
     info = app.request("GET", "/server_info")
     assert info["app_backend_ingress_url"] == INGRESS
-    profiles = app.request("GET", "/api/agent-profiles")
-    [ours] = [p for p in profiles["profiles"] if p["name"] == "deep_reasoner"]
-    assert profiles["active_agent_profile_id"] == ours["id"]
+    assert app.request("GET", "/api/agent-profiles")["active_agent_profile_id"] == (
+        locked_profile_id(app)
+    )
+
+
+def locked_profile_id(app: LaunchedApp) -> str:
+    profiles = app.request("GET", "/api/agent-profiles")["profiles"]
+    [ours] = [p for p in profiles if p["name"] == LOCKED_PROFILE]
+    return ours["id"]
 
 
 def point_the_library_at(app: LaunchedApp, fake: FakeOpenAI, directory: Path) -> None:
@@ -291,32 +344,83 @@ def worker_environ(app: LaunchedApp) -> str:
 def test_the_first_launch_asks_for_no_telemetry_consent(app, browser):
     """Our build cannot report (decision K), so Canvas has nothing to ask (dr-3, #28).
     The consent dialog is lazy-loaded; where a build shows it, it is up within a few
-    seconds of the onboarding."""
+    seconds of the home screen."""
     page = window(browser)
-    expect(page.get_by_test_id("onboarding-step-choose-agent")).to_be_visible()
+    expect(page.get_by_test_id("chat-input")).to_be_visible()
     page.wait_for_timeout(CONSENT_SHOWS_S * 1000)
     expect(page.get_by_test_id("telemetry-consent-form")).to_have_count(0)
 
 
-def test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_it(
+def settings_navigation(page: Page) -> list[str]:
+    """The pages the settings navigation links to, in its order."""
+    return page.locator('[data-testid^="sidebar-settings-/settings/"]').evaluate_all(
+        "links => links.map(link => link.dataset.testid.slice('sidebar-settings-'.length))"
+    )
+
+
+def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
+    """TASK-50 and Q2: the "+" menu, Settings, the command menu, the checklist and an
+    automation's setup, as a locked build renders them."""
+    page = window(browser)
+    page.goto(CANVAS_URL)
+    page.get_by_test_id("chat-plus-button").click()
+    expect(page.get_by_test_id("tools-context-menu")).to_be_visible()
+    expect(page.get_by_test_id("switch-agent-profile-button")).to_have_count(0)
+    page.keyboard.press("Escape")
+    page.goto(CANVAS_URL + "settings")
+    page.wait_for_url(CANVAS_URL + "settings/app")
+    expect(page.get_by_test_id("app-settings-screen")).to_be_visible()
+    assert settings_navigation(page) == SHOWN_SETTINGS
+    expect(page.locator('a[href="/settings/llm"]')).to_have_count(0)
+    for hidden in HIDDEN_SETTINGS:
+        page.goto(CANVAS_URL + hidden)
+        page.wait_for_url(CANVAS_URL + "settings/app")
+    page.keyboard.press("ControlOrMeta+K")
+    expect(page.get_by_test_id("command-menu-item-secrets-settings")).to_be_visible()
+    for item in ("agent-settings", "llm-settings", "condenser-settings"):
+        expect(page.get_by_test_id(f"command-menu-item-{item}")).to_have_count(0)
+    page.keyboard.press("Escape")
+    page.goto(CANVAS_URL)
+    checklist = "sidebar-onboarding-checklist-item-"
+    expect(page.get_by_test_id(f"{checklist}start-conversation")).to_be_attached()
+    for item in ("configure-llm", "customize-agent"):
+        expect(page.get_by_test_id(f"{checklist}{item}")).to_have_count(0)
+    page.goto(CANVAS_URL + f"automations/new/{AUTOMATION_TEMPLATE}")
+    expect(page.get_by_test_id("setup-continue-button")).to_be_visible()
+    expect(page.get_by_test_id("automation-agent-profile")).to_have_count(0)
+
+
+def test_a_question_with_no_model_key_saved_says_where_the_key_goes(app, browser, fake):
+    """Q1: the reminder is dr-acp's answer to a question, before any run."""
+    page = window(browser)
+    start_conversation(page, NO_KEY_QUESTION)
+    reminder = acp_texts.missing_model_key(["OPENAI_API_KEY"])
+    expect(answer(page, reminder)).to_be_visible()
+    assert run_ids(app) == set()
+    assert fake.calls == []
+
+
+def test_every_conversation_starts_from_deep_reasoner_whatever_profile_is_active(
     app, browser, fake, tmp_path
 ):
-    """Onboarding offers the active profile setup made, first and chosen; keeping it
-    skips the model setup, writes no profile, and its hello starts the conversation
-    with it (dr-3, #29)."""
+    """TASK-50's launch: another profile is made active, here and for the rest of E12,
+    and the conversation still runs deep_reasoner."""
     point_the_library_at(app, fake, tmp_path)
-    profiles = app.request("GET", "/api/agent-profiles")
+    other = {"agent_kind": "acp", "acp_server": "custom", "acp_command": "false"}
+    app.request("POST", "/api/agent-profiles/e12-other", other)
+    [other_id] = [
+        p["id"]
+        for p in app.request("GET", "/api/agent-profiles")["profiles"]
+        if p["name"] == "e12-other"
+    ]
+    app.request("POST", f"/api/agent-profiles/{other_id}/activate")
     page = window(browser)
-    kept = page.get_by_test_id("onboarding-agent-option-active-profile")
-    expect(kept).to_contain_text("deep_reasoner")
-    expect(kept).to_have_attribute("aria-checked", "true")
-    page.get_by_test_id("onboarding-agent-next").click()
-    expect(page.get_by_test_id("onboarding-step-say-hello")).to_be_visible()
-    page.get_by_test_id("onboarding-hello-input").fill(QUESTION)
-    page.get_by_test_id("onboarding-hello-input").press("Enter")
-    page.wait_for_url(re.compile(r".*/conversations/[^/?]+$"))
-    expect(page.get_by_test_id("onboarding-modal")).to_have_count(0)
-    assert app.request("GET", "/api/agent-profiles") == profiles
+    conversation = start_conversation(page, QUESTION)
+    expect(answer(page, ANSWER)).to_be_visible()
+    launched = app.request("GET", f"/api/conversations/{conversation}")
+    assert launched["launched_agent_profile"]["agent_profile_id"] == (
+        locked_profile_id(app)
+    )
 
 
 def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
@@ -340,6 +444,27 @@ def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
     for value in (KEY, app.session_key, app.secret_key):
         assert value not in environ
         assert not [text for text in stored if value in text]
+
+
+def test_a_new_chats_first_message_shows_no_title_error_with_a_keyless_llm_profile(
+    app, browser
+):
+    """TASK-46: Canvas sends the active LLM profile as the title profile; one with no
+    key is never called, and the chat is titled by its first message."""
+    llm = f"/api/profiles/{KEYLESS_LLM_PROFILE}"
+    app.request("POST", llm, {"llm": {"model": "gpt-5.5"}})
+    app.request("POST", f"{llm}/activate")
+    page = window(browser)
+    conversation = start_conversation(page, TITLE_QUESTION)
+    expect(answer(page, TITLE_ANSWER)).to_be_visible()
+    eventually(
+        lambda: (
+            app.request("GET", f"/api/conversations/{conversation}")["title"]
+            == TITLE_QUESTION
+        )
+    )
+    events = conversation_events(app, conversation)
+    assert [e for e in events if e["kind"] == "ConversationErrorEvent"] == []
 
 
 def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switch(
@@ -379,9 +504,8 @@ def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
         made["body"]["ingress_url"] + "ui/?tab=namespaces&cap=5",
     )
     frame = page.frame_locator("#e12-frame")
-    expect(frame.get_by_test_id("dr-notice")).to_contain_text(texts.safety("5"))
-    frame.get_by_test_id("dr-notice-ack").click()
     expect(frame.get_by_test_id(f"dr-node-{NAMESPACE}")).to_be_visible()
+    expect(frame.get_by_test_id("dr-notice")).to_have_count(0)
     cookies = browser.new_browser_cdp_session().send("Storage.getCookies")["cookies"]
     [session] = [c for c in cookies if c["path"] == "/app-backends/dr-library"]
     assert session["partitionKey"]["topLevelSite"] == "http://localhost"
@@ -520,19 +644,14 @@ def test_sub_agents_nest_under_the_cells_that_spawned_them_as_the_run_log_record
         expect(row.get_by_test_id("subagent-status").first).to_have_text("done")
 
 
-def test_each_sub_agent_shows_its_latest_cost_once_the_setting_is_on(app, browser):
+def test_each_sub_agent_shows_its_latest_cost_by_default_and_none_once_turned_off(
+    app, browser
+):
+    """TASK-51: the setting untouched, costs show; turned off, none does."""
     page = window(browser)
     conversation = page.url
     _, costs = recorded_subagent_tree(app.data, run_asked(app, TREE_QUESTION))
     assert expanded_rows(page) == 3
-    expect(page.get_by_test_id("subagent-cost")).to_have_count(0)
-    page.goto(CANVAS_URL + "settings/app")
-    switch = page.get_by_test_id("show-subagent-costs-switch")
-    page.locator("label", has=switch).click()
-    expect(switch).to_be_checked()
-    page.goto(conversation)
-    expect(page.get_by_test_id("subagent-block-toggle")).to_be_visible()
-    eventually(lambda: expanded_rows(page) == 3)
     for session, cost in costs.items():
         row = page.locator(
             f'[data-testid="subagent-row"][data-acp-session-id="{session}"]'
@@ -540,6 +659,15 @@ def test_each_sub_agent_shows_its_latest_cost_once_the_setting_is_on(app, browse
         expect(row.get_by_test_id("subagent-cost").first).to_have_text(
             subagent_cost(cost)
         )
+    page.goto(CANVAS_URL + "settings/app")
+    switch = page.get_by_test_id("show-subagent-costs-switch")
+    expect(switch).to_be_checked()
+    page.locator("label", has=switch).click()
+    expect(switch).not_to_be_checked()
+    page.goto(conversation)
+    expect(page.get_by_test_id("subagent-block-toggle")).to_be_visible()
+    eventually(lambda: expanded_rows(page) == 3)
+    expect(page.get_by_test_id("subagent-cost")).to_have_count(0)
 
 
 def test_stop_on_one_sub_agent_stops_it_and_its_branch(app, browser):
@@ -585,22 +713,19 @@ def test_the_home_screen_offers_the_namespaces_and_each_ones_decompositions(
 
 
 def panel_tab(page: Page, tab: str) -> FrameLocator:
-    """D3's frame in C2's header panel, on tab; the safety notice acknowledged.
-    Clicking the selected tab would close the panel."""
+    """D3's frame in C2's header panel, on tab. Clicking the selected tab would close
+    the panel."""
     content = page.get_by_test_id("conversation-app-panel-content")
     if content.get_attribute("data-tab-id") != tab:
         page.get_by_test_id(f"conversation-app-panel-tab-{tab}").click()
     expect(content).to_have_attribute("data-tab-id", tab)
     frame = page.frame_locator('[data-testid="conversation-app-panel-content"] iframe')
-    shown = frame.get_by_test_id("dr-notice-ack").or_(frame.locator("main"))
-    expect(shown.first).to_be_visible()
-    if frame.get_by_test_id("dr-notice-ack").is_visible():
-        frame.get_by_test_id("dr-notice-ack").click()
+    expect(frame.locator("main")).to_be_visible()
     return frame
 
 
 def open_panel(page: Page) -> None:
-    """Show decompositions: C2's header button for D3's panel, unless it is open."""
+    """Show Decompositions: C2's header button for D3's panel, unless it is open."""
     toggle = page.get_by_test_id(
         "conversation-app-panel-toggle-dr-library-decompositions"
     )
@@ -649,15 +774,31 @@ def test_the_next_conversation_in_the_namespace_offers_the_decomposition_and_use
     assert any(CREATED_TASK in str(m.get("content")) for m in first.messages)
 
 
-def test_the_tools_tab_shows_the_safety_notice_with_d4s_risk_line_under_it(
-    app, browser
-):
+def test_the_spend_cap_set_in_the_tools_tab_caps_the_next_conversation(app, browser):
+    """Q3: the field writes the profile's --spend-cap-usd, keeping --home, and the key
+    proxy of the next conversation holds it to that cap."""
     page = window(browser)
     open_panel(page)
     tools = panel_tab(page, "tools")
-    expect(tools.get_by_test_id("dr-notice")).to_contain_text(texts.safety("5"))
-    risk_under_notice = '[data-testid="dr-notice"] + [data-testid="dr-tools-risk"]'
-    expect(tools.locator(risk_under_notice)).to_be_visible()
+    expect(tools.get_by_test_id("dr-spend-cap-input")).to_have_value("5")
+    expect(tools.get_by_test_id("dr-notice")).to_have_count(0)
+    expect(tools.get_by_test_id("dr-tools-risk")).to_have_count(0)
+    tools.get_by_test_id("dr-spend-cap-input").fill(CAP)
+    tools.get_by_test_id("dr-spend-cap-save").click()
+    expect(tools.get_by_test_id("dr-spend-cap-status")).to_have_text(
+        spend_cap_saved(CAP)
+    )
+    args = app.request("GET", f"/api/agent-profiles/{LOCKED_PROFILE}")["profile"][
+        "acp_args"
+    ]
+    assert args[:2] == ["--home", str(app.data)]
+    assert args[-2:] == ["--spend-cap-usd", CAP]
+    before = spend_caps(app)
+    start_conversation(page, CAP_QUESTION)
+    expect(answer(page, CAP_ANSWER)).to_be_visible()
+    eventually(lambda: spend_caps(app).keys() - before.keys())
+    caps = spend_caps(app)
+    assert [caps[s] for s in caps.keys() - before.keys()] == [float(CAP)]
 
 
 def test_an_mcp_server_granted_in_the_tools_tab_is_called_by_the_next_conversation(
@@ -724,4 +865,6 @@ def test_setup_relaunches_offline_from_its_cache_and_installs_nothing(app):
     took = time.monotonic() - started
     assert done.returncode == 0, done.stdout + done.stderr
     assert took < OFFLINE_S, f"{took:.1f} s"
-    assert "installing deep-reasoning" not in done.stdout
+    assert not [
+        line for line in done.stdout.splitlines() if line.startswith(INSTALLING)
+    ]
