@@ -2,7 +2,7 @@
 launcher, no wiring (D5 §1.2 step 5).
 
 DR_SDK_CHECKOUT names a checkout of desktop/pins.toml's [sdk_fork] commit, synced with
-uv sync --frozen.
+uv sync --frozen; DR_SDK_COMMIT, when set, names the commit it holds instead of the pin.
 """
 
 import os
@@ -26,14 +26,15 @@ from dr_app.profile import PROFILE_NAME, desired_profile
 ROOT = Path(__file__).resolve().parents[2]
 SDK_PIN = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())["sdk_fork"]
 CHECKOUT_ENV = "DR_SDK_CHECKOUT"
+COMMIT_ENV = "DR_SDK_COMMIT"
 STARTUP_S = 60.0
 # Loopback, so never through a proxy.
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def sdk_checkout() -> Path:
-    """The checkout DR_SDK_CHECKOUT names, at the pinned commit when it is a git
-    checkout; the test is skipped without one."""
+    """The checkout DR_SDK_CHECKOUT names, at the pinned commit (or DR_SDK_COMMIT's) when
+    it is a git checkout; the test is skipped without one."""
     named = os.environ.get(CHECKOUT_ENV)
     if not named:
         pytest.skip(f"{CHECKOUT_ENV} names no checkout of the SDK fork at its pin")
@@ -46,7 +47,8 @@ def sdk_checkout() -> Path:
             text=True,
             check=True,
         ).stdout.strip()
-        assert head == SDK_PIN["commit"], f"{checkout} is at {head}, not the pin"
+        expected = os.environ.get(COMMIT_ENV) or SDK_PIN["commit"]
+        assert head == expected, f"{checkout} is at {head}, not {expected}"
     return checkout
 
 

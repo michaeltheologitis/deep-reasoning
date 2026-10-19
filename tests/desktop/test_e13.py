@@ -246,7 +246,9 @@ def test_the_stack_runs_the_pinned_agent_server_on_the_wheels_node_with_nothing_
         pid for pid, line in lines.items() if "openhands.automation.app" in line
     ]
     assert agent_server and automation, lines
-    assert any(PINS.sdk_fork.commit in lines[pid] for pid in agent_server)
+    # cross-repo.yml's sdk_commit replaces the pin in hand and dispatch runs.
+    sdk_commit = os.environ.get("SDK_COMMIT") or PINS.sdk_fork.commit
+    assert any(sdk_commit in lines[pid] for pid in agent_server)
     assert not [line for line in lines.values() if "@main" in line]
     wheel_node = cache.WebLayout(web.data / cache.WEB_DIRNAME).node.resolve()
     runs = {pid: executable(pid) for pid in descendants(web.process.pid)}
