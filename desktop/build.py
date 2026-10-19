@@ -38,6 +38,8 @@ COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 # The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
 STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
+# dr_app.profile.PROFILE_NAME, mirrored: this file imports nothing of deep-reasoning's.
+LOCKED_PROFILE: Final = "deep_reasoner"
 SETUP_PHASES: Final = ["before-start", "after-ready"]
 BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
 TYPESCRIPT_CLIENT: Final = "@openhands/typescript-client"
@@ -134,6 +136,13 @@ def fork_sets_ours(canvas_tag: str, key: str, value: Any) -> str:
     return (
         f"✗ Canvas fork {canvas_tag}'s config/defaults.json sets {key} to "
         f"{json.dumps(value)}; the fork must leave it null, for this build to write."
+    )
+
+
+def fork_lacks_lock(canvas_tag: str) -> str:
+    return (
+        f"✗ Canvas fork {canvas_tag}'s config/defaults.json has no agent.lockedProfile, "
+        "so it cannot lock the app to Deep Reasoning: pin dr-4 or later."
     )
 
 
@@ -259,13 +268,17 @@ def check_pins(
     ours = locked_version((repo / "uv.lock").read_text(), ACP_PYTHON)
     if theirs is None or theirs != ours:
         problems.append(acp_differs(sdk_pin.tag, theirs, ours))
+    agent = defaults.get("agent") or {}
     ours_to_write = {
         "paths.stateDir": (defaults.get("paths") or {}).get("stateDir"),
         "setup.command": (defaults.get("setup") or {}).get("command"),
+        "agent.lockedProfile": agent.get("lockedProfile"),
     }
     for key, value in ours_to_write.items():
         if value is not None:
             problems.append(fork_sets_ours(canvas_pin.tag, key, value))
+    if "lockedProfile" not in agent:
+        problems.append(fork_lacks_lock(canvas_pin.tag))
     changed = git("status", "--porcelain", "--untracked-files=no", cwd=repo)
     if changed.strip():
         problems.append(checkout_dirty(len(changed.strip().splitlines())))
@@ -297,12 +310,14 @@ def patch_defaults(
     state_dir: str,
     command: list[str],
 ) -> dict[str, Any]:
-    """§4.2.3's four keys; every other key unchanged."""
+    """§4.2.3's four keys and agent.lockedProfile = LOCKED_PROFILE (TASK-65 §4.1); every
+    other key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
     patched["setup"]["phases"] = list(SETUP_PHASES)
     patched.setdefault("telemetry", {})["posthogApiKey"] = ""
+    patched.setdefault("agent", {})["lockedProfile"] = LOCKED_PROFILE
     return patched
 
 

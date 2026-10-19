@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from desktop import build
+from dr_app.profile import PROFILE_NAME
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -32,7 +33,8 @@ PINS = build.Pins(
         "0.12.23",
     ),
 )
-# The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired.
+# The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
+# and the agent lock that TASK-65's fork declares.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -44,6 +46,7 @@ DEFAULTS = {
         "posthogApiKey": "phc_upstreams_key",
         "posthogHost": "https://us.i.posthog.com",
     },
+    "agent": {"lockedProfile": None},
 }
 GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -171,13 +174,40 @@ def test_a_different_acp_python_is_refused(canvas, repo):
     )
 
 
-def test_a_fork_that_carries_our_values_is_refused(canvas, repo):
+def change_defaults(canvas: Path, change) -> None:
     path = canvas / "config" / "defaults.json"
     defaults = json.loads(path.read_text())
-    defaults["paths"]["stateDir"] = "~/.elsewhere/agent-canvas"
+    change(defaults)
     path.write_text(json.dumps(defaults))
+
+
+@pytest.mark.parametrize(
+    ("block", "key", "value"),
+    [
+        ("paths", "stateDir", "~/.elsewhere/agent-canvas"),
+        ("setup", "command", ["sh", "-c", "true"]),
+        ("agent", "lockedProfile", "someone_elses_agent"),
+    ],
+)
+def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, value):
+    change_defaults(canvas, lambda defaults: defaults[block].update({key: value}))
     assert problems(canvas, repo) == [
-        build.fork_sets_ours("dr-1", "paths.stateDir", "~/.elsewhere/agent-canvas")
+        build.fork_sets_ours("dr-1", f"{block}.{key}", value)
+    ]
+
+
+@pytest.mark.parametrize(
+    "unlockable",
+    [lambda d: d.pop("agent"), lambda d: d["agent"].pop("lockedProfile")],
+    ids=["no-agent-block", "no-lockedProfile-key"],
+)
+def test_a_canvas_fork_that_cannot_lock_the_agent_is_refused(canvas, repo, unlockable):
+    change_defaults(canvas, unlockable)
+    assert problems(canvas, repo) == [
+        (
+            "✗ Canvas fork dr-1's config/defaults.json has no agent.lockedProfile, so "
+            "it cannot lock the app to Deep Reasoning: pin dr-4 or later."
+        )
     ]
 
 
@@ -195,7 +225,7 @@ def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
     assert problems(canvas, repo) == [build.head_unpushed(head)]
 
 
-def test_defaults_gain_only_d5s_four_keys():
+def test_defaults_gain_only_the_builds_five_keys():
     before = copy.deepcopy(DEFAULTS)
     command = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
     patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=command)
@@ -204,7 +234,12 @@ def test_defaults_gain_only_d5s_four_keys():
     expected["paths"]["stateDir"] = "~/.deep-reasoning/canvas/agent-canvas"
     expected["setup"] = {"command": command, "phases": ["before-start", "after-ready"]}
     expected["telemetry"]["posthogApiKey"] = ""
+    expected["agent"]["lockedProfile"] = "deep_reasoner"
     assert patched == expected
+
+
+def test_the_locked_profile_is_the_one_setup_creates():
+    assert build.LOCKED_PROFILE == PROFILE_NAME
 
 
 def test_telemetry_is_off_in_the_built_defaults():
