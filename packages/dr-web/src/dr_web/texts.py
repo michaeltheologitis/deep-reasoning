@@ -36,3 +36,7 @@ def not_a_tarball(path: str, reason: str) -> str:
         f"✗ {path} is not a Deep Reasoning browser tarball ({reason}). Nothing was "
         "changed."
     )
+
+
+def unpack_failed(path: str, where: str, why: str) -> str:
+    return f"✗ Could not unpack {path} into {where} ({why}). Nothing was changed."

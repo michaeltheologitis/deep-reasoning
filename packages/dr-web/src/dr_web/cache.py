@@ -6,6 +6,7 @@ Every entry is written under <name>.tmp-<pid> and renamed into place, so two fir
 starts at once never see half of one. Nothing here deletes a finished entry.
 """
 
+import gzip
 import hashlib
 import json
 import os
@@ -16,6 +17,7 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
+import zlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +50,8 @@ FALLBACK_CA_FILES: Final = (
 DOWNLOAD_TIMEOUT_S: Final = 60.0
 EXIT_FETCH: Final = 23
 GZIP_MAGIC: Final = b"\x1f\x8b"
+# What reading a file that is not a whole .tar.gz raises; any other OSError is the disk's.
+UNREADABLE: Final = (tarfile.ReadError, EOFError, zlib.error, gzip.BadGzipFile)
 READ_CHUNK: Final = 1 << 20
 
 
@@ -164,6 +168,11 @@ def unpacked(layout: WebLayout, tarball: Path, *, expect_version: str | None) ->
         raise FetchError(
             EXIT_FETCH, texts.not_a_tarball(str(tarball), str(refused))
         ) from None
+    except OSError as error:
+        _remove(temporary)
+        why = error.strerror or str(error)
+        failed = texts.unpack_failed(str(tarball), str(layout.root), why)
+        raise FetchError(EXIT_FETCH, failed) from None
     _place(temporary, tree)
     return tree / "package"
 
@@ -204,7 +213,8 @@ class _NotOurs(Exception):
 
 
 def _unpack(tarball: Path, into: Path, *, expect_version: str | None) -> None:
-    """tarball's package/ into into/package. Raises _NotOurs."""
+    """tarball's package/ into into/package. Raises _NotOurs, or the OSError of writing
+    it out."""
     with tarball.open("rb") as file:
         if file.read(len(GZIP_MAGIC)) != GZIP_MAGIC:
             raise _NotOurs("not gzip")
@@ -219,7 +229,7 @@ def _unpack(tarball: Path, into: Path, *, expect_version: str | None) -> None:
                     archive.extract(member, into, filter="data")
                 except tarfile.FilterError:
                     raise _NotOurs(f"unsafe member {member.name}") from None
-    except (tarfile.ReadError, EOFError, OSError):
+    except UNREADABLE:
         raise _NotOurs("not a tar archive") from None
     package = into / "package"
     try:

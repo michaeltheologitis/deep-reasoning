@@ -1,6 +1,7 @@
 """dr-web, the browser command uvx runs (TASK-48 §3.1, §7.1): a local HTTP server stands
 for the release, and a stub uv on PATH for Node's install."""
 
+import errno
 import gzip
 import http.server
 import io
@@ -133,6 +134,15 @@ def release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Release
         served.stop()
 
 
+def test_the_unpacking_sentence_is_the_designs_verbatim():
+    assert texts.unpack_failed(
+        "/t/x.tgz", "/h/.deep-reasoning/web", "No space left"
+    ) == (
+        "✗ Could not unpack /t/x.tgz into /h/.deep-reasoning/web (No space left). "
+        "Nothing was changed."
+    )
+
+
 def test_the_command_is_dr_webs_at_a_commit_and_its_constants_are_the_builds():
     assert cli.command_for(COMMIT) == (
         "uvx --from git+https://github.com/michaeltheologitis/deep-reasoning"
@@ -195,6 +205,11 @@ def member(name: str) -> tarfile.TarInfo:
             "not a tar archive",
         ),
         (
+            lambda p: p.write_bytes(web_tarball(p).read_bytes()[:-40]),
+            None,
+            "not a tar archive",
+        ),
+        (
             lambda p: web_tarball(p, extra=member("../x")),
             None,
             "a member outside package/",
@@ -224,6 +239,7 @@ def member(name: str) -> tarfile.TarInfo:
         "missing",
         "not-gzip",
         "not-tar",
+        "truncated",
         "dot-dot",
         "absolute",
         "symlink-out",
@@ -240,6 +256,25 @@ def test_a_file_that_is_not_the_tarball_is_refused_and_leaves_nothing(
         cache.unpacked(web, tarball, expect_version=expect_version)
     assert refused.value.exit_code == 23
     assert refused.value.message == texts.not_a_tarball(str(tarball), reason)
+    assert list(web.root.glob("tree-*")) == []
+
+
+def test_a_tarball_that_cannot_be_written_out_says_why_and_leaves_nothing(
+    web, tmp_path, monkeypatch
+):
+    """A full disk while unpacking is the disk's, not the tarball's."""
+    tarball = web_tarball(tmp_path / "built.tgz")
+
+    def disk_full(*args, **kwargs):
+        raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+    monkeypatch.setattr(tarfile.TarFile, "makefile", disk_full)
+    with pytest.raises(FetchError) as failed:
+        cache.unpacked(web, tarball, expect_version=None)
+    assert (failed.value.exit_code, failed.value.message) == (
+        23,
+        texts.unpack_failed(str(tarball), str(web.root), "No space left on device"),
+    )
     assert list(web.root.glob("tree-*")) == []
 
 
