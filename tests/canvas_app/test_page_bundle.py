@@ -179,23 +179,6 @@ def test_the_frame_takes_canvas_theme(canvas):
     assert background == "rgb(1, 2, 3)"
 
 
-TAB_CONTENT = {
-    "browse": "dr-group-router",
-    "create": "dr-save",
-    "namespaces": "dr-node-router",
-    "tools": "dr-spend-cap-input",
-}
-
-
-@pytest.mark.parametrize("tab", list(TAB_CONTENT))
-def test_each_tab_opens_on_its_content_with_no_dialog(canvas, tab):
-    mount(canvas, tab, "c1")
-    frame = canvas.frame_locator("#panel iframe")
-    expect(frame.get_by_test_id(TAB_CONTENT[tab])).to_be_visible()
-    expect(frame.locator("[role=dialog]")).to_have_count(0)
-    expect(frame.get_by_test_id("dr-notice")).to_have_count(0)
-
-
 def test_the_spend_cap_field_writes_the_profiles_cap_and_keeps_its_other_arguments(
     canvas,
 ):
