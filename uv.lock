@@ -687,6 +687,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "deep-reasoning-app" },
+    { name = "deep-reasoning-web" },
     { name = "jsonschema" },
     { name = "nodejs-wheel-binaries" },
     { name = "playwright" },
@@ -713,6 +714,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "deep-reasoning-app", editable = "packages/dr-app" },
+    { name = "deep-reasoning-web", editable = "packages/dr-web" },
     { name = "jsonschema" },
     { name = "nodejs-wheel-binaries", specifier = "==22.12.0" },
     { name = "playwright", specifier = "==1.56.0" },
@@ -725,6 +727,11 @@ dev = [
 name = "deep-reasoning-app"
 version = "0.1.0"
 source = { editable = "packages/dr-app" }
+
+[[package]]
+name = "deep-reasoning-web"
+version = "0.1.0"
+source = { editable = "packages/dr-web" }
 
 [[package]]
 name = "deprecated"

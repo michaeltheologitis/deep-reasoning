@@ -66,7 +66,7 @@ MAC_BINARIES: Final = (
     "Resources/node/bin/node",
 )
 FORBIDDEN_IN_PAYLOAD: Final = "deep_reasoner"
-# The browser version's tarball (TASK-48 §3.3).
+# The browser version's tarball (TASK-48 §3.3): dr_web.cache.PACKAGE_NAME, mirrored.
 WEB_PACKAGE_NAME: Final = "deep-reasoning-web"
 # What desktop/web.mjs copies of Electron's main() call (the fork's electron/main.mjs),
 # each as the fork writes it.
