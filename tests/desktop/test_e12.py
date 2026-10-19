@@ -7,11 +7,11 @@ launch and run in order: the launch onto the home screen, with no onboarding, an
 automation backend answering; the page refusing a host name that is not this machine; no
 telemetry consent; no screen offering another agent or an agent profile; a question
 asked before the model key is saved, answered with where it goes; the first answered
-conversation, from deep_reasoner although another profile is active, the window title
-naming the product after its title and alone at home, and its key kept out; a keyless
-LLM profile titling no chat with an error; nothing recording consent; D3's frame through
-the bridge; then the final part: C1's nested sub-agents, their costs shown by default
-and a Stop of one, C2's namespace picker, slash menu and header panel with Create
+conversation, from deep_reasoner although another profile is active, its key kept out,
+and the window title naming the product after its title and alone at home; a keyless LLM
+profile titling no chat with an error; nothing recording consent; D3's frame through the
+bridge; then the final part: C1's nested sub-agents, their costs shown by default and a
+Stop of one, C2's namespace picker, slash menu and header panel with Create
 decomposition, the Spend cap set in D4's Tools tab capping the next conversation, an MCP
 server granted there, and the panel past its first session; then the quit, an offline
 relaunch of setup, and, uv's index answers aged an hour, an offline relaunch of the app.
@@ -473,19 +473,6 @@ def test_every_conversation_starts_from_deep_reasoner_whatever_profile_is_active
     )
 
 
-def test_the_window_title_names_deep_reasoning_at_home_and_after_a_conversations_title(
-    browser,
-):
-    """Step 5's conversation is still open."""
-    product = build.load_pins(build.PINS).app.product_name
-    page = window(browser)
-    expect(page).to_have_title(
-        re.compile(rf"{re.escape(QUESTION)} \| {re.escape(product)}$")
-    )
-    page.goto(CANVAS_URL)
-    expect(page).to_have_title(product)
-
-
 def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
     app, browser, fake
 ):
@@ -507,6 +494,19 @@ def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
     for value in (KEY, app.session_key, app.secret_key):
         assert value not in environ
         assert not [text for text in stored if value in text]
+
+
+def test_the_window_title_names_deep_reasoning_at_home_and_after_a_conversations_title(
+    browser,
+):
+    """Step 5's conversation is still open, after step 6, which only reads it."""
+    product = build.load_pins(build.PINS).app.product_name
+    page = window(browser)
+    expect(page).to_have_title(
+        re.compile(rf"{re.escape(QUESTION)} \| {re.escape(product)}$")
+    )
+    page.goto(CANVAS_URL)
+    expect(page).to_have_title(product)
 
 
 def test_a_new_chats_first_message_shows_no_title_error_with_a_keyless_llm_profile(
