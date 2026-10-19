@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from desktop import build
+from dr_app import texts
 from tests.desktop.app import (
     AGENT_SERVER_PORT,
     APP,
@@ -40,6 +41,8 @@ pytestmark = [
 HEAD = build.git("rev-parse", "HEAD", cwd=build.REPO).strip()
 COMMAND = web_command(HEAD, TARBALL, "--no-open")
 RUNNING = "Deep Reasoning is running at "
+# Setup's line when it installs Deep Reasoning, as E12 matches it.
+INSTALLING = texts.installing("", "").partition(" with ")[0]
 REFUSED_S = 10.0
 APP_REFUSED_S = 120.0
 STOP_S = 30.0
@@ -93,7 +96,7 @@ def test_the_browser_will_not_start_beside_the_app_and_writes_nothing(home, tmp_
     app = launch(home, tmp_path / "app.log")
     try:
         app.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
-        assert not [line for line in app.lines() if "installing deep-reasoning" in line]
+        assert not [line for line in app.lines() if INSTALLING in line]
         before = settled(app)
         web = launch_web(home, tmp_path / "web.log", COMMAND)
         code = web.process.wait(timeout=REFUSED_S)
