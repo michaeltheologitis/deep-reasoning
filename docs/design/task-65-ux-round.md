@@ -19,6 +19,10 @@ then on `ux-round`, never on `main` and never in a fork. `pyproject.toml` exclud
 only. The PR split leaves the file behind.
 
 **Revisions** (newest first):
+- 2026-10-19 · v1.1 · Michael added the browser tab title to the round (§13). Stop trusting: `patch_defaults` "keeps its
+  signature" (it gains `app_title`, §4.1, §5.3); check 5b and `fork_lacks_lock` (one loop over `FORK_NULL_KEYS`
+  with `fork_lacks_setting`, §4.1, §5.3, §6.4); `test_a_canvas_fork_that_cannot_lock_the_agent_is_refused` and "five
+  keys" (§7.1); §8 step 2's PR list; §9's `build.py` row; §11's total. Added: §13.
 - 2026-10-19 · v1 · first full-depth version.
 
 **Reading guide.**
@@ -122,6 +126,7 @@ Canvas fork  feat/agent-lock                     config/defaults.json "agent": {
                                                  Condenser pages, nor their menu, checklist and link entries
                                                  (TASK-50, Q1, Q2)
              fix/subagent-costs-on-by-default    an unsaved "Show sub-agent costs" reads as on        (TASK-51)
+             feat/app-title                      "branding": {"appTitle": null}; set, every title names it (§13)
              chore/wire-sdk-dr-3                 sources.agentServerGitRef and the client tarball → dr-3
              → Michael tags dr-4
 
@@ -135,7 +140,7 @@ deep-reasoning  ux-round                         patch_defaults writes "deep_rea
 
 The shape is the spec's §2. Each fork gets a generic behaviour that is off by default, our build turns it on, and
 everything deep_reasoner-specific stays in deep-reasoning. TASK-48's browser build calls the same `patch_defaults`
-(its design W11), so it inherits the lock with no second edit. §9 covers the rest of its seams.
+(its design W11), so it inherits the lock and the title (§13) with no second edit. §9 covers the rest of its seams.
 
 ### 1.1 Decisions this design takes
 
@@ -331,14 +336,13 @@ The ACP sentinel's behaviour stays pinned by the existing `test_autotitle_falls_
 
 ### 4.1 `desktop/build.py` and `desktop/pins.toml`
 
-**`patch_defaults`** keeps its signature (TASK-48's `prepare()` calls it unchanged) and writes a fifth key,
-`agent.lockedProfile` = `LOCKED_PROFILE`. `LOCKED_PROFILE = "deep_reasoner"` mirrors `dr_app.profile.PROFILE_NAME`,
+**`patch_defaults`** gains one keyword, `app_title` (§13), and writes two more keys: `agent.lockedProfile` =
+`LOCKED_PROFILE` and `branding.appTitle` = `app_title`. `LOCKED_PROFILE = "deep_reasoner"` mirrors `dr_app.profile.PROFILE_NAME`,
 because `build.py` imports nothing of ours. A test pins the two equal.
 
 **`check_pins`**:
-- check 5 adds `agent.lockedProfile` to the keys the fork must leave null (`fork_sets_ours`, unchanged);
-- check 5b (new, D10): if the Canvas checkout's `defaults.json` has no `agent` object with a `lockedProfile` key, it
-  appends `fork_lacks_lock(canvas_pin.tag)` (§6.4).
+- checks 5 and 5b (D10; v1.1, §13) are one loop over `FORK_NULL_KEYS`. A key the fork's `defaults.json` lacks appends
+  `fork_lacks_setting(canvas_pin.tag, key)`, and one it sets appends `fork_sets_ours` (unchanged) (§6.4).
 
 **`desktop/pins.toml`**, at the end of the round (§8):
 - `[canvas_fork] commit = "<dr-4's 40 hex>"`, `tag = "dr-4"`;
@@ -542,17 +546,22 @@ class AutoTitleSubscriber(Subscriber):
 # dr_app.profile.PROFILE_NAME, mirrored: this file imports nothing of deep-reasoning's.
 LOCKED_PROFILE: Final = "deep_reasoner"
 
-def fork_lacks_lock(canvas_tag: str) -> str: ...            # §6.4
+# The defaults.json keys this build writes that the Canvas fork must declare, as null (checks 5 and 5b).
+FORK_NULL_KEYS: Final = ("paths.stateDir", "setup.command", "agent.lockedProfile", "branding.appTitle")
+
+def fork_lacks_setting(canvas_tag: str, key: str) -> str: ...   # §6.4 (v1.1: was fork_lacks_lock)
 
 def patch_defaults(
     defaults: Mapping[str, Any],
     *,
     state_dir: str,
     command: list[str],
+    app_title: str,
 ) -> dict[str, Any]:
-    """§4.2.3's four keys and agent.lockedProfile = LOCKED_PROFILE; every other key unchanged."""
+    """§4.2.3's four keys, agent.lockedProfile = LOCKED_PROFILE and branding.appTitle = app_title (the
+    callers pass pins.app.product_name); every other key unchanged."""
 
-# check_pins: signature unchanged; check 5 + agent.lockedProfile; check 5b fork_lacks_lock.
+# check_pins: signature unchanged; checks 5 and 5b one loop over FORK_NULL_KEYS (v1.1).
 
 # packages/dr-app/src/dr_app/cli.py
 def install(layout: AppLayout, repo: str, commit: str, *, env: Mapping[str, str]) -> RuntimeRecord: ...
@@ -680,7 +689,7 @@ export function SpendCapField(props: { params: FrameParams }): JSX.Element;
 
 | Name | Sentence |
 |---|---|
-| `fork_lacks_lock(canvas_tag)` | ✗ Canvas fork {canvas_tag}'s config/defaults.json has no agent.lockedProfile, so it cannot lock the app to Deep Reasoning: pin dr-4 or later. |
+| `fork_lacks_setting(canvas_tag, key)` (v1.1) | ✗ Canvas fork {canvas_tag}'s config/defaults.json has no {key}, so this build cannot set it: pin dr-4 or later. |
 
 ---
 
@@ -735,11 +744,13 @@ Each "when locked" case has an unlocked twin wherever the file has none already.
 
 **deep-reasoning, default suite:**
 - `tests/desktop/test_build.py`:
-  - `test_defaults_gain_only_d5s_four_keys` becomes `test_defaults_gain_only_the_builds_five_keys`;
-  - `test_a_fork_that_carries_our_values_is_refused` gains `agent.lockedProfile`;
-  - new `test_a_canvas_fork_that_cannot_lock_the_agent_is_refused`;
+  - `test_defaults_gain_only_d5s_four_keys` becomes `test_defaults_gain_only_the_keys_the_build_writes`, against
+    `FORK_NULL_KEYS` plus `setup.phases` and `telemetry.posthogApiKey`, so a new key edits one constant (v1.1);
+  - `test_a_fork_that_carries_our_values_is_refused` gains `agent.lockedProfile` and `branding.appTitle`;
+  - new `test_a_canvas_fork_that_lacks_a_setting_the_build_writes_is_refused[agent.lockedProfile, branding.appTitle]`
+    (v1.1);
   - new `test_the_locked_profile_is_the_one_setup_creates`;
-  - the fake Canvas `defaults.json` gains `"agent": {"lockedProfile": null}`;
+  - the fake Canvas `defaults.json` gains `"agent": {"lockedProfile": null}` and `"branding": {"appTitle": null}`;
   - `test_the_committed_sdk_pin_is_34c540c_tagged_dr_2` becomes `…_<dr-3 short>_tagged_dr_3`, at the bump.
 - `tests/app/test_texts.py`: the verbatim cases follow §6.1, and `safety` goes.
 - `tests/app/test_runtime.py:79, 130`: the first install's lines are home, checks, installing, …, with no safety line.
@@ -933,9 +944,10 @@ result." It asserts:
 1. **SDK fork:** the Implementer opens `fix/title-llm-without-credentials` into `deep-reasoning`, and it merges after
    its CI. **Michael pushes tag `dr-3`** at the merge commit. `dr-release.yml` creates prerelease `dr-3` with
    `openhands-typescript-client-<v>.tgz`, once.
-2. **Canvas fork:** `feat/agent-lock` and `fix/subagent-costs-on-by-default` merge into `deep-reasoning`, in either
-   order (they touch disjoint files), then `chore/wire-sdk-dr-3`, which needs step 1's release. **Michael pushes tag
-   `dr-4`** at the wiring merge. A tag at any earlier commit fails check 2 (another SDK) or check 5b (no lock).
+2. **Canvas fork:** `feat/agent-lock`, `fix/subagent-costs-on-by-default` and `feat/app-title` (§13) merge into
+   `deep-reasoning`, in any order (`feat/agent-lock` and `feat/app-title` both add a block to `defaults.json`: a
+   textual merge), then `chore/wire-sdk-dr-3`, which needs step 1's release. **Michael pushes tag
+   `dr-4`** at the wiring merge. A tag at any earlier commit fails check 2 (another SDK) or check 5b (no lock or no title).
 3. **deep-reasoning `ux-round`:** everything of §4 and §7 except the pins can be built and unit-tested from the start.
    `test_build.py` uses fake readers, and E12 waits. Then one commit moves both pins to `dr-4` and `dr-3` (§4.1), with
    the pin-restating test. `cross-repo.yml` must be green on that commit (`pins`, `desktop-e2e` with E12,
@@ -956,7 +968,7 @@ independent, that whichever lands second rebases, and that nothing of this round
 
 | Merge point | This round | TASK-48 | Who adjusts |
 |---|---|---|---|
-| `desktop/build.py` | `LOCKED_PROFILE`, `fork_lacks_lock`, a fifth key in `patch_defaults`, checks 5 and 5b | moves `build()` into `prepare()`, `package_desktop` and `package_web` | the second rebases. `patch_defaults`'s signature is unchanged, and TASK-48's `verify_web` compares with its output, so neither design's code changes |
+| `desktop/build.py` | `LOCKED_PROFILE`, `FORK_NULL_KEYS`, `fork_lacks_setting`, two more keys and the `app_title` keyword in `patch_defaults`, checks 5 and 5b as one loop (v1.1) | moves `build()` into `prepare()`, `package_desktop` and `package_web` | the second rebases. `prepare()` passes `app_title=pins.app.product_name` (v1.1, one argument); TASK-48's `verify_web` compares with `patch_defaults`'s output, so it needs no other edit |
 | `tests/desktop/test_build.py` | the tests of §7.1 | `build.py web` tests | a textual merge |
 | `tests/desktop/test_e12.py`, `tests/desktop/app.py` | §7.4: new steps, onboarding and notice gone, `panel_tab` without the notice | moves `setup_lines`, `point_the_library_at`, `example`, `run_ids`, `worker_environ`, `start_conversation`, `answer` and the frame flow (`library_frame`) into `app.py` | if TASK-48 lands first, this round's helpers go beside its moved ones and `library_frame` loses the notice. If this lands first, TASK-48 moves the helpers as they now are |
 | `dr_app/texts.py` | removes `safety` and `NO_MODEL_KEY`; rewords six (§6.1) | rewords four "the app" sentences (its §5.3) | disjoint sentences: a textual merge |
@@ -966,9 +978,8 @@ independent, that whichever lands second rebases, and that nothing of this round
 | The Canvas pin `dr-4` | this round's tag | needs none. Its W13 contract checks re-run on `dr-4`, and this round touches no launcher or Electron file | — |
 
 **Two points for the Conductor:**
-- TASK-48's spec assumes TASK-44 owns the browser tab's title "OpenHands" (`use-app-title.ts:6`, `root.tsx:229`) and
-  the launcher banner. This round's approved spec puts "OpenHands in the rest of Canvas" out of scope, so neither task
-  owns them. A fix is a fork change. If it should ride `dr-4`, it needs a decision before Michael tags.
+- *(v1.1: settled)* The browser tab's title is now this round's (§13). The launcher banner and the favicon stay
+  upstream's; §13 says why.
 - TASK-48's Q3 (a), the `Host` allowlist, is its own task "sharing a tag with the UX round if it needs one". If its
   fork PR is merged before step 2 of §8, `dr-4` carries it too.
 
@@ -1024,7 +1035,8 @@ Lines touched, added plus removed, tests included. Built assets, lockfiles and t
 | deep-reasoning: the panel (warnings out, the field, protocol, icon) | ≈ 260 | ≈ 230 | ≈ 1.4 h |
 | deep-reasoning: Library and tools texts, allow-list test, README | ≈ 60 | ≈ 110 | ≈ 0.5 h |
 | deep-reasoning: E12, cross-repo title test, live test, workflow | ≈ 5 | ≈ 330 | ≈ 0.9 h |
-| **Total** | **≈ 0.7k** | **≈ 1.3k** | **≈ 2.0k lines, about 6 h** |
+| the tab title (§13): Canvas `feat/app-title`, `build.py`, E12 | ≈ 45 | ≈ 85 | ≈ 0.4 h |
+| **Total** | **≈ 0.75k** | **≈ 1.4k** | **≈ 2.1k lines, about 6.5 h** |
 
 That is about 0.1k more than the amended spec's 1.9k. The ninth gate, the automations' submit path, check 5b, the title
 test's recording proxy and the live test account for it. About 0.5k of it is removals, which read faster, so 6 h is
@@ -1054,3 +1066,112 @@ an upper estimate.
 8. **The checklist** now shows from the first launch in a locked build (D3), as it does today once onboarding closes.
    Its remaining items include OpenHands' Slack and docs links, which the spec's out-of-scope list ("OpenHands in the
    rest of Canvas") leaves.
+
+---
+
+## 13 · Addendum, 2026-10-19 (v1.1): the browser tab title says "Deep Reasoning"
+
+Michael added it to the round with "go with your recommendations". It is a Canvas fork setting, null upstream
+(meaning "OpenHands"), that our builds set to "Deep Reasoning", shipping in `dr-4`.
+
+**Where titles are made (read, Canvas `dr-3`):**
+- `src/hooks/use-app-title.ts:6` `APP_TITLE = "OpenHands"`. `useAppTitle` composes "<app>", "<conversation> | <app>"
+  and "<emoji> <conversation> | <app>" (`:17–31`), rendered as `<title>` by `routes/root-layout.tsx:129`;
+- `src/root.tsx:228–231` `meta()`'s `{ title: "OpenHands" }`, which is what `routes/shared-conversation.tsx` shows,
+  since it sits outside the layout.
+
+No route has a `meta` of its own, and there is no `index.html` title. The transcript export's `<title>`
+(`utils/transcript-export/index.ts:29`) is the conversation's own title, so it is out.
+
+`electron/main.mjs` has no `page-title-updated` handler, so the desktop window's title follows `document.title` too.
+It says "OpenHands" today, despite `product_name` (read, not seen on a desktop).
+
+### 13.1 Canvas fork: `feat/app-title` (one PR, upstream-shaped)
+
+`config/defaults.json`, a new top-level block:
+
+```json
+"branding": {
+  "_comment": "Optional name the frontend shows as its title: the browser tab (or the desktop window), alone or after a conversation's title. A build that ships under its own name sets it. null means \"OpenHands\". Compiled into the frontend bundle, so never a secret.",
+  "appTitle": null
+}
+```
+
+```ts
+// src/utils/app-branding.ts (new)
+// @spec BRD-001
+export const DEFAULT_APP_TITLE = "OpenHands";
+
+/** defaults.json's branding.appTitle, read when called and trimmed; DEFAULT_APP_TITLE when unset, empty
+ * or not a string. */
+export function getAppTitle(): string;
+```
+
+- `use-app-title.ts`: `APP_TITLE` goes, and the hook reads `getAppTitle()` once per render.
+- `root.tsx` `meta`: `{ title: getAppTitle() }`.
+- Not translated: it is a product name, as the literal was.
+- `specs/app-branding.md` (new), **BRD-001: The app's title.** "Every title the frontend sets (the document title
+  alone, after a conversation's title, and after its status emoji) shall name `branding.appTitle`, or OpenHands when it
+  is null."
+- vitest sets the key on the imported `defaults.json` object and restores null, as `feat/agent-lock` does, through
+  `__tests__/helpers/app-branding.ts` `setAppTitle(name)`:
+  - `src/utils/app-branding.test.ts` (new): `is OpenHands when branding.appTitle is null, empty or not a string`; `is
+    the configured name, trimmed`;
+  - `src/hooks/use-app-title.test.tsx`: the existing cases stay as they are, which shows null keeps every current
+    title. New `it.each` `names the configured app in every title it makes`, over outside a conversation ("Deep
+    Reasoning"), a conversation ("My Conversation | Deep Reasoning"), a conversation still loading ("Deep Reasoning")
+    and a known status (`${emoji} My Conversation | Deep Reasoning`);
+  - `src/root.test.tsx`: `meta's title is OpenHands unset and the configured name when set`.
+  - `__tests__/routes/root-layout.test.tsx` mocks `useAppTitle`, so it is unchanged.
+
+### 13.2 deep-reasoning
+
+- `desktop/build.py`:
+  - `patch_defaults(defaults, *, state_dir, command, app_title)` writes `branding.appTitle = app_title`. The callers
+    pass `pins.app.product_name` ("Deep Reasoning", `desktop/pins.toml`), so the window's product name and its title
+    have one source;
+  - checks 5 and 5b become one loop over `FORK_NULL_KEYS`, with `fork_lacks_setting` (§4.1, §5.3, §6.4 as revised).
+- `tests/desktop/test_build.py`:
+  - new `test_the_title_the_build_writes_is_the_product_name`;
+  - the tests revised in §7.1 gain `branding.appTitle`.
+- **E12**, a step inserted after §7.4 step 5 (that conversation is then open):
+  `test_the_window_title_names_deep_reasoning_at_home_and_after_a_conversations_title`. It asserts
+  `expect(page).to_have_title(re.compile(rf"{re.escape(QUESTION)} \| Deep Reasoning$"))`, then `page.goto(CANVAS_URL)`
+  and `expect(page).to_have_title("Deep Reasoning")`. The name is `build.load_pins(build.PINS).app.product_name`, not a
+  literal.
+- The release chain (§8 step 2) adds `feat/app-title` before the wiring commit. A `dr-4` without the key fails check 5b.
+
+### 13.3 Seams
+
+- **TASK-48 (E13):** `package_web` ships `prepare()`'s `defaults.json`, which is `patch_defaults`' output, and
+  `build:app` compiles it after the patch. So the browser tab says "Deep Reasoning" with no edit of its own. The one
+  merge point is `prepare()` passing `app_title=pins.app.product_name`. E13 can assert
+  `expect(page).to_have_title(product_name)` on `http://localhost:8000`. That closes the "OpenHands" tab title its spec
+  left to TASK-44 (§9).
+- **TASK-66** (`design/task-66`, not pushed yet when this was written) adds a third `defaults.json` setting that
+  `patch_defaults` writes: a dependency cutoff date for the launcher's `uvx` starts. Both tasks change
+  `patch_defaults`'s keywords and its callers. Whichever lands second adds its keyword at `build()` (or TASK-48's
+  `prepare()`), and adds its key to the constants the tests read:
+  - `FORK_NULL_KEYS`, if the fork declares the key null;
+  - `test_defaults_gain_only_the_keys_the_build_writes`, which compares with constants, not a count.
+  If TASK-66's key also needs a fork that knows it, it is one more entry in `FORK_NULL_KEYS`, and check 5b covers it.
+
+### 13.4 In or out (recommended; not widened)
+
+- **The favicon: out.** It needs an icon we don't have (D5 kept upstream's, §11 item 6). A later `branding.favicon`
+  fits the same block.
+- **The launcher banners: out.**
+  - "Agent Canvas + Automation Stack" (`scripts/dev-with-automation.mjs:1710`) is terminal output, which TASK-48's
+    entry follows with its own "Deep Reasoning is running at …" line.
+  - "OpenHands Agent Canvas" (`electron/main.mjs:664`, the splash) is Electron-only, which TASK-48 must not depend on.
+  - Neither is the tab.
+- **The `description` meta, "Let's Start Building!": out.** No one sees it.
+
+Size: Canvas ≈ 25 lines of code and ≈ 60 of tests; deep-reasoning ≈ 20 and ≈ 25. About 0.13k in all, ≈ 0.4 h at
+Gate C (§11 as revised).
+
+**Unsure:**
+- That the desktop window takes the title rests on reading `electron/main.mjs`, not on a window. E12 asserts
+  `document.title`, which Electron mirrors.
+- `patch_defaults` gaining a required keyword is a merge point with both TASK-48 and TASK-66. A default value would
+  avoid it, but would let a caller forget the title.
