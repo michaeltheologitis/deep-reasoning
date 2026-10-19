@@ -35,7 +35,7 @@ def ev(kind, **fields):
     return RUN_EVENT.validate_python({"kind": kind, **fields})
 
 
-def run_start(after=None):
+def run_start(after=None, recap=None):
     return ev(
         "run.start",
         run=R,
@@ -47,6 +47,7 @@ def run_start(after=None):
         mode="native",
         decomposition=None,
         source={},
+        recap=recap,
     )
 
 
@@ -162,19 +163,26 @@ def with_child(encoder):
 
 
 @pytest.mark.parametrize(
-    ("after", "notice"),
+    ("after", "recap", "notice"),
     [
-        (None, None),
-        ("build_failed", None),
-        ("stopped", texts.FRESH_AFTER_STOP),
-        ("failed", texts.FRESH_AFTER_ERROR),
-        ("crashed", texts.FRESH_AFTER_ERROR),
-        ("lost", texts.FRESH_AFTER_RESTART),
-        ("closed", texts.FRESH_AFTER_CLOSE),
+        (None, None, None),
+        ("build_failed", None, None),
+        ("stopped", None, texts.FRESH_AFTER_STOP),
+        ("failed", None, texts.FRESH_AFTER_ERROR),
+        ("crashed", None, texts.FRESH_AFTER_ERROR),
+        ("lost", None, texts.FRESH_AFTER_RESTART),
+        ("closed", None, texts.FRESH_AFTER_CLOSE),
+        (
+            "stopped",
+            {"turns": 2, "left_out": 0, "shortened": False},
+            f"{texts.FRESH_AFTER_STOP} {texts.RECAP_ALL}",
+        ),
     ],
 )
-def test_a_run_starts_with_the_notice_its_predecessors_end_calls_for(after, notice):
-    updates = native().feed(run_start(after))
+def test_a_run_starts_with_the_notice_its_predecessors_end_calls_for(
+    after, recap, notice
+):
+    updates = native().feed(run_start(after, recap))
     expected = [] if notice is None else [s.notice(ROOT, notice)]
     assert updates == expected
 
