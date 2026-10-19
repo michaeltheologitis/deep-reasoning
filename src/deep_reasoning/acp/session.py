@@ -1,7 +1,6 @@
 """One ACP root session: its namespace, its commands, its prompts and its runs (§4.2)."""
 
 import asyncio
-import os
 import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -198,7 +197,7 @@ class Session:
             logger.exception("dr_acp.materialize_failed", session=self.id)
             return await self._reply(texts.build_failed(detail_of(exc)), "build_failed")
         clients = [source.client, *source.tool_clients.values()]
-        if missing := missing_model_keys(clients, os.environ):
+        if missing := missing_model_keys(clients):
             shutil.rmtree(run_dir, ignore_errors=True)
             return await self._reply(texts.missing_model_key(missing), "build_failed")
         library = source.versions.get("library")

@@ -4,15 +4,11 @@ import fnmatch
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Final, Protocol
+from typing import Any, Protocol
+
+from pydantic import ValidationError
 
 NO_TOOL_UPSTREAMS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
-# build_client's fallback, config.py:256
-OPENAI_FALLBACK_KEY_ENV: Final = "OPENAI_API_KEY"
-# ClientConfig.api_key_env's default
-DEEP_REASONER_DEFAULT_KEY_ENV: Final = "NOVITA_API_KEY"
-# build_client gives a client on these an "EMPTY" key instead of refusing.
-KEYLESS_BASE_URL_PREFIXES: Final = ("http://localhost", "http://127.0.0.1")
 
 
 @dataclass(frozen=True)
@@ -79,20 +75,23 @@ def worker_env(base: Mapping[str, str], grant: RouteGrant) -> dict[str, str]:
     return env | dict(grant.env_add) | {"PYTHONUNBUFFERED": "1"}
 
 
-def missing_model_keys(
-    clients: Iterable[Mapping[str, Any]],
-    env: Mapping[str, str],
-) -> list[str]:
-    """The key variables the clients would fail to build without, as deep_reasoner's
-    build_client decides: a client's api_key_env (DEEP_REASONER_DEFAULT_KEY_ENV when
-    unset) when neither it nor OPENAI_FALLBACK_KEY_ENV has a non-empty value in env, and
-    its base_url does not start with one of KEYLESS_BASE_URL_PREFIXES. Each name once,
-    in the clients' order; empty when every client builds."""
+def missing_model_keys(clients: Iterable[Mapping[str, Any]]) -> list[str]:
+    """The key variables deep_reasoner's own build_client refuses the clients without,
+    with this process's environment: each client's api_key_env once, in the clients'
+    order; empty when every client builds. A block that is not a ClientConfig is left
+    for the worker's build to report."""
+    # deep_reasoner is imported when a run starts, never at dr-acp's start-up.
+    from deep_reasoner.config import ClientConfig, build_client
+
     missing: list[str] = []
     for client in clients:
-        name = client.get("api_key_env") or DEEP_REASONER_DEFAULT_KEY_ENV
-        keyed = env.get(name) or env.get(OPENAI_FALLBACK_KEY_ENV)
-        keyless = (client.get("base_url") or "").startswith(KEYLESS_BASE_URL_PREFIXES)
-        if not keyed and not keyless and name not in missing:
-            missing.append(name)
+        try:
+            config = ClientConfig.model_validate(client)
+        except ValidationError:
+            continue
+        try:
+            build_client(config)
+        except ValueError:
+            if config.api_key_env not in missing:
+                missing.append(config.api_key_env)
     return missing
