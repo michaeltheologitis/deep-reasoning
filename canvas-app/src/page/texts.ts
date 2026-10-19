@@ -12,3 +12,9 @@ export const NO_FRAMES =
   "This version of Canvas cannot show an App's own pages. Update the app.";
 export const TRY_AGAIN = "Try again";
 export const STILL_STARTING = "it was still starting after 45 seconds.";
+export const CAP_PROFILE_MISSING =
+  "Deep Reasoning's agent profile is missing. Restart Deep Reasoning, which creates it again.";
+export const CAP_NO_PROXY =
+  "The key proxy is off for Deep Reasoning (--no-key-proxy), so there is no cap to set.";
+export const CAP_NOT_SAVED = (detail: string) =>
+  `The cap was not saved: ${detail}`;

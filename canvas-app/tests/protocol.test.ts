@@ -6,6 +6,8 @@ import {
   type McpServerInfo,
   frameSearch,
   isFrameMessage,
+  isPageMessage,
+  isSpendCapInput,
   readFrameParams,
 } from "../src/shared/protocol";
 
@@ -137,13 +139,55 @@ describe("isFrameMessage", () => {
       true,
     ],
     [{ type: "dr-library/reload" }, true],
+    [{ type: "dr-library/set-spend-cap", cap: "12.50" }, true],
     [{ type: "dr-library/select-tab", tab: "history", focus: null }, false],
     [{ type: "dr-library/select-tab", tab: "browse" }, false],
     [{ type: "dr-library/reload", tab: "browse" }, false],
+    [{ type: "dr-library/set-spend-cap", cap: "0" }, false],
+    [{ type: "dr-library/set-spend-cap", cap: 5 }, false],
+    [{ type: "dr-library/set-spend-cap", cap: "5", tab: "tools" }, false],
     [{ type: "dr-library/close" }, false],
     ["dr-library/reload", false],
     [null, false],
-  ])("accepts the two shapes only: %j → %s", (value, accepted) => {
+  ])("accepts its three shapes only: %j → %s", (value, accepted) => {
     expect(isFrameMessage(value)).toBe(accepted);
+  });
+});
+
+describe("isSpendCapInput", () => {
+  it.each([
+    ["5", true],
+    ["12.5", true],
+    ["12.50", true],
+    ["0.01", true],
+    ["999999.99", true],
+    ["0", false],
+    ["0.00", false],
+    ["-1", false],
+    ["1.234", false],
+    ["1234567", false],
+    ["abc", false],
+    ["", false],
+    [" 5", false],
+    ["5.", false],
+    [".5", false],
+    ["1e3", false],
+  ])("takes dollars above 0, at most two decimals: %j → %s", (value, taken) => {
+    expect(isSpendCapInput(value)).toBe(taken);
+  });
+});
+
+describe("isPageMessage", () => {
+  it.each([
+    [{ type: "dr-library/spend-cap-saved", cap: "7.50" }, true],
+    [{ type: "dr-library/spend-cap-refused", message: "not saved" }, true],
+    [{ type: "dr-library/spend-cap-saved" }, false],
+    [{ type: "dr-library/spend-cap-saved", cap: 7.5 }, false],
+    [{ type: "dr-library/spend-cap-refused", message: null }, false],
+    [{ type: "dr-library/spend-cap-saved", cap: "7", message: "x" }, false],
+    [{ type: "dr-library/reload" }, false],
+    [null, false],
+  ])("accepts the page's two answers only: %j → %s", (value, accepted) => {
+    expect(isPageMessage(value)).toBe(accepted);
   });
 });

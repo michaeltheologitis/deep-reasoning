@@ -1,5 +1,5 @@
-// Tools (§2.5; D4 §2): the safety banner, always first, D4's risk line, your own tools with
-// their editor, and the MCP servers of Canvas's settings with their grants.
+// Tools (§2.5; D4 §2): the Spend cap field, always first (TASK-65 D7), your own tools with their
+// editor, and the MCP servers of Canvas's settings with their grants.
 
 import { useState } from "preact/hooks";
 
@@ -7,7 +7,7 @@ import { getEffective, getMcp, getNamespaces, getTools } from "../api";
 import { McpServerRow, mcpTestId } from "../components/McpServerRow";
 import { ToolEditor } from "../components/ToolEditor";
 import { Banner } from "../components/fields";
-import { SafetyNotice } from "../components/notices";
+import { SpendCapField } from "../components/spend-cap";
 import { resolved, useLoaded } from "../load";
 import {
   MCP_EXPORT_NOTE,
@@ -15,7 +15,6 @@ import {
   MCP_SETTINGS_UNKNOWN,
   NEW_TOOL,
   NO_TOOLS,
-  TOOLS_RISK,
   TOOL_LABELS,
   YOUR_TOOLS,
 } from "../texts";
@@ -71,11 +70,7 @@ export function ToolsTab(props: TabProps) {
 
   const header = (
     <>
-      <SafetyNotice cap={props.params.cap} variant="banner" />
-      <div class="banner warning" role="note" data-testid="dr-tools-risk">
-        <span aria-hidden="true">⚠ </span>
-        {TOOLS_RISK}
-      </div>
+      <SpendCapField params={props.params} />
       {loaded.error && <Banner kind="error">{loaded.error.message}</Banner>}
     </>
   );

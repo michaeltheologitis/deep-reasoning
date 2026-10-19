@@ -213,6 +213,47 @@ describe("mountTab", () => {
     expect(fake.frames).toHaveLength(1);
   });
 
+  it("writes the cap a frame asks for and answers only that frame", async () => {
+    const fake = fakeHost(agentServer);
+    mountTab(fake.host, "tools", context("c1", "tools").mountContext);
+    await settle();
+    const frame = fake.frames[0]!;
+    const answered = vi.spyOn(frame.iframe.contentWindow!, "postMessage");
+    post(frame.iframe.contentWindow, {
+      type: "dr-library/set-spend-cap",
+      cap: "12.50",
+    });
+    await settle();
+    expect(
+      fake.agentServer.calls.filter((call) => call.method === "POST"),
+    ).toEqual([
+      {
+        method: "POST",
+        path: "/api/agent-profiles/deep_reasoner",
+        body: { acp_args: ["--spend-cap-usd", "12.50"] },
+      },
+    ]);
+    expect(answered).toHaveBeenCalledExactlyOnceWith(
+      { type: "dr-library/spend-cap-saved", cap: "12.50" },
+      "http://127.0.0.1:18000",
+    );
+  });
+
+  it("ignores set-spend-cap from any window but its frame's", async () => {
+    const fake = fakeHost(agentServer);
+    mountTab(fake.host, "tools", context("c1", "tools").mountContext);
+    const other = document.createElement("iframe");
+    document.body.append(other);
+    await settle();
+    const message = { type: "dr-library/set-spend-cap", cap: "12.50" };
+    post(window, message);
+    post(other.contentWindow, message);
+    await settle();
+    expect(
+      fake.agentServer.calls.filter((call) => call.method === "POST"),
+    ).toEqual([]);
+  });
+
   it("remounts on reload, checking the backend again", async () => {
     const fake = fakeHost(agentServer);
     mountTab(fake.host, "browse", context("c1", "browse").mountContext);

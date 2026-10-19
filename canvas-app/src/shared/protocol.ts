@@ -1,4 +1,5 @@
-// The page ↔ frame contract (§4.3): the frame's URL parameters and the frame's two messages.
+// The page ↔ frame contract (§4.3): the frame's URL parameters, the frame's three messages and
+// the page's two answers to set-spend-cap (TASK-65 D7).
 
 export const TAB_IDS = ["browse", "create", "namespaces", "tools"] as const;
 export type TabId = (typeof TAB_IDS)[number];
@@ -84,10 +85,20 @@ export type FrameMessage =
     }
   | {
       type: "dr-library/reload";
+    }
+  | {
+      type: "dr-library/set-spend-cap";
+      cap: string;
     };
+
+/** The page's answer to set-spend-cap. */
+export type PageMessage =
+  | { type: "dr-library/spend-cap-saved"; cap: string }
+  | { type: "dr-library/spend-cap-refused"; message: string };
 
 const SAFE_THEME_VALUE = /^[#\w\s(),.%'"-]*$/;
 const CAP = /^(off|\d+(\.\d+)?)$/;
+const SPEND_CAP_INPUT = /^\d{1,6}(\.\d{1,2})?$/;
 
 export function isTabId(value: unknown): value is TabId {
   return (TAB_IDS as readonly unknown[]).includes(value);
@@ -206,14 +217,41 @@ export function readFrameParams(
   };
 }
 
+/** 1 to 6 digits, then at most two decimals, and above 0: "5", "12.5", "12.50". */
+export function isSpendCapInput(value: string): boolean {
+  return SPEND_CAP_INPUT.test(value) && Number(value) > 0;
+}
+
+/** Exactly these keys, and no others. */
+function hasKeys(message: Record<string, unknown>, ...keys: string[]): boolean {
+  return Object.keys(message).sort().join() === [...keys].sort().join();
+}
+
 export function isFrameMessage(value: unknown): value is FrameMessage {
   if (!value || typeof value !== "object") return false;
   const message = value as Record<string, unknown>;
-  if (message.type === "dr-library/reload")
-    return Object.keys(message).length === 1;
+  if (message.type === "dr-library/reload") return hasKeys(message, "type");
+  if (message.type === "dr-library/set-spend-cap")
+    return (
+      hasKeys(message, "type", "cap") &&
+      typeof message.cap === "string" &&
+      isSpendCapInput(message.cap)
+    );
   return (
     message.type === "dr-library/select-tab" &&
     isTabId(message.tab) &&
     (message.focus === null || typeof message.focus === "string")
+  );
+}
+
+export function isPageMessage(value: unknown): value is PageMessage {
+  if (!value || typeof value !== "object") return false;
+  const message = value as Record<string, unknown>;
+  if (message.type === "dr-library/spend-cap-saved")
+    return hasKeys(message, "type", "cap") && typeof message.cap === "string";
+  return (
+    message.type === "dr-library/spend-cap-refused" &&
+    hasKeys(message, "type", "message") &&
+    typeof message.message === "string"
   );
 }

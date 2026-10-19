@@ -1,9 +1,9 @@
-const w = ["browse", "create", "namespaces", "tools"], D = {
+const O = ["browse", "create", "namespaces", "tools"], R = {
   browse: "Decompositions",
   create: "Create decomposition",
   namespaces: "Namespaces",
   tools: "Tools"
-}, F = {
+}, M = {
   "--oh-surface": "#21252F",
   "--oh-surface-raised": "#2C313F",
   "--oh-surface-deep": "#05070A",
@@ -27,125 +27,159 @@ const w = ["browse", "create", "namespaces", "tools"], D = {
   "--oh-field-radius": "8px",
   "color-scheme": "dark",
   "font-family": '-apple-system, "SF Pro", BlinkMacSystemFont, "Segoe UI", "Roboto", "Ubuntu", sans-serif'
-}, v = Object.keys(F), P = 200, h = "5", I = /^[#\w\s(),.%'"-]*$/;
-function M(e) {
-  return w.includes(e);
+}, v = Object.keys(M), x = 200, _ = "5", B = /^[#\w\s(),.%'"-]*$/, U = /^\d{1,6}(\.\d{1,2})?$/;
+function j(e) {
+  return O.includes(e);
 }
-function B(e) {
-  return e.length <= P && I.test(e) && !/url\(/i.test(e);
+function $(e) {
+  return e.length <= x && B.test(e) && !/url\(/i.test(e);
 }
-function R(e) {
+function G(e) {
   const t = {};
   for (const n of v) {
-    const s = e[n];
-    typeof s == "string" && s !== "" && B(s) && (t[n] = s);
+    const r = e[n];
+    typeof r == "string" && r !== "" && $(r) && (t[n] = r);
   }
   return t;
 }
-function x(e) {
+function H(e) {
   const t = new URLSearchParams({ tab: e.tab });
   return e.parent && t.set("parent", e.parent), e.namespace && t.set("namespace", e.namespace), e.started && t.set("started", "1"), t.set("cap", e.cap), e.focus && t.set("focus", e.focus), Object.keys(e.theme).length > 0 && t.set("theme", JSON.stringify(e.theme)), e.mcp !== null && t.set("mcp", JSON.stringify(e.mcp)), `?${t.toString()}`;
 }
-function U(e) {
+function K(e) {
+  return U.test(e) && Number(e) > 0;
+}
+function S(e, ...t) {
+  return Object.keys(e).sort().join() === [...t].sort().join();
+}
+function V(e) {
   if (!e || typeof e != "object") return !1;
   const t = e;
-  return t.type === "dr-library/reload" ? Object.keys(t).length === 1 : t.type === "dr-library/select-tab" && M(t.tab) && (t.focus === null || typeof t.focus == "string");
+  return t.type === "dr-library/reload" ? S(t, "type") : t.type === "dr-library/set-spend-cap" ? S(t, "type", "cap") && typeof t.cap == "string" && K(t.cap) : t.type === "dr-library/select-tab" && j(t.tab) && (t.focus === null || typeof t.focus == "string");
 }
-const j = "Opening the Library…", T = "Starting the Library's backend…", p = (e) => `The Library's backend did not start: ${e}`, H = "The Library's backend is not approved for this version of the App. Restart the app: its setup approves the App it installed.", $ = (e) => `This agent-server cannot run the Library's backend: ${e}`, K = "This version of Canvas cannot show an App's own pages. Update the app.", G = "Try again", V = "it was still starting after 45 seconds.", _ = "/api/canvas-extensions/installed/dr-library/backend", z = 500, S = 45e3;
-async function J(e, t, n) {
-  let s = Date.now() + S;
-  const o = () => e({ path: _ });
-  let r;
+const W = "Opening the Library…", k = "Starting the Library's backend…", b = (e) => `The Library's backend did not start: ${e}`, Y = "The Library's backend is not approved for this version of the App. Restart the app: its setup approves the App it installed.", X = (e) => `This agent-server cannot run the Library's backend: ${e}`, z = "This version of Canvas cannot show an App's own pages. Update the app.", J = "Try again", q = "it was still starting after 45 seconds.", Q = "Deep Reasoning's agent profile is missing. Restart Deep Reasoning, which creates it again.", Z = "The key proxy is off for Deep Reasoning (--no-key-proxy), so there is no cap to set.", ee = (e) => `The cap was not saved: ${e}`, C = "/api/canvas-extensions/installed/dr-library/backend", te = 500, N = 45e3;
+async function ne(e, t, n) {
+  let r = Date.now() + N;
+  const s = () => e({ path: C });
+  let o;
   try {
-    r = await o();
+    o = await s();
     let i = !1;
     for (; ; ) {
-      if (t.throwIfAborted(), r.state === "ready") return { ok: !0 };
-      if (r.state === "missing" || r.state === "unsupported")
+      if (t.throwIfAborted(), o.state === "ready") return { ok: !0 };
+      if (o.state === "missing" || o.state === "unsupported")
         return {
           ok: !1,
-          message: $(r.detail ?? r.state)
+          message: X(o.detail ?? o.state)
         };
-      if (r.state === "starting") {
-        if (n(T), Date.now() >= s)
-          return { ok: !1, message: p(V) };
-        await X(z, t), r = await o();
+      if (o.state === "starting") {
+        if (n(k), Date.now() >= r)
+          return { ok: !1, message: b(q) };
+        await se(te, t), o = await s();
         continue;
       }
       if (i)
         return {
           ok: !1,
-          message: p(r.detail ?? r.state)
+          message: b(o.detail ?? o.state)
         };
-      if (r.revision === null || r.prepared_revision !== r.revision)
-        return { ok: !1, message: H };
-      n(T), i = !0, r = await e({
+      if (o.revision === null || o.prepared_revision !== o.revision)
+        return { ok: !1, message: Y };
+      n(k), i = !0, o = await e({
         method: "POST",
-        path: `${_}/start`,
-        body: { revision: r.revision }
-      }).catch((c) => {
-        if (W(c)) throw c;
-        return s = Date.now() + S, o();
+        path: `${C}/start`,
+        body: { revision: o.revision }
+      }).catch((u) => {
+        if (re(u)) throw u;
+        return r = Date.now() + N, s();
       });
     }
   } catch (i) {
-    return t.throwIfAborted(), { ok: !1, message: p(q(i)) };
+    return t.throwIfAborted(), { ok: !1, message: b(P(i)) };
   }
 }
-function W(e) {
+function re(e) {
   return typeof e?.status == "number";
 }
-function q(e) {
+function P(e) {
   const t = e?.response;
   return typeof t?.detail == "string" ? t.detail : e instanceof Error ? e.message : String(e);
 }
-function X(e, t) {
-  return new Promise((n, s) => {
-    const o = setTimeout(() => {
-      t.removeEventListener("abort", r), n();
-    }, e), r = () => {
-      clearTimeout(o), s(t.reason);
+function se(e, t) {
+  return new Promise((n, r) => {
+    const s = setTimeout(() => {
+      t.removeEventListener("abort", o), n();
+    }, e), o = () => {
+      clearTimeout(s), r(t.reason);
     };
-    t.addEventListener("abort", r, { once: !0 });
+    t.addEventListener("abort", o, { once: !0 });
   });
 }
-const k = "/api/agent-profiles/deep_reasoner", Y = "/api/settings", Q = /^\d+(\.\d+)?$/, Z = "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent";
-async function ee(e, t) {
+const m = "/api/agent-profiles/deep_reasoner", p = "--spend-cap-usd", oe = "--no-key-proxy", ae = 404, ie = "/api/settings", ce = /^\d+(\.\d+)?$/, ue = "openhands.sdk.event.acp_session_controls.ACPSessionControlsEvent";
+async function le(e, t) {
   if (t === null) return null;
-  const n = `/api/conversations/${encodeURIComponent(t)}/events/search?kind=${Z}&sort_order=TIMESTAMP_DESC&limit=1`;
+  const n = `/api/conversations/${encodeURIComponent(t)}/events/search?kind=${ue}&sort_order=TIMESTAMP_DESC&limit=1`;
   try {
-    const o = (await e({ path: n })).items?.[0]?.config_options?.find(
-      (r) => r.id === "namespace"
+    const s = (await e({ path: n })).items?.[0]?.config_options?.find(
+      (o) => o.id === "namespace"
     );
-    return typeof o?.current_value != "string" || !Array.isArray(o.options) ? null : {
-      namespace: o.current_value,
-      started: o.options.length === 1
+    return typeof s?.current_value != "string" || !Array.isArray(s.options) ? null : {
+      namespace: s.current_value,
+      started: s.options.length === 1
     };
   } catch {
     return null;
   }
 }
-async function te(e) {
+async function de(e) {
   try {
     const n = (await e({
-      path: k
+      path: m
     })).profile?.acp_args;
-    return ne(
-      Array.isArray(n) ? n.filter((s) => typeof s == "string") : null
+    return pe(
+      Array.isArray(n) ? n.filter((r) => typeof r == "string") : null
     );
   } catch {
-    return h;
+    return _;
   }
 }
-function ne(e) {
-  if (!e) return h;
+function pe(e) {
+  if (!e) return _;
   if (e.includes("--no-key-proxy")) return "off";
-  const t = e.indexOf("--spend-cap-usd"), n = t >= 0 ? e[t + 1] : e.find((s) => s.startsWith("--spend-cap-usd="))?.slice(16);
-  return n !== void 0 && Q.test(n) ? n : h;
+  const t = e.indexOf("--spend-cap-usd"), n = t >= 0 ? e[t + 1] : e.find((r) => r.startsWith("--spend-cap-usd="))?.slice(16);
+  return n !== void 0 && ce.test(n) ? n : _;
 }
-function re(e) {
+function fe(e, t) {
+  if (e.includes(oe)) return null;
+  const n = e.indexOf(p);
+  if (n >= 0)
+    return [...e.slice(0, n), p, t, ...e.slice(n + 2)];
+  const r = e.findIndex((s) => s.startsWith(`${p}=`));
+  return r >= 0 ? [
+    ...e.slice(0, r),
+    p,
+    t,
+    ...e.slice(r + 1)
+  ] : [...e, p, t];
+}
+async function ye(e, t) {
+  try {
+    const n = await e({ path: m }), r = Array.isArray(n.profile.acp_args) ? n.profile.acp_args.filter((o) => typeof o == "string") : [], s = fe(r, t);
+    return s === null ? { ok: !1, message: Z } : (await e({
+      method: "POST",
+      path: m,
+      body: { ...n.profile, acp_args: s }
+    }), { ok: !0, cap: t });
+  } catch (n) {
+    return {
+      ok: !1,
+      message: n?.status === ae ? Q : ee(P(n))
+    };
+  }
+}
+function he(e) {
   const t = getComputedStyle(e);
-  return R(
+  return G(
     Object.fromEntries(
       v.map((n) => [
         n,
@@ -154,41 +188,41 @@ function re(e) {
     )
   );
 }
-const l = (e) => typeof e == "object" && e !== null && !Array.isArray(e), m = (e) => typeof e == "string" && e !== "";
-function se(e) {
-  return m(e.command) ? "stdio" : m(e.url) ? e.transport === "sse" ? "sse" : "http" : null;
+const d = (e) => typeof e == "object" && e !== null && !Array.isArray(e), A = (e) => typeof e == "string" && e !== "";
+function me(e) {
+  return A(e.command) ? "stdio" : A(e.url) ? e.transport === "sse" ? "sse" : "http" : null;
 }
-function oe(e) {
-  if (!l(e)) return [];
+function ge(e) {
+  if (!d(e)) return [];
   switch (e.strategy) {
     case "bearer":
     case "basic":
       return ["Authorization"];
     case "api_key":
-      return [m(e.header_name) ? e.header_name : "Authorization"];
+      return [A(e.header_name) ? e.header_name : "Authorization"];
     case "header":
-      return l(e.headers) ? Object.keys(e.headers) : [];
+      return d(e.headers) ? Object.keys(e.headers) : [];
     default:
       return [];
   }
 }
-function ae(e, t) {
-  return Object.entries(e).flatMap(([n, s]) => {
-    const o = l(s) ? s : {}, r = se(o);
-    if (r === null) return [];
-    const i = o.enabled === !1 ? "disabled" : t !== null && !t.includes(n) ? "not_in_profile" : null;
+function be(e, t) {
+  return Object.entries(e).flatMap(([n, r]) => {
+    const s = d(r) ? r : {}, o = me(s);
+    if (o === null) return [];
+    const i = s.enabled === !1 ? "disabled" : t !== null && !t.includes(n) ? "not_in_profile" : null;
     return [
       {
         name: n,
-        transport: r,
-        command: r === "stdio" ? o.command : null,
-        args: Array.isArray(o.args) ? o.args.filter((c) => typeof c == "string") : [],
-        url: r === "stdio" ? null : o.url,
-        env: l(o.env) ? Object.keys(o.env) : [],
+        transport: o,
+        command: o === "stdio" ? s.command : null,
+        args: Array.isArray(s.args) ? s.args.filter((u) => typeof u == "string") : [],
+        url: o === "stdio" ? null : s.url,
+        env: d(s.env) ? Object.keys(s.env) : [],
         headers: [
           .../* @__PURE__ */ new Set([
-            ...l(o.headers) ? Object.keys(o.headers) : [],
-            ...oe(o.auth)
+            ...d(s.headers) ? Object.keys(s.headers) : [],
+            ...ge(s.auth)
           ])
         ],
         forwarded: i === null,
@@ -197,94 +231,99 @@ function ae(e, t) {
     ];
   });
 }
-async function ie(e) {
+async function _e(e) {
   try {
     const [t, n] = await Promise.all([
       e({
-        path: Y
+        path: ie
       }),
       e({
-        path: k
+        path: m
       })
-    ]), s = t.agent_settings?.mcp_config, o = n.profile?.mcp_server_refs;
-    return ae(
-      l(s) ? s : {},
-      Array.isArray(o) ? o.filter((r) => typeof r == "string") : null
+    ]), r = t.agent_settings?.mcp_config, s = n.profile?.mcp_server_refs;
+    return be(
+      d(r) ? r : {},
+      Array.isArray(s) ? s.filter((o) => typeof o == "string") : null
     );
   } catch {
     return null;
   }
 }
-const y = /* @__PURE__ */ new Map();
-function ce(e, t) {
-  y.set(e, t);
+const E = /* @__PURE__ */ new Map();
+function Ae(e, t) {
+  E.set(e, t);
 }
-function ue(e) {
-  const t = y.get(e) ?? null;
-  return y.delete(e), t;
+function Ee(e) {
+  const t = E.get(e) ?? null;
+  return E.delete(e), t;
 }
-function f(e, t, n = !1, s) {
-  const o = document.createElement("p");
-  if (o.dataset.testid = n ? "dr-library-error" : "dr-library-loading", o.textContent = t, o.style.cssText = "margin: 0; padding: 12px 16px; color: var(--oh-muted, inherit);", e.replaceChildren(o), !s) return;
-  const r = document.createElement("button");
-  r.type = "button", r.dataset.testid = "dr-library-retry", r.textContent = G, r.style.cssText = "margin: 0 16px;", r.addEventListener("click", s), e.append(r);
+function h(e, t, n = !1, r) {
+  const s = document.createElement("p");
+  if (s.dataset.testid = n ? "dr-library-error" : "dr-library-loading", s.textContent = t, s.style.cssText = "margin: 0; padding: 12px 16px; color: var(--oh-muted, inherit);", e.replaceChildren(s), !r) return;
+  const o = document.createElement("button");
+  o.type = "button", o.dataset.testid = "dr-library-retry", o.textContent = J, o.style.cssText = "margin: 0 16px;", o.addEventListener("click", r), e.append(o);
 }
-function le(e, t, n) {
-  const { container: s } = n, o = new AbortController(), r = ue(t);
-  let i = null, c = !1;
-  const g = (a) => {
-    const u = s.querySelector("iframe");
-    !u || a.source !== u.contentWindow || !U(a.data) || (a.data.type === "dr-library/reload" ? d() : n.surface.kind === "conversation-panel" && (ce(a.data.tab, a.data.focus), n.surface.selectTab(a.data.tab)));
-  }, C = (a) => {
-    a.reason !== "not-ready" || c || (c = !0, d());
+function Te(e, t, n) {
+  const { container: r } = n, s = new AbortController(), o = Ee(t);
+  let i = null, u = !1;
+  const T = (a) => {
+    const c = r.querySelector("iframe");
+    !c || a.source !== c.contentWindow || !V(a.data) || (a.data.type === "dr-library/reload" ? f() : a.data.type === "dr-library/set-spend-cap" ? D(c, a.data.cap) : n.surface.kind === "conversation-panel" && (Ae(a.data.tab, a.data.focus), n.surface.selectTab(a.data.tab)));
   };
-  function b() {
-    window.removeEventListener("message", g), i?.(), i = null;
+  async function D(a, c) {
+    const l = await ye(e.agentServer.request, c), y = l.ok ? { type: "dr-library/spend-cap-saved", cap: l.cap } : { type: "dr-library/spend-cap-refused", message: l.message }, g = new URL(a.src, window.location.href).origin;
+    a.contentWindow?.postMessage(y, g);
   }
-  async function d() {
-    b(), f(s, j);
-    const a = e.agentServer.request, [u, E, A, L] = await Promise.all([
-      J(
+  const L = (a) => {
+    a.reason !== "not-ready" || u || (u = !0, f());
+  };
+  function w() {
+    window.removeEventListener("message", T), i?.(), i = null;
+  }
+  async function f() {
+    w(), h(r, W);
+    const a = e.agentServer.request, [c, l, y, g] = await Promise.all([
+      ne(
         a,
-        o.signal,
-        (O) => f(s, O)
+        s.signal,
+        (I) => h(r, I)
       ),
-      ee(a, n.conversationId),
-      te(a),
-      t === "tools" ? ie(a) : null
+      le(a, n.conversationId),
+      de(a),
+      t === "tools" ? _e(a) : null
     ]).catch(() => [null, null, null, null]);
-    if (o.signal.aborted || u === null || A === null) return;
-    if (!u.ok)
-      return f(s, u.message, !0, () => {
-        d();
+    if (s.signal.aborted || c === null || y === null) return;
+    if (!c.ok)
+      return h(r, c.message, !0, () => {
+        f();
       });
-    if (!e.appBackend) return f(s, K, !0);
-    const N = {
+    if (!e.appBackend) return h(r, z, !0);
+    const F = {
       tab: t,
       parent: window.location.origin,
-      namespace: E?.namespace ?? null,
-      started: E?.started ?? !1,
-      cap: A,
-      focus: r,
-      theme: re(s),
-      mcp: L
+      namespace: l?.namespace ?? null,
+      started: l?.started ?? !1,
+      cap: y,
+      focus: o,
+      theme: he(r),
+      mcp: g
     };
-    s.replaceChildren(), i = e.appBackend.mountFrame(s, {
-      path: `/ui/${x(N)}`,
-      title: D[t],
-      onError: C
-    }), window.addEventListener("message", g);
+    r.replaceChildren(), i = e.appBackend.mountFrame(r, {
+      path: `/ui/${H(F)}`,
+      title: R[t],
+      onError: L
+    }), window.addEventListener("message", T);
   }
-  return d(), () => {
-    o.abort(), b(), s.replaceChildren();
+  return f(), () => {
+    s.abort(), w(), r.replaceChildren();
   };
 }
-function de(e) {
-  const t = w.map(
-    (n) => e.registerPage(n, (s) => le(e, n, s))
+function we(e) {
+  const t = O.map(
+    (n) => e.registerPage(n, (r) => Te(e, n, r))
   );
   return () => t.forEach((n) => n());
 }
 export {
-  de as activate
+  we as activate
 };

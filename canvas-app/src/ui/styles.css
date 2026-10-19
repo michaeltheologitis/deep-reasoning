@@ -146,15 +146,6 @@ pre {
   margin: 0 0 6px;
 }
 
-.notice {
-  max-width: 560px;
-  margin: 24px auto;
-  padding: 16px;
-  border: 1px solid var(--oh-warning);
-  border-radius: var(--oh-radius);
-  background: var(--oh-surface-raised);
-}
-
 .lost {
   position: sticky;
   bottom: 0;
@@ -301,6 +292,15 @@ fieldset.choices input,
 
 .result:empty {
   display: none;
+}
+
+.spend-cap {
+  border-bottom: 1px solid var(--oh-border-subtle);
+  padding-bottom: 8px;
+}
+
+.spend-cap input {
+  width: 10em;
 }
 
 .result {

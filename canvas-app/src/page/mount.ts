@@ -1,7 +1,8 @@
-// mountTab: the sequence of §4.2, from "Opening the Library…" to the frame and its two messages.
+// mountTab: the sequence of §4.2, from "Opening the Library…" to the frame and its three messages.
 
 import {
   type FrameParams,
+  type PageMessage,
   type TabId,
   TAB_TITLES,
   frameSearch,
@@ -13,6 +14,7 @@ import {
   readMcpServers,
   readSpendCap,
   readTheme,
+  writeSpendCap,
 } from "./context";
 import type {
   CanvasExtensionAppBackendError,
@@ -82,11 +84,22 @@ export function mountTab(
       return;
     if (event.data.type === "dr-library/reload") {
       void run();
+    } else if (event.data.type === "dr-library/set-spend-cap") {
+      void setSpendCap(frame, event.data.cap);
     } else if (context.surface.kind === "conversation-panel") {
       putFocus(event.data.tab, event.data.focus);
       context.surface.selectTab(event.data.tab);
     }
   };
+
+  async function setSpendCap(frame: HTMLIFrameElement, cap: string) {
+    const written = await writeSpendCap(host.agentServer.request, cap);
+    const answer: PageMessage = written.ok
+      ? { type: "dr-library/spend-cap-saved", cap: written.cap }
+      : { type: "dr-library/spend-cap-refused", message: written.message };
+    const origin = new URL(frame.src, window.location.href).origin;
+    frame.contentWindow?.postMessage(answer, origin);
+  }
 
   const onError = (error: CanvasExtensionAppBackendError) => {
     if (error.reason !== "not-ready" || retriedNotReady) return;

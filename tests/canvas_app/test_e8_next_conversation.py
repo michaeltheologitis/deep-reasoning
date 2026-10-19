@@ -11,7 +11,7 @@ from playwright.async_api import expect as expect_async
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.library import Library, library_path
 from tests.acp.harness import dr_acp, run, run_ids
-from tests.canvas_app.conftest import SAFETY_ACK, serve, stop, ui_url
+from tests.canvas_app.conftest import serve, stop, ui_url
 
 pytestmark = pytest.mark.browser
 
@@ -30,7 +30,6 @@ async def save_in_create(url: str) -> str:
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch()
         context = await browser.new_context()
-        await context.add_init_script(SAFETY_ACK)
         page = await context.new_page()
         await page.goto(url)
         await page.get_by_test_id("dr-name").fill(NAME)

@@ -1,5 +1,5 @@
 // What only Canvas can read, for the frame's URL: the conversation's namespace, the spend cap, the theme,
-// and (D4) Canvas's MCP servers.
+// and (D4) Canvas's MCP servers; and the one thing it writes, the spend cap (TASK-65 D7).
 
 import {
   DEFAULT_SPEND_CAP,
@@ -8,7 +8,9 @@ import {
   THEME_TOKENS,
   safeTheme,
 } from "../shared/protocol";
+import { errorDetail } from "./backend";
 import type { AgentServerRequest } from "./host";
+import { CAP_NOT_SAVED, CAP_NO_PROXY, CAP_PROFILE_MISSING } from "./texts";
 
 export interface ConversationNamespace {
   namespace: string;
@@ -22,6 +24,9 @@ interface ConfigOption {
 }
 
 const PROFILE_PATH = "/api/agent-profiles/deep_reasoner";
+const SPEND_CAP_FLAG = "--spend-cap-usd";
+const NO_KEY_PROXY_FLAG = "--no-key-proxy";
+const NOT_FOUND = 404;
 const SETTINGS_PATH = "/api/settings";
 const DECIMAL = /^\d+(\.\d+)?$/;
 /** The events search matches an event's module-qualified class name, not the kind in its JSON. */
@@ -91,6 +96,66 @@ export function spendCapFromArgs(
           .find((a) => a.startsWith("--spend-cap-usd="))
           ?.slice("--spend-cap-usd=".length);
   return value !== undefined && DECIMAL.test(value) ? value : DEFAULT_SPEND_CAP;
+}
+
+/** args with the --spend-cap-usd pair set to cap: the value after "--spend-cap-usd" replaced, or a
+ * "--spend-cap-usd=v" element replaced by the pair at its place, or the pair appended. Every other
+ * element keeps its place. null when args hold --no-key-proxy. */
+export function withSpendCap(
+  args: readonly string[],
+  cap: string,
+): string[] | null {
+  if (args.includes(NO_KEY_PROXY_FLAG)) return null;
+  const at = args.indexOf(SPEND_CAP_FLAG);
+  if (at >= 0)
+    return [...args.slice(0, at), SPEND_CAP_FLAG, cap, ...args.slice(at + 2)];
+  const joined = args.findIndex((a) => a.startsWith(`${SPEND_CAP_FLAG}=`));
+  if (joined >= 0)
+    return [
+      ...args.slice(0, joined),
+      SPEND_CAP_FLAG,
+      cap,
+      ...args.slice(joined + 1),
+    ];
+  return [...args, SPEND_CAP_FLAG, cap];
+}
+
+export type SpendCapWrite =
+  | { ok: true; cap: string }
+  | { ok: false; message: string };
+
+type Profile = Record<string, unknown> & { acp_args?: unknown };
+
+/** GET PROFILE_PATH; withSpendCap(profile.acp_args ?? [], cap); POST PROFILE_PATH with the profile and
+ * the new acp_args. Never throws: a 404 is CAP_PROFILE_MISSING, null args CAP_NO_PROXY, any other
+ * failure CAP_NOT_SAVED with the error's message. */
+export async function writeSpendCap(
+  request: AgentServerRequest,
+  cap: string,
+): Promise<SpendCapWrite> {
+  try {
+    const answer = await request<{ profile: Profile }>({ path: PROFILE_PATH });
+    const args = Array.isArray(answer.profile.acp_args)
+      ? answer.profile.acp_args.filter((a) => typeof a === "string")
+      : [];
+    const acp_args = withSpendCap(args, cap);
+    if (acp_args === null) return { ok: false, message: CAP_NO_PROXY };
+    await request({
+      method: "POST",
+      path: PROFILE_PATH,
+      body: { ...answer.profile, acp_args },
+    });
+    return { ok: true, cap };
+  } catch (error) {
+    const status = (error as { status?: unknown } | null)?.status;
+    return {
+      ok: false,
+      message:
+        status === NOT_FOUND
+          ? CAP_PROFILE_MISSING
+          : CAP_NOT_SAVED(errorDetail(error)),
+    };
+  }
 }
 
 /** Each of THEME_TOKENS as computed on element, kept when safe. */

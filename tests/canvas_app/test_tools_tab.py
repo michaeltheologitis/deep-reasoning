@@ -7,16 +7,17 @@ from playwright.sync_api import Page, expect
 
 from deep_reasoning.mcp.grants import is_mcp_tool
 from deep_reasoning.mcp.wire import McpServerStatus, remember_seen
-from tests.canvas_app.test_notice import SAFETY_5
 from tests.mcp.conftest import put_grant
 from tests.tools.conftest import source
 
-# D4's sentences, as the frame shows them (D4 §9.3).
-TOOLS_RISK = (
-    "Tools and MCP servers run as you, with your files and network: your tools inside the "
-    "agent's process, a stdio MCP server as a program started for each conversation that "
-    "can use it. Check runs your code too. Add only code and servers you trust."
+# The Spend cap field's sentences (TASK-65 §6.3) and D4's (D4 §9.3), as the frame shows
+# them.
+SPEND_CAP_INVALID = "Enter an amount in dollars above 0, such as 5 or 12.50."
+SPEND_CAP_OFF = (
+    "No cap: the key proxy is off for Deep Reasoning (--no-key-proxy), so nothing caps "
+    "what a conversation spends."
 )
+SPEND_CAP_STANDALONE = "Change it in the app, under Show Decompositions → Tools."
 CANNOT_SAVE = (
     "Fix this before saving: a tool that does not build stops every conversation from "
     "starting."
@@ -42,15 +43,44 @@ MCP_SETTINGS_UNKNOWN = (
 pytestmark = pytest.mark.browser
 
 
+@pytest.mark.parametrize("cap", ["5", "12.50"])
+def test_the_tools_tab_shows_the_cap_and_no_warning(open_framed_ui, cap):
+    _, frame = open_framed_ui(tab="tools", cap=cap)
+    expect(frame.get_by_test_id("dr-spend-cap-input")).to_have_value(cap)
+    expect(frame.get_by_test_id("dr-tool-new")).to_be_visible()
+    expect(frame.get_by_test_id("dr-notice")).to_have_count(0)
+    expect(frame.get_by_test_id("dr-tools-risk")).to_have_count(0)
+    first = frame.locator("section.tools > :first-child")
+    expect(first).to_have_attribute("data-testid", "dr-spend-cap")
+
+
+def test_without_the_key_proxy_the_field_says_nothing_caps_spending(open_framed_ui):
+    _, frame = open_framed_ui(tab="tools", cap="off")
+    expect(frame.get_by_test_id("dr-spend-cap")).to_have_text(
+        "Spend cap" + SPEND_CAP_OFF
+    )
+    expect(frame.get_by_test_id("dr-spend-cap-input")).to_have_count(0)
+
+
+def test_on_the_standalone_page_the_cap_is_shown_and_not_editable(open_ui):
+    page = open_ui(tab="tools", cap="7")
+    expect(page.get_by_test_id("dr-spend-cap")).to_have_text(
+        f"Spend cap$7 · {SPEND_CAP_STANDALONE}"
+    )
+    expect(page.get_by_test_id("dr-spend-cap-input")).to_have_count(0)
+
+
 @pytest.mark.parametrize(
-    ("cap", "sentence"), [("5", SAFETY_5), ("12", "stops at $12 per")]
+    "amount", ["0", "-1", "1.234", "abc", ""], ids=["0", "-1", "1.234", "abc", "empty"]
 )
-def test_the_tools_tab_always_shows_the_safety_notice_with_the_cap(
-    open_ui, cap, sentence
+def test_an_amount_that_is_not_dollars_above_zero_is_refused_before_anything_is_sent(
+    open_framed_ui, amount
 ):
-    page = open_ui(tab="tools", cap=cap)
-    expect(page.get_by_test_id("dr-notice")).to_contain_text(sentence)
-    expect(page.get_by_test_id("dr-notice-ack")).to_have_count(0)
+    page, frame = open_framed_ui(tab="tools", cap="5")
+    frame.get_by_test_id("dr-spend-cap-input").fill(amount)
+    frame.get_by_test_id("dr-spend-cap-save").click()
+    expect(frame.get_by_test_id("dr-spend-cap-status")).to_have_text(SPEND_CAP_INVALID)
+    assert page.evaluate("window.received") == []
 
 
 def test_the_tools_tab_lists_tools_with_their_grants(open_ui, library_server):
@@ -115,17 +145,6 @@ def stored_when(read, done, timeout_s: float = 10):
     while not done(found := read()) and time.monotonic() < deadline:
         time.sleep(0.1)
     return found
-
-
-def test_the_risk_line_is_under_the_safety_banner(open_ui):
-    page = open_ui(tab="tools")
-    risk = page.get_by_test_id("dr-tools-risk")
-    expect(risk).to_have_text("⚠ " + TOOLS_RISK)
-    follows = page.evaluate(
-        "() => document.querySelector('[data-testid=dr-notice]')"
-        ".compareDocumentPosition(document.querySelector('[data-testid=dr-tools-risk]'))"
-    )
-    assert follows & 4, "the risk line comes after the safety banner"
 
 
 def test_a_new_tool_is_written_checked_and_saved_with_its_grants(
