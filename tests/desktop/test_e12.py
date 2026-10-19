@@ -33,12 +33,10 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import (
     Browser,
-    Error,
     FrameLocator,
     Locator,
     Page,
     expect,
-    sync_playwright,
 )
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
@@ -262,24 +260,6 @@ def expiring(tmp_path_factory: pytest.TempPathFactory) -> Iterator[LaunchedApp]:
         launched.stop()
         eventually(lambda: processes_mentioning(str(launched.home)) == [], QUIT_S)
         yield launched
-
-
-@pytest.fixture(scope="module")
-def browser(app: LaunchedApp) -> Iterator[Browser]:
-    """Playwright attached to the app's own Chromium over its DevTools port."""
-    with sync_playwright() as playwright:
-        deadline = time.monotonic() + FIRST_LAUNCH_S
-        while True:
-            try:
-                cdp = playwright.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{app.debug_port}"
-                )
-                break
-            except Error:
-                assert app.process.poll() is None, "the app exited before its window"
-                assert time.monotonic() < deadline, "no DevTools port"
-                time.sleep(1.0)
-        yield cdp
 
 
 def window(browser: Browser) -> Page:
