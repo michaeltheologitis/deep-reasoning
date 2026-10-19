@@ -202,8 +202,8 @@ def install_runtime(
 
 def prune_runtimes(layout: AppLayout, keep: str) -> None:
     """Every entry of runtime/ but keep and current removed, an interrupted install's
-    included. Only a start that installs nothing calls it, under setup.lock: it passed
-    the port check, so no stack can be running the runtime before."""
+    included. Safe only under setup.lock and after a port check that found no stack
+    running: then none can still run the runtime before."""
     for other in layout.runtime_dir.iterdir():
         if other.name not in (keep, layout.current_runtime.name):
             _remove(other)
