@@ -6,12 +6,14 @@ import json
 import plistlib
 import shutil
 import subprocess
+import tarfile
 import tomllib
 from pathlib import Path
 
 import pytest
 
 from desktop import build
+from tests.tarballs import write_tarball
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -350,3 +352,256 @@ def test_the_build_offers_no_universal_or_intel_mac_target():
     with pytest.raises(SystemExit):
         build.main(["mac-universal"])
     assert set(build.ARTIFACT_KINDS) == {"linux", "mac-arm64"}
+
+
+# The browser version's tarball (TASK-48 §3.3, §7.3).
+SIRV_LOCK = {
+    "lockfileVersion": 3,
+    "packages": {
+        "": {"dependencies": {"sirv": "3.0.2", "httpxy": "0.5.5", "vite": "6.0.0"}},
+        "node_modules/sirv": {
+            "version": "3.0.2",
+            "dependencies": {
+                "@polka/url": "^1.0.0-next.24",
+                "mrmime": "^2.0.0",
+                "totalist": "^3.0.0",
+            },
+        },
+        "node_modules/@polka/url": {"version": "1.0.0-next.29"},
+        "node_modules/mrmime": {"version": "2.0.1"},
+        # sirv takes its own totalist; the hoisted one is vite's.
+        "node_modules/sirv/node_modules/totalist": {"version": "3.0.1"},
+        "node_modules/totalist": {"version": "1.1.0"},
+        "node_modules/httpxy": {
+            "version": "0.5.5",
+            "optionalDependencies": {"mrmime": "*"},
+        },
+        "node_modules/vite": {"version": "6.0.0", "dependencies": {"totalist": "*"}},
+    },
+}
+SIRV_CLOSURE = {
+    "node_modules/sirv": "3.0.2",
+    "node_modules/@polka/url": "1.0.0-next.29",
+    "node_modules/mrmime": "2.0.1",
+    "node_modules/sirv/node_modules/totalist": "3.0.1",
+    "node_modules/httpxy": "0.5.5",
+}
+# The fork's two files W13 reads, as far as it reads them (dr-3's lines).
+BUILDER_CONFIG = 'const RUNTIME_PACKAGES = ["sirv", "httpxy"];\n'
+ELECTRON_MAIN = """async function startStack() {
+  const result = await main({
+    bannerTitle: "OpenHands Agent Canvas",
+    staticMode: true,
+    staticDir: buildDir,
+    mode: "agent-canvas",
+    isPublic: false,
+    skipNpmCheck: true,
+    agentServerReadyTimeoutMs: 10 * 60_000,
+    onServiceLog: handleServiceLog,
+  });
+}
+"""
+COMMAND = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
+
+
+def test_the_runtime_closure_is_what_sirv_and_httpxy_resolve_to():
+    assert build.runtime_closure(SIRV_LOCK, build.WEB_RUNTIME_PACKAGES) == SIRV_CLOSURE
+    broken = copy.deepcopy(SIRV_LOCK)
+    del broken["packages"]["node_modules/mrmime"]
+    with pytest.raises(ValueError, match="mrmime"):
+        build.runtime_closure(broken, build.WEB_RUNTIME_PACKAGES)
+
+
+@pytest.fixture
+def web_checkout(tmp_path: Path) -> tuple[Path, dict]:
+    """A Canvas checkout as prepare() leaves it: built, its defaults patched, and its
+    node_modules installed from SIRV_LOCK."""
+    checkout = tmp_path / "work" / "canvas"
+    defaults = build.patch_defaults(
+        DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND
+    )
+    files = {
+        "build/index.html": "<!doctype html>",
+        "build/assets/app.js": "",
+        "config/defaults.json": json.dumps(defaults, indent=2) + "\n",
+        "scripts/dev-with-automation.mjs": "",
+        "scripts/build-tools.cjs": "",
+        "scripts/vercel-install.sh": "",
+        "tools/canvas_ui_tool.py": "",
+        "LICENSE": "MIT License\n",
+        "package-lock.json": json.dumps(SIRV_LOCK),
+        "electron-builder.config.mjs": BUILDER_CONFIG,
+        "electron/main.mjs": ELECTRON_MAIN,
+        "src/main.tsx": "",
+    }
+    for path, locked in SIRV_LOCK["packages"].items():
+        if path:
+            manifest = {"name": path.rsplit("node_modules/", 1)[1], **locked}
+            files[f"{path}/package.json"] = json.dumps(manifest)
+            files[f"{path}/index.js"] = ""
+    for path, content in files.items():
+        (checkout / path).parent.mkdir(parents=True, exist_ok=True)
+        (checkout / path).write_text(content)
+    return checkout, defaults
+
+
+def tarball_paths(tarball: Path) -> set[str]:
+    with tarfile.open(tarball) as archive:
+        return {m.name for m in archive.getmembers() if m.isfile()}
+
+
+def tarball_json(tarball: Path, path: str) -> dict:
+    with tarfile.open(tarball) as archive:
+        return json.load(archive.extractfile(f"package/{path}"))
+
+
+@pytest.mark.skipif(shutil.which("npm") is None, reason="packs the tarball with npm")
+def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
+    canvas, defaults = web_checkout
+    tarball = build.package_web(
+        pins=PINS, repo=tmp_path, canvas=canvas, defaults=defaults
+    )
+    assert tarball == tmp_path / "dist" / "deep-reasoning-web-1.0.0-rc.1.tgz"
+    modules = {p for p in tarball_paths(tarball) if "/node_modules/" in p}
+    assert modules == {
+        f"package/{path}/{file}"
+        for path in SIRV_CLOSURE
+        for file in ("package.json", "index.js")
+    }
+    assert tarball_paths(tarball) - modules == {
+        "package/LICENSE",
+        "package/package.json",
+        "package/bin/deep-reasoning.mjs",
+        "package/build/index.html",
+        "package/build/assets/app.js",
+        "package/config/defaults.json",
+        "package/scripts/dev-with-automation.mjs",
+        "package/scripts/build-tools.cjs",
+        "package/tools/canvas_ui_tool.py",
+    }
+    assert tarball_json(tarball, "package.json") == build.web_package_json(
+        "1.0.0-rc.1", SIRV_CLOSURE
+    )
+    assert build.web_package_json("1.0.0-rc.1", SIRV_CLOSURE)["dependencies"] == {
+        "sirv": "3.0.2",
+        "httpxy": "0.5.5",
+    }
+    # patch_defaults' output, never literals: a key it gains needs no edit here.
+    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND)
+    assert tarball_json(tarball, "config/defaults.json") == patched
+
+
+@pytest.mark.parametrize(
+    ("file", "changed", "problem"),
+    [
+        (
+            "electron-builder.config.mjs",
+            'const RUNTIME_PACKAGES = ["sirv", "httpxy", "winston"];\n',
+            build.runtime_packages_changed(["sirv", "httpxy", "winston"]),
+        ),
+        (
+            "electron/main.mjs",
+            ELECTRON_MAIN.replace("10 * 60_000", "15 * 60_000"),
+            build.electron_call_changed(["agentServerReadyTimeoutMs: 10 * 60_000"]),
+        ),
+        (
+            "electron/main.mjs",
+            ELECTRON_MAIN.replace("    skipNpmCheck: true,\n", ""),
+            build.electron_call_changed(["skipNpmCheck: true"]),
+        ),
+    ],
+    ids=["another-package", "another-timeout", "an-option-gone"],
+)
+def test_a_fork_that_changed_its_runtime_packages_or_electrons_call_is_refused(
+    web_checkout, file, changed, problem
+):
+    canvas, _ = web_checkout
+    assert build.check_web_contract(canvas) == []
+    (canvas / file).write_text(changed)
+    assert build.check_web_contract(canvas) == [problem]
+
+
+ENTRY = (ROOT / "desktop" / "web.mjs").read_bytes()
+PATCHED = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND)
+GOOD_TARBALL = {
+    "package/package.json": json.dumps(
+        build.web_package_json("1.0.0-rc.1", SIRV_CLOSURE)
+    ).encode(),
+    "package/bin/deep-reasoning.mjs": ENTRY,
+    "package/config/defaults.json": json.dumps(PATCHED).encode(),
+    **{f"package/{path}/package.json": b"{}" for path in SIRV_CLOSURE},
+}
+
+
+@pytest.mark.parametrize(
+    ("changed", "why"),
+    [
+        (
+            {"package/build/deep_reasoner/v2.py": b""},
+            "carries deep_reasoner: ['package/build/deep_reasoner/v2.py']",
+        ),
+        ({"elsewhere/x.js": b""}, "has a member outside package/: elsewhere/x.js"),
+        (
+            {"package/node_modules/vite/package.json": b"{}"},
+            "bundles ['node_modules/vite'] beyond sirv's and httpxy's closure",
+        ),
+        (
+            {"package/config/defaults.json": json.dumps(DEFAULTS).encode()},
+            "carries other defaults than this build wrote",
+        ),
+        (
+            {"package/bin/deep-reasoning.mjs": b"// another entry\n"},
+            "carries another bin/deep-reasoning.mjs than desktop/web.mjs",
+        ),
+        (
+            {
+                "package/package.json": json.dumps(
+                    {"name": "deep-reasoning-web"}
+                ).encode()
+            },
+            "carries another package.json than the build writes",
+        ),
+    ],
+    ids=[
+        "deep-reasoner",
+        "outside",
+        "beyond-closure",
+        "defaults",
+        "entry",
+        "package-json",
+    ],
+)
+def test_a_web_tarball_is_refused_for_each_thing_it_must_not_carry(
+    tmp_path, changed, why
+):
+    name = "deep-reasoning-web-1.0.0-rc.1.tgz"
+
+    def verify(members: dict[str, bytes]) -> None:
+        build.verify_web(
+            write_tarball(tmp_path / name, members),
+            version="1.0.0-rc.1",
+            defaults=PATCHED,
+            closure=SIRV_CLOSURE,
+            entry=ENTRY,
+        )
+
+    verify(GOOD_TARBALL)
+    with pytest.raises(SystemExit) as refused:
+        verify(GOOD_TARBALL | changed)
+    assert str(refused.value) == build.web_tarball_wrong(name, why)
+
+
+def test_web_builds_on_any_machine_and_check_combines_with_no_target():
+    """The tarball is static files and scripts, so no machine is the wrong one. check
+    stands alone, and some target must be named."""
+    machines = [
+        ("Linux", "x86_64"),
+        ("Darwin", "arm64"),
+        ("Darwin", "x86_64"),
+        ("Linux", "aarch64"),
+    ]
+    assert [build.wrong_machine("web", *machine) for machine in machines] == [None] * 4
+    for together in (["check", "web"], ["linux", "check"], []):
+        with pytest.raises(SystemExit) as refused:
+            build.main(together)
+        assert refused.value.code == 2
