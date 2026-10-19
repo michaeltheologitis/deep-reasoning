@@ -60,7 +60,7 @@ def test_metadata_in_the_yaml_is_refused_with_deep_reasoners_message():
             "name: x\nuse_when: one course\nmessages: [{role: user, content: hi}]"
         )
     assert str(raised.value) == (
-        "'x' is not a valid deep_reasoner Decomposition:\n"
+        "'x' is not a valid Deep Reasoning Decomposition:\n"
         "  use_when: Extra inputs are not permitted\n"
         "Use-when text is stored beside the YAML: pass use_when=... instead."
     )
@@ -201,7 +201,7 @@ def test_a_document_that_is_not_a_mapping_is_invalid(text, error):
     with pytest.raises(LibraryValidationError, match=error) as raised:
         shapes.validate_namespace(text)
     assert str(raised.value).startswith(
-        "this YAML is not a valid deep_reasoner NamespaceConfig:"
+        "this YAML is not a valid Deep Reasoning NamespaceConfig:"
     )
 
 

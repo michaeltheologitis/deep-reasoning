@@ -368,7 +368,7 @@ def test_validate_reports_without_saving(lib):
     result = lib.validate("decomposition", "name: x\nmessages: []")
     assert result.model_dump() == {
         "ok": False,
-        "message": "'x' is not a valid deep_reasoner Decomposition:\n"
+        "message": "'x' is not a valid Deep Reasoning Decomposition:\n"
         "  messages: List should have at least 1 item after validation, not 0",
         "errors": [
             {

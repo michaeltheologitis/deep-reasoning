@@ -11,8 +11,8 @@ from deep_reasoning.acp.runlog import RecapNote
 from deep_reasoning.mcp.wire import McpServerStatus
 
 ROOT_STOPPED = (
-    "Stopped. The run was ended and its REPL state is gone: deep_reasoner cannot cancel a "
-    "running cell yet (ask A3). Your next message starts a fresh run."
+    "Stopped. The run was ended and its REPL state is gone: Deep Reasoning cannot cancel "
+    "a running cell yet. Your next message starts a fresh run."
 )
 PROMPT_BUSY = "a prompt is already running in this session."
 FRESH_AFTER_STOP = (

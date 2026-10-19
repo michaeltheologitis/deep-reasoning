@@ -1,11 +1,11 @@
 # deep-reasoning
 
-deep-reasoning runs Dean's deep_reasoner as an agent you talk to in a desktop app,
+This repository runs Dean's deep_reasoner as an agent you talk to in a desktop app,
 **Deep Reasoning**: a build of OpenHands Agent Canvas (Michael's fork, at a pinned commit)
 whose conversations go to `dr-acp`, deep_reasoner behind the Agent Client Protocol. The
-app adds a Library panel (**Show decompositions**) for deep_reasoner's Library, and a key
-proxy that keeps your model key out of the code deep_reasoner writes and stops a
-conversation's spending at a cap.
+app adds a Library panel (**Show Decompositions**) for Deep Reasoning's decompositions,
+namespaces and tools, and a key proxy that keeps your model key out of the code Deep
+Reasoning writes and stops a conversation's spending at a cap.
 
 This repository holds `dr-acp`, the Library (`dr-library` and its panel), the app's setup
 command (`packages/dr-app`) and the build (`desktop/`). The app's design is
@@ -86,12 +86,12 @@ A splash shows each line setup prints. Setup:
 
 1. says where your data will live (`your data: …`);
 2. checks git, and that your credentials can read deep_reasoner_beta;
-3. installs deep-reasoning and deep_reasoner, at the commits this app was built with and
+3. installs Deep Reasoning and deep_reasoner, at the commits this app was built with and
    every dependency at its locked version, into `~/.deep-reasoning/runtime/`. It says this
    takes a few minutes; on GitHub's macOS runner, with a fast network, the install takes
    under 20 s, and setup's two phases, with the agent-server starting between them, about a
    minute;
-4. once the agent-server is up, makes the **deep_reasoner** agent profile the default, and
+4. once the agent-server is up, makes Deep Reasoning's agent profile the default, and
    installs, approves and starts the Library App (`App dr-library … installed · backend ready`).
 
 A later launch with nothing changed installs nothing. Within about ten minutes of the last
@@ -120,11 +120,11 @@ echo 'export PATH="$HOME/.deep-reasoning/bin:$PATH"' >> ~/.zshrc
 ```
 
 - `dr-app export DIR [--namespace NAME]` writes your Library to `DIR/main.yaml`, a config
-  that deep_reasoner's `dr` runs unchanged. It works while the app runs.
+  that `dr` runs unchanged. It works while the app runs.
 - `dr-app home` prints where your data lives (on Linux, with its filesystem type).
   `dr-app home DIR` keeps it in `DIR` from the next launch. `DIR` must be an absolute path to
   a folder on this computer that you own, of at most 55 bytes on Linux and 51 on macOS:
-  deep_reasoner's Claude runs serve sockets under it, and a longer path is refused. Nothing
+  Deep Reasoning's Claude runs serve sockets under it, and a longer path is refused. Nothing
   is moved: copy `library.sqlite`, `runs/`, `sessions/` and `spend/` yourself, or export the
   Library and import it there.
 - `dr` is deep_reasoner's own command line, from the same install.
@@ -137,7 +137,7 @@ Both exist once the first launch has installed them.
 |---|---|
 | `~/.deep-reasoning/` | everything the app writes, readable only by you |
 | `~/.deep-reasoning/canvas/` | Canvas's settings, secrets (encrypted), agent profiles and Apps; `agent-canvas/` in it holds your conversations |
-| `~/.deep-reasoning/runtime/`, `bin/` | the installed deep-reasoning and deep_reasoner, and the two commands; after an update, the version before stays until the next start that installs nothing |
+| `~/.deep-reasoning/runtime/`, `bin/` | the installed Deep Reasoning and deep_reasoner, and the two commands; after an update, the version before stays until the next start that installs nothing |
 | `~/.deep-reasoning/web/` | Node, and the browser version's files, from its command ([Run it in your browser](#run-it-in-your-browser)) |
 | `~/.deep-reasoning/canvas-app/` | the Library App as setup staged it for this computer: its manifest, panel and backend |
 | `~/.deep-reasoning/setup.json`, `setup.lock` | what setup last did, and the folder `dr-app home` chose; a lock held while setup runs, so a launch and a terminal run never overlap |
@@ -225,7 +225,7 @@ key, so the key is not in its environment, in a process it starts, in the transc
 the run log; spending through the proxy stops at the cap; the agent-server's own secrets are
 kept from the worker; usage reports are off; nothing of deep_reasoner is in the download.
 
-**It does not protect against code that sets out to get around it.** Code deep_reasoner
+**It does not protect against code that sets out to get around it.** Code Deep Reasoning
 writes runs as you, so it can:
 
 - read every key you saved in Canvas: its secrets are encrypted with a key file you can
@@ -245,8 +245,8 @@ And, by design:
   it; the run log does not).
 - On macOS, the Library's backend is HTTP on 127.0.0.1 with no sign-in, which any user of
   the same Mac could reach.
-- deep_reasoner's Claude Code backbone, when it runs on your machine's own `claude` sign-in,
-  calls Anthropic directly, past the proxy and the cap.
+- Deep Reasoning's Claude Code backbone, when it runs on your machine's own `claude`
+  sign-in, calls Anthropic directly, past the proxy and the cap.
 - The app is unsigned: on macOS you clear the quarantine flag yourself, so you trust what you
   downloaded. deep-reasoning and its releases are public; deep_reasoner_beta is private, is
   in no package, and is installed on your computer with your own git credentials.

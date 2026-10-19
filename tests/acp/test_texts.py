@@ -162,3 +162,10 @@ def test_the_key_proxys_sentences_are_the_designs_verbatim():
 )
 def test_the_missing_key_reminder_names_each_key_and_where_it_goes(names, sentence):
     assert texts.missing_model_key(names) == sentence
+
+
+def test_a_stopped_root_says_its_run_ended():
+    assert texts.ROOT_STOPPED == (
+        "Stopped. The run was ended and its REPL state is gone: Deep Reasoning cannot "
+        "cancel a running cell yet. Your next message starts a fresh run."
+    )

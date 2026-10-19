@@ -133,7 +133,7 @@ def test_initialize_advertises_load_close_and_http_and_sse_mcp(tmp_path, home):
             "mcpCapabilities": {"http": True, "sse": True},
             "sessionCapabilities": {"close": {}},
         },
-        "agentInfo": {"name": "dr-acp", "title": "deep_reasoner", "version": "0.1.0"},
+        "agentInfo": {"name": "dr-acp", "title": "Deep Reasoning", "version": "0.1.0"},
         "authMethods": [],
     }
 

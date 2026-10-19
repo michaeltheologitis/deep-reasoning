@@ -20,7 +20,7 @@ FORBIDDEN_PEER = "This library belongs to another user on this computer."
 BAD_REQUEST = "The body must be a JSON object with a 'yaml' string."
 NOT_JSON = "The body must be sent as application/json."
 UI_NOT_BUILT = (
-    "The panel's files are not in this installation: reinstall deep-reasoning, or run "
+    "The panel's files are not in this installation: reinstall Deep Reasoning, or run "
     "npm run build in canvas-app/."
 )
 
@@ -28,7 +28,7 @@ UI_NOT_BUILT = (
 def invalid(name: str | None, model: str, errors: Sequence[tuple[str, str]]) -> str:
     """The mock-up's failure cell: a heading, then one line per (loc, msg)."""
     subject = f"'{name}'" if name else "this YAML"
-    lines = [f"{subject} is not a valid deep_reasoner {model}:"]
+    lines = [f"{subject} is not a valid Deep Reasoning {model}:"]
     lines += [f"  {loc}: {msg}" if loc else f"  {msg}" for loc, msg in errors]
     return "\n".join(lines)
 
@@ -146,7 +146,7 @@ def name_mismatch(yaml_name: str, key: str, kind: str) -> str:
 
 
 def import_load(path: str, detail: str) -> str:
-    return f"{path} is not a dr config deep_reasoner can load: {detail}"
+    return f"{path} is not a dr config Deep Reasoning can load: {detail}"
 
 
 def import_collision(path: str, name: str, first: str, second: str) -> str:
