@@ -112,6 +112,16 @@ def build_failed(detail: str) -> str:
     return f"Could not start the run: {detail}"
 
 
+def missing_model_key(names: Sequence[str]) -> str:
+    """names: the key variables a run lacks, at least one."""
+    listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+    pronoun = "it" if len(names) == 1 else "them"
+    return (
+        f"Deep Reasoning needs {listed} to answer: add {pronoun} under Settings → "
+        "Secrets, then start a new conversation."
+    )
+
+
 def root_failed(detail: str) -> str:
     return (
         f"The run failed: {detail}. Its REPL state is gone; your next message starts a "

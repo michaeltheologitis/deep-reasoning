@@ -1,4 +1,9 @@
-from deep_reasoning.acp.route import DirectRoute, RouteGrant, worker_env
+from deep_reasoning.acp.route import (
+    DirectRoute,
+    RouteGrant,
+    missing_model_keys,
+    worker_env,
+)
 
 
 def test_the_agent_servers_secrets_never_reach_the_worker():
@@ -35,3 +40,24 @@ def test_the_direct_route_overrides_nothing():
     assert grant == RouteGrant()
     assert grant.tool_client_overrides == {}
     DirectRoute().release("r")
+
+
+REMOTE = "https://models.example.invalid/v1"
+
+
+def test_missing_model_keys_names_each_key_build_client_refuses_once_in_order(
+    monkeypatch,
+):
+    for name in ("A_KEY", "B_KEY", "D_KEY", "NOVITA_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("C_KEY", "k")
+    clients = [
+        {"api_key_env": "B_KEY", "base_url": REMOTE},
+        {"api_key_env": "A_KEY", "base_url": REMOTE},
+        {"api_key_env": "B_KEY", "base_url": REMOTE},
+        {"api_key_env": "C_KEY", "base_url": REMOTE},
+        {"api_key_env": "D_KEY", "base_url": "http://localhost:8000/v1"},
+        {"base_url": REMOTE},
+        {"api_key_env": "E_KEY", "max_retries": "many"},  # not a ClientConfig
+    ]
+    assert missing_model_keys(clients) == ["B_KEY", "A_KEY", "NOVITA_API_KEY"]

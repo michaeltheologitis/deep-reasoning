@@ -1,10 +1,12 @@
 """How a run reaches its model, and what the worker's environment holds (§4.7)."""
 
 import fnmatch
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Protocol
+
+from pydantic import ValidationError
 
 NO_TOOL_UPSTREAMS: Mapping[str, Mapping[str, Any]] = MappingProxyType({})
 
@@ -71,3 +73,25 @@ def worker_env(base: Mapping[str, str], grant: RouteGrant) -> dict[str, str]:
         if not any(fnmatch.fnmatchcase(key, pattern) for pattern in removed)
     }
     return env | dict(grant.env_add) | {"PYTHONUNBUFFERED": "1"}
+
+
+def missing_model_keys(clients: Iterable[Mapping[str, Any]]) -> list[str]:
+    """The key variables deep_reasoner's own build_client refuses the clients without,
+    with this process's environment: each client's api_key_env once, in the clients'
+    order; empty when every client builds. A block that is not a ClientConfig is left
+    for the worker's build to report."""
+    # deep_reasoner is imported when a run starts, never at dr-acp's start-up.
+    from deep_reasoner.config import ClientConfig, build_client
+
+    missing: list[str] = []
+    for client in clients:
+        try:
+            config = ClientConfig.model_validate(client)
+        except ValidationError:
+            continue
+        try:
+            build_client(config)
+        except ValueError:
+            if config.api_key_env not in missing:
+                missing.append(config.api_key_env)
+    return missing
