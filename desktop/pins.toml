@@ -3,13 +3,13 @@
 
 [canvas_fork]
 repo = "https://github.com/michaeltheologitis/OpenHands"
-commit = "4355a36580191bb98d53610152469864d9640b8a"
-tag = "dr-3"
+commit = "138d41fd3b540fe00fe88572db6e3968e19a820b"
+tag = "dr-4"
 
 [sdk_fork]
 repo = "https://github.com/michaeltheologitis/software-agent-sdk"
-commit = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
-tag = "dr-2"
+commit = "b82dffbaf0e3a58e4248878f01fe0a01ed011876"
+tag = "dr-3"
 
 [app]
 product_name = "Deep Reasoning"

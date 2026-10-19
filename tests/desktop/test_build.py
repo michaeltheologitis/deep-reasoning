@@ -157,10 +157,10 @@ def test_a_cutoff_that_is_not_a_utc_time_is_refused(tmp_path, value):
 def test_pins_with_a_short_commit_are_refused(tmp_path):
     pins = (ROOT / "desktop" / "pins.toml").read_text()
     short = tmp_path / "pins.toml"
-    placeholder = tomllib.loads(pins)["canvas_fork"]["commit"]
-    short.write_text(
-        pins.replace(placeholder, CANVAS_COMMIT).replace(SDK_COMMIT, SDK_COMMIT[:7])
-    )
+    committed = tomllib.loads(pins)
+    placeholder = committed["canvas_fork"]["commit"]
+    sdk = committed["sdk_fork"]["commit"]
+    short.write_text(pins.replace(placeholder, CANVAS_COMMIT).replace(sdk, sdk[:7]))
     with pytest.raises(
         ValueError, match="sdk_fork.commit must be a full 40-hex commit"
     ):
@@ -364,18 +364,21 @@ def test_the_setup_command_embeds_the_bootstrap_and_the_commit():
     ]
 
 
-def test_the_committed_sdk_pin_is_34c540c_tagged_dr_2():
+DR_3 = "b82dffbaf0e3a58e4248878f01fe0a01ed011876"
+
+
+def test_the_committed_sdk_pin_is_b82dffb_tagged_dr_3():
     raw = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())
-    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": SDK_COMMIT, "tag": "dr-2"}
+    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": DR_3, "tag": "dr-3"}
     assert raw["app"]["uv_version"] == "0.12.23"
 
 
 def test_the_committed_pins_load():
     pins = build.load_pins(ROOT / "desktop" / "pins.toml")
     assert pins.canvas_fork == build.ForkPin(
-        CANVAS_REPO, "4355a36580191bb98d53610152469864d9640b8a", "dr-3"
+        CANVAS_REPO, "138d41fd3b540fe00fe88572db6e3968e19a820b", "dr-4"
     )
-    assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2")
+    assert pins.sdk_fork == build.ForkPin(SDK_REPO, DR_3, "dr-3")
     assert "@" in pins.app.maintainer
     assert pins.app.uv_exclude_newer == "2026-10-04T00:00:00Z"
 
