@@ -24,6 +24,7 @@ SDK_REPO = "https://github.com/michaeltheologitis/software-agent-sdk"
 CANVAS_COMMIT = "c" * 40
 SDK_COMMIT = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
 CLIENT = f"{SDK_REPO}/releases/download/dr-2/openhands-typescript-client-1.50.1.tgz"
+CUTOFF = "2026-10-04T00:00:00Z"
 PINS = build.Pins(
     canvas_fork=build.ForkPin(CANVAS_REPO, CANVAS_COMMIT, "dr-1"),
     sdk_fork=build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2"),
@@ -34,11 +35,12 @@ PINS = build.Pins(
         "1.0.0-rc.1",
         "M <m@example.invalid>",
         "0.12.23",
+        CUTOFF,
     ),
 )
 # The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
-# plus the null settings a fork must declare for this build: the agent lock and the
-# app's title.
+# plus the null settings a fork must declare for this build: the agent lock, the app's
+# title and the PyPI cutoff.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -52,6 +54,7 @@ DEFAULTS = {
     },
     "agent": {"lockedProfile": None},
     "branding": {"appTitle": None},
+    "uv": {"excludeNewer": None},
 }
 GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -126,6 +129,31 @@ def test_pins_that_belong_together_pass_every_check(canvas, repo):
     assert problems(canvas, repo) == []
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-10-04",
+        "2026-10-04T00:00:00+02:00",
+        "1 week",
+        "2026-02-30T00:00:00Z",
+        "",
+        "20261004",
+    ],
+)
+def test_a_cutoff_that_is_not_a_utc_time_is_refused(tmp_path, value):
+    """uv reads a date in the user's own time zone and a span relative to now (TASK-66
+    K2); 30 February is no instant."""
+    pins = (ROOT / "desktop" / "pins.toml").read_text()
+    path = tmp_path / "pins.toml"
+    path.write_text(pins.replace(f'"{CUTOFF}"', json.dumps(value)))
+    with pytest.raises(ValueError) as refused:
+        build.load_pins(path)
+    assert str(refused.value) == (
+        f"{path}: app.uv_exclude_newer must be a UTC time such as "
+        f"2026-10-04T00:00:00Z, not {value!r}"
+    )
+
+
 def test_pins_with_a_short_commit_are_refused(tmp_path):
     pins = (ROOT / "desktop" / "pins.toml").read_text()
     short = tmp_path / "pins.toml"
@@ -193,6 +221,7 @@ def change_defaults(canvas: Path, change) -> None:
         ("setup", "command", ["sh", "-c", "true"]),
         ("agent", "lockedProfile", "someone_elses_agent"),
         ("branding", "appTitle", "Someone Else's Canvas"),
+        ("uv", "excludeNewer", "2026-01-01T00:00:00Z"),
     ],
 )
 def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, value):
@@ -202,7 +231,9 @@ def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, val
     ]
 
 
-@pytest.mark.parametrize("key", ["agent.lockedProfile", "branding.appTitle"])
+@pytest.mark.parametrize(
+    "key", ["agent.lockedProfile", "branding.appTitle", "uv.excludeNewer"]
+)
 def test_a_canvas_fork_that_lacks_a_setting_the_build_writes_is_refused(
     canvas, repo, key
 ):
@@ -239,6 +270,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         state_dir=build.STATE_DIR,
         command=command,
         app_title="A Product",
+        exclude_newer="2026-01-02T03:04:05Z",
     )
     assert DEFAULTS == before
     written = {
@@ -248,6 +280,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         "telemetry.posthogApiKey": "",
         "agent.lockedProfile": "deep_reasoner",
         "branding.appTitle": "A Product",
+        "uv.excludeNewer": "2026-01-02T03:04:05Z",
     }
     assert set(written) == {
         *build.FORK_NULL_KEYS,
@@ -279,10 +312,12 @@ def written_defaults(pins, *, canvas, repo, work, monkeypatch) -> dict:
     return json.loads((canvas / "config" / "defaults.json").read_text())
 
 
-def test_the_build_writes_the_product_name_as_the_title(
+def test_the_build_writes_the_product_name_as_the_title_and_the_pinned_cutoff(
     canvas, repo, tmp_path, monkeypatch
 ):
-    app = dataclasses.replace(PINS.app, product_name="A Product")
+    app = dataclasses.replace(
+        PINS.app, product_name="A Product", uv_exclude_newer="2026-01-02T03:04:05Z"
+    )
     written = written_defaults(
         dataclasses.replace(PINS, app=app),
         canvas=canvas,
@@ -291,6 +326,7 @@ def test_the_build_writes_the_product_name_as_the_title(
         monkeypatch=monkeypatch,
     )
     assert written["branding"]["appTitle"] == "A Product"
+    assert written["uv"]["excludeNewer"] == "2026-01-02T03:04:05Z"
 
 
 def test_the_locked_profile_is_the_one_setup_creates():
@@ -303,6 +339,7 @@ def test_telemetry_is_off_in_the_built_defaults():
         state_dir=build.STATE_DIR,
         command=[],
         app_title="Deep Reasoning",
+        exclude_newer=CUTOFF,
     )
     assert patched["telemetry"] == {
         "posthogApiKey": "",
@@ -343,6 +380,7 @@ def test_the_committed_pins_load():
     )
     assert pins.sdk_fork == build.ForkPin(SDK_REPO, DR_3, "dr-3")
     assert "@" in pins.app.maintainer
+    assert pins.app.uv_exclude_newer == "2026-10-04T00:00:00Z"
 
 
 @pytest.mark.skipif(
@@ -578,6 +616,7 @@ PATCHED = build.patch_defaults(
     state_dir=build.STATE_DIR,
     command=COMMAND,
     app_title=PINS.app.product_name,
+    exclude_newer=PINS.app.uv_exclude_newer,
 )
 
 

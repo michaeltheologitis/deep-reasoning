@@ -141,7 +141,6 @@ def test_the_browser_section_names_its_flags_ports_cache_and_uv():
         "18000",
         "Ctrl+C",
         "~/.deep-reasoning/web",
-        "ten minutes",
         "curl -LsSf https://astral.sh/uv/install.sh | sh",
         f"uv {evaluate_web('web.MINIMUM.uv')} or later",
     ):
@@ -173,11 +172,12 @@ def test_the_readmes_browser_command_is_the_newest_releases():
     assert commands == [newest], f"the README's command is not {tags[0]}'s ({newest})"
 
 
-def test_no_section_promises_an_offline_restart_past_ten_minutes():
-    """The agent-server's start asks PyPI again once uv's answers expire (TASK-48 F4),
-    for the app as for the browser, until TASK-66."""
-    window = "Within about ten minutes of the last start that had the network"
-    first_launch = " ".join(section("### The first launch").split())
-    browser = " ".join(section(BROWSER).split())
-    assert window in first_launch and window in browser
-    assert "needs no network" not in PLAIN
+def test_the_app_and_the_browser_say_a_restart_needs_no_network_however_long_after():
+    """Both start the agent-server and the automation service from uv's cache, offline,
+    at the PyPI cutoff the build writes (TASK-66 §4.3); the browser version runs the same
+    build's defaults (E13 claim 9)."""
+    first_launch = plain(section("### The first launch"))
+    browser = plain(section(BROWSER))
+    assert "needs no network, however long since the last one" in first_launch
+    assert "needs no network, however long since the last start" in browser
+    assert "ten minutes" not in PLAIN

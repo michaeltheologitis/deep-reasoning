@@ -7,9 +7,10 @@ and run in order: the setup it ran; the stack's processes, environment and socke
 page refusing a host name that is not this machine; a conversation; the Library panel
 through the bridge in Chromium, Firefox and WebKit; a second start refused; Ctrl+C; then
 a restart with the network cut. Last, from a second first start whose uv index answers
-expire a second after each fetch, the same restart. The terminal it starts from holds
-junk that a user's might: the command must keep all of it from the stack. No test calls
-a real model.
+expire a second after each fetch, the same restart, which starts both services from uv's
+cache at the tarball's PyPI cutoff (TASK-66). The terminal it starts from holds junk
+that a user's might: the command must keep all of it from the stack. No test calls a
+real model.
 """
 
 import json
@@ -35,10 +36,12 @@ from tests.acp.scenarios import repl, scripted
 from tests.desktop.app import (
     AGENT_SERVER,
     AGENT_SERVER_PORT,
+    ANSI,
     CANVAS_URL,
     FIRST_LAUNCH_S,
     LIBRARY_APP_VERSION,
     NETWORK_CUT,
+    STARTING_OFFLINE,
     LaunchedApp,
     answer,
     cmdline,
@@ -63,6 +66,7 @@ from tests.desktop.app import (
     snapshot,
     start_conversation,
     user_environment,
+    uvx_start_records,
     web_command,
     web_text,
     worker_environ,
@@ -188,9 +192,11 @@ def first(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstStart]:
 @pytest.fixture(scope="module")
 def expiring(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FirstStart]:
     """Another first start, from a HOME whose uv index answers stay fresh for a second,
-    as if every later start came past their ten minutes; stopped once it runs."""
+    as if every later start came past their ten minutes; stopped once both services have
+    recorded their online start."""
     logs = tmp_path_factory.mktemp("e13-expiring")
     with started_fresh(logs, expiring=True) as started:
+        eventually(lambda: len(uvx_start_records(started.web)) >= 2, AUTOMATION_UP_S)
         interrupt(started.web)
         assert started.web.process.wait(timeout=STOPPED_S) == 0
         yield started
@@ -419,7 +425,8 @@ def start_offline(
         timeout=SERVED_S * 4,
         check=False,
     )
-    return done, log.read_text(errors="replace") if log.exists() else ""
+    said = log.read_text(errors="replace") if log.exists() else ""
+    return done, ANSI.sub("", said)
 
 
 def served_within(done: subprocess.CompletedProcess) -> float | None:
@@ -460,28 +467,32 @@ def test_with_index_answers_that_expire_uv_goes_to_the_network_and_offline_uv_st
 ):
     """The negative control for claim 9: where uv's index answers expire a second after
     each fetch, uvx of the automation backend the first start there installed needs the
-    network, and --offline still runs it from the cache."""
+    network, even at the PyPI cutoff, and --offline still runs it from the cache."""
     [tree] = (expiring.web.data / cache.WEB_DIRNAME).glob("tree-*")
     defaults = json.loads((tree / "package" / "config" / "defaults.json").read_text())
     package, version = (
         defaults["packages"]["automation"],
         defaults["versions"]["automation"],
     )
-    # The launcher's own uvx of it (dev-with-automation.mjs, buildAutomationCommand).
-    probe = ("--from", f"{package}=={version}", "uvicorn", "--version")
+    # The launcher's own uvx of it, the cutoff first (dev-with-automation.mjs,
+    # buildAutomationCommand).
+    probe = (
+        *("--exclude-newer", defaults["uv"]["excludeNewer"]),
+        *("--from", f"{package}=={version}", "uvicorn", "--version"),
+    )
     online_first = uvx_offline(expiring, *probe)
     assert online_first.returncode != 0, online_first.stdout
     offline = uvx_offline(expiring, "--offline", *probe)
     assert offline.returncode == 0, offline.stderr
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the launcher's uvx asks PyPI once its answers expire: TASK-66",
-)
 def test_an_offline_restart_once_uvs_index_answers_have_expired(expiring, tmp_path):
-    """Claim 8's restart, from the HOME whose index answers expire."""
+    """Claim 8's restart, from the HOME whose index answers expire: the launcher starts
+    both services from uv's cache, offline, which it does only with the PyPI cutoff the
+    build wrote into the tarball's defaults."""
     done, log = start_offline(expiring, tmp_path / "expired.log")
     took = served_within(done)
     assert took is not None and took < SERVED_S, (done.stdout, done.stderr, log[-4000:])
+    for service in ("agent-server", "automation"):
+        assert f"[{service}] {STARTING_OFFLINE}" in log, log[-4000:]
     assert done.returncode == 0, log[-4000:]

@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -41,18 +42,20 @@ PINS: Final = REPO / "desktop" / "pins.toml"
 BOOTSTRAP: Final = REPO / "desktop" / "bootstrap.sh"
 WRAPPER_CONFIG: Final = REPO / "desktop" / "electron-builder.dr.mjs"
 COMMIT: Final = re.compile(r"[0-9a-f]{40}")
+UTC_TIME: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 # The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
 STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
 # dr_app.profile.PROFILE_NAME, mirrored: this file imports nothing of deep-reasoning's.
 LOCKED_PROFILE: Final = "deep_reasoner"
 # The defaults.json keys this build writes that the Canvas fork must declare, as null
-# (checks 5 and 5b).
+# (checks 5, 5b and 5c).
 FORK_NULL_KEYS: Final = (
     "paths.stateDir",
     "setup.command",
     "agent.lockedProfile",
     "branding.appTitle",
+    "uv.excludeNewer",
 )
 SETUP_PHASES: Final = ["before-start", "after-ready"]
 BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
@@ -118,6 +121,7 @@ class AppPin:
     version: str
     maintainer: str
     uv_version: str
+    uv_exclude_newer: str
 
 
 @dataclass(frozen=True)
@@ -282,8 +286,19 @@ def _and(names: Sequence[str]) -> str:
     return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
+def is_utc_time(value: str) -> bool:
+    if not UTC_TIME.fullmatch(value):
+        return False
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
 def load_pins(path: Path) -> Pins:
-    """Raises ValueError naming the key for a commit that is not 40 hex."""
+    """Raises ValueError naming the key for a commit that is not 40 hex, or an
+    app.uv_exclude_newer that is not UTC_TIME and an instant (TASK-66 K2)."""
     raw = tomllib.loads(path.read_text())
     for fork in ("canvas_fork", "sdk_fork"):
         if not COMMIT.fullmatch(raw[fork]["commit"]):
@@ -291,6 +306,12 @@ def load_pins(path: Path) -> Pins:
                 f"{path}: {fork}.commit must be a full 40-hex commit, "
                 f"not {raw[fork]['commit']!r}"
             )
+    cutoff = raw["app"]["uv_exclude_newer"]
+    if not is_utc_time(cutoff):
+        raise ValueError(
+            f"{path}: app.uv_exclude_newer must be a UTC time such as "
+            f"2026-10-04T00:00:00Z, not {cutoff!r}"
+        )
     return Pins(
         canvas_fork=ForkPin(**raw["canvas_fork"]),
         sdk_fork=ForkPin(**raw["sdk_fork"]),
@@ -423,10 +444,12 @@ def patch_defaults(
     state_dir: str,
     command: list[str],
     app_title: str,
+    exclude_newer: str,
 ) -> dict[str, Any]:
     """§4.2.3's four keys, and the settings the Canvas fork declares null for a build
-    like this one: agent.lockedProfile = LOCKED_PROFILE and branding.appTitle =
-    app_title (TASK-65 §4.1, §13); every other key unchanged."""
+    like this one: agent.lockedProfile = LOCKED_PROFILE, branding.appTitle = app_title
+    and uv.excludeNewer = exclude_newer (TASK-65 §4.1, §13; TASK-66 §4.1); every other
+    key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
@@ -434,6 +457,7 @@ def patch_defaults(
     patched.setdefault("telemetry", {})["posthogApiKey"] = ""
     patched.setdefault("agent", {})["lockedProfile"] = LOCKED_PROFILE
     patched.setdefault("branding", {})["appTitle"] = app_title
+    patched.setdefault("uv", {})["excludeNewer"] = exclude_newer
     return patched
 
 
@@ -624,6 +648,7 @@ def prepare(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, dict[str, Any]
         state_dir=STATE_DIR,
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
         app_title=pins.app.product_name,
+        exclude_newer=pins.app.uv_exclude_newer,
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
     env = machine_environment()

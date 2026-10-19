@@ -38,9 +38,7 @@ command (`packages/dr-app`) and the build (`desktop/`). The app's design is
   On a Mac, a credential helper git names without a path (`gh`, `git-credential-manager`)
   must be in Homebrew's `/opt/homebrew/bin` or `/usr/local/bin`: beyond the system's own
   folders, an app opened from Finder looks nowhere else.
-- **The network**, on the first launch, the first launch after an update, and any launch not
-  within about ten minutes of the last start that had the network
-  ([below](#the-first-launch)).
+- **The network**, on the first launch and the first launch after an update.
 
 Nothing else: the app brings its own uv and Node, and uv brings Python 3.12.
 
@@ -94,10 +92,15 @@ A splash shows each line setup prints. Setup:
 4. once the agent-server is up, makes Deep Reasoning's agent profile the default, and
    installs, approves and starts the Library App (`App dr-library … installed · backend ready`).
 
-A later launch with nothing changed installs nothing. Within about ten minutes of the last
-start that had the network it needs none; after that, the agent-server's start asks PyPI
-again, so a launch then needs the network until a later Canvas build lifts it. After an
-update, setup installs once more.
+A later launch with nothing changed installs nothing and needs no network, however long
+since the last one: the agent-server and the automation service beside it start from uv's
+cache, offline. Their Python packages are the versions PyPI had on a date each release
+fixes, so a new release of one of them changes nothing you run. After an update, setup and
+the agent-server install once more.
+
+If your uv installs from an index other than PyPI (`index-url` in a `uv.toml`, or
+`UV_INDEX_URL`), that index must publish when each file was uploaded, as PyPI does; without
+that, the agent-server cannot install.
 
 If setup fails, the window stays on the failure, and setup's last line says why and what to
 do. A setup still running at 15 minutes is stopped and the launch fails; the next launch
@@ -195,11 +198,10 @@ everything is up it opens `http://localhost:8000` in your browser and says so.
 **Stopping:** `Ctrl+C`, or closing the terminal, stops everything it started. Closing the
 browser tab stops nothing.
 
-**Restarting and updating:** the same command again installs nothing. Within about ten
-minutes of the last start that had the network it needs none; after that, the agent-server's
-start asks PyPI again, so a restart then needs the network until a later Canvas build lifts
-it.
-The next release's command updates, installing once, as an update of the app does.
+**Restarting and updating:** the same command again installs nothing and needs no network,
+however long since the last start: as in a later launch of the app, the agent-server and the
+automation service start from uv's cache, offline. The next release's command updates,
+installing once, as an update of the app does.
 
 **Ports:** the page is on 8000, or on the port you give with `--port N`. The agent-server's
 port, 18000, never moves: it is why only one Deep Reasoning runs on a computer at a time.
