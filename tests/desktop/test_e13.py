@@ -9,6 +9,7 @@ the network cut. The terminal it starts from holds junk that a user's might: the
 must keep all of it from the stack. No test calls a real model.
 """
 
+import json
 import os
 import re
 import socket
@@ -33,7 +34,9 @@ from tests.desktop.app import (
     CANVAS_URL,
     FIRST_LAUNCH_S,
     LIBRARY_APP_VERSION,
+    NETWORK_CUT,
     LaunchedApp,
+    age_uv_index_answers,
     answer,
     cmdline,
     descendants,
@@ -124,14 +127,6 @@ with open(log, "ab") as out:
         os.killpg(process.pid, signal.SIGINT)
     sys.exit(process.wait(timeout=60))
 """
-OFFLINE = [
-    "unshare",
-    "--map-root-user",
-    "-n",
-    "sh",
-    "-c",
-    'ip link set lo up && exec "$@"',
-]
 
 
 @dataclass
@@ -357,8 +352,7 @@ def start_offline(
 ) -> tuple[subprocess.CompletedProcess, str]:
     done = subprocess.run(
         [
-            *OFFLINE,
-            "offline",
+            *NETWORK_CUT,
             sys.executable,
             "-I",
             "-c",
@@ -396,13 +390,43 @@ def test_a_restart_offline_installs_nothing_and_serves_the_page_within_30_s(
     assert done.returncode == 0, log[-4000:]
 
 
+def uvx_offline(first: FirstStart, *args: str) -> int:
+    """uvx inside the cut network, from the HOME's uv cache."""
+    return subprocess.run(
+        [*NETWORK_CUT, "uvx", *args],
+        env=first.env,
+        cwd=first.web.home,
+        capture_output=True,
+        timeout=SERVED_S * 4,
+        check=False,
+    ).returncode
+
+
+def test_aged_index_answers_send_uv_to_the_network_and_offline_uv_still_runs(first):
+    """The negative control for claim 9: once the first start's index answers are aged
+    an hour, as uv would find them past their ten minutes, uvx of the automation backend
+    it installed needs the network, and --offline still runs it from the cache."""
+    aged = age_uv_index_answers(
+        first.web.home / ".cache" / "uv", first.web.started_at - 60, 3600
+    )
+    [tree] = (first.web.data / cache.WEB_DIRNAME).glob("tree-*")
+    defaults = json.loads((tree / "package" / "config" / "defaults.json").read_text())
+    package, version = (
+        defaults["packages"]["automation"],
+        defaults["versions"]["automation"],
+    )
+    probe = ("--from", f"{package}=={version}", "python", "-c", "pass")
+    assert aged > 0
+    assert uvx_offline(first, *probe) != 0
+    assert uvx_offline(first, "--offline", *probe) == 0
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="the launcher's uvx asks PyPI once its answers expire: TASK-66",
 )
 def test_an_offline_restart_once_uvs_index_answers_have_expired(first, tmp_path):
-    for answers in (first.web.home / ".cache" / "uv").glob("simple-v*"):
-        subprocess.run(["rm", "-rf", str(answers)], check=True)
+    """The answers aged by the control above, then the same restart as claim 8's."""
     done, log = start_offline(first, tmp_path / "expired.log")
     took = served_within(done)
     assert took is not None and took < SERVED_S, (done.stdout, done.stderr, log[-4000:])

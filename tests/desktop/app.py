@@ -13,15 +13,16 @@ import secrets
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, Final, NoReturn
 
 import nodejs_wheel
 import yaml
@@ -43,8 +44,9 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # The packaged app stays open on its failure screen after this line (Canvas's
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
-# Every failure line of the browser command and of setup starts so.
-WEB_FAILED = "✗ "
+# The browser command's own last line when it fails (the launcher echoes setup's script,
+# which holds the same mark mid-line).
+WEB_FAILED = re.compile(r"^✗ ")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_ENTRY = REPO_ROOT / "desktop" / "web.mjs"
 # The Node dr-web installs, as the dev group installs it.
@@ -56,6 +58,15 @@ LIBRARY_APP_VERSION = json.loads(
     ).read_text()
 )["version"]
 ONBOARDED_STORAGE_KEY = "openhands-onboarded"  # Canvas's use-onboarding-completion.ts
+# A command run after these words has loopback and no other network (Ubuntu 24.04 needs
+# kernel.apparmor_restrict_unprivileged_userns=0).
+NETWORK_CUT: Final = [
+    *("unshare", "--map-root-user", "-n", "sh", "-c"),
+    'ip link set lo up && exec "$@"',
+    "offline",
+]
+# Where uv keeps a cached index answer's fetch time: a u64 of Unix seconds near its end.
+ANSWER_TAIL_BYTES = 512
 LOG_TAIL_LINES = 40  # of the app's log, in a failed wait's message
 # An empty helper resets git's list of credential helpers, the system's included.
 NO_CREDENTIAL_HELPER = "\n[credential]\n\thelper =\n"
@@ -113,8 +124,9 @@ class LaunchedApp:
     home: Path
     log: Path
     debug_port: int
-    # A line holding it ends a wait at once: the launch failed.
-    failed_marker: str = STARTUP_FAILED
+    # A line it matches ends a wait at once: the launch failed.
+    failed: re.Pattern[str] = re.compile(re.escape(STARTUP_FAILED))
+    started_at: float = field(default_factory=time.time)  # made right after the Popen
 
     @property
     def data(self) -> Path:
@@ -155,7 +167,7 @@ class LaunchedApp:
                     return line
             if self.process.poll() is not None:
                 self.fail(f"the app exited {self.process.returncode}")
-            if any(self.failed_marker in line for line in lines):
+            if any(self.failed.search(line) for line in lines):
                 self.fail("the app reported its launch failed")
             time.sleep(1.0)
         self.fail(f"no {fragment!r} in the app's log in {timeout_s} s")
@@ -245,7 +257,7 @@ def launch_web(
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
-    return LaunchedApp(process, home, log, 0, failed_marker=WEB_FAILED)
+    return LaunchedApp(process, home, log, 0, failed=WEB_FAILED)
 
 
 def interrupt(app: LaunchedApp) -> None:
@@ -360,6 +372,33 @@ def snapshot(data: Path) -> dict[str, str]:
         ):
             kept[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
     return kept
+
+
+def age_uv_index_answers(cache: Path, since: float, seconds: int) -> int:
+    """Move every index answer under cache/simple-v* back by seconds, as if uv had
+    fetched it then: each u64 in an answer's last 512 bytes between since and now. The
+    number aged; AssertionError naming the answers in which it found no such time, since
+    then this uv keeps them otherwise and nothing was aged."""
+    answers = sorted(cache.glob("simple-v*/**/*.rkyv"))
+    assert answers, f"no index answers under {cache}/simple-v*"
+    now = time.time()
+    unaged = []
+    for answer in answers:
+        data = bytearray(answer.read_bytes())
+        offset, aged = max(0, len(data) - ANSWER_TAIL_BYTES), False
+        while offset + 8 <= len(data):
+            (value,) = struct.unpack_from("<Q", data, offset)
+            if since <= value <= now:
+                struct.pack_into("<Q", data, offset, value - seconds)
+                offset, aged = offset + 8, True
+            else:
+                offset += 1
+        if aged:
+            answer.write_bytes(data)
+        else:
+            unaged.append(str(answer))
+    assert not unaged, f"no fetch time since {since:.0f} in {unaged}"
+    return len(answers)
 
 
 def mark_onboarded(context: BrowserContext) -> None:
