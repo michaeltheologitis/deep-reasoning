@@ -14,6 +14,7 @@ from collections.abc import Iterator
 import pytest
 from playwright.sync_api import Browser, Error, expect, sync_playwright
 
+from deep_reasoning.acp.runlog import AgentStart, Home, PromptEnd, RunLog
 from tests.desktop.app import (
     APP,
     FIRST_LAUNCH_S,
@@ -23,14 +24,14 @@ from tests.desktop.app import (
     launch,
 )
 from tests.desktop.e12.subagents import expand_all_subagents
-from tests.desktop.test_e12 import eventually, start_conversation, window
+from tests.desktop.test_e12 import eventually, run_ids, start_conversation, window
 
 KEY = "OPENAI_API_KEY"
 QUESTION = "Use one sub-agent to add 2 and 2, then answer with its result."
 # The agent-server's title for it with no title LLM: the SDK's generate_fallback_title
 # keeps a first message of up to 50 characters, else its first 47 and "...".
 TITLE = f"{QUESTION[:47]}..."
-ANSWERED_S = 300.0
+ANSWERED_S = 600.0  # a real model, a sub-agent and its turns
 COST = re.compile(r"\$\d+\.\d+")
 
 pytestmark = [
@@ -75,6 +76,28 @@ def browser(app: LaunchedApp) -> Iterator[Browser]:
         yield cdp
 
 
+def logged(app: LaunchedApp, before: set[str]) -> list:
+    """Every event of the runs started since before, as dr-acp's run logs hold them."""
+    runs = sorted(run_ids(app) - before)
+    return [event for run in runs for event in RunLog.read(Home(app.data), run)]
+
+
+def first_prompt_end(app: LaunchedApp, before: set[str], page) -> PromptEnd:
+    """The first prompt's end in a run started since before; failing at ANSWERED_S with
+    what the runs logged and what the window shows."""
+    deadline = time.monotonic() + ANSWERED_S
+    while not (ended := [e for e in logged(app, before) if isinstance(e, PromptEnd)]):
+        if time.monotonic() > deadline:
+            kinds = [event.kind for event in logged(app, before)]
+            shown = page.get_by_test_id("agent-message").all_inner_texts()
+            raise AssertionError(
+                f"no prompt ended in {ANSWERED_S:g} s; the runs logged {kinds}; the "
+                f"window shows {shown}"
+            )
+        time.sleep(1.0)
+    return ended[0]
+
+
 def test_a_question_to_the_real_model_is_answered_titled_and_costed_with_no_error(
     app, browser
 ):
@@ -82,10 +105,12 @@ def test_a_question_to_the_real_model_is_answered_titled_and_costed_with_no_erro
     app.request("POST", "/api/profiles/gpt-5-5", {"llm": {"model": "gpt-5.5"}})
     app.request("POST", "/api/profiles/gpt-5-5/activate")
     page = window(browser)
+    before = run_ids(app)
     conversation = start_conversation(page, QUESTION)
-    expect(page.get_by_test_id("agent-message").filter(has_text="4")).to_be_visible(
-        timeout=ANSWERED_S * 1000
-    )
+    ended = first_prompt_end(app, before, page)
+    assert (ended.outcome, ended.detail) == ("answered", None), ended
+    print(f"answered: {ended.answer!r}")
+    expect(page.get_by_test_id("agent-message").last).to_be_visible()
     eventually(
         lambda: (
             app.request("GET", f"/api/conversations/{conversation}")["title"] == TITLE
@@ -93,6 +118,13 @@ def test_a_question_to_the_real_model_is_answered_titled_and_costed_with_no_erro
     )
     events = conversation_events(app, conversation)
     assert [e for e in events if e["kind"] == "ConversationErrorEvent"] == []
+    children = [
+        e
+        for e in logged(app, before)
+        if isinstance(e, AgentStart) and e.parent is not None
+    ]
+    print(f"sub-agents the run recorded: {[child.task for child in children]}")
     rows = page.get_by_test_id("subagent-row")
-    eventually(lambda: expand_all_subagents(page) or rows.count() > 0)
-    expect(rows.first.get_by_test_id("subagent-cost").first).to_have_text(COST)
+    eventually(lambda: expand_all_subagents(page) or rows.count() == len(children))
+    for row in rows.all():
+        expect(row.get_by_test_id("subagent-cost").first).to_have_text(COST)
