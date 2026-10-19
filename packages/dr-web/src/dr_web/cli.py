@@ -33,32 +33,12 @@ COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 
 
 def command_for(commit: str) -> str:
-    """The README's and the release notes' line. Raises ValueError for anything but a
-    full 40-hex commit: a tag would need the network on every start."""
+    """The one line a user runs: this package at commit, through uvx. Raises ValueError
+    for anything but a full 40-hex commit: a tag would need the network on every
+    start."""
     if not COMMIT.fullmatch(commit):
         raise ValueError(f"not a full 40-hex commit: {commit!r}")
     return f"uvx --from git+{REPOSITORY}@{commit}#subdirectory={SUBDIRECTORY} {COMMAND}"
-
-
-def find_uv(env: Mapping[str, str]) -> str:
-    """env["UV"], which uvx sets to its own binary, else uv on env["PATH"]. Raises
-    FetchError(22, texts.NO_UV)."""
-    uv = env.get("UV") or shutil.which("uv", path=env.get("PATH", ""))
-    if not uv:
-        raise FetchError(EXIT_NEEDS, texts.NO_UV)
-    return uv
-
-
-def stack_path(path: str, *, node_bin: Path, tool_bin: Path, uv: str) -> str:
-    """node_bin, then path without tool_bin (uvx's environment, whose python would
-    shadow the user's in every conversation), then uv's folder when no uvx is on what is
-    left."""
-    rest = [
-        entry for entry in path.split(os.pathsep) if entry and Path(entry) != tool_bin
-    ]
-    if shutil.which("uvx", path=os.pathsep.join(rest)) is None:
-        rest.append(str(Path(uv).parent))
-    return os.pathsep.join([str(node_bin), *rest])
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -96,8 +76,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 1  # execve does not return
 
 
-def say(line: str) -> None:
-    print(line, flush=True)
+def find_uv(env: Mapping[str, str]) -> str:
+    """env["UV"], which uvx sets to its own binary, else uv on env["PATH"]. Raises
+    FetchError(22, texts.NO_UV)."""
+    uv = env.get("UV") or shutil.which("uv", path=env.get("PATH", ""))
+    if not uv:
+        raise FetchError(EXIT_NEEDS, texts.NO_UV)
+    return uv
 
 
 def _make_root(layout: WebLayout) -> None:
@@ -105,3 +90,19 @@ def _make_root(layout: WebLayout) -> None:
     if not layout.root.parent.exists():
         layout.root.parent.mkdir(mode=0o700, parents=True)
     layout.root.mkdir(exist_ok=True)
+
+
+def stack_path(path: str, *, node_bin: Path, tool_bin: Path, uv: str) -> str:
+    """node_bin, then path without tool_bin (uvx's environment, whose python would
+    shadow the user's in every conversation), then uv's folder when no uvx is on what is
+    left."""
+    rest = [
+        entry for entry in path.split(os.pathsep) if entry and Path(entry) != tool_bin
+    ]
+    if shutil.which("uvx", path=os.pathsep.join(rest)) is None:
+        rest.append(str(Path(uv).parent))
+    return os.pathsep.join([str(node_bin), *rest])
+
+
+def say(line: str) -> None:
+    print(line, flush=True)

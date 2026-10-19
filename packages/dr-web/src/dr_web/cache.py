@@ -27,9 +27,9 @@ from dr_web import texts
 
 ROOT_DIRNAME: Final = ".deep-reasoning"  # dr_app.layout.ROOT_DIRNAME, mirrored
 WEB_DIRNAME: Final = "web"
-RELEASES: Final = "https://github.com/michaeltheologitis/deep-reasoning/releases"
 PACKAGE_NAME: Final = "deep-reasoning-web"  # build.WEB_PACKAGE_NAME
 ENTRY: Final = "package/bin/deep-reasoning.mjs"
+EXIT_FETCH: Final = 23
 NODE_VERSION: Final = "22.12.0"  # the app's (the Canvas fork's download-node.mjs)
 NODE_WHEEL: Final = "nodejs-wheel-binaries"
 NODE_WHEEL_SHA256: Final = (  # PyPI, 2024-12-06
@@ -42,17 +42,17 @@ NPM_LINKS: Final = {
     "npm": "../lib/node_modules/npm/bin/npm-cli.js",
     "npx": "../lib/node_modules/npm/bin/npx-cli.js",
 }
+RELEASES: Final = "https://github.com/michaeltheologitis/deep-reasoning/releases"
 FALLBACK_CA_FILES: Final = (
     "/etc/ssl/cert.pem",  # macOS
     "/etc/ssl/certs/ca-certificates.crt",  # Debian, Ubuntu
     "/etc/pki/tls/certs/ca-bundle.crt",  # Fedora, RHEL
 )
 DOWNLOAD_TIMEOUT_S: Final = 60.0
-EXIT_FETCH: Final = 23
+READ_CHUNK: Final = 1 << 20
 GZIP_MAGIC: Final = b"\x1f\x8b"
 # What reading a file that is not a whole .tar.gz raises; any other OSError is the disk's.
 UNREADABLE: Final = (tarfile.ReadError, EOFError, zlib.error, gzip.BadGzipFile)
-READ_CHUNK: Final = 1 << 20
 
 
 class FetchError(Exception):
@@ -71,7 +71,6 @@ class WebLayout:
 
     @classmethod
     def default(cls) -> "WebLayout":
-        """Path.home() / ROOT_DIRNAME / WEB_DIRNAME."""
         return cls(Path.home() / ROOT_DIRNAME / WEB_DIRNAME)
 
     def downloaded(self, version: str) -> Path:
@@ -99,84 +98,6 @@ def release_url(version: str) -> str:
     return f"{RELEASES}/download/v{version}/{tarball_name(version)}"
 
 
-def tls_context(*, fallbacks: Sequence[str] = FALLBACK_CA_FILES) -> ssl.SSLContext:
-    """ssl.create_default_context(); when its store holds no CA certificate (a
-    python.org interpreter before "Install Certificates" runs), the first fallback that
-    exists is loaded into it as well. An OpenSSL that reads a hashed capath lazily also
-    reports none; loading the bundle beside it then changes nothing."""
-    context = ssl.create_default_context()
-    if context.cert_store_stats()["x509_ca"] == 0:
-        bundle = next((path for path in fallbacks if Path(path).is_file()), None)
-        if bundle is not None:
-            context.load_verify_locations(cafile=bundle)
-    return context
-
-
-def download(url: str, dest: Path, *, timeout_s: float = DOWNLOAD_TIMEOUT_S) -> None:
-    """dest, written whole or not at all. Raises FetchError(23,
-    texts.fetch_failed(dest.name, <the release page>, <reason>)) for an HTTP status, a
-    refused or timed-out connection, or TLS."""
-    temporary = _temporary(dest)
-    try:
-        with (
-            urllib.request.urlopen(
-                url, timeout=timeout_s, context=tls_context()
-            ) as got,
-            temporary.open("wb") as out,
-        ):
-            shutil.copyfileobj(got, out, READ_CHUNK)
-    except OSError as error:  # ssl.SSLError and urllib's errors among them
-        _remove(temporary)
-        failed = texts.fetch_failed(dest.name, _release_page(url), _why(error))
-        raise FetchError(EXIT_FETCH, failed) from None
-    _place(temporary, dest)
-
-
-def released_tarball(
-    layout: WebLayout, version: str, *, log: Callable[[str], None]
-) -> Path:
-    """layout.downloaded(version) if present, asking no server; else
-    texts.fetching(version), then download()."""
-    tarball = layout.downloaded(version)
-    if tarball.exists():
-        return tarball
-    log(texts.fetching(version))
-    layout.root.mkdir(parents=True, exist_ok=True)
-    download(release_url(version), tarball)
-    return tarball
-
-
-def unpacked(layout: WebLayout, tarball: Path, *, expect_version: str | None) -> Path:
-    """The tree's package/ folder, unpacked once per content: gzip, every member under
-    package/ and safe (tarfile's data filter), package.json naming PACKAGE_NAME (and
-    expect_version, for a download; None for --tarball), and the entry there. Raises
-    FetchError(23, texts.not_a_tarball(str(tarball), <reason>)), leaving no tree."""
-    try:
-        tree = layout.tree(_sha256(tarball))
-    except OSError as error:
-        unreadable = f"it cannot be read: {error.strerror}"
-        raise FetchError(
-            EXIT_FETCH, texts.not_a_tarball(str(tarball), unreadable)
-        ) from None
-    if (tree / ENTRY).exists():
-        return tree / "package"
-    temporary = _temporary(tree)
-    try:
-        _unpack(tarball, temporary, expect_version=expect_version)
-    except _NotOurs as refused:
-        _remove(temporary)
-        raise FetchError(
-            EXIT_FETCH, texts.not_a_tarball(str(tarball), str(refused))
-        ) from None
-    except OSError as error:
-        _remove(temporary)
-        why = error.strerror or str(error)
-        failed = texts.unpack_failed(str(tarball), str(layout.root), why)
-        raise FetchError(EXIT_FETCH, failed) from None
-    _place(temporary, tree)
-    return tree / "package"
-
-
 def ensure_node(
     layout: WebLayout, *, uv: str, python: str, log: Callable[[str], None]
 ) -> Path:
@@ -196,51 +117,6 @@ def ensure_node(
         raise
     _place(temporary, layout.node_dir)
     return layout.node
-
-
-def remove_leftovers(layout: WebLayout) -> None:
-    """Every <name>.tmp-<pid> under root whose pid is not alive."""
-    if not layout.root.is_dir():
-        return
-    for entry in layout.root.glob("*.tmp-*"):
-        pid = entry.name.rpartition(".tmp-")[2]
-        if pid.isdigit() and not _alive(int(pid)):
-            _remove(entry)
-
-
-class _NotOurs(Exception):
-    """Why a file is not the browser tarball: the reason in texts.not_a_tarball."""
-
-
-def _unpack(tarball: Path, into: Path, *, expect_version: str | None) -> None:
-    """tarball's package/ into into/package. Raises _NotOurs, or the OSError of writing
-    it out."""
-    with tarball.open("rb") as file:
-        if file.read(len(GZIP_MAGIC)) != GZIP_MAGIC:
-            raise _NotOurs("not gzip")
-    try:
-        with tarfile.open(tarball, "r:gz") as archive:
-            members = archive.getmembers()
-            for member in members:
-                if member.name != "package" and not member.name.startswith("package/"):
-                    raise _NotOurs("a member outside package/")
-            for member in members:
-                try:
-                    archive.extract(member, into, filter="data")
-                except tarfile.FilterError:
-                    raise _NotOurs(f"unsafe member {member.name}") from None
-    except UNREADABLE:
-        raise _NotOurs("not a tar archive") from None
-    package = into / "package"
-    try:
-        manifest = json.loads((package / "package.json").read_text())
-    except (OSError, ValueError):
-        raise _NotOurs("no package.json") from None
-    name, version = manifest.get("name"), manifest.get("version")
-    if name != PACKAGE_NAME or expect_version not in (None, version):
-        raise _NotOurs(f"its package.json names {name} {version}")
-    if not (into / ENTRY).is_file():
-        raise _NotOurs("no bin/deep-reasoning.mjs")
 
 
 def _install_node(
@@ -290,6 +166,53 @@ def _run_logged(argv: Sequence[str], *, log: Callable[[str], None]) -> int:
     return process.returncode
 
 
+def released_tarball(
+    layout: WebLayout, version: str, *, log: Callable[[str], None]
+) -> Path:
+    """layout.downloaded(version) if present, asking no server; else
+    texts.fetching(version), then download()."""
+    tarball = layout.downloaded(version)
+    if tarball.exists():
+        return tarball
+    log(texts.fetching(version))
+    layout.root.mkdir(parents=True, exist_ok=True)
+    download(release_url(version), tarball)
+    return tarball
+
+
+def download(url: str, dest: Path, *, timeout_s: float = DOWNLOAD_TIMEOUT_S) -> None:
+    """dest, written whole or not at all. Raises FetchError(23,
+    texts.fetch_failed(dest.name, <the release page>, <reason>)) for an HTTP status, a
+    refused or timed-out connection, or TLS."""
+    temporary = _temporary(dest)
+    try:
+        with (
+            urllib.request.urlopen(
+                url, timeout=timeout_s, context=tls_context()
+            ) as got,
+            temporary.open("wb") as out,
+        ):
+            shutil.copyfileobj(got, out, READ_CHUNK)
+    except OSError as error:  # ssl.SSLError and urllib's errors among them
+        _remove(temporary)
+        failed = texts.fetch_failed(dest.name, _release_page(url), _why(error))
+        raise FetchError(EXIT_FETCH, failed) from None
+    _place(temporary, dest)
+
+
+def tls_context(*, fallbacks: Sequence[str] = FALLBACK_CA_FILES) -> ssl.SSLContext:
+    """ssl.create_default_context(); when its store holds no CA certificate (a
+    python.org interpreter before "Install Certificates" runs), the first fallback that
+    exists is loaded into it as well. An OpenSSL that reads a hashed capath lazily also
+    reports none; loading the bundle beside it then changes nothing."""
+    context = ssl.create_default_context()
+    if context.cert_store_stats()["x509_ca"] == 0:
+        bundle = next((path for path in fallbacks if Path(path).is_file()), None)
+        if bundle is not None:
+            context.load_verify_locations(cafile=bundle)
+    return context
+
+
 def _release_page(url: str) -> str:
     """Where a person can find a release's file: its release page, without the scheme
     (github.com/<repo>/releases/tag/v<version>)."""
@@ -311,9 +234,94 @@ def _why(error: OSError) -> str:
     return str(reason)
 
 
+def unpacked(layout: WebLayout, tarball: Path, *, expect_version: str | None) -> Path:
+    """The tree's package/ folder, unpacked once per content: gzip, every member under
+    package/ and safe (tarfile's data filter), package.json naming PACKAGE_NAME (and
+    expect_version, for a download; None for --tarball), and the entry there. Raises
+    FetchError(23, texts.not_a_tarball(str(tarball), <reason>)), leaving no tree; or,
+    when the disk cannot take it, FetchError(23, texts.unpack_failed(...))."""
+    try:
+        tree = layout.tree(_sha256(tarball))
+    except OSError as error:
+        unreadable = f"it cannot be read: {error.strerror}"
+        raise FetchError(
+            EXIT_FETCH, texts.not_a_tarball(str(tarball), unreadable)
+        ) from None
+    if (tree / ENTRY).exists():
+        return tree / "package"
+    temporary = _temporary(tree)
+    try:
+        _unpack(tarball, temporary, expect_version=expect_version)
+    except _NotOurs as refused:
+        _remove(temporary)
+        raise FetchError(
+            EXIT_FETCH, texts.not_a_tarball(str(tarball), str(refused))
+        ) from None
+    except OSError as error:
+        _remove(temporary)
+        why = error.strerror or str(error)
+        failed = texts.unpack_failed(str(tarball), str(layout.root), why)
+        raise FetchError(EXIT_FETCH, failed) from None
+    _place(temporary, tree)
+    return tree / "package"
+
+
+class _NotOurs(Exception):
+    """Why a file is not the browser tarball: the reason in texts.not_a_tarball."""
+
+
+def _unpack(tarball: Path, into: Path, *, expect_version: str | None) -> None:
+    """tarball's package/ into into/package. Raises _NotOurs, or the OSError of writing
+    it out."""
+    with tarball.open("rb") as file:
+        if file.read(len(GZIP_MAGIC)) != GZIP_MAGIC:
+            raise _NotOurs("not gzip")
+    try:
+        with tarfile.open(tarball, "r:gz") as archive:
+            members = archive.getmembers()
+            for member in members:
+                if member.name != "package" and not member.name.startswith("package/"):
+                    raise _NotOurs("a member outside package/")
+            for member in members:
+                try:
+                    archive.extract(member, into, filter="data")
+                except tarfile.FilterError:
+                    raise _NotOurs(f"unsafe member {member.name}") from None
+    except UNREADABLE:
+        raise _NotOurs("not a tar archive") from None
+    package = into / "package"
+    try:
+        manifest = json.loads((package / "package.json").read_text())
+    except (OSError, ValueError):
+        raise _NotOurs("no package.json") from None
+    name, version = manifest.get("name"), manifest.get("version")
+    if name != PACKAGE_NAME or expect_version not in (None, version):
+        raise _NotOurs(f"its package.json names {name} {version}")
+    if not (into / ENTRY).is_file():
+        raise _NotOurs("no bin/deep-reasoning.mjs")
+
+
 def _sha256(path: Path) -> str:
     with path.open("rb") as file:
         return hashlib.file_digest(file, "sha256").hexdigest()
+
+
+def remove_leftovers(layout: WebLayout) -> None:
+    """Every <name>.tmp-<pid> under root whose pid is not alive."""
+    for entry in layout.root.glob("*.tmp-*"):
+        pid = entry.name.rpartition(".tmp-")[2]
+        if pid.isdigit() and not _alive(int(pid)):
+            _remove(entry)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass  # another user's process
+    return True
 
 
 def _temporary(final: Path) -> Path:
@@ -328,16 +336,6 @@ def _place(temporary: Path, final: Path) -> None:
         if not final.exists():
             raise
         _remove(temporary)
-
-
-def _alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
 
 
 def _remove(path: Path) -> None:
