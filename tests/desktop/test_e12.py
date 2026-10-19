@@ -21,7 +21,6 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-import yaml
 from playwright.sync_api import (
     Browser,
     Error,
@@ -43,12 +42,23 @@ from tests.desktop.app import (
     CANVAS_URL,
     FIRST_LAUNCH_S,
     QUIT_S,
+    SESSION,
     LaunchedApp,
+    answer,
+    eventually,
+    example,
     fresh_home,
     launch,
+    library_frame,
+    pick_namespace,
+    point_the_library_at,
     processes_mentioning,
+    run_ids,
     secret,
+    setup_lines,
+    start_conversation,
     user_environment,
+    worker_environ,
 )
 from tests.desktop.e12.subagents import (
     expand_all_subagents,
@@ -63,7 +73,6 @@ pytestmark = [
 ]
 
 INGRESS = "http://127.0.0.1:18000"
-SESSION = f"{INGRESS}/app-backends/dr-library/session"
 BACKEND = "/api/canvas-extensions/installed/dr-library/backend"
 QUESTION = "What does E12 answer?"
 ANSWER = secret("e12-answer-")
@@ -203,12 +212,6 @@ def window(browser: Browser) -> Page:
     raise AssertionError("the window never loaded Canvas")
 
 
-def setup_lines(app: LaunchedApp, phase: str) -> list[str]:
-    """What the setup command printed in a phase, without the launcher's prefixes."""
-    marker = f"[setup {phase}] "
-    return [line.split(marker, 1)[1] for line in app.lines() if marker in line]
-
-
 def test_the_first_launch_installs_everything_and_opens_the_window(app, browser):
     app.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
     page = window(browser)
@@ -227,67 +230,6 @@ def test_the_first_launch_installs_everything_and_opens_the_window(app, browser)
     assert profiles["active_agent_profile_id"] == ours["id"]
 
 
-def point_the_library_at(app: LaunchedApp, fake: FakeOpenAI, directory: Path) -> None:
-    """The model key as a Canvas secret, and a Library whose run settings call the fake,
-    with its model priced for the spend cap."""
-    app.request(
-        "PUT", "/api/settings/secrets", {"name": "OPENAI_API_KEY", "value": KEY}
-    )
-    config = directory / "main.yaml"
-    client = {"base_url": fake.base_url, "api_key_env": "OPENAI_API_KEY"}
-    config.write_text(
-        yaml.safe_dump(
-            {
-                "model": E12_MODEL,
-                "client": client | {"max_retries": 0},
-                "system_prompt": "You are a scripted test agent.",
-                "max_iter": 6,
-                "max_depth": 3,
-                "entry_namespace": "root",
-                "namespaces": {
-                    "root": {},
-                    NAMESPACE: {"decompositions": [example(IMPORTED, "Triage e12.")]},
-                },
-            },
-            sort_keys=False,
-        )
-    )
-    price = {"input_per_mtok": 1.0, "output_per_mtok": 2.0, "context_window": 200000}
-    (app.data / "prices.yaml").write_text(yaml.safe_dump({E12_MODEL: price}))
-    subprocess.run(
-        [app.runtime_bin / "dr-library", "import", config, "--home", app.data],
-        env=user_environment(app.home),
-        check=True,
-        capture_output=True,
-    )
-
-
-def example(name: str, task: str) -> dict:
-    """A decomposition: the task, then a turn that answers it."""
-    return {
-        "name": name,
-        "messages": [
-            {"role": "user", "content": task},
-            {"role": "assistant", "content": repl("FinalAnswer('done')")},
-        ],
-    }
-
-
-def run_ids(app: LaunchedApp) -> set[str]:
-    return {path.parent.name for path in (app.data / "runs").glob("*/events.jsonl")}
-
-
-def worker_environ(app: LaunchedApp) -> str:
-    """The run's worker's environment, by the pid its run log records."""
-    [run_id] = run_ids(app)
-    events = app.data / "runs" / run_id / "events.jsonl"
-    for line in events.read_text().splitlines():
-        event = json.loads(line)
-        if event["kind"] == "worker.ready":
-            return Path(f"/proc/{event['pid']}/environ").read_bytes().decode()
-    raise AssertionError("no worker.ready in the run log")
-
-
 def test_the_first_launch_asks_for_no_telemetry_consent(app, browser):
     """Our build cannot report (decision K), so Canvas has nothing to ask (dr-3, #28).
     The consent dialog is lazy-loaded; where a build shows it, it is up within a few
@@ -304,7 +246,15 @@ def test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_i
     """Onboarding offers the active profile setup made, first and chosen; keeping it
     skips the model setup, writes no profile, and its hello starts the conversation
     with it (dr-3, #29)."""
-    point_the_library_at(app, fake, tmp_path)
+    point_the_library_at(
+        app,
+        fake.base_url,
+        tmp_path,
+        key=KEY,
+        model=E12_MODEL,
+        namespace=NAMESPACE,
+        decomposition=example(IMPORTED, "Triage e12."),
+    )
     profiles = app.request("GET", "/api/agent-profiles")
     page = window(browser)
     kept = page.get_by_test_id("onboarding-agent-option-active-profile")
@@ -359,28 +309,8 @@ def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switc
 
 def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
     page = window(browser)
-    made = page.evaluate(
-        """async ([url, key]) => {
-            const r = await fetch(url, {method: "POST", credentials: "include",
-                                        headers: {"X-Session-API-Key": key}});
-            return {status: r.status, body: await r.json()};
-        }""",
-        [SESSION, app.session_key],
-    )
-    assert made["status"] == 200, made
-    page.evaluate(
-        """(src) => {
-            const frame = document.createElement("iframe");
-            frame.id = "e12-frame";
-            frame.src = src;
-            frame.style = "position:fixed;inset:0;width:100%;height:100%;z-index:99999";
-            document.body.appendChild(frame);
-        }""",
-        made["body"]["ingress_url"] + "ui/?tab=namespaces&cap=5",
-    )
-    frame = page.frame_locator("#e12-frame")
-    expect(frame.get_by_test_id("dr-notice")).to_contain_text(texts.safety("5"))
-    frame.get_by_test_id("dr-notice-ack").click()
+    frame, notice = library_frame(page, app.session_key)
+    assert texts.safety("5") in " ".join((notice or "").split())
     expect(frame.get_by_test_id(f"dr-node-{NAMESPACE}")).to_be_visible()
     cookies = browser.new_browser_cdp_session().send("Storage.getCookies")["cookies"]
     [session] = [c for c in cookies if c["path"] == "/app-backends/dr-library"]
@@ -396,30 +326,6 @@ def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
     assert inside.evaluate("async () => (await fetch('../health')).status") == 401
 
 
-def eventually(check: Callable[[], bool], timeout_s: float = 60.0) -> None:
-    """check() until it holds, or fail at timeout_s."""
-    deadline = time.monotonic() + timeout_s
-    while not check():
-        assert time.monotonic() < deadline, f"not within {timeout_s} s"
-        time.sleep(0.5)
-
-
-def answer(page: Page, text: str) -> Locator:
-    return page.get_by_test_id("agent-message").filter(has_text=text)
-
-
-def pick_namespace(page: Page, namespace: str) -> None:
-    """C2's option picker on the home screen: dr-acp's namespace option, picked and
-    accepted by the agent's preview (the pill is disabled while one is pending)."""
-    pill = page.get_by_test_id("agent-option-namespace")
-    expect(pill).to_be_enabled()
-    pill.click()
-    page.get_by_test_id(f"agent-option-namespace-value-{namespace}").click()
-    eventually(
-        lambda: pill.is_enabled() and pill.get_attribute("data-value") == namespace
-    )
-
-
 def slash_commands(page: Page) -> list[str]:
     """The slash menu's commands for a bare "/", as C2's own spec reads them."""
     page.get_by_test_id("chat-input").click()
@@ -433,17 +339,6 @@ def slash_commands(page: Page) -> list[str]:
     )
     page.keyboard.press("Escape")
     return commands
-
-
-def start_conversation(page: Page, text: str, namespace: str | None = None) -> str:
-    """From the home screen, in namespace when one is named; the conversation's id."""
-    page.goto(CANVAS_URL)
-    if namespace is not None:
-        pick_namespace(page, namespace)
-    page.get_by_test_id("chat-input").fill(text)
-    page.get_by_test_id("submit-button").click()
-    page.wait_for_url(re.compile(r".*/conversations/[^/?]+$"))
-    return page.url.rsplit("/", 1)[-1]
 
 
 def new_run(app: LaunchedApp, before: set[str]) -> str:
