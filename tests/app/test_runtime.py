@@ -15,6 +15,8 @@ from dr_app.layout import SetupError, SetupState
 from dr_app.runtime import PUMP_DRAIN_S, deep_reasoner_pin, run_logged
 from tests.app.conftest import COMMIT, NEXT_COMMIT, REPO, ROOT
 
+THIRD_COMMIT = "c9d0e1f2" * 5
+
 DR_URL = "https://github.com/DeanLight/deep_reasoner_beta"
 DR_COMMIT = deep_reasoner_pin(ROOT).commit
 
@@ -128,8 +130,57 @@ def test_a_new_commit_reinstalls(layout, stubs, capsys):
     said = lines(capsys)
     assert said[1] == texts.installing(NEXT_COMMIT[:7], DR_COMMIT[:7])
     assert len(stubs.argvs("uv")) == 4
-    assert {p.name for p in layout.runtime_dir.iterdir()} == {NEXT_COMMIT, "current"}
     assert layout.current_runtime.resolve() == layout.runtime_dir / NEXT_COMMIT
+
+
+def runtimes(layout) -> set[str]:
+    return {p.name for p in layout.runtime_dir.iterdir()}
+
+
+def test_an_update_keeps_the_runtime_current_pointed_at(layout, stubs):
+    """A stack still starting on the version before may run it (TASK-48 W10)."""
+    setup(layout)
+    setup(layout, NEXT_COMMIT)
+    assert runtimes(layout) == {COMMIT, NEXT_COMMIT, "current"}
+    assert layout.current_runtime.resolve() == layout.runtime_dir / NEXT_COMMIT
+
+
+def test_the_next_start_that_installs_nothing_removes_the_previous_runtime(
+    layout, stubs
+):
+    setup(layout)
+    setup(layout, NEXT_COMMIT)
+    before = len(stubs.calls())
+    setup(layout, NEXT_COMMIT)
+    assert stubs.calls()[before:] == []
+    assert runtimes(layout) == {NEXT_COMMIT, "current"}
+
+
+def test_a_second_update_removes_the_runtime_before_the_previous(layout, stubs):
+    for commit in (COMMIT, NEXT_COMMIT, THIRD_COMMIT):
+        setup(layout, commit)
+    assert runtimes(layout) == {NEXT_COMMIT, THIRD_COMMIT, "current"}
+
+
+def test_a_running_process_keeps_its_runtime_through_an_update(layout, stubs):
+    setup(layout)
+    module = layout.runtime_dir / COMMIT / "lib" / "dr_running.py"
+    module.parent.mkdir()
+    module.write_text("ANSWER = 'still here'\n")
+    reads_it_later = (
+        "import sys; sys.stdin.readline(); "
+        f"sys.path.insert(0, {str(module.parent)!r}); import dr_running; "
+        "print(dr_running.ANSWER)"
+    )
+    running = subprocess.Popen(
+        [layout.runtime_dir / COMMIT / "bin" / "python", "-c", reads_it_later],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    setup(layout, NEXT_COMMIT)
+    out, _ = running.communicate("go\n", timeout=30)
+    assert (running.returncode, out) == (0, "still here\n")
 
 
 def test_a_broken_runtime_python_reinstalls(layout, stubs):

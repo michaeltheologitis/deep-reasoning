@@ -1,10 +1,13 @@
 # D5's per-OS builds (§7.6): the Linux .AppImage and .deb, and one Apple silicon macOS
 # .dmg (Macs are Apple silicon only, Michael's ruling), from the pins in
-# desktop/pins.toml. Dispatched by hand, it builds and checks the packages and keeps them
-# as the run's artifacts; on a v* tag, it first requires cross-repo.yml green on the
+# desktop/pins.toml; and from the same build the browser version's tarball (TASK-48
+# §3.6). Dispatched by hand, it builds and checks the packages and keeps them as the
+# run's artifacts; on a v<app.version> tag, it first requires cross-repo.yml green on the
 # tagged commit, and last attaches the packages to the tag's release, public downloads
-# like the repository. The macOS job launches the app it built once and waits for the
-# Library App's backend to be ready. No job calls a model.
+# like the repository, with the browser command in its notes, then runs that command on
+# both systems as a user would. The macOS job launches the app it built once and waits
+# for the Library App's backend to be ready, then the browser command on its tarball.
+# No job calls a model.
 name: desktop-release
 
 on:
@@ -24,6 +27,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: desktop/pins.toml
+          sparse-checkout-cone-mode: false
+      # The browser command fetches releases/download/v<app.version>/ (TASK-48 W14).
+      - name: The tag is v and desktop/pins.toml's app version
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("desktop/pins.toml", "rb"))["app"]["version"])')"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::the tag $GITHUB_REF_NAME is not v$version, desktop/pins.toml's app version: tag v$version, or move the version"
+            exit 1
+          fi
       - name: cross-repo.yml passed on ${{ github.sha }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -51,8 +66,8 @@ jobs:
           python-version: "3.12"
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-      - name: Build the .AppImage and the .deb (build.py checks them)
-        run: uv run desktop/build.py linux
+      - name: Build the .AppImage, the .deb and the browser tarball (build.py checks them)
+        run: uv run desktop/build.py linux web
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - uses: actions/upload-artifact@v4
@@ -61,6 +76,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.deb
+            dist/*.tgz
           if-no-files-found: error
 
   macos:
@@ -81,8 +97,8 @@ jobs:
       # deep-reasoning is public: the app's setup fetches it as anyone's would.
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
-      - name: Build the Apple silicon .dmg (build.py checks it is arm64 only)
-        run: uv run desktop/build.py mac-arm64
+      - name: Build the Apple silicon .dmg (build.py checks it is arm64 only) and the browser tarball
+        run: uv run desktop/build.py mac-arm64 web
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: The .app inside it
@@ -94,6 +110,11 @@ jobs:
         run: uv run pytest -m desktop tests/desktop/test_launch_smoke.py -v -rA -s --basetemp "$RUNNER_TEMP/pytest"
         env:
           DR_APP_EXECUTABLE: ${{ runner.temp }}/Deep Reasoning.app/Contents/MacOS/Deep Reasoning
+      # The Linux job's tarball is the release's; this one runs the command on a Mac once.
+      - name: The browser command on Apple silicon, and the Python uvx picks reaching GitHub
+        run: |
+          DR_WEB_TARBALL="$(ls "$PWD"/dist/deep-reasoning-web-*.tgz)" \
+            uv run pytest -m web tests/desktop/test_web_smoke.py -v -rA -s --basetemp "$RUNNER_TEMP/pytest-web"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -107,6 +128,7 @@ jobs:
           name: desktop-macos-launch
           path: |
             ${{ runner.temp }}/pytest/**/app.log
+            ${{ runner.temp }}/pytest-web/**/web.log
             ~/Library/Logs/DiagnosticReports/
           if-no-files-found: ignore
 
@@ -120,11 +142,51 @@ jobs:
         with:
           path: packages
           merge-multiple: true
+      # dr_web is standard library only: the command is formed with the runner's python3.
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          sparse-checkout: packages/dr-web
       - name: Attach the packages to the tag's release (public downloads, like the repository)
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          PYTHONPATH: source/packages/dr-web/src
         run: |
+          command="$(python3 -c 'import sys; from dr_web.cli import command_for; print(command_for(sys.argv[1]))' "$GITHUB_SHA")"
+          notes="Deep Reasoning $TAG. The .dmg is for macOS 14 or later on Apple silicon; the .AppImage and the .deb are for Linux on x86-64.
+
+          Or run it in your browser instead, on the same computers, with uv 0.8.17 or later and git (the README's \"Run it in your browser\"):
+
+              $command"
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "Deep Reasoning $TAG. The .dmg is for macOS 14 or later on Apple silicon; the .AppImage and the .deb are for Linux on x86-64."
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes "$notes"
           gh release upload "$TAG" packages/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  # The released command as a user runs it (TASK-48 V7): no tarball given, so it downloads
+  # the release's own, on both systems the app ships for. It starts no conversation.
+  release-smoke:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - name: The release's command, downloading its tarball
+        run: uv run pytest -m web tests/desktop/test_web_smoke.py -v -rA -s --basetemp "$RUNNER_TEMP/pytest-web"
+        env:
+          DR_WEB_COMMIT: ${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: release-smoke-${{ matrix.os }}
+          path: ${{ runner.temp }}/pytest-web/**/web.log
+          if-no-files-found: ignore

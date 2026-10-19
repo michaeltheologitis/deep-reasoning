@@ -23,6 +23,7 @@ from deep_reasoning.acp.encoder import (
     idle_root_usage,
     namespace_option,
 )
+from deep_reasoning.acp.recap import Recap, read_turns, recap_of
 from deep_reasoning.acp.route import ModelRoute, missing_model_keys
 from deep_reasoning.acp.runlog import (
     Home,
@@ -193,6 +194,7 @@ class Session:
         run_dir = self.ctx.home.run_dir(run_id)
         try:
             source, mcp_servers = await asyncio.to_thread(self._materialize, run_dir)
+            recap = await asyncio.to_thread(self._recap)
         except Exception as exc:
             logger.exception("dr_acp.materialize_failed", session=self.id)
             return await self._reply(texts.build_failed(detail_of(exc)), "build_failed")
@@ -219,6 +221,7 @@ class Session:
             mode=self.ctx.client.mode,
             heartbeat_s=self.ctx.heartbeat_s,
             mcp_servers=mcp_servers,
+            recap=recap,
         )
         self.runs.append(run_id)
         self.prompts_in_run = 0
@@ -229,6 +232,10 @@ class Session:
         """The run's config, and the forwarded MCP servers its blocks name (D4 §4.1)."""
         source = self.ctx.catalog.materialize(self.namespace, run_dir=run_dir)
         return source, specs_for_run(self.mcp_servers, source.config_path)
+
+    def _recap(self) -> Recap:
+        """TASK-57: the conversation so far, for the run about to start."""
+        return recap_of(read_turns(self.ctx.home, self.runs), self.namespace)
 
     async def _reply(self, text: str, outcome: PromptOutcome) -> PromptResult:
         """Answered without a run: nothing in any run log, so it does not replay."""

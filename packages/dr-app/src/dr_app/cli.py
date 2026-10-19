@@ -37,6 +37,7 @@ from dr_app.runtime import (
     fetched_source,
     host_path,
     install_runtime,
+    prune_runtimes,
     run_logged,
     runtime_is_current,
 )
@@ -91,7 +92,9 @@ def before_start(
         state.dr_home = str(choice.path)
     if not COMMIT.fullmatch(commit):
         raise ValueError(f"not a full commit: {commit!r}")
-    if not runtime_is_current(layout, state.runtime, commit):
+    if runtime_is_current(layout, state.runtime, commit):
+        prune_runtimes(layout, state.runtime.commit)
+    else:
         state.runtime = install(layout, repo, commit, env=env)
     layout.bin_dir.mkdir(exist_ok=True)
     for name in LINKED:

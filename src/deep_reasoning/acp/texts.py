@@ -6,6 +6,8 @@ A constant is a sentence without fields; a function returns the sentence with it
 from collections.abc import Sequence
 from typing import Literal
 
+from deep_reasoning.acp.recap import TEXT_CAP
+from deep_reasoning.acp.runlog import RecapNote
 from deep_reasoning.mcp.wire import McpServerStatus
 
 ROOT_STOPPED = (
@@ -51,6 +53,10 @@ _FRESH_AFTER = {
     "lost": FRESH_AFTER_RESTART,
     "closed": FRESH_AFTER_CLOSE,
 }
+RECAP_ALL = "This run is given your earlier messages and their answers."
+RECAP_CUT_SHORT = (
+    f"Any message or answer longer than {TEXT_CAP:,} characters is cut short."
+)
 
 
 def late_decomposition(name: str) -> str:
@@ -84,9 +90,22 @@ def catalog_error(detail: str) -> str:
     return f"dr-acp could not read its configuration: {detail}"
 
 
-def fresh_run_notice(after: str | None) -> str | None:
-    """The notice a run starts with, chosen by how the previous run ended; None for none."""
-    return _FRESH_AFTER.get(after or "")
+def recap_from(first: int) -> str:
+    return (
+        f"This run is given your messages from message {first} on, and their answers: "
+        "older ones are left out to fit the model's context."
+    )
+
+
+def fresh_run_notice(after: str | None, recap: RecapNote | None = None) -> str | None:
+    """The notice a run starts with: how the previous run ended, then what of the conversation
+    this one is given (TASK-57 §5.1). None for the first run and after build_failed; with
+    no recap, the lead sentence alone (a run logged before TASK-57)."""
+    lead = _FRESH_AFTER.get(after or "")
+    if lead is None or recap is None:
+        return lead
+    given = RECAP_ALL if recap.left_out == 0 else recap_from(recap.left_out + 1)
+    return " ".join([lead, given, *([RECAP_CUT_SHORT] if recap.shortened else [])])
 
 
 def build_failed(detail: str) -> str:

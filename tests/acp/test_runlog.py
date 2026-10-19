@@ -38,6 +38,29 @@ def test_an_existing_log_continues_its_numbering(tmp_path):
     assert [e.kind for e in RunLog.read(home, RUN)] == ["thought", "run.end"]
 
 
+def test_a_run_start_logged_before_task_57_reads_with_no_recap(tmp_path):
+    home = Home(tmp_path)
+    home.run_dir(RUN).mkdir(parents=True)
+    start = {
+        "v": 1,
+        "seq": 1,
+        "t": 1.0,
+        "kind": "run.start",
+        "run": RUN,
+        "session": "s-1",
+        "index": 2,
+        "after": "stopped",
+        "cwd": "/w",
+        "namespace": "root",
+        "mode": "native",
+        "decomposition": None,
+        "source": {},
+    }
+    (home.run_dir(RUN) / "events.jsonl").write_text(json.dumps(start) + "\n")
+    [read] = RunLog.read(home, RUN)
+    assert (read.after, read.recap) == ("stopped", None)
+
+
 def test_a_log_of_another_version_is_refused(tmp_path):
     home = Home(tmp_path)
     home.run_dir(RUN).mkdir(parents=True)

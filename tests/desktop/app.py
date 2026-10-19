@@ -1,9 +1,11 @@
-"""The installed desktop app, launched as a user would launch it, with a fresh HOME, and
-driven over the agent-server's REST API and Electron's DevTools port (D5 §7.5, §7.6).
+"""The installed desktop app, and the browser command, launched as a user would launch
+them, with a fresh HOME, and driven over the agent-server's REST API, Electron's DevTools
+port or Playwright's own browsers (D5 §7.5, §7.6; TASK-48 §7.6).
 
 DR_APP_EXECUTABLE names the installed executable; the default is where the .deb puts it.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -17,17 +19,25 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, NoReturn
 
+import nodejs_wheel
+import psutil
+import yaml
+from playwright.sync_api import BrowserContext, FrameLocator, Locator, Page, expect
+
 from dr_app.agent_server import AgentServer
+from dr_web.cli import command_for
+from tests.acp.scenarios import repl
 
 APP = Path(os.environ.get("DR_APP_EXECUTABLE", "/opt/Deep Reasoning/deep-reasoning"))
 CANVAS_URL = "http://localhost:8000/"
-AGENT_SERVER = "http://127.0.0.1:18000"
+AGENT_SERVER_PORT = 18000
+AGENT_SERVER = f"http://127.0.0.1:{AGENT_SERVER_PORT}"
 # A first launch installs Python, the runtime and the agent-server: C3 allows 15 minutes
 # per setup phase, and the agent-server's own install comes between the two.
 FIRST_LAUNCH_S = 25 * 60
@@ -36,6 +46,20 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # The packaged app stays open on its failure screen after this line (Canvas's
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
+# The browser command's own last line when it fails (the launcher echoes setup's script,
+# which holds the same mark mid-line).
+WEB_FAILED = re.compile(r"^✗ ")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WEB_ENTRY = REPO_ROOT / "desktop" / "web.mjs"
+# The Node dr-web installs, as the dev group installs it.
+NODE = Path(nodejs_wheel.__file__).parent / "bin" / "node"
+SESSION = f"{AGENT_SERVER}/app-backends/dr-library/session"
+LIBRARY_APP_VERSION = json.loads(
+    (
+        REPO_ROOT / "src" / "deep_reasoning" / "canvas_app" / "canvas-extension.json"
+    ).read_text()
+)["version"]
+ONBOARDED_STORAGE_KEY = "openhands-onboarded"  # Canvas's use-onboarding-completion.ts
 # A command run after these words has loopback and no other network (Ubuntu 24.04 needs
 # kernel.apparmor_restrict_unprivileged_userns=0).
 NETWORK_CUT: Final = [
@@ -117,6 +141,8 @@ class LaunchedApp:
     home: Path
     log: Path
     debug_port: int
+    # A line it matches ends a wait at once: the launch failed.
+    failed: re.Pattern[str] = re.compile(re.escape(STARTUP_FAILED))
 
     @property
     def data(self) -> Path:
@@ -157,7 +183,7 @@ class LaunchedApp:
                     return line
             if self.process.poll() is not None:
                 self.fail(f"the app exited {self.process.returncode}")
-            if any(STARTUP_FAILED in line for line in lines):
+            if any(self.failed.search(line) for line in lines):
                 self.fail("the app reported its launch failed")
             time.sleep(1.0)
         self.fail(f"no {fragment!r} in the app's log in {timeout_s} s")
@@ -218,6 +244,121 @@ def get_with_host(url: str, host: str, timeout_s: float = 10.0) -> tuple[int, st
         return error.code, error.read().decode(errors="replace")
 
 
+def evaluate_web(expression: str) -> Any:
+    """expression, with desktop/web.mjs imported as web, evaluated by dr-web's Node."""
+    script = (
+        f"import * as web from {json.dumps(WEB_ENTRY.as_uri())};\n"
+        f"console.log(JSON.stringify(await ({expression})));"
+    )
+    done = subprocess.run(
+        [str(NODE), "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(done.stdout)
+
+
+def web_text(name: str, *args: Any) -> str:
+    """One of desktop/web.mjs's sentences, with its fields."""
+    call = f"({', '.join(map(json.dumps, args))})" if args else ""
+    return evaluate_web(f"web.texts.{name}{call}")
+
+
+def web_command(commit: str, tarball: Path | None, *args: str) -> list[str]:
+    """The README's browser command at commit, on a tarball build.py web made (or the
+    release's, when tarball is None)."""
+    command = command_for(commit).split()
+    return [*command, *(("--tarball", str(tarball)) if tarball else ()), *args]
+
+
+def launch_web(
+    home: Path,
+    log: Path,
+    command: Sequence[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> LaunchedApp:
+    """The browser command with HOME home, in a session of its own (a terminal's process
+    group, for its Ctrl+C), its output in log."""
+    with log.open("ab") as out:
+        process = subprocess.Popen(
+            list(command),
+            env=env or user_environment(home),
+            cwd=home,
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    return LaunchedApp(process, home, log, 0, failed=WEB_FAILED)
+
+
+def interrupt(app: LaunchedApp) -> None:
+    """Ctrl+C in the terminal: SIGINT to the command's process group."""
+    os.killpg(app.process.pid, signal.SIGINT)
+
+
+def descendants(pid: int) -> list[int]:
+    """pid's children, their children and so on."""
+    return [child.pid for child in psutil.Process(pid).children(recursive=True)]
+
+
+def listening_sockets(pids: Iterable[int]) -> dict[str, int]:
+    """Each listening TCP socket the pids hold, as 'address:port', with the pid
+    holding it."""
+    found = {}
+    for pid in pids:
+        with suppress(psutil.Error):
+            for held in psutil.Process(pid).net_connections(kind="tcp"):
+                if held.status == psutil.CONN_LISTEN:
+                    found[f"{held.laddr.ip}:{held.laddr.port}"] = pid
+    return found
+
+
+def environ(pid: int) -> dict[str, str]:
+    """A process's environment as it started (on Linux, /proc/<pid>/environ); empty for
+    one that has gone meanwhile."""
+    with suppress(psutil.Error):
+        return psutil.Process(pid).environ()
+    return {}
+
+
+def cmdline(pid: int) -> str:
+    with suppress(psutil.Error):
+        return " ".join(psutil.Process(pid).cmdline())
+    return ""
+
+
+def executable(pid: int) -> Path | None:
+    """The file a process runs; None once it has gone."""
+    with suppress(psutil.Error):
+        return Path(psutil.Process(pid).exe())
+    return None
+
+
+def snapshot(data: Path) -> dict[str, str]:
+    """What a refused second start must not change under ~/.deep-reasoning: setup.json,
+    runtime/'s entries and current's target, bin/, canvas-app/, and Canvas's settings,
+    secrets and agent profiles. The rest of canvas/ is the running agent-server's."""
+    kept: dict[str, str] = {}
+    for path in sorted(data.rglob("*")):
+        relative = path.relative_to(data).as_posix()
+        top = relative.split("/", 1)[0]
+        canvas_kept = relative in ("canvas/settings.json", "canvas/secrets.json") or (
+            relative.startswith("canvas/agent-profiles")
+        )
+        if path.is_symlink():
+            kept[relative] = f"-> {os.readlink(path)}"
+        elif top == "runtime" and relative.count("/") == 1:
+            kept[relative] = "dir" if path.is_dir() else "file"
+        elif path.is_file() and (
+            relative == "setup.json" or top in ("bin", "canvas-app") or canvas_kept
+        ):
+            kept[relative] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return kept
+
+
 def expire_uv_index_answers_quickly(home: Path) -> None:
     """uv under home keeps each index answer fresh for a second, as if every later run
     came long after the fetch: home's ~/.config/uv/uv.toml says so. uv stores the setting
@@ -228,8 +369,169 @@ def expire_uv_index_answers_quickly(home: Path) -> None:
     config.write_text(EXPIRING_INDEX_ANSWERS)
 
 
+def mark_onboarded(context: BrowserContext) -> None:
+    """Canvas's onboarding done in this browser, as the user's first visit leaves it."""
+    context.add_init_script(
+        f"window.localStorage.setItem({json.dumps(ONBOARDED_STORAGE_KEY)}, '1')"
+    )
+
+
+def setup_lines(app: LaunchedApp, phase: str) -> list[str]:
+    """What the setup command printed in a phase, without the launcher's prefixes."""
+    marker = f"[setup {phase}] "
+    return [line.split(marker, 1)[1] for line in app.lines() if marker in line]
+
+
+def point_the_library_at(
+    app: LaunchedApp,
+    base_url: str,
+    directory: Path,
+    *,
+    key: str,
+    model: str,
+    namespace: str,
+    decomposition: dict,
+) -> None:
+    """The model key as a Canvas secret, and a Library whose run settings call the fake
+    model at base_url, with its model priced for the spend cap, and namespace holding
+    decomposition (an example())."""
+    app.request(
+        "PUT", "/api/settings/secrets", {"name": "OPENAI_API_KEY", "value": key}
+    )
+    config = directory / "main.yaml"
+    client = {"base_url": base_url, "api_key_env": "OPENAI_API_KEY"}
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "model": model,
+                "client": client | {"max_retries": 0},
+                "system_prompt": "You are a scripted test agent.",
+                "max_iter": 6,
+                "max_depth": 3,
+                "entry_namespace": "root",
+                "namespaces": {
+                    "root": {},
+                    namespace: {"decompositions": [decomposition]},
+                },
+            },
+            sort_keys=False,
+        )
+    )
+    price = {"input_per_mtok": 1.0, "output_per_mtok": 2.0, "context_window": 200000}
+    (app.data / "prices.yaml").write_text(yaml.safe_dump({model: price}))
+    subprocess.run(
+        [app.runtime_bin / "dr-library", "import", config, "--home", app.data],
+        env=user_environment(app.home),
+        check=True,
+        capture_output=True,
+    )
+
+
+def example(name: str, task: str) -> dict:
+    """A decomposition: the task, then a turn that answers it."""
+    return {
+        "name": name,
+        "messages": [
+            {"role": "user", "content": task},
+            {"role": "assistant", "content": repl("FinalAnswer('done')")},
+        ],
+    }
+
+
+def run_ids(app: LaunchedApp) -> set[str]:
+    return {path.parent.name for path in (app.data / "runs").glob("*/events.jsonl")}
+
+
+def worker_environ(app: LaunchedApp, run_id: str | None = None) -> str:
+    """The run's worker's environment, by the pid its run log records; the only run's
+    when run_id is None."""
+    if run_id is None:
+        [run_id] = run_ids(app)
+    events = app.data / "runs" / run_id / "events.jsonl"
+    for line in events.read_text().splitlines():
+        event = json.loads(line)
+        if event["kind"] == "worker.ready":
+            return Path(f"/proc/{event['pid']}/environ").read_bytes().decode()
+    raise AssertionError("no worker.ready in the run log")
+
+
+def eventually(check: Callable[[], bool], timeout_s: float = 60.0) -> None:
+    """check() until it holds, or fail at timeout_s."""
+    deadline = time.monotonic() + timeout_s
+    while not check():
+        assert time.monotonic() < deadline, f"not within {timeout_s} s"
+        time.sleep(0.5)
+
+
+def answer(page: Page, text: str) -> Locator:
+    return page.get_by_test_id("agent-message").filter(has_text=text)
+
+
+def pick_namespace(page: Page, namespace: str) -> None:
+    """C2's option picker on the home screen: dr-acp's namespace option, picked and
+    accepted by the agent's preview (the pill is disabled while one is pending)."""
+    pill = page.get_by_test_id("agent-option-namespace")
+    expect(pill).to_be_enabled()
+    pill.click()
+    page.get_by_test_id(f"agent-option-namespace-value-{namespace}").click()
+    eventually(
+        lambda: pill.is_enabled() and pill.get_attribute("data-value") == namespace
+    )
+
+
+def start_conversation(page: Page, text: str, namespace: str | None = None) -> str:
+    """From the home screen, in namespace when one is named; the conversation's id."""
+    page.goto(CANVAS_URL)
+    if namespace is not None:
+        pick_namespace(page, namespace)
+    page.get_by_test_id("chat-input").fill(text)
+    page.get_by_test_id("submit-button").click()
+    page.wait_for_url(re.compile(r".*/conversations/[^/?]+$"))
+    return page.url.rsplit("/", 1)[-1]
+
+
+def library_frame(page: Page, session_key: str) -> FrameLocator:
+    """D3's panel in a frame over the page, through the bridge as C2's header panel opens
+    it: a session made with credentials from the page, then the frame on its ingress URL.
+    The frame once it shows the panel."""
+    made = page.evaluate(
+        """async ([url, key]) => {
+            const r = await fetch(url, {method: "POST", credentials: "include",
+                                        headers: {"X-Session-API-Key": key}});
+            return {status: r.status, body: await r.json()};
+        }""",
+        [SESSION, session_key],
+    )
+    assert made["status"] == 200, made
+    page.evaluate(
+        """(src) => {
+            const frame = document.createElement("iframe");
+            frame.id = "dr-library-frame";
+            frame.src = src;
+            frame.style = "position:fixed;inset:0;width:100%;height:100%;z-index:99999";
+            document.body.appendChild(frame);
+        }""",
+        made["body"]["ingress_url"] + "ui/?tab=namespaces&cap=5",
+    )
+    frame = page.frame_locator("#dr-library-frame")
+    try:
+        expect(frame.locator("main")).to_be_visible()
+    except AssertionError as missing:
+        shown = [(f.url, f.content()[:400]) for f in page.frames[1:]]
+        raise AssertionError(f"the frame shows no panel: {shown}") from missing
+    return frame
+
+
 def processes_mentioning(text: str) -> list[str]:
-    """The command lines of live processes that hold text (Linux: /proc)."""
+    """The command lines of live processes that hold text (Linux: /proc; macOS: ps)."""
+    if sys.platform == "darwin":
+        listed = subprocess.run(
+            ["ps", "-axww", "-o", "pid=,command="],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        return [line.strip() for line in listed.splitlines() if text in line]
     found = []
     for entry in Path("/proc").iterdir():
         if not entry.name.isdigit():

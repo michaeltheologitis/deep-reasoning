@@ -15,6 +15,7 @@ from deep_reasoning.mcp.wire import McpServerStatus
 
 Mode = Literal["native", "flat"]
 RunEndReason = Literal["closed", "stopped", "crashed", "failed", "build_failed", "lost"]
+PromptEndOutcome = Literal["answered", "exhausted", "failed", "build_failed"]
 DETAIL_CAP = 2000
 
 
@@ -30,6 +31,14 @@ class _Ev(BaseModel):
     t: float = 0.0
 
 
+class RecapNote(BaseModel):
+    """TASK-57: what a fresh run was given of its conversation, for its notice."""
+
+    turns: int  # the turns in the recap
+    left_out: int  # the oldest turns not in it, to fit its bound
+    shortened: bool  # a message or answer in it was cut short
+
+
 class RunStart(_Ev):
     kind: Literal["run.start"] = "run.start"
     run: str
@@ -41,6 +50,7 @@ class RunStart(_Ev):
     mode: Mode
     decomposition: str | None
     source: dict[str, Any]
+    recap: RecapNote | None = None  # None: no earlier turns, or logged before TASK-57
 
 
 class PromptStart(_Ev):
@@ -152,7 +162,7 @@ class McpStatus(_Ev):
 class PromptEnd(_Ev):
     kind: Literal["prompt.end"] = "prompt.end"
     prompt: int
-    outcome: Literal["answered", "exhausted", "failed", "build_failed"]
+    outcome: PromptEndOutcome
     answer: str | None
     detail: str | None
 

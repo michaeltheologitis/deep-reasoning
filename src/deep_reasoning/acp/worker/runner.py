@@ -25,6 +25,7 @@ from deep_reasoner.core import (
 from deep_reasoner.v2.cli import build_namespace_registry, build_reasoner, close_run
 from deep_reasoner.v2.context import LogProcessor
 from deep_reasoner.v2.decompositions import main_decomposition_turns
+from deep_reasoner.v2.messages import user
 from structlog.contextvars import bound_contextvars
 
 from deep_reasoning.acp.catalog import load_dr_config
@@ -131,7 +132,8 @@ class Worker:
 
     def build(self, prompt: Prompt) -> None:
         """The reasoner, with the decomposition's turns puppeteered when there is one; its
-        log context and model alias stay entered for the whole run."""
+        log context and model alias stay entered for the whole run. The recap is its own
+        send, before the first acall, so that acall's task stays the agent's task."""
         start = self._start
         cfg = run_config(start)
         if prompt.decomposition is not None:
@@ -163,6 +165,8 @@ class Worker:
             bound_contextvars(task_id=start.run, log_dir=str(run_dir))
         )
         self._run_scope.enter_context(alias)
+        if start.recap is not None:
+            self._reasoner.send(user(start.recap))
 
     async def prompt(self, prompt: Prompt) -> None:
         if self._reasoner is None:

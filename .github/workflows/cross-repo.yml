@@ -1,9 +1,10 @@
 # D5's cross-repo checks (§7.5): the forks' code at their pins in desktop/pins.toml,
 # against this branch's. No job calls a real model, except the live tier, which runs only
 # when a run by hand asks for it (TASK-65 §7.4). Nightly, by hand, and on every pull
-# request that moves a pin or the app, or changes E12 or a cross-repo test. A run by hand
-# may name fork commits no tag names yet (canvas_commit, sdk_commit): every job then runs
-# them in place of the pins, and build.py skips only their tag and branch checks.
+# request that moves a pin, the app or the browser command, or changes E12 or a
+# cross-repo test. A run by hand may name fork commits no tag names yet (canvas_commit,
+# sdk_commit): every job then runs them in place of the pins, and build.py skips only
+# their tag and branch checks.
 name: cross-repo
 
 on:
@@ -11,6 +12,7 @@ on:
     paths:
       - desktop/**
       - packages/dr-app/**
+      - packages/dr-web/**
       - pyproject.toml
       - uv.lock
       - src/deep_reasoning/acp/proxy.py
@@ -59,6 +61,8 @@ jobs:
       - run: uv run desktop/build.py check ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
         env:
           GITHUB_TOKEN: ${{ github.token }}
+      # TASK-48 W14: the README's browser command is the newest release's.
+      - run: uv run pytest -m crossrepo tests/desktop/test_readme.py -v -rA
 
   # E12's skeleton flow (D5 §7.5): the Linux packages built from the pins, the .deb
   # installed, and the app launched with a fresh HOME under Xvfb and driven over its
@@ -82,8 +86,8 @@ jobs:
       - name: Read access to deep_reasoner_beta (private)
         run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
       - run: uv sync --locked
-      - name: Build the Linux packages
-        run: uv run desktop/build.py linux ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
+      - name: Build the Linux packages and the browser tarball
+        run: uv run desktop/build.py linux web ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
         env:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Install the .deb
@@ -94,6 +98,9 @@ jobs:
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: E12
         run: xvfb-run -a uv run pytest -m desktop tests/desktop/test_e12.py -v -rA
+      # TASK-48 §7.5: the app and the browser command, one refusing beside the other.
+      - name: The app beside the browser command
+        run: xvfb-run -a uv run pytest -m desktop tests/desktop/test_coexistence.py -v -rA
       # The key is in this step's environment only; the test saves it as a Canvas
       # secret and launches the app without it.
       - name: The live tier
@@ -113,7 +120,49 @@ jobs:
           name: e12-app-log
           path: |
             /tmp/pytest-of-*/pytest-*/e12*/app.log
-            /tmp/pytest-of-*/pytest-*/test_the_app_relaunches_*/relaunch.log
+            /tmp/pytest-of-*/pytest-*/test_the_*/*.log
+          if-no-files-found: ignore
+
+  # E13 (TASK-48 §7.4): the browser tarball built from the pins, and the README's command
+  # run on it from a fresh HOME, driven in Playwright's Chromium, Firefox and WebKit. The
+  # model is FakeOpenAI in the test, so no model is called. The command fetches
+  # deep-reasoning (this commit, public) and setup fetches deep_reasoner_beta (private,
+  # through the runner's insteadOf line), as a user's would.
+  web-e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      # The build's npm only: the command brings its own Node.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # The oldest uv the README promises, on which the design measured the command.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.17"
+          python-version: "3.12"
+      - name: Read access to deep_reasoner_beta (private)
+        run: git config --global url."https://x-access-token:${{ secrets.DEEP_REASONER_TOKEN }}@github.com/DeanLight/".insteadOf "https://github.com/DeanLight/"
+      - run: uv sync --locked
+      - name: Build the browser tarball
+        run: uv run desktop/build.py web ${CANVAS_COMMIT:+--canvas-commit "$CANVAS_COMMIT"} ${SDK_COMMIT:+--sdk-commit "$SDK_COMMIT"}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: uv run playwright install --with-deps chromium firefox webkit
+      - name: Let unshare cut the network for an unprivileged user (Ubuntu 24.04's AppArmor)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: E13
+        run: uv run pytest -m web tests/desktop/test_e13.py -v -rA
+      - name: The command's logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e13-web-logs
+          path: /tmp/pytest-of-*/pytest-*/**/*.log
           if-no-files-found: ignore
 
   # E6 (D5 §7.5, C1 §6.4): each of D1's native recordings, played by S1's scripted agent

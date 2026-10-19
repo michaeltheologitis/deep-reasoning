@@ -31,7 +31,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
-import yaml
 from playwright.sync_api import (
     Browser,
     FrameLocator,
@@ -55,16 +54,27 @@ from tests.desktop.app import (
     FIRST_LAUNCH_S,
     NETWORK_CUT,
     QUIT_S,
+    SESSION,
     STARTUP_FAILED,
     LaunchedApp,
+    answer,
+    eventually,
+    example,
     expire_uv_index_answers_quickly,
     fresh_home,
     get_with_host,
     launch,
+    library_frame,
+    pick_namespace,
+    point_the_library_at,
     processes_mentioning,
+    run_ids,
     secret,
+    setup_lines,
     spend_caps,
+    start_conversation,
     user_environment,
+    worker_environ,
 )
 from tests.desktop.e12.subagents import (
     expand_all_subagents,
@@ -79,7 +89,6 @@ pytestmark = [
 ]
 
 INGRESS = "http://127.0.0.1:18000"
-SESSION = f"{INGRESS}/app-backends/dr-library/session"
 BACKEND = "/api/canvas-extensions/installed/dr-library/backend"
 QUESTION = "What does E12 answer?"
 ANSWER = secret("e12-answer-")
@@ -270,12 +279,6 @@ def window(browser: Browser) -> Page:
     raise AssertionError("the window never loaded Canvas")
 
 
-def setup_lines(app: LaunchedApp, phase: str) -> list[str]:
-    """What the setup command printed in a phase, without the launcher's prefixes."""
-    marker = f"[setup {phase}] "
-    return [line.split(marker, 1)[1] for line in app.lines() if marker in line]
-
-
 def test_the_first_launch_installs_everything_and_opens_on_the_home_screen(
     app, browser
 ):
@@ -303,67 +306,6 @@ def locked_profile_id(app: LaunchedApp) -> str:
     profiles = app.request("GET", "/api/agent-profiles")["profiles"]
     [ours] = [p for p in profiles if p["name"] == build.LOCKED_PROFILE]
     return ours["id"]
-
-
-def point_the_library_at(app: LaunchedApp, fake: FakeOpenAI, directory: Path) -> None:
-    """The model key as a Canvas secret, and a Library whose run settings call the fake,
-    with its model priced for the spend cap."""
-    app.request(
-        "PUT", "/api/settings/secrets", {"name": "OPENAI_API_KEY", "value": KEY}
-    )
-    config = directory / "main.yaml"
-    client = {"base_url": fake.base_url, "api_key_env": "OPENAI_API_KEY"}
-    config.write_text(
-        yaml.safe_dump(
-            {
-                "model": E12_MODEL,
-                "client": client | {"max_retries": 0},
-                "system_prompt": "You are a scripted test agent.",
-                "max_iter": 6,
-                "max_depth": 3,
-                "entry_namespace": "root",
-                "namespaces": {
-                    "root": {},
-                    NAMESPACE: {"decompositions": [example(IMPORTED, "Triage e12.")]},
-                },
-            },
-            sort_keys=False,
-        )
-    )
-    price = {"input_per_mtok": 1.0, "output_per_mtok": 2.0, "context_window": 200000}
-    (app.data / "prices.yaml").write_text(yaml.safe_dump({E12_MODEL: price}))
-    subprocess.run(
-        [app.runtime_bin / "dr-library", "import", config, "--home", app.data],
-        env=user_environment(app.home),
-        check=True,
-        capture_output=True,
-    )
-
-
-def example(name: str, task: str) -> dict:
-    """A decomposition: the task, then a turn that answers it."""
-    return {
-        "name": name,
-        "messages": [
-            {"role": "user", "content": task},
-            {"role": "assistant", "content": repl("FinalAnswer('done')")},
-        ],
-    }
-
-
-def run_ids(app: LaunchedApp) -> set[str]:
-    return {path.parent.name for path in (app.data / "runs").glob("*/events.jsonl")}
-
-
-def worker_environ(app: LaunchedApp) -> str:
-    """The run's worker's environment, by the pid its run log records."""
-    [run_id] = run_ids(app)
-    events = app.data / "runs" / run_id / "events.jsonl"
-    for line in events.read_text().splitlines():
-        event = json.loads(line)
-        if event["kind"] == "worker.ready":
-            return Path(f"/proc/{event['pid']}/environ").read_bytes().decode()
-    raise AssertionError("no worker.ready in the run log")
 
 
 def installed_defaults() -> dict:
@@ -465,7 +407,15 @@ def test_every_conversation_starts_from_deep_reasoner_whatever_profile_is_active
 ):
     """TASK-50's launch: another profile is made active, here and for the rest of E12,
     and the conversation still runs deep_reasoner."""
-    point_the_library_at(app, fake, tmp_path)
+    point_the_library_at(
+        app,
+        fake.base_url,
+        tmp_path,
+        key=KEY,
+        model=E12_MODEL,
+        namespace=NAMESPACE,
+        decomposition=example(IMPORTED, "Triage e12."),
+    )
     other = {"agent_kind": "acp", "acp_server": "custom", "acp_command": "false"}
     app.request("POST", "/api/agent-profiles/e12-other", other)
     [other_id] = [
@@ -557,26 +507,7 @@ def test_nothing_records_telemetry_consent_and_settings_offer_no_analytics_switc
 
 def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
     page = window(browser)
-    made = page.evaluate(
-        """async ([url, key]) => {
-            const r = await fetch(url, {method: "POST", credentials: "include",
-                                        headers: {"X-Session-API-Key": key}});
-            return {status: r.status, body: await r.json()};
-        }""",
-        [SESSION, app.session_key],
-    )
-    assert made["status"] == 200, made
-    page.evaluate(
-        """(src) => {
-            const frame = document.createElement("iframe");
-            frame.id = "e12-frame";
-            frame.src = src;
-            frame.style = "position:fixed;inset:0;width:100%;height:100%;z-index:99999";
-            document.body.appendChild(frame);
-        }""",
-        made["body"]["ingress_url"] + "ui/?tab=namespaces&cap=5",
-    )
-    frame = page.frame_locator("#e12-frame")
+    frame = library_frame(page, app.session_key)
     expect(frame.get_by_test_id(f"dr-node-{NAMESPACE}")).to_be_visible()
     expect(frame.get_by_test_id("dr-notice")).to_have_count(0)
     cookies = browser.new_browser_cdp_session().send("Storage.getCookies")["cookies"]
@@ -593,30 +524,6 @@ def test_d3s_frame_works_through_the_bridge_in_electrons_chromium(app, browser):
     assert inside.evaluate("async () => (await fetch('../health')).status") == 401
 
 
-def eventually(check: Callable[[], bool], timeout_s: float = 60.0) -> None:
-    """check() until it holds, or fail at timeout_s."""
-    deadline = time.monotonic() + timeout_s
-    while not check():
-        assert time.monotonic() < deadline, f"not within {timeout_s} s"
-        time.sleep(0.5)
-
-
-def answer(page: Page, text: str) -> Locator:
-    return page.get_by_test_id("agent-message").filter(has_text=text)
-
-
-def pick_namespace(page: Page, namespace: str) -> None:
-    """C2's option picker on the home screen: dr-acp's namespace option, picked and
-    accepted by the agent's preview (the pill is disabled while one is pending)."""
-    pill = page.get_by_test_id("agent-option-namespace")
-    expect(pill).to_be_enabled()
-    pill.click()
-    page.get_by_test_id(f"agent-option-namespace-value-{namespace}").click()
-    eventually(
-        lambda: pill.is_enabled() and pill.get_attribute("data-value") == namespace
-    )
-
-
 def slash_commands(page: Page) -> list[str]:
     """The slash menu's commands for a bare "/", as C2's own spec reads them."""
     page.get_by_test_id("chat-input").click()
@@ -630,17 +537,6 @@ def slash_commands(page: Page) -> list[str]:
     )
     page.keyboard.press("Escape")
     return commands
-
-
-def start_conversation(page: Page, text: str, namespace: str | None = None) -> str:
-    """From the home screen, in namespace when one is named; the conversation's id."""
-    page.goto(CANVAS_URL)
-    if namespace is not None:
-        pick_namespace(page, namespace)
-    page.get_by_test_id("chat-input").fill(text)
-    page.get_by_test_id("submit-button").click()
-    page.wait_for_url(re.compile(r".*/conversations/[^/?]+$"))
-    return page.url.rsplit("/", 1)[-1]
 
 
 def new_run(app: LaunchedApp, before: set[str]) -> str:

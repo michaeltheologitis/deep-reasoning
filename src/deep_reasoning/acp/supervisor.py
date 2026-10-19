@@ -16,6 +16,7 @@ from pydantic import BaseModel, ValidationError
 
 from deep_reasoning.acp.catalog import RunSource
 from deep_reasoning.acp.encoder import Encoder
+from deep_reasoning.acp.recap import NO_RECAP, Recap
 from deep_reasoning.acp.route import ModelRoute, worker_env
 from deep_reasoning.acp.runlog import (
     RUN_EVENT,
@@ -98,6 +99,7 @@ class RunHandle:
         mode: Mode,
         heartbeat_s: float,
         mcp_servers: Sequence[McpServerSpec] = (),
+        recap: Recap = NO_RECAP,
     ) -> "RunHandle":
         """Create the run's log and worker, and start its pump and heartbeat.
 
@@ -109,7 +111,8 @@ class RunHandle:
         cwd=session.cwd, env=worker_env(os.environ, grant); send
         Start(client_overrides=..., tool_client_overrides=... from the grant,
         mcp_servers=..., ...). The pump remembers the tools of each server a live
-        mcp.status says is bound (D4 §4.7).
+        mcp.status says is bound (D4 §4.7). TASK-57: run.start records recap.note, and
+        Start carries recap.text for the worker to send before its first drive.
         """
         handle = cls(
             run_id=run_id,
@@ -137,6 +140,7 @@ class RunHandle:
                     "client": dict(source.client),
                     "versions": dict(source.versions),
                 },
+                recap=recap.note,
             )
         )
         grant = route.grant(
@@ -159,6 +163,7 @@ class RunHandle:
                     for name, overrides in grant.tool_client_overrides.items()
                 },
                 mcp_servers=list(mcp_servers),
+                recap=recap.text,
             )
         )
         handle._pump = asyncio.create_task(handle._pump_events(reader))
