@@ -18,7 +18,6 @@ PYTHON_TEXTS = (
 )
 TYPESCRIPT_TEXTS = ("canvas-app/src/ui/texts.ts", "canvas-app/src/page/texts.ts")
 MANIFEST = "src/deep_reasoning/canvas_app/canvas-extension.json"
-AGENT = "src/deep_reasoning/acp/agent.py"
 BOOTSTRAP = "desktop/bootstrap.sh"
 README = "README.md"
 NAMES = re.compile(r"deep_reasoner|deep-reasoning")
@@ -78,27 +77,6 @@ def python_literals(path: Path) -> Iterator[str]:
             yield node.value
 
 
-def constant_fields(node: ast.Dict) -> dict[str, ast.expr]:
-    return {
-        key.value: value
-        for key, value in zip(node.keys, node.values)
-        if isinstance(key, ast.Constant)
-    }
-
-
-def agent_title(path: Path) -> str:
-    """dr-acp's agentInfo title, as initialize answers it."""
-    for node in ast.walk(ast.parse(path.read_text())):
-        info = (
-            constant_fields(node).get("agentInfo")
-            if isinstance(node, ast.Dict)
-            else None
-        )
-        if isinstance(info, ast.Dict):
-            return ast.literal_eval(constant_fields(info)["title"])
-    raise AssertionError(f"{path} answers no agentInfo")
-
-
 def manifest_texts(path: Path) -> Iterator[str]:
     manifest = json.loads(path.read_text())
     yield manifest["display_name"]
@@ -122,7 +100,6 @@ def prose() -> Iterator[tuple[str, str]]:
         literals = TS_LITERAL.findall((ROOT / name).read_text())
         yield from ((name, text) for text in literals)
     yield from ((MANIFEST, text) for text in manifest_texts(ROOT / MANIFEST))
-    yield AGENT, agent_title(ROOT / AGENT)
     yield from ((BOOTSTRAP, t) for t in ECHO.findall((ROOT / BOOTSTRAP).read_text()))
 
 
