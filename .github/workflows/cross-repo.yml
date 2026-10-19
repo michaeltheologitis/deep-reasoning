@@ -157,7 +157,7 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: The forks' pins, or the run's commits in their place
+      - name: The forks' pins, or the run's commits in their place, and the PyPI cutoff
         id: pin
         run: |
           python3 - >> "$GITHUB_OUTPUT" <<'EOF'
@@ -168,6 +168,10 @@ jobs:
               assert re.fullmatch("[0-9a-f]{40}", commit), f"{given} is not 40 hex"
               print(f"{fork}_repo=" + pins[fork]["repo"].removeprefix("https://github.com/"))
               print(f"{fork}_commit=" + commit)
+          # The stack's uvx starts, and the two installs below, resolve PyPI as of the
+          # app's cutoff (TASK-66 §4.4); a Canvas fork before dr-4 ignores it.
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              print("OH_UV_EXCLUDE_NEWER=" + pins["app"]["uv_exclude_newer"], file=env)
           EOF
       - uses: actions/checkout@v4
         with:
@@ -191,14 +195,14 @@ jobs:
         working-directory: canvas
       - run: npx playwright install --with-deps chromium
         working-directory: canvas
-      - name: The mock LLM's Python, at the agent-server's version
+      - name: The mock LLM's Python, at the agent-server's version and the cutoff
         working-directory: canvas
         run: |
           uv venv .mock-llm-venv
-          uv pip install -p .mock-llm-venv "openhands-sdk==$(node -p "require('./config/defaults.json').versions.agentServer")"
+          uv pip install -p .mock-llm-venv --exclude-newer "$OH_UV_EXCLUDE_NEWER" "openhands-sdk==$(node -p "require('./config/defaults.json').versions.agentServer")"
       - name: The automation backend in uvx's cache, inside the stack's 180 s start
         working-directory: canvas
-        run: uvx --from "openhands-automation==$(node -p "require('./config/defaults.json').versions.automation")" python -c "import openhands.automation.app"
+        run: uvx --exclude-newer "$OH_UV_EXCLUDE_NEWER" --from "openhands-automation==$(node -p "require('./config/defaults.json').versions.automation")" python -c "import openhands.automation.app"
       - run: npm run build:app
         working-directory: canvas
         env:

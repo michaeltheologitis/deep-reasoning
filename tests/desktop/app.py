@@ -46,6 +46,10 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 # The packaged app stays open on its failure screen after this line (Canvas's
 # electron/main.mjs), so a wait for anything later can end there.
 STARTUP_FAILED = "[desktop] Startup failed"
+# The Canvas fork's uvx-start.mjs (TASK-66): its line for a service started from uv's
+# cache, offline, and its records, one per service started online that then served.
+STARTING_OFFLINE: Final = "Starting from uv's cache, offline"
+UVX_STARTS: Final = "uvx-starts"
 # The browser command's own last line when it fails (the launcher echoes setup's script,
 # which holds the same mark mid-line).
 WEB_FAILED = re.compile(r"^✗ ")
@@ -208,12 +212,17 @@ class LaunchedApp:
                 self.process.wait()
 
 
-def launch(home: Path, log: Path) -> LaunchedApp:
-    """The installed app with HOME home and a DevTools port, its output in log."""
-    port = free_port()
-    argv = [str(APP), f"--remote-debugging-port={port}"]
-    if os.geteuid() == 0:
-        argv.append("--no-sandbox")  # Chromium refuses root without it
+def launch(home: Path, log: Path, *, network: bool = True) -> LaunchedApp:
+    """The installed app with HOME home, its output in log: with a DevTools port, or,
+    with network=False, inside NETWORK_CUT, where the port would be out of reach."""
+    port = free_port() if network else 0
+    argv = (
+        [str(APP), f"--remote-debugging-port={port}"]
+        if network
+        else [*NETWORK_CUT, str(APP)]
+    )
+    if os.geteuid() == 0 or not network:
+        argv.append("--no-sandbox")  # Chromium refuses root, the cut's mapped one too
     with log.open("wb") as out:
         process = subprocess.Popen(
             argv,
@@ -542,6 +551,12 @@ def processes_mentioning(text: str) -> list[str]:
 
 def secret(prefix: str) -> str:
     return f"{prefix}{secrets.token_hex(16)}"
+
+
+def uvx_start_records(app: LaunchedApp) -> list[Path]:
+    """The launcher's records of the services it started online and saw serve, in the
+    Canvas state directory the build writes: a later start of each runs offline."""
+    return list((app.data / "canvas" / "agent-canvas" / UVX_STARTS).glob("*"))
 
 
 def spend_caps(app: LaunchedApp) -> dict[str, float]:

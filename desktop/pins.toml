@@ -18,3 +18,6 @@ executable_name = "deep-reasoning"
 version = "1.0.0-rc.1"
 maintainer = "Michael Theologitis <michael.theologitis@outlook.com>"
 uv_version = "0.12.23"
+# PyPI as of this UTC time, for the agent-server's and automation's uvx (TASK-66 K3): moved with the pins, or
+# alone for a dependency fix, never past the day of the commit that moves it, and only on a green cross-repo.yml.
+uv_exclude_newer = "2026-10-04T00:00:00Z"
