@@ -105,14 +105,9 @@ starts again, keeping what uv already downloaded. The splash does not show git w
 credential: if setup stops moving, quit, and run the check under
 [What you need](#what-you-need) in a terminal.
 
-Then, in the window:
-
-1. Onboarding opens on **Choose your agent** with **deep_reasoner** already chosen. Keep it
-   and press **Next**: there is no model to set up, because deep_reasoner reads its key from
-   Canvas's secrets.
-2. On **Say hello**, press **Close** instead of sending, since deep_reasoner has no key yet:
-   add `OPENAI_API_KEY` under **Settings → Secrets**, with your OpenAI API key as its value.
-3. Start a conversation and ask.
+The window opens on the home screen. Before your first question, add `OPENAI_API_KEY`
+under **Settings → Secrets**, with your OpenAI API key as its value. If you ask first, Deep
+Reasoning answers with where the key goes. Then start a conversation and ask.
 
 ### `dr-app` and `dr` in a terminal
 
