@@ -341,7 +341,7 @@ class Encoder:
     # ── one method per RunEvent ───────────────────────────────────────────────
 
     def _run_start(self, ev: RunStart) -> list[Update]:
-        notice = texts.fresh_run_notice(ev.after)
+        notice = texts.fresh_run_notice(ev.after, ev.recap)
         if notice is None:
             return []
         message = {
