@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 from deep_reasoner.mocks import write_fake_claude_cli
 
+from deep_reasoning.acp.recap import RECAP_HEAD
 from deep_reasoning.acp.testing.tree import AgentNode, CellNode, Tree
 
 Plan = Mapping[str, list[str]]  # task substring -> the reply at each turn
@@ -63,6 +64,30 @@ def scripted(
                     moved_on.wait(timeout=60)
                 return replies[min(turn, len(replies) - 1)]
         raise AssertionError(f"no plan for task {task!r}")
+
+    return respond
+
+
+FIRST_QUESTION = "What did I ask first?"
+RECAP_FIRST = re.compile(r"^Message 1: (.*)$", re.MULTILINE)
+
+
+def answering_from_the_recap(plan: Plan):
+    """scripted(plan), except that FIRST_QUESTION is answered with Message 1 of the
+    recap: the user message that starts with RECAP_HEAD (TASK-57)."""
+    follow = scripted(plan)
+
+    def respond(messages: list[dict[str, Any]]) -> str:
+        task, _ = task_and_turn(messages)
+        if task != FIRST_QUESTION:
+            return follow(messages)
+        recaps = [
+            str(m["content"])
+            for m in messages
+            if m.get("role") == "user" and str(m.get("content")).startswith(RECAP_HEAD)
+        ]
+        first = RECAP_FIRST.search(recaps[0]).group(1) if recaps else "(no recap)"
+        return repl(f"FinalAnswer({first!r})")
 
     return respond
 

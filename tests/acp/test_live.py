@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from deep_reasoning.acp import texts
+from deep_reasoning.acp.runlog import RecapNote
 from deep_reasoning.acp.testing.tree import tree
 from tests.acp.harness import REPO, dr_acp, run, run_ids, scripted_env
 from tests.acp.scenarios import acp_tree, deep_reasoner_tree, tree_evidence
@@ -157,3 +158,45 @@ def test_live_without_the_key_the_run_fails_before_any_call_and_says_which(
     )
     assert closing["content"]["text"] == texts.build_failed(detail)
     assert costs_in_log(client, response.field_meta["deep_reasoner"]["run"]) == []
+
+
+def test_live_after_a_root_stop_the_model_still_knows_the_first_message(
+    home: Path, work: Path
+):
+    """TASK-57 on a real model: the fresh run after a root Stop is given the
+    conversation as one user message, and answers from it."""
+    first = "Which STAT course has no prerequisites?"
+    fan_out = (
+        "Give each course in `catalog` to its own sub-agent with run_all, and tell me "
+        "how many hours a week each one takes."
+    )
+
+    async def body():
+        async with dr_acp(ADVISING, home, env=with_key()) as client:
+            root = await client.open_session(work)
+            asked = await client.ask(root, first)
+            seen = len(client.printer.updates)
+            turn = asyncio.create_task(client.ask(root, fan_out))
+            await client.printer.wait_until(
+                lambda p: any(
+                    sid == root and u["sessionUpdate"] == "tool_call"
+                    for sid, u in p.updates[seen:]
+                ),
+                timeout=180,
+            )
+            await client.conn.cancel(session_id=root)
+            stopped = await turn
+            quoted = await client.ask(
+                root, "Quote my first message in this conversation exactly."
+            )
+            fresh = client.run_log(quoted.field_meta["deep_reasoner"]["run"])
+            return [
+                r.field_meta["deep_reasoner"] for r in (asked, stopped, quoted)
+            ], fresh
+
+    meta, fresh = run(body())
+    assert [m["outcome"] for m in meta] == ["answered", "stopped", "answered"]
+    assert fresh[0].recap == RecapNote(turns=2, left_out=0, shortened=False)
+    [end] = [e for e in fresh if e.kind == "prompt.end"]
+    assert end.outcome == "answered"
+    assert "prerequisites" in end.answer

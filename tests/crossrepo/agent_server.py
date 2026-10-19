@@ -10,6 +10,7 @@ import secrets
 import signal
 import socket
 import subprocess
+import sys
 import time
 import tomllib
 import urllib.request
@@ -20,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from dr_app.agent_server import AgentServer, AgentServerError
+from dr_app.profile import PROFILE_NAME, desired_profile
 
 ROOT = Path(__file__).resolve().parents[2]
 SDK_PIN = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())["sdk_fork"]
@@ -56,22 +58,50 @@ class RunningAgentServer(AgentServer):
         self.checkout = checkout
         self.python = str(checkout / ".venv" / "bin" / "python")
 
-    def ask(self, conversation: str, text: str, deadline: float) -> None:
-        """One user message, run; returns once the conversation has finished, by
-        deadline (time.monotonic())."""
+    def open_conversation(self, home: Path, work: Path) -> str:
+        """A conversation in work on the deep_reasoner profile setup writes, for this
+        environment's dr-acp with home as its DR home."""
+        dr_acp = Path(sys.executable).parent / "dr-acp"
+        profile = desired_profile(None, dr_acp=dr_acp, home=home)
+        self.request("POST", f"/api/agent-profiles/{PROFILE_NAME}", profile)
+        saved = self.request("GET", f"/api/agent-profiles/{PROFILE_NAME}")["profile"]
+        return self.request(
+            "POST",
+            "/api/conversations",
+            {
+                "agent_profile_id": saved["id"],
+                "workspace": {"kind": "LocalWorkspace", "working_dir": str(work)},
+            },
+        )["id"]
+
+    def post(self, conversation: str, text: str) -> None:
+        """One user message, run; returns at once."""
         self.request(
             "POST",
             f"/api/conversations/{conversation}/events",
             {"role": "user", "content": [{"type": "text", "text": text}], "run": True},
         )
-        time.sleep(0.2)
+
+    def wait(
+        self, conversation: str, statuses: tuple[str, ...], deadline: float
+    ) -> str:
+        """The conversation's execution_status, once it is one of statuses, by deadline
+        (time.monotonic())."""
         while (
             status := self.request("GET", f"/api/conversations/{conversation}")[
                 "execution_status"
             ]
-        ) not in ("finished", "error", "stuck"):
+        ) not in statuses:
             assert time.monotonic() < deadline, f"still {status}"
             time.sleep(0.1)
+        return status
+
+    def ask(self, conversation: str, text: str, deadline: float) -> None:
+        """One user message, run; returns once the conversation has finished, by
+        deadline (time.monotonic())."""
+        self.post(conversation, text)
+        time.sleep(0.2)
+        status = self.wait(conversation, ("finished", "error", "stuck"), deadline)
         assert status == "finished", status
 
 

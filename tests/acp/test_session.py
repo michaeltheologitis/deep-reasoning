@@ -7,6 +7,7 @@ import acp
 import pytest
 
 from deep_reasoning.acp import texts
+from deep_reasoning.acp.runlog import RecapNote
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from tests.acp.harness import (
     BRIDGE_EXTENSION,
@@ -320,7 +321,10 @@ def test_a_failed_drive_ends_the_run_and_the_next_prompt_says_so(tmp_path, home,
     assert closing["content"]["text"].startswith("The run failed: InternalServerError")
     assert closing["_meta"]["deep_reasoner"]["outcome"] == "failed"
     assert (log[-1].kind, log[-1].reason) == ("run.end", "failed")
-    assert notice["content"]["text"] == texts.FRESH_AFTER_ERROR + "\n\n"
+    one_turn = RecapNote(turns=1, left_out=0, shortened=False)
+    assert (
+        notice["content"]["text"] == texts.fresh_run_notice("failed", one_turn) + "\n\n"
+    )
     assert answered.field_meta["deep_reasoner"]["outcome"] == "answered"
 
 
@@ -348,6 +352,35 @@ def test_a_config_that_cannot_be_materialized_answers_build_failed_without_a_run
         "prompt": None,
         "outcome": "build_failed",
     }
+
+
+def test_a_run_log_that_cannot_be_read_answers_build_failed_without_a_run(
+    tmp_path, home, work
+):
+    """TASK-57 R9: the recap is read from every earlier run's log, so a log that is gone
+    stops the next run from starting, rather than giving it a recap with a gap."""
+    responder = scripted(
+        {"Fail.": [repl("FinalAnswer(1)")]}, failing=frozenset({("Fail.", 0)})
+    )
+
+    async def body():
+        async with FakeOpenAI(responder) as model:
+            config = menu_config(tmp_path, model.base_url)
+            async with dr_acp(config, home) as client:
+                root = await client.open_session(work)
+                failed = await client.ask(root, "Fail.")
+                run_id = failed.field_meta["deep_reasoner"]["run"]
+                (home / "runs" / run_id / "events.jsonl").unlink()
+                response = await client.ask(root, "Again.")
+                return response, client.updates_on(root)[-2]
+
+    response, closing = run(body())
+    assert response.field_meta == {
+        "deep_reasoner": {"run": None, "outcome": "build_failed"}
+    }
+    assert closing["content"]["text"].startswith(
+        "Could not start the run: FileNotFoundError"
+    )
 
 
 def test_what_openhands_appends_to_a_prompt_never_reaches_the_task_and_is_logged(
