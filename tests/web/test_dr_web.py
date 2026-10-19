@@ -187,6 +187,7 @@ def member(name: str) -> tarfile.TarInfo:
 @pytest.mark.parametrize(
     ("make", "expect_version", "reason"),
     [
+        (lambda p: None, None, "it cannot be read: No such file or directory"),
         (lambda p: p.write_bytes(b"not a tarball"), None, "not gzip"),
         (
             lambda p: p.write_bytes(gzip.compress(b"not a tar archive")),
@@ -220,6 +221,7 @@ def member(name: str) -> tarfile.TarInfo:
         ),
     ],
     ids=[
+        "missing",
         "not-gzip",
         "not-tar",
         "dot-dot",

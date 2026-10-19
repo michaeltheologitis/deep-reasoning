@@ -121,7 +121,7 @@ def download(url: str, dest: Path, *, timeout_s: float = DOWNLOAD_TIMEOUT_S) -> 
             temporary.open("wb") as out,
         ):
             shutil.copyfileobj(got, out, READ_CHUNK)
-    except (OSError, ssl.SSLError) as error:
+    except OSError as error:  # ssl.SSLError and urllib's errors among them
         _remove(temporary)
         failed = texts.fetch_failed(dest.name, _release_page(url), _why(error))
         raise FetchError(EXIT_FETCH, failed) from None
@@ -147,7 +147,13 @@ def unpacked(layout: WebLayout, tarball: Path, *, expect_version: str | None) ->
     package/ and safe (tarfile's data filter), package.json naming PACKAGE_NAME (and
     expect_version, for a download; None for --tarball), and the entry there. Raises
     FetchError(23, texts.not_a_tarball(str(tarball), <reason>)), leaving no tree."""
-    tree = layout.tree(_sha256(tarball))
+    try:
+        tree = layout.tree(_sha256(tarball))
+    except OSError as error:
+        unreadable = f"it cannot be read: {error.strerror}"
+        raise FetchError(
+            EXIT_FETCH, texts.not_a_tarball(str(tarball), unreadable)
+        ) from None
     if (tree / ENTRY).exists():
         return tree / "package"
     temporary = _temporary(tree)
@@ -281,7 +287,7 @@ def _release_page(url: str) -> str:
     return folder.replace("/releases/download/", "/releases/tag/")
 
 
-def _why(error: OSError | ssl.SSLError) -> str:
+def _why(error: OSError) -> str:
     """HTTP 404, connection refused, timed out, or TLS's own words."""
     if isinstance(error, urllib.error.HTTPError):
         return f"HTTP {error.code}"
