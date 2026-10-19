@@ -486,16 +486,7 @@ def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
         "sirv": "3.0.2",
         "httpxy": "0.5.5",
     }
-
-
-@pytest.mark.skipif(shutil.which("npm") is None, reason="packs the tarball with npm")
-def test_the_web_tarballs_defaults_are_what_patch_defaults_writes(
-    tmp_path, web_checkout
-):
-    canvas, defaults = web_checkout
-    tarball = build.package_web(
-        pins=PINS, repo=tmp_path, canvas=canvas, defaults=defaults
-    )
+    # patch_defaults' output, never literals: a key it gains needs no edit here.
     patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND)
     assert tarball_json(tarball, "config/defaults.json") == patched
 
