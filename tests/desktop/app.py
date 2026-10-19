@@ -15,6 +15,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -183,6 +185,19 @@ def launch(home: Path, log: Path) -> LaunchedApp:
             stderr=subprocess.STDOUT,
         )
     return LaunchedApp(process, home, log, port)
+
+
+def get_with_host(url: str, host: str, timeout_s: float = 10.0) -> tuple[int, str]:
+    """GET url with the Host header host, as a page served from that name sends it
+    (urllib sends the header as given), past any proxy: its status and body, an error's
+    included."""
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    request = urllib.request.Request(url, headers={"Host": host})
+    try:
+        with opener.open(request, timeout=timeout_s) as response:
+            return response.status, response.read().decode(errors="replace")
+    except urllib.error.HTTPError as error:
+        return error.code, error.read().decode(errors="replace")
 
 
 def processes_mentioning(text: str) -> list[str]:

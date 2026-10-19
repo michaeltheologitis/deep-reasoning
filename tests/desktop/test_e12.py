@@ -2,17 +2,19 @@
 (D5 §7.5, TASK-65 §7.4).
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
-linux), installs the .deb and runs this module under xvfb-run. Its tests share one
-first launch and run in order: the launch onto the home screen, with no onboarding and
-no telemetry consent; no screen offering another agent or an agent profile; a question
-asked before the model key is saved, answered with where it goes; the first answered
-conversation, from deep_reasoner although another profile is active, the window title
-naming the product after its title and alone at home, and its key kept out; a keyless LLM profile titling no chat with an error; nothing recording consent;
-D3's frame through the bridge; then the final part: C1's nested sub-agents, their costs
-shown by default and a Stop of one, C2's namespace picker, slash menu and header panel
-with Create decomposition, the Spend cap set in D4's Tools tab capping the next
-conversation, an MCP server granted there, and the panel past its first session; then
-the quit and an offline relaunch of setup. No test calls a real model.
+linux), installs the .deb and runs this module under xvfb-run. Its tests share one first
+launch and run in order: the launch onto the home screen, with no onboarding; the page
+refusing a host name that is not this machine; no telemetry consent; no screen offering
+another agent or an agent profile; a question asked before the model key is saved,
+answered with where it goes; the first answered conversation, from deep_reasoner
+although another profile is active, the window title naming the product after its title
+and alone at home, and its key kept out; a keyless LLM profile titling no chat with an
+error; nothing recording consent; D3's frame through the bridge; then the final part:
+C1's nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
+picker, slash menu and header panel with Create decomposition, the Spend cap set in D4's
+Tools tab capping the next conversation, an MCP server granted there, and the panel past
+its first session; then the quit and an offline relaunch of setup. No test calls a real
+model.
 """
 
 import json
@@ -52,6 +54,7 @@ from tests.desktop.app import (
     LaunchedApp,
     conversation_events,
     fresh_home,
+    get_with_host,
     launch,
     processes_mentioning,
     secret,
@@ -340,6 +343,19 @@ def worker_environ(app: LaunchedApp) -> str:
         if event["kind"] == "worker.ready":
             return Path(f"/proc/{event['pid']}/environ").read_bytes().decode()
     raise AssertionError("no worker.ready in the run log")
+
+
+@pytest.mark.parametrize("port", [8000, 3001], ids=["ingress", "frontend"])
+def test_the_page_refuses_a_host_name_that_is_not_this_machine(app, port):
+    """A DNS-rebound page's requests name its own host; the page carries the session key
+    (TASK-64)."""
+    url = f"http://127.0.0.1:{port}/"
+    status, body = get_with_host(url, f"rebound.example:{port}")
+    assert status == 403
+    assert app.session_key not in body
+    status, body = get_with_host(url, f"localhost:{port}")
+    assert status == 200
+    assert app.session_key in body
 
 
 def test_the_first_launch_asks_for_no_telemetry_consent(app, browser):
