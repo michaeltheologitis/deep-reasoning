@@ -214,7 +214,8 @@ and changes nothing. They share everything under `~/.deep-reasoning` (conversati
 settings, secrets, the Library), except what a browser keeps per browser: onboarding's done
 flag and the Show sub-agent costs switch.
 
-**Browsers:** Chrome, Edge and Firefox.
+**Browsers:** Chrome, Edge and Firefox. In Safari the Library panel (Show Decompositions)
+does not open: Safari does not send the panel its sign-in cookie.
 
 **Removing it:** `rm -rf ~/.deep-reasoning/web` removes the command's Node and files; to
 remove everything, do as [Uninstall](#uninstall) says.

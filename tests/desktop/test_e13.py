@@ -296,7 +296,18 @@ def test_a_conversation_answers_and_the_key_stays_out(first, fake, chromium, tmp
     context.close()
 
 
-@pytest.mark.parametrize("engine", ["chromium", "firefox", "webkit"])
+WEBKIT_REFUSED = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "WebKit does not send the bridge's session cookie with the panel's frame, which "
+        "the bridge refuses (401): the README names Safari as no Library panel (Q4 (a))"
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "engine", ["chromium", "firefox", pytest.param("webkit", marks=WEBKIT_REFUSED)]
+)
 def test_the_library_panel_works_through_the_bridge(first, playwright, engine):
     web = first.web
     browser = getattr(playwright, engine).launch()
