@@ -79,6 +79,13 @@ pytestmark = [
 ]
 
 INGRESS = "http://127.0.0.1:18000"
+SESSION = f"{INGRESS}/app-backends/dr-library/session"
+BACKEND = "/api/canvas-extensions/installed/dr-library/backend"
+QUESTION = "What does E12 answer?"
+ANSWER = secret("e12-answer-")
+E12_MODEL = "e12-model"
+NAMESPACE = "e12"
+OFFLINE_S = 5.0
 # TASK-50: the pages a locked build hides, and the ones it keeps, in the navigation's order.
 HIDDEN_SETTINGS = (
     "settings/agents",
@@ -105,13 +112,8 @@ TITLE_ANSWER = secret("e12-title-")
 CAP = "7.50"
 CAP_QUESTION = "What does E12 spend under its cap?"
 CAP_ANSWER = secret("e12-cap-")
-SESSION = f"{INGRESS}/app-backends/dr-library/session"
-BACKEND = "/api/canvas-extensions/installed/dr-library/backend"
-QUESTION = "What does E12 answer?"
-ANSWER = secret("e12-answer-")
-E12_MODEL = "e12-model"
-NAMESPACE = "e12"
-OFFLINE_S = 5.0
+# TASK-66: the installed app's defaults and uvx, and how long its services take to answer
+# after the first launch and after an offline relaunch, by the lines their logs end on.
 INSTALLED_DEFAULTS = APP.parent / "resources" / "app" / "config" / "defaults.json"
 APP_UVX = APP.parent / "resources" / "bin" / "uvx"
 AUTOMATION_S = 120.0

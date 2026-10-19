@@ -37,8 +37,8 @@ PINS = build.Pins(
     ),
 )
 # The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
-# the settings TASK-65's fork declares (the agent lock and the app's title), and
-# TASK-66's PyPI cutoff.
+# plus the null settings a fork must declare for this build: the agent lock, the app's
+# title and the PyPI cutoff.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -310,27 +310,20 @@ def written_defaults(pins, *, canvas, repo, work, monkeypatch) -> dict:
     return json.loads((canvas / "config" / "defaults.json").read_text())
 
 
-def test_the_title_the_build_writes_is_the_product_name(
+def test_the_build_writes_the_product_name_as_the_title_and_the_pinned_cutoff(
     canvas, repo, tmp_path, monkeypatch
 ):
-    named = dataclasses.replace(
-        PINS, app=dataclasses.replace(PINS.app, product_name="A Product")
+    app = dataclasses.replace(
+        PINS.app, product_name="A Product", uv_exclude_newer="2026-01-02T03:04:05Z"
     )
     written = written_defaults(
-        named, canvas=canvas, repo=repo, work=tmp_path, monkeypatch=monkeypatch
+        dataclasses.replace(PINS, app=app),
+        canvas=canvas,
+        repo=repo,
+        work=tmp_path,
+        monkeypatch=monkeypatch,
     )
     assert written["branding"]["appTitle"] == "A Product"
-
-
-def test_the_cutoff_the_build_writes_is_the_pinned_one(
-    canvas, repo, tmp_path, monkeypatch
-):
-    cut = dataclasses.replace(
-        PINS, app=dataclasses.replace(PINS.app, uv_exclude_newer="2026-01-02T03:04:05Z")
-    )
-    written = written_defaults(
-        cut, canvas=canvas, repo=repo, work=tmp_path, monkeypatch=monkeypatch
-    )
     assert written["uv"]["excludeNewer"] == "2026-01-02T03:04:05Z"
 
 

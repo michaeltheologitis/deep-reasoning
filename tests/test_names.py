@@ -23,9 +23,7 @@ README = "README.md"
 NAMES = re.compile(r"deep_reasoner|deep-reasoning")
 ALLOWED = (
     re.compile(r"from deep_reasoner import"),  # code: the new-tool template
-    re.compile(
-        r"deep_reasoner \{"
-    ),  # the installed package, a version or commit follows
+    re.compile(r"deep_reasoner \{"),  # the package, its version or commit after it
     re.compile(r"deep_reasoner_beta"),  # Dean's repository
     re.compile(r"/api/agent-profiles/deep_reasoner\b"),  # the profile's id, in a path
     re.compile(r"~/\.deep-reasoning"),  # the app's folder

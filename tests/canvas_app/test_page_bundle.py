@@ -14,12 +14,12 @@ pytestmark = pytest.mark.browser
 BUNDLE = resources.files("deep_reasoning.canvas_app").joinpath("dist", "index.js")
 # C2's host (C2 §7, A.1, A.11) over a fake agent-server: the backend is ready, conversation
 # c1 has started in router, c2 has not started in course_advisor, and the profile caps
-# spend at $7; a POST replaces the profile and is recorded in window.posted, and
-# window.profileMissing makes it a 404. The events search answers as the SDK fork's at dr-1
-# does: its kind is the
+# spend at $7. The events search answers as the SDK fork's at dr-1 does: its kind is the
 # module-qualified class name, and TIMESTAMP_DESC with limit 1 is the newest match
 # (S2 §3.2 B2). mountFrame appends the frame at the backend's address, as C2's does at the
 # ingress; selectTab disposes the tab's page and mounts the next one, as C2's panel does.
+# A POST of the profile replaces it and is recorded in window.posted, and
+# window.profileMissing makes the profile answer 404.
 PARENT = """<!doctype html>
 <meta charset="utf-8">
 <style>
