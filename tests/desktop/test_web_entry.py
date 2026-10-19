@@ -6,9 +6,6 @@ import json
 import shutil
 import signal
 import socket
-import subprocess
-import threading
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -18,7 +15,15 @@ from typing import Any
 import pytest
 
 from desktop import build
-from tests.desktop.app import NODE, WEB_ENTRY, evaluate_web, web_text
+from tests.desktop.app import (
+    NODE,
+    WEB_ENTRY,
+    LaunchedApp,
+    evaluate_web,
+    free_port,
+    launch_web,
+    web_text,
+)
 
 VERSION = "1.0.0-rc.1"
 RUN_S = 20.0
@@ -60,49 +65,12 @@ TOOLS = {
 }
 
 
-def free_port() -> int:
-    with socket.socket() as probe:
-        probe.bind(("127.0.0.1", 0))
-        return probe.getsockname()[1]
-
-
 @contextmanager
 def held(port: int) -> Iterator[None]:
     with socket.socket() as holder:
         holder.bind(("127.0.0.1", port))
         holder.listen()
         yield
-
-
-@dataclass
-class Running:
-    process: subprocess.Popen[str]
-    lines: list[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        threading.Thread(target=self._read, daemon=True).start()
-
-    def _read(self) -> None:
-        for line in self.process.stdout:
-            self.lines.append(line.rstrip("\n"))
-
-    def wait_for(self, line: str, timeout_s: float = RUN_S) -> None:
-        deadline = time.monotonic() + timeout_s
-        while line not in self.lines:
-            assert self.process.poll() is None, (
-                f"exited {self.process.returncode}: {self.lines}"
-            )
-            assert time.monotonic() < deadline, f"no {line!r} in {self.lines}"
-            time.sleep(0.05)
-
-    def end(self, timeout_s: float = RUN_S) -> int:
-        try:
-            return self.process.wait(timeout=timeout_s)
-        finally:
-            if self.process.poll() is None:
-                self.process.kill()
-                self.process.wait()
-            time.sleep(0.1)  # the reader's last lines
 
 
 @dataclass
@@ -115,6 +83,7 @@ class Tree:
     agent_server: int
     automation: int
     ingress: int
+    started: list[LaunchedApp] = field(default_factory=list)
 
     @property
     def scripts(self) -> Path:
@@ -136,27 +105,22 @@ class Tree:
         path.write_text(f"#!/bin/sh\n{script}\n")
         path.chmod(0o755)
 
-    def start(self, *args: str, env: dict[str, str] | None = None) -> Running:
+    def start(self, *args: str, env: dict[str, str] | None = None) -> LaunchedApp:
         environment = {"PATH": str(self.tools), "HOME": str(self.home)} | (env or {})
-        process = subprocess.Popen(
-            [str(NODE), str(self.package / "bin" / "deep-reasoning.mjs"), *args],
-            env=environment,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        return Running(process)
+        entry = [str(NODE), str(self.package / "bin" / "deep-reasoning.mjs"), *args]
+        log = self.home.parent / f"entry-{len(self.started)}.log"
+        self.started.append(launch_web(self.home, log, entry, env=environment))
+        return self.started[-1]
 
     def run(
         self, *args: str, env: dict[str, str] | None = None
     ) -> tuple[int, list[str]]:
         running = self.start(*args, env=env)
-        return running.end(), running.lines
+        return running.process.wait(timeout=RUN_S), running.lines()
 
 
 @pytest.fixture
-def tree(tmp_path: Path) -> Tree:
+def tree(tmp_path: Path) -> Iterator[Tree]:
     package = tmp_path / "package"
     for folder in ("bin", "scripts", "config", "build"):
         (package / folder).mkdir(parents=True)
@@ -181,7 +145,9 @@ def tree(tmp_path: Path) -> Tree:
     for name, script in TOOLS.items():
         made.tool(name, script)
     made.does(does="ready")
-    return made
+    yield made
+    for started in made.started:
+        started.stop()
 
 
 def test_the_launcher_gets_electrons_options_one_port_and_a_clean_environment(tree):
@@ -196,9 +162,9 @@ def test_the_launcher_gets_electrons_options_one_port_and_a_clean_environment(tr
     }
     running = tree.start("--port", str(tree.ingress), "--no-open", env=terminal)
     url = f"http://localhost:{tree.ingress}"
-    running.wait_for(web_text("running", url))
+    running.wait_for_line(web_text("running", url), RUN_S)
     running.process.send_signal(signal.SIGTERM)
-    assert running.end() == 0
+    assert running.process.wait(timeout=RUN_S) == 0
     record = tree.record()
     electrons = evaluate_web(
         f"Object.assign({{}}, {', '.join(f'({{{f}}})' for f in build.ELECTRON_CALL)})"
@@ -209,7 +175,7 @@ def test_the_launcher_gets_electrons_options_one_port_and_a_clean_environment(tr
     assert not set(left_out) & set(record["env"])
     assert record["env"]["UV_CACHE_DIR"] == terminal["UV_CACHE_DIR"]
     assert record["env"]["DO_NOT_TRACK"] == "1"
-    assert running.lines[:2] == [
+    assert running.lines()[:2] == [
         web_text("ready_line", VERSION, "22.12.0", "0.8.17", "2.43.0"),
         web_text("left_out", left_out),
     ]
@@ -235,9 +201,11 @@ def test_a_held_ingress_port_is_refused_with_a_free_one_to_use(tree):
 def test_a_held_automation_port_moves_to_a_free_one(tree):
     with held(tree.automation):
         running = tree.start("--port", str(tree.ingress), "--no-open")
-        running.wait_for(web_text("running", f"http://localhost:{tree.ingress}"))
+        running.wait_for_line(
+            web_text("running", f"http://localhost:{tree.ingress}"), RUN_S
+        )
         running.process.send_signal(signal.SIGINT)
-        assert running.end() == 0
+        assert running.process.wait(timeout=RUN_S) == 0
     moved = int(tree.record()["env"]["OH_CANVAS_SAFE_AUTOMATION_PORT"])
     assert moved not in (tree.automation, tree.ingress, tree.agent_server)
     with held(moved):
@@ -365,10 +333,12 @@ def test_an_agent_server_that_never_answers_stops_everything_and_exits_24(tree):
 
 def test_once_ready_it_says_where_and_ctrl_c_exits_0(tree):
     running = tree.start("--port", str(tree.ingress), "--no-open")
-    running.wait_for(web_text("running", f"http://localhost:{tree.ingress}"))
+    running.wait_for_line(
+        web_text("running", f"http://localhost:{tree.ingress}"), RUN_S
+    )
     running.process.send_signal(signal.SIGINT)
-    assert running.end() == 0
-    assert running.lines[-1] == "Shutting down..."
+    assert running.process.wait(timeout=RUN_S) == 0
+    assert running.lines()[-1] == "Shutting down..."
 
 
 @pytest.mark.parametrize(
