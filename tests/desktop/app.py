@@ -19,12 +19,13 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, NoReturn
 
 import nodejs_wheel
+import psutil
 import yaml
 from playwright.sync_api import BrowserContext, FrameLocator, Locator, Page, expect
 
@@ -265,91 +266,42 @@ def interrupt(app: LaunchedApp) -> None:
     os.killpg(app.process.pid, signal.SIGINT)
 
 
-def parents() -> dict[int, int]:
-    """Every live process's parent (Linux: /proc)."""
-    found = {}
-    for entry in Path("/proc").iterdir():
-        if entry.name.isdigit():
-            try:
-                stat = (entry / "stat").read_text()
-            except OSError:
-                continue
-            found[int(entry.name)] = int(stat.rsplit(")", 1)[1].split()[1])
-    return found
-
-
 def descendants(pid: int) -> list[int]:
-    """pid's children, their children and so on (Linux: /proc)."""
-    of = parents()
-    found: list[int] = []
-    pending = [pid]
-    while pending:
-        parent = pending.pop()
-        children = [child for child, its in of.items() if its == parent]
-        found += children
-        pending += children
-    return found
-
-
-def _socket_inodes(pid: int) -> set[str]:
-    inodes = set()
-    try:
-        for fd in Path(f"/proc/{pid}/fd").iterdir():
-            target = os.readlink(fd)
-            if target.startswith("socket:["):
-                inodes.add(target[len("socket:[") : -1])
-    except OSError:
-        pass
-    return inodes
-
-
-def _address(hex_address: str) -> str:
-    """/proc/net/tcp's 0100007F:1F40, or tcp6's 32 hex digits, as 127.0.0.1:8000."""
-    host, port = hex_address.split(":")
-    raw = bytes.fromhex(host)
-    words = b"".join(raw[i : i + 4][::-1] for i in range(0, len(raw), 4))
-    family = socket.AF_INET if len(raw) == 4 else socket.AF_INET6
-    return f"{socket.inet_ntop(family, words)}:{int(port, 16)}"
+    """pid's children, their children and so on."""
+    return [child.pid for child in psutil.Process(pid).children(recursive=True)]
 
 
 def listening_sockets(pids: Iterable[int]) -> dict[str, int]:
     """Each listening TCP socket the pids hold, as 'address:port', with the pid
-    holding it (Linux: /proc/<pid>/fd and /proc/net/tcp, tcp6)."""
-    owner = {inode: pid for pid in pids for inode in _socket_inodes(pid)}
+    holding it."""
     found = {}
-    for table in ("tcp", "tcp6"):
-        for line in Path(f"/proc/net/{table}").read_text().splitlines()[1:]:
-            fields = line.split()
-            local, state, inode = fields[1], fields[3], fields[9]
-            if state == "0A" and inode in owner:  # TCP_LISTEN
-                found[_address(local)] = owner[inode]
+    for pid in pids:
+        with suppress(psutil.Error):
+            for held in psutil.Process(pid).net_connections(kind="tcp"):
+                if held.status == psutil.CONN_LISTEN:
+                    found[f"{held.laddr.ip}:{held.laddr.port}"] = pid
     return found
 
 
-def _proc(pid: int, name: str) -> bytes:
-    """/proc/<pid>/<name>; empty for a process that has gone meanwhile."""
-    try:
-        return Path(f"/proc/{pid}/{name}").read_bytes()
-    except OSError:
-        return b""
-
-
 def environ(pid: int) -> dict[str, str]:
-    """A process's environment as it started (Linux: /proc/<pid>/environ)."""
-    raw = _proc(pid, "environ").decode(errors="replace")
-    return dict(item.split("=", 1) for item in raw.split("\0") if "=" in item)
+    """A process's environment as it started (on Linux, /proc/<pid>/environ); empty for
+    one that has gone meanwhile."""
+    with suppress(psutil.Error):
+        return psutil.Process(pid).environ()
+    return {}
 
 
 def cmdline(pid: int) -> str:
-    return _proc(pid, "cmdline").replace(b"\0", b" ").decode(errors="replace")
+    with suppress(psutil.Error):
+        return " ".join(psutil.Process(pid).cmdline())
+    return ""
 
 
 def executable(pid: int) -> Path | None:
-    """The file a process runs (Linux: /proc/<pid>/exe); None once it has gone."""
-    try:
-        return Path(os.readlink(f"/proc/{pid}/exe"))
-    except OSError:
-        return None
+    """The file a process runs; None once it has gone."""
+    with suppress(psutil.Error):
+        return Path(psutil.Process(pid).exe())
+    return None
 
 
 def snapshot(data: Path) -> dict[str, str]:
