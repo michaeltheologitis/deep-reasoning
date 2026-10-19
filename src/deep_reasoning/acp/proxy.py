@@ -32,7 +32,13 @@ from starlette.routing import Route as StarletteRoute
 
 from deep_reasoning.acp import texts
 from deep_reasoning.acp.costs import PriceTable
-from deep_reasoning.acp.route import ALWAYS_REMOVED, NO_TOOL_UPSTREAMS, RouteGrant
+from deep_reasoning.acp.route import (
+    ALWAYS_REMOVED,
+    DEEP_REASONER_DEFAULT_KEY_ENV,
+    NO_TOOL_UPSTREAMS,
+    OPENAI_FALLBACK_KEY_ENV,
+    RouteGrant,
+)
 from deep_reasoning.acp.runlog import Home
 
 logger = structlog.get_logger(__name__)
@@ -45,10 +51,6 @@ ANTHROPIC_DEFAULT_BASE_URL: Final = "https://api.anthropic.com"
 ANTHROPIC_KEY_ENV: Final = "ANTHROPIC_API_KEY"
 ANTHROPIC_BASE_URL_ENV: Final = "ANTHROPIC_BASE_URL"
 OPENAI_BASE_URL_ENV: Final = "OPENAI_BASE_URL"
-# build_client's fallback, config.py:256
-OPENAI_FALLBACK_KEY_ENV: Final = "OPENAI_API_KEY"
-# ClientConfig.api_key_env's default
-DEEP_REASONER_DEFAULT_KEY_ENV: Final = "NOVITA_API_KEY"
 LOOPBACK_HOSTS: Final = ("127.0.0.1", "::1", "localhost")
 NO_PROXY_HOSTS: Final = "127.0.0.1,localhost,::1"
 UPSTREAM_TIMEOUT: Final = httpx.Timeout(600.0, connect=10.0)

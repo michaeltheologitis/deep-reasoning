@@ -14,6 +14,7 @@ from deep_reasoning.acp import texts
 from deep_reasoning.acp.agent import user_text
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
 from deep_reasoning.acp.testing.tree import MessageNode, tree
+from deep_reasoning.library import Library, library_path
 from tests.acp.golden import as_tree, normalized, play, read_golden, streams
 from tests.acp.harness import (
     BRIDGE_EXTENSION,
@@ -23,8 +24,10 @@ from tests.acp.harness import (
     eventually,
     run,
     run_ids,
+    write_config,
 )
 from tests.acp.scenarios import (
+    BASE_CONFIG,
     BY_NAME,
     SCENARIOS,
     acp_tree,
@@ -130,7 +133,7 @@ def test_initialize_advertises_load_close_and_http_and_sse_mcp(tmp_path, home):
             "mcpCapabilities": {"http": True, "sse": True},
             "sessionCapabilities": {"close": {}},
         },
-        "agentInfo": {"name": "dr-acp", "title": "deep_reasoner", "version": "0.1.0"},
+        "agentInfo": {"name": "dr-acp", "title": "Deep Reasoning", "version": "0.1.0"},
         "authMethods": [],
     }
 
@@ -331,3 +334,39 @@ def test_resource_links_join_the_users_text_on_lines_of_their_own():
         "Summarize these.\nfile:///cv.pdf\nfile:///notes.md",
         [BRIDGE_SYSTEM_SUFFIX],
     )
+
+
+@pytest.mark.parametrize("catalog", ["config", "library"])
+def test_a_question_without_its_model_key_is_answered_with_where_the_key_goes_and_runs_nothing(
+    tmp_path, home, work, catalog
+):
+    """Asked twice: the session stays un-run, so the next conversation, once the key
+    is saved, starts normally."""
+    client = {
+        "base_url": "https://models.example.invalid/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "max_retries": 0,
+    }
+    config = write_config(
+        tmp_path / "config" / "main.yaml", BASE_CONFIG | {"client": client}
+    )
+    if catalog == "library":
+        Library.open(library_path(home), starter=False).import_config(config)
+
+    async def body():
+        async with dr_acp(config if catalog == "config" else None, home) as acp_client:
+            root = await acp_client.open_session(work)
+            asked = [await acp_client.ask(root, "What is 2 + 2?") for _ in range(2)]
+            said = [
+                u["content"]["text"]
+                for u in acp_client.updates_on(root)
+                if u["sessionUpdate"] == "agent_message_chunk"
+            ]
+            return asked, said
+
+    asked, said = run(body())
+    assert said == [texts.missing_model_key(["OPENAI_API_KEY"])] * 2
+    assert [(r.stop_reason, r.field_meta["deep_reasoner"]["run"]) for r in asked] == [
+        ("end_turn", None)
+    ] * 2
+    assert not list((home / "runs").glob("*"))

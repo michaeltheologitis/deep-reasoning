@@ -71,11 +71,11 @@ def test_a_stop_request_says_when_it_lands(mode, backbone, sentence):
     assert texts.stop_requested(mode, backbone) == sentence
 
 
-def test_the_key_proxys_sentences_are_d5s_verbatim():
+def test_the_key_proxys_sentences_are_the_designs_verbatim():
     assert texts.cap_reached(0.008, 5) == (
         "The key proxy refused this model call: this conversation has spent $0.01 of "
-        "its $5.00 cap. Start a new conversation, or raise the cap (--spend-cap-usd in "
-        "the deep_reasoner agent profile's arguments)."
+        "its $5.00 cap. Start a new conversation, or raise the cap for new "
+        "conversations under Show Decompositions → Tools → Spend cap."
     )
     assert texts.unpriced("m-x", "/h") == (
         "The key proxy refused a call to 'm-x': its price is unknown, so the spend cap "
@@ -88,4 +88,42 @@ def test_the_key_proxys_sentences_are_d5s_verbatim():
     assert texts.BAD_TOKEN == "The key proxy does not know this token."
     assert texts.upstream_unreachable("api.openai.com", "refused") == (
         "The key proxy could not reach api.openai.com: refused."
+    )
+
+
+@pytest.mark.parametrize(
+    ("names", "sentence"),
+    [
+        (
+            ["OPENAI_API_KEY"],
+            (
+                "Deep Reasoning needs OPENAI_API_KEY to answer: add it under Settings → "
+                "Secrets, then start a new conversation."
+            ),
+        ),
+        (
+            ["OPENAI_API_KEY", "NOVITA_API_KEY"],
+            (
+                "Deep Reasoning needs OPENAI_API_KEY and NOVITA_API_KEY to answer: add "
+                "them under Settings → Secrets, then start a new conversation."
+            ),
+        ),
+        (
+            ["A_KEY", "B_KEY", "C_KEY"],
+            (
+                "Deep Reasoning needs A_KEY, B_KEY and C_KEY to answer: add them under "
+                "Settings → Secrets, then start a new conversation."
+            ),
+        ),
+    ],
+    ids=["one", "two", "three"],
+)
+def test_the_missing_key_reminder_names_each_key_and_where_it_goes(names, sentence):
+    assert texts.missing_model_key(names) == sentence
+
+
+def test_a_stopped_root_says_its_run_ended():
+    assert texts.ROOT_STOPPED == (
+        "Stopped. The run was ended and its REPL state is gone: Deep Reasoning cannot "
+        "cancel a running cell yet. Your next message starts a fresh run."
     )

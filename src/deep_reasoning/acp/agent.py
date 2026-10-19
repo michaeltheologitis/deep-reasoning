@@ -101,7 +101,7 @@ class DrAcpAgent:
             "agentCapabilities": AGENT_CAPABILITIES,
             "agentInfo": {
                 "name": "dr-acp",
-                "title": "deep_reasoner",
+                "title": "Deep Reasoning",
                 "version": __version__,
             },
             "authMethods": [],

@@ -257,16 +257,10 @@ def test_a_second_prompt_while_one_runs_is_refused_as_busy(tmp_path, home, work)
     assert refused.data == {"deep_reasoner": {"error": "PROMPT_BUSY"}}
 
 
-def test_a_missing_key_fails_the_build_names_the_variable_and_leaves_no_notice(
+def test_a_tool_that_does_not_build_fails_the_build_and_leaves_no_notice(
     tmp_path, home, work
 ):
-    config = menu_config(
-        tmp_path,
-        client={
-            "base_url": "https://models.example.invalid/v1",
-            "api_key_env": "DR_ACP_TEST_ABSENT_KEY",
-        },
-    )
+    config = menu_config(tmp_path, tools={"broken": {"factory": "no_such_factory"}})
 
     async def body():
         async with dr_acp(config, home, env=scripted_env()) as client:
@@ -285,13 +279,13 @@ def test_a_missing_key_fails_the_build_names_the_variable_and_leaves_no_notice(
             )
 
     updates, first, second, next_update, log = run(body())
-    detail = "ValueError: Missing API key. Set `DR_ACP_TEST_ABSENT_KEY` (preferred) or `OPENAI_API_KEY`."
     closing = next(u for u in updates if u["sessionUpdate"] == "agent_message_chunk")
-    assert closing["content"]["text"] == texts.build_failed(detail)
+    detail = "ValueError: Unknown tool factory 'no_such_factory' for 'broken'."
+    assert closing["content"]["text"].startswith(texts.build_failed(detail))
     assert first.field_meta["deep_reasoner"]["outcome"] == "build_failed"
     assert first.field_meta["deep_reasoner"]["run"] is not None
     assert (log[-1].kind, log[-1].reason) == ("run.end", "build_failed")
-    assert next_update["content"]["text"] == texts.build_failed(detail)
+    assert next_update["content"]["text"] == closing["content"]["text"]
     assert second.field_meta["deep_reasoner"]["outcome"] == "build_failed"
 
 

@@ -9,8 +9,8 @@ from typing import Literal
 from deep_reasoning.mcp.wire import McpServerStatus
 
 ROOT_STOPPED = (
-    "Stopped. The run was ended and its REPL state is gone: deep_reasoner cannot cancel a "
-    "running cell yet (ask A3). Your next message starts a fresh run."
+    "Stopped. The run was ended and its REPL state is gone: Deep Reasoning cannot cancel "
+    "a running cell yet. Your next message starts a fresh run."
 )
 PROMPT_BUSY = "a prompt is already running in this session."
 FRESH_AFTER_STOP = (
@@ -91,6 +91,16 @@ def fresh_run_notice(after: str | None) -> str | None:
 
 def build_failed(detail: str) -> str:
     return f"Could not start the run: {detail}"
+
+
+def missing_model_key(names: Sequence[str]) -> str:
+    """names: the variables missing_model_keys found, at least one."""
+    listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+    pronoun = "it" if len(names) == 1 else "them"
+    return (
+        f"Deep Reasoning needs {listed} to answer: add {pronoun} under Settings → "
+        "Secrets, then start a new conversation."
+    )
 
 
 def root_failed(detail: str) -> str:
@@ -181,7 +191,7 @@ def cap_reached(spent: float, cap: float) -> str:
     return (
         f"The key proxy refused this model call: this conversation has spent "
         f"${spent:.2f} of its ${cap:.2f} cap. Start a new conversation, or raise the cap "
-        "(--spend-cap-usd in the deep_reasoner agent profile's arguments)."
+        "for new conversations under Show Decompositions → Tools → Spend cap."
     )
 
 
