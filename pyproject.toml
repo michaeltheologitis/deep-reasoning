@@ -32,13 +32,19 @@ dev = [
     "ruff",
     "playwright==1.56.0",
     "deep-reasoning-app",
+    "deep-reasoning-web",
+    # The Node dr-web installs (dr_web.cache.NODE_VERSION), which the entry's tests run on.
+    "nodejs-wheel-binaries==22.12.0",
 ]
 
 [tool.uv.workspace]
 members = ["packages/dr-app"]
+# Outside the workspace, so the runtime's uv sync --all-packages installs no browser command.
+exclude = ["packages/dr-web"]
 
 [tool.uv.sources]
 deep-reasoning-app = { workspace = true }
+deep-reasoning-web = { path = "packages/dr-web", editable = true }
 
 [build-system]
 requires = ["hatchling"]
@@ -60,10 +66,11 @@ markers = [
     "browser: drives the panel in Chromium (Playwright); run with -m browser",
     "desktop: builds and drives the desktop app (E12); run with -m desktop",
     "crossrepo: runs against the pinned forks' code; run with -m crossrepo",
+    "web: builds and drives the browser command (E13); run with -m web",
 ]
-addopts = "-m 'not live and not browser and not desktop and not crossrepo'"
+addopts = "-m 'not live and not browser and not desktop and not crossrepo and not web'"
 
 [tool.ruff]
 # docs: design notes; tests/mcp/fixtures: a stored shim, frozen as the Library holds it.
 extend-exclude = ["docs", "tests/mcp/fixtures"]
-src = [".", "src", "packages/dr-app/src"]
+src = [".", "src", "packages/dr-app/src", "packages/dr-web/src"]

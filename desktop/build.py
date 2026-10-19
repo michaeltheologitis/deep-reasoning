@@ -64,6 +64,8 @@ MAC_BINARIES: Final = (
     "Resources/node/bin/node",
 )
 FORBIDDEN_IN_PAYLOAD: Final = "deep_reasoner"
+# The browser version's tarball (TASK-48 §3.3): dr_web.cache.PACKAGE_NAME, mirrored.
+WEB_PACKAGE_NAME: Final = "deep-reasoning-web"
 
 
 @dataclass(frozen=True)
@@ -178,6 +180,10 @@ def opens_too_early(declared: str | None) -> str:
         f"✗ The app's Info.plist declares LSMinimumSystemVersion {declared}, not "
         f"{MAC_MINIMUM}: desktop/electron-builder.dr.mjs's mac block sets it."
     )
+
+
+def web_tarball_name(version: str) -> str:
+    return f"{WEB_PACKAGE_NAME}-{version}.tgz"
 
 
 def load_pins(path: Path) -> Pins:
