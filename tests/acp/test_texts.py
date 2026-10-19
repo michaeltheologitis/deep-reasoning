@@ -1,6 +1,7 @@
 import pytest
 
 from deep_reasoning.acp import texts
+from deep_reasoning.acp.runlog import RecapNote
 
 
 def test_sentences_with_fields_are_the_designs_verbatim():
@@ -40,6 +41,47 @@ def test_sentences_with_fields_are_the_designs_verbatim():
     )
     assert texts.child_failed("ValueError: boom") == "Failed: ValueError: boom"
     assert texts.cell_interrupted("the run crashed") == "Not finished: the run crashed"
+
+
+@pytest.mark.parametrize(
+    ("after", "recap", "notice"),
+    [
+        ("stopped", None, texts.FRESH_AFTER_STOP),
+        (
+            "stopped",
+            RecapNote(turns=2, left_out=0, shortened=False),
+            (
+                "Starting a fresh run: the previous one was stopped, so its variables and "
+                "sub-agents are gone. This run is given your earlier messages and their "
+                "answers."
+            ),
+        ),
+        (
+            "lost",
+            RecapNote(turns=14, left_out=6, shortened=True),
+            (
+                "Starting a fresh run: the previous one ended when dr-acp restarted, so its "
+                "variables and sub-agents are gone. This run is given your messages from "
+                "message 7 on, and their answers: older ones are left out to fit the "
+                "model's context. Any message or answer longer than 4,000 characters is cut "
+                "short."
+            ),
+        ),
+        (
+            "closed",
+            RecapNote(turns=1, left_out=0, shortened=True),
+            (
+                "Starting a fresh run: the previous one was closed, so its variables and "
+                "sub-agents are gone. This run is given your earlier messages and their "
+                "answers. Any message or answer longer than 4,000 characters is cut short."
+            ),
+        ),
+        ("build_failed", RecapNote(turns=1, left_out=0, shortened=False), None),
+    ],
+    ids=["before_task_57", "stopped", "lost_left_out", "closed_cut", "build_failed"],
+)
+def test_a_fresh_run_says_what_it_is_given(after, recap, notice):
+    assert texts.fresh_run_notice(after, recap) == notice
 
 
 @pytest.mark.parametrize(
