@@ -430,14 +430,25 @@ The current test fails naming the run log's events and the window's messages, so
 
 ## 5 · What nobody ran, or I could not verify
 
-- **The Canvas unit tests, lint and builds of `feat/agent-lock` and `fix/subagent-costs-on-by-default`: no result I
-  could read.** The commit messages carry none. The TASK-65 row's note is cut at Notion's 2000 characters, and TASK-50's
-  row is still at `Spec`, with no note on the build. Only `feat/app-title` has one: "local lint, 8,400 tests, both
-  builds green; trial merge with feat/agent-lock clean" [impl]. `desktop-e2e`'s `npm run build:app` compiles the
-  integration [CI]. I did not install the fork to run vitest.
-- **The SDK's own unit tests: no result I could read.** The commit messages carry none. The run evidence for TASK-46 is
-  the cross-repo title test, E12 step 7 and the live tier [CI], and the task row's "red on dr-2, green on 1f1a381"
-  [impl].
+- **The forks' unit tests, lint and builds ran only on the Implementers' machines.** No fork CI ran them, and I did not
+  install the forks.
+  - Their results are in neither the commit messages nor the task rows. The TASK-65 note is cut at Notion's 2000
+    characters, and TASK-46's and TASK-50's rows are still at `Spec`. I found them as the Implementers' saved logs in
+    this session's scratchpad. Those logs name a time, not a commit; the times bracket the commits [impl].
+  - **`feat/agent-lock`** (commits 03:39 UTC): vitest 8,449 passed and 1 skipped (783 files) at 03:57; lint 0 errors
+    and 379 warnings at 03:30; `build` and `build:lib` green at 03:44 and 03:46.
+  - **`fix/subagent-costs-on-by-default`** (03:42): vitest 8,389 passed at 04:17; lint 0 errors at 03:42; both builds
+    at 03:57 and 03:58.
+  - **`feat/app-title`**, from the task row: "local lint, 8,400 tests, both builds green; trial merge with
+    feat/agent-lock clean".
+  - **The SDK** (commits 03:23):
+    - `tests/cross`: 497 passed, 1 skipped at 03:23;
+    - `tests/agent_server`: 2,415 passed at 03:17, with 1 failed and 11 errors outside the change
+      (`test_llm_router`'s OpenRouter list, and the wsproto tests' "Agent server failed to start"). No `dr-2` baseline
+      is beside it.
+    - A probe of the TASK-46 shape gives, on the baseline, title `None` and `api.openai.com:443` attempted twice; on the
+      fix, title "What is 2 + 2?" and no attempt.
+  - `desktop-e2e`'s `npm run build:app` compiles the integration [CI].
 - **macOS: nothing in this round ran there.** `desktop-e2e` is Linux. That the macOS window shows the title rests on
   §13's reading of `electron/main.mjs` [read].
 - **An install from before this round** (Michael's VM) is read only:
