@@ -1,5 +1,6 @@
 # D5's cross-repo checks (§7.5): the forks' code at their pins in desktop/pins.toml,
-# against this branch's. No job calls a real model. Nightly, by hand, and on every pull
+# against this branch's. No job calls a real model, except the live tier, which runs only
+# when a run by hand asks for it (TASK-65 §7.4). Nightly, by hand, and on every pull
 # request that moves a pin, the app or the browser command, or changes E12 or a
 # cross-repo test. A run by hand may name fork commits no tag names yet (canvas_commit,
 # sdk_commit): every job then runs them in place of the pins, and build.py skips only
@@ -22,6 +23,10 @@ on:
     - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
+      live:
+        description: "Also run the live tier after E12: one conversation on gpt-6-luna (cents)"
+        type: boolean
+        default: false
       canvas_commit:
         description: "A Canvas fork commit (40 hex) to run in place of the pin; empty: the pin"
         type: string
@@ -96,6 +101,18 @@ jobs:
       # TASK-48 §7.5: the app and the browser command, one refusing beside the other.
       - name: The app beside the browser command
         run: xvfb-run -a uv run pytest -m desktop tests/desktop/test_coexistence.py -v -rA
+      # The key is in this step's environment only; the test saves it as a Canvas
+      # secret and launches the app without it.
+      - name: The live tier
+        if: inputs.live
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::the OPENAI_API_KEY repository secret is not set"
+            exit 1
+          fi
+          xvfb-run -a uv run pytest -m "desktop and live" tests/desktop/test_live.py -v -rA
       - name: The app's log
         if: failure()
         uses: actions/upload-artifact@v4
