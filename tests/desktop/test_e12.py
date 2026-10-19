@@ -77,7 +77,6 @@ pytestmark = [
 ]
 
 INGRESS = "http://127.0.0.1:18000"
-LOCKED_PROFILE = "deep_reasoner"
 # TASK-50: the pages a locked build hides, and the ones it keeps, in the navigation's order.
 HIDDEN_SETTINGS = (
     "settings/agents",
@@ -271,7 +270,7 @@ def test_the_first_launch_installs_everything_and_opens_on_the_home_screen(
 
 def locked_profile_id(app: LaunchedApp) -> str:
     profiles = app.request("GET", "/api/agent-profiles")["profiles"]
-    [ours] = [p for p in profiles if p["name"] == LOCKED_PROFILE]
+    [ours] = [p for p in profiles if p["name"] == build.LOCKED_PROFILE]
     return ours["id"]
 
 
@@ -831,9 +830,8 @@ def test_the_spend_cap_set_in_the_tools_tab_caps_the_next_conversation(app, brow
     expect(tools.get_by_test_id("dr-spend-cap-status")).to_have_text(
         spend_cap_saved(CAP)
     )
-    args = app.request("GET", f"/api/agent-profiles/{LOCKED_PROFILE}")["profile"][
-        "acp_args"
-    ]
+    profile = f"/api/agent-profiles/{build.LOCKED_PROFILE}"
+    args = app.request("GET", profile)["profile"]["acp_args"]
     assert args[:2] == ["--home", str(app.data)]
     assert args[-2:] == ["--spend-cap-usd", CAP]
     before = spend_caps(app)

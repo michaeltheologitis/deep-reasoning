@@ -14,6 +14,7 @@ import pytest
 
 from tests.desktop.app import (
     LOG_TAIL_LINES,
+    XDG_BASE_DIRECTORIES,
     LaunchedApp,
     age_uv_index_answers,
     fresh_home,
@@ -89,12 +90,7 @@ def test_a_fresh_home_holds_the_apps_config_cache_data_and_state(monkeypatch, tm
     """GitHub's runners point XDG_CONFIG_HOME at the runner's own home: kept, every
     launch would share one Electron profile, and E12's settings would reach the live
     tier's app."""
-    for name in (
-        "XDG_CONFIG_HOME",
-        "XDG_CACHE_HOME",
-        "XDG_DATA_HOME",
-        "XDG_STATE_HOME",
-    ):
+    for name in XDG_BASE_DIRECTORIES:
         monkeypatch.setenv(name, str(tmp_path / "runner" / name.lower()))
     with fresh_home() as home:
         env = user_environment(home)
