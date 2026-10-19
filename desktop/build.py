@@ -66,6 +66,16 @@ MAC_BINARIES: Final = (
 FORBIDDEN_IN_PAYLOAD: Final = "deep_reasoner"
 # The browser version's tarball (TASK-48 §3.3): dr_web.cache.PACKAGE_NAME, mirrored.
 WEB_PACKAGE_NAME: Final = "deep-reasoning-web"
+# What desktop/web.mjs copies of Electron's main() call (the fork's electron/main.mjs),
+# each as the fork writes it.
+ELECTRON_CALL: Final = (
+    'bannerTitle: "OpenHands Agent Canvas"',
+    "staticMode: true",
+    'mode: "agent-canvas"',
+    "isPublic: false",
+    "skipNpmCheck: true",
+    "agentServerReadyTimeoutMs: 10 * 60_000",
+)
 
 
 @dataclass(frozen=True)
