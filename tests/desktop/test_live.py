@@ -27,7 +27,9 @@ from tests.desktop.test_e12 import eventually, start_conversation, window
 
 KEY = "OPENAI_API_KEY"
 QUESTION = "Use one sub-agent to add 2 and 2, then answer with its result."
-TITLE_LENGTH = 50  # the agent-server's truncation of a first message into a title
+# The agent-server's title for it with no title LLM: the SDK's generate_fallback_title
+# keeps a first message of up to 50 characters, else its first 47 and "...".
+TITLE = f"{QUESTION[:47]}..."
 ANSWERED_S = 300.0
 COST = re.compile(r"\$\d+\.\d+")
 
@@ -86,8 +88,7 @@ def test_a_question_to_the_real_model_is_answered_titled_and_costed_with_no_erro
     )
     eventually(
         lambda: (
-            app.request("GET", f"/api/conversations/{conversation}")["title"]
-            == QUESTION[:TITLE_LENGTH]
+            app.request("GET", f"/api/conversations/{conversation}")["title"] == TITLE
         )
     )
     events = conversation_events(app, conversation)
