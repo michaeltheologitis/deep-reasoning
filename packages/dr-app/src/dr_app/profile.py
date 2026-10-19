@@ -33,7 +33,8 @@ def desired_profile(
     home: Path,
 ) -> dict[str, Any]:
     """§4.5.1's table: the owned fields (acp_subagents always true) and the --home pair
-    set, everything else kept from existing."""
+    set, everything else kept from existing. After creation the --spend-cap-usd pair is
+    written only by the Library panel's Spend cap field (TASK-65 D7)."""
     if existing is None:
         return {
             "agent_kind": "acp",
