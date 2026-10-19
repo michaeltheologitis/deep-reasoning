@@ -238,10 +238,6 @@ def _and(names: Sequence[str]) -> str:
     return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
-def web_tarball_name(version: str) -> str:
-    return f"{WEB_PACKAGE_NAME}-{version}.tgz"
-
-
 def load_pins(path: Path) -> Pins:
     """Raises ValueError naming the key for a commit that is not 40 hex."""
     raw = tomllib.loads(path.read_text())
@@ -402,6 +398,10 @@ def _resolve(packages: Mapping[str, Any], dependent: str, name: str) -> str | No
         if not base:
             return None
         base = base.rsplit("/node_modules/", 1)[0] if "/node_modules/" in base else ""
+
+
+def web_tarball_name(version: str) -> str:
+    return f"{WEB_PACKAGE_NAME}-{version}.tgz"
 
 
 def web_package_json(version: str, closure: Mapping[str, str]) -> dict[str, Any]:
