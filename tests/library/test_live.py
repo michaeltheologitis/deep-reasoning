@@ -61,7 +61,7 @@ def test_an_edited_decomposition_reaches_a_real_run_at_its_saved_version(tmp_pat
     with pytest.raises(LibraryValidationError) as raised:
         lib.put_decomposition(text(refused))
     assert str(raised.value) == (
-        "'first course' is not a valid deep_reasoner Decomposition:\n"
+        "'first course' is not a valid Deep Reasoning Decomposition:\n"
         "  use_when: Extra inputs are not permitted\n"
         "Use-when text is stored beside the YAML: pass use_when=... instead."
     )

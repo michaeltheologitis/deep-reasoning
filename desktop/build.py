@@ -52,6 +52,7 @@ FORK_NULL_KEYS: Final = (
     "paths.stateDir",
     "setup.command",
     "agent.lockedProfile",
+    "branding.appTitle",
 )
 SETUP_PHASES: Final = ["before-start", "after-ready"]
 BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
@@ -421,16 +422,18 @@ def patch_defaults(
     *,
     state_dir: str,
     command: list[str],
+    app_title: str,
 ) -> dict[str, Any]:
-    """§4.2.3's four keys, and the setting the Canvas fork declares null for a build
-    like this one: agent.lockedProfile = LOCKED_PROFILE (TASK-65 §4.1); every other key
-    unchanged."""
+    """§4.2.3's four keys, and the settings the Canvas fork declares null for a build
+    like this one: agent.lockedProfile = LOCKED_PROFILE and branding.appTitle =
+    app_title (TASK-65 §4.1, §13); every other key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
     patched["setup"]["phases"] = list(SETUP_PHASES)
     patched.setdefault("telemetry", {})["posthogApiKey"] = ""
     patched.setdefault("agent", {})["lockedProfile"] = LOCKED_PROFILE
+    patched.setdefault("branding", {})["appTitle"] = app_title
     return patched
 
 
@@ -620,6 +623,7 @@ def prepare(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, dict[str, Any]
         json.loads(defaults_file.read_text()),
         state_dir=STATE_DIR,
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
+        app_title=pins.app.product_name,
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
     env = machine_environment()

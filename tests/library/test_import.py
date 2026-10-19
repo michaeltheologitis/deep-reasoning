@@ -197,7 +197,7 @@ def test_a_config_deep_reasoner_cannot_load_is_refused_with_its_message(lib, tmp
     with pytest.raises(LibraryImportError) as raised:
         lib.import_config(main)
     assert str(raised.value).startswith(
-        f"{main} is not a dr config deep_reasoner can load: ValidationError: "
+        f"{main} is not a dr config Deep Reasoning can load: ValidationError: "
     )
     assert "max_iter" in str(raised.value)
 

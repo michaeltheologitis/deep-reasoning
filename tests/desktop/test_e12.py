@@ -7,17 +7,19 @@ first launch and run in order: the launch onto the home screen, with no onboardi
 page refusing a host name that is not this machine; no telemetry consent; no screen
 offering another agent or an agent profile; a question asked before the model key is
 saved, answered with where it goes; the first answered conversation, from deep_reasoner
-although another profile is active, its key kept out; a keyless LLM profile titling no
-chat with an error; nothing recording consent; D3's frame through the bridge; then the
-final part: C1's nested sub-agents, their costs shown by default and a Stop of one, C2's
-namespace picker, slash menu and header panel with Create decomposition, the Spend cap
-set in D4's Tools tab capping the next conversation, an MCP server granted there, and
-the panel past its first session; then the quit and an offline relaunch of setup. No
-test calls a real model.
+although another profile is active, its key kept out, and the window title naming the
+product after its title and alone at home; a keyless LLM profile titling no chat with an
+error; nothing recording consent; D3's frame through the bridge; then the final part:
+C1's nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
+picker, slash menu and header panel with Create decomposition, the Spend cap set in
+D4's Tools tab capping the next conversation, an MCP server granted there, and the
+panel past its first session; then the quit and an offline relaunch of setup. No test
+calls a real model.
 """
 
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -145,6 +147,7 @@ CONSENT_SHOWS_S = 5  # a lazy-loaded consent dialog would be up by then
 CONSENT_STORAGE_KEY = (
     "openhands-telemetry-consent"  # Canvas's src/services/telemetry.ts
 )
+INSTALLING = texts.installing("", "").partition(" with ")[0]
 PLAN = {
     QUESTION: [ENVIRONMENT_CELL, repl(f"FinalAnswer({ANSWER!r})")],
     TREE_QUESTION: [
@@ -410,6 +413,19 @@ def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
         assert not [text for text in stored if value in text]
 
 
+def test_the_window_title_names_deep_reasoning_at_home_and_after_a_conversations_title(
+    browser,
+):
+    """Step 5's conversation is still open, after step 6, which only reads it."""
+    product = build.load_pins(build.PINS).app.product_name
+    page = window(browser)
+    expect(page).to_have_title(
+        re.compile(rf"{re.escape(QUESTION)} \| {re.escape(product)}$")
+    )
+    page.goto(CANVAS_URL)
+    expect(page).to_have_title(product)
+
+
 def test_a_new_chats_first_message_shows_no_title_error_with_a_keyless_llm_profile(
     app, browser
 ):
@@ -635,7 +651,7 @@ def panel_tab(page: Page, tab: str) -> FrameLocator:
 
 
 def open_panel(page: Page) -> None:
-    """Show decompositions: C2's header button for D3's panel, unless it is open."""
+    """Show Decompositions: C2's header button for D3's panel, unless it is open."""
     toggle = page.get_by_test_id(
         "conversation-app-panel-toggle-dr-library-decompositions"
     )
@@ -774,4 +790,6 @@ def test_setup_relaunches_offline_from_its_cache_and_installs_nothing(app):
     took = time.monotonic() - started
     assert done.returncode == 0, done.stdout + done.stderr
     assert took < OFFLINE_S, f"{took:.1f} s"
-    assert "installing deep-reasoning" not in done.stdout
+    assert not [
+        line for line in done.stdout.splitlines() if line.startswith(INSTALLING)
+    ]

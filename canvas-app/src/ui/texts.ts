@@ -46,7 +46,7 @@ export const SET_HERE = "Set here";
 export const GRANTED_HERE = "Granted here";
 export const ATTACHED_HERE = "Attached here";
 export const FROM_PROFILE = "From the run settings";
-export const NOT_SET = "Not set: deep_reasoner's default";
+export const NOT_SET = "Not set: Deep Reasoning's default";
 export const ANY_NAMESPACE = "Any namespace";
 export const UNDEFINED_TOOL = "not a tool in the Library";
 export const DEFAULT_BADGE = "New conversations start here";
@@ -128,12 +128,12 @@ export const MCP_NOT_SEEN =
 export const MCP_DISABLED =
   "Disabled in Canvas's MCP settings: not started until you enable it there.";
 export const MCP_NOT_IN_PROFILE =
-  "Not given to the deep_reasoner agent: its profile lists other MCP servers.";
+  "Not given to Deep Reasoning: its agent profile lists other MCP servers.";
 export const MCP_GONE = "Granted, but no longer in Canvas's MCP settings.";
 export const REMOVE = "Remove";
 export const MCP_CHANGED =
   "Canvas's settings for this server changed since it was granted; an export still has the old ones.";
-export const MCP_SHIM_OLD = "Granted by an older deep-reasoning.";
+export const MCP_SHIM_OLD = "Granted by an older Deep Reasoning.";
 export const UPDATE = "Update";
 export const MCP_SETTINGS_UNKNOWN =
   "Canvas's MCP settings could not be read; showing the servers already granted.";
@@ -152,7 +152,7 @@ def make(client, params):
     return Func(word_count, description="word_count(text) -> int: number of words in text.")
 `;
 export const TOOL_HELP =
-  "A tool is a factory, make(client, params), that returns Func(value, description=…): the REPL binds value under the tool's name and the agent is told description. params are the block's other keys. Only this file is stored, so it cannot import a file beside it. Call models through client, the conversation's own, never with a key of your own. Read secrets and files when the tool is called, not when it is built: it is built at the start of every conversation and by Check, which has neither. The factory is not told where the config is (deep_reasoner passes no config_path to factory_from tools). A kg tool's saved layers record document paths against the config folder of the conversation that saved them.";
+  "A tool is a factory, make(client, params), that returns Func(value, description=…): the REPL binds value under the tool's name and the agent is told description. params are the block's other keys. Only this file is stored, so it cannot import a file beside it. Call models through client, the conversation's own, never with a key of your own. Read secrets and files when the tool is called, not when it is built: it is built at the start of every conversation and by Check, which has neither. The factory is not told where the config is (Deep Reasoning passes no config_path to factory_from tools). A kg tool's saved layers record document paths against the config folder of the conversation that saved them.";
 export const TOOL_LABELS = {
   name: "Name",
   block: "Block",

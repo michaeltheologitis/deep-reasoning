@@ -74,8 +74,8 @@ def test_each_field_shows_its_effective_value_and_source(open_ui):
     expect(page.get_by_test_id("dr-namespace-title")).to_have_text("course_advisor")
     sources = {
         "repl": "From the run settings",
-        "reasoner": "Not set: deep_reasoner's default",
-        "spawn": "Not set: deep_reasoner's default",
+        "reasoner": "Not set: Deep Reasoning's default",
+        "spawn": "Not set: Deep Reasoning's default",
     }
     for field, source in sources.items():
         expect(page.get_by_test_id(f"dr-source-{field}")).to_have_text(source)

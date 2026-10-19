@@ -37,7 +37,8 @@ PINS = build.Pins(
     ),
 )
 # The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
-# plus the null setting a fork must declare for this build: the agent lock.
+# plus the null settings a fork must declare for this build: the agent lock and the
+# app's title.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -50,6 +51,7 @@ DEFAULTS = {
         "posthogHost": "https://us.i.posthog.com",
     },
     "agent": {"lockedProfile": None},
+    "branding": {"appTitle": None},
 }
 GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -190,6 +192,7 @@ def change_defaults(canvas: Path, change) -> None:
         ("paths", "stateDir", "~/.elsewhere/agent-canvas"),
         ("setup", "command", ["sh", "-c", "true"]),
         ("agent", "lockedProfile", "someone_elses_agent"),
+        ("branding", "appTitle", "Someone Else's Canvas"),
     ],
 )
 def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, value):
@@ -199,7 +202,7 @@ def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, val
     ]
 
 
-@pytest.mark.parametrize("key", ["agent.lockedProfile"])
+@pytest.mark.parametrize("key", ["agent.lockedProfile", "branding.appTitle"])
 def test_a_canvas_fork_that_lacks_a_setting_the_build_writes_is_refused(
     canvas, repo, key
 ):
@@ -231,7 +234,12 @@ def test_a_dirty_or_unpushed_checkout_is_refused(canvas, repo):
 def test_defaults_gain_only_the_keys_the_build_writes():
     before = copy.deepcopy(DEFAULTS)
     command = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
-    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=command)
+    patched = build.patch_defaults(
+        DEFAULTS,
+        state_dir=build.STATE_DIR,
+        command=command,
+        app_title="A Product",
+    )
     assert DEFAULTS == before
     written = {
         "paths.stateDir": "~/.deep-reasoning/canvas/agent-canvas",
@@ -239,6 +247,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         "setup.phases": ["before-start", "after-ready"],
         "telemetry.posthogApiKey": "",
         "agent.lockedProfile": "deep_reasoner",
+        "branding.appTitle": "A Product",
     }
     assert set(written) == {
         *build.FORK_NULL_KEYS,
@@ -252,12 +261,49 @@ def test_defaults_gain_only_the_keys_the_build_writes():
     assert patched == expected
 
 
+def written_defaults(pins, *, canvas, repo, work, monkeypatch) -> dict:
+    """The defaults.json prepare() writes into the Canvas checkout, which the desktop
+    packages and the browser tarball both carry: its checkout and checks stand on
+    canvas, and it stops at its first npm."""
+
+    class Packaging(Exception):
+        pass
+
+    def npm(argv, **_):
+        raise Packaging(argv)
+
+    monkeypatch.setattr(build, "check_checkouts", lambda *_, **__: (canvas, []))
+    monkeypatch.setattr(build, "run", npm)
+    with pytest.raises(Packaging):
+        build.prepare(pins, repo=repo, work=work)
+    return json.loads((canvas / "config" / "defaults.json").read_text())
+
+
+def test_the_build_writes_the_product_name_as_the_title(
+    canvas, repo, tmp_path, monkeypatch
+):
+    app = dataclasses.replace(PINS.app, product_name="A Product")
+    written = written_defaults(
+        dataclasses.replace(PINS, app=app),
+        canvas=canvas,
+        repo=repo,
+        work=tmp_path,
+        monkeypatch=monkeypatch,
+    )
+    assert written["branding"]["appTitle"] == "A Product"
+
+
 def test_the_locked_profile_is_the_one_setup_creates():
     assert build.LOCKED_PROFILE == PROFILE_NAME
 
 
 def test_telemetry_is_off_in_the_built_defaults():
-    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=[])
+    patched = build.patch_defaults(
+        DEFAULTS,
+        state_dir=build.STATE_DIR,
+        command=[],
+        app_title="Deep Reasoning",
+    )
     assert patched["telemetry"] == {
         "posthogApiKey": "",
         "posthogHost": "https://us.i.posthog.com",
@@ -526,6 +572,13 @@ ELECTRON_MAIN = """async function startStack() {
 }
 """
 COMMAND = ["sh", "-c", "script", "dr-app-bootstrap", "spec", "repo", "c" * 40]
+# patch_defaults' output for PINS, never literals: a key it gains needs no edit here.
+PATCHED = build.patch_defaults(
+    DEFAULTS,
+    state_dir=build.STATE_DIR,
+    command=COMMAND,
+    app_title=PINS.app.product_name,
+)
 
 
 def test_the_runtime_closure_is_what_sirv_and_httpxy_resolve_to():
@@ -541,9 +594,7 @@ def web_checkout(tmp_path: Path) -> tuple[Path, dict]:
     """A Canvas checkout as prepare() leaves it: built, its defaults patched, and its
     node_modules installed from SIRV_LOCK."""
     checkout = tmp_path / "work" / "canvas"
-    defaults = build.patch_defaults(
-        DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND
-    )
+    defaults = copy.deepcopy(PATCHED)
     files = {
         "build/index.html": "<!doctype html>",
         "build/assets/app.js": "",
@@ -610,9 +661,7 @@ def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
         "sirv": "3.0.2",
         "httpxy": "0.5.5",
     }
-    # patch_defaults' output, never literals: a key it gains needs no edit here.
-    patched = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND)
-    assert tarball_json(tarball, "config/defaults.json") == patched
+    assert tarball_json(tarball, "config/defaults.json") == PATCHED
 
 
 @pytest.mark.parametrize(
@@ -646,7 +695,6 @@ def test_a_fork_that_changed_its_runtime_packages_or_electrons_call_is_refused(
 
 
 ENTRY = (ROOT / "desktop" / "web.mjs").read_bytes()
-PATCHED = build.patch_defaults(DEFAULTS, state_dir=build.STATE_DIR, command=COMMAND)
 GOOD_TARBALL = {
     "package/package.json": json.dumps(
         build.web_package_json("1.0.0-rc.1", SIRV_CLOSURE)

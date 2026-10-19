@@ -4,17 +4,17 @@ A constant is a sentence without fields; a function returns the sentence with it
 """
 
 NO_GIT = (
-    "✗ deep_reasoner is fetched with git, which was not found. On macOS run "
+    "✗ Deep Reasoning is installed with git, which was not found. On macOS run "
     "xcode-select --install; on Linux install git."
 )
 NO_UV = (
     "✗ uv was not found on PATH. The app bundles it: reinstall the app. In a terminal, "
     "install uv from https://docs.astral.sh/uv/."
 )
-PROFILE_CREATED = "agent profile deep_reasoner created and made the default"
-PROFILE_UPDATED = "agent profile deep_reasoner updated"
+PROFILE_CREATED = "Deep Reasoning's agent profile created and made the default"
+PROFILE_UPDATED = "Deep Reasoning's agent profile updated"
 APP_DISABLED = (
-    "App dr-library is disabled, so Show decompositions is hidden. Enable it under Apps "
+    "App dr-library is disabled, so Show Decompositions is hidden. Enable it under Apps "
     "to use it."
 )
 APP_UNSUPPORTED = (
@@ -46,7 +46,7 @@ def checks_ok(version: str, host_path: str) -> str:
 
 def installing(commit7: str, dr_commit7: str) -> str:
     return (
-        f"installing deep-reasoning {commit7} with deep_reasoner {dr_commit7} … "
+        f"installing Deep Reasoning {commit7} with deep_reasoner {dr_commit7} … "
         "(first launch, or after an update: a few minutes)"
     )
 
@@ -57,7 +57,7 @@ def installed(duration: str) -> str:
 
 def install_failed(commit7: str, step: str, code: str) -> str:
     return (
-        f"✗ Installing deep-reasoning {commit7} failed ({step} exited {code}); its "
+        f"✗ Installing Deep Reasoning {commit7} failed ({step} exited {code}); its "
         "output is above. After an update this needs the network once: connect and "
         "restart."
     )
@@ -85,9 +85,9 @@ def home_unsafe(path: str, owner: str, mode: str) -> str:
 
 def home_too_long(home: str, length: str, limit: str) -> str:
     return (
-        f"✗ {home} is too long a path for your data: deep_reasoner's Claude runs serve "
-        f"sockets under it up to {length} bytes long, and this system allows {limit}. "
-        "Choose a shorter folder with dr-app home DIR."
+        f"✗ {home} is too long a path for your data: Deep Reasoning's Claude runs "
+        f"serve sockets under it up to {length} bytes long, and this system allows "
+        f"{limit}. Choose a shorter folder with dr-app home DIR."
     )
 
 

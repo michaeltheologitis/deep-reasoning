@@ -3,7 +3,7 @@
   "name": "dr-library",
   "display_name": "Library",
   "version": "0.1.0",
-  "description": "deep_reasoner's decompositions, namespaces and tools, from Show Decompositions at the top right of a conversation.",
+  "description": "Deep Reasoning's decompositions, namespaces and tools, from Show Decompositions at the top right of a conversation.",
   "entrypoint": "dist/index.js",
   "contributes": {
     "conversation_panels": [

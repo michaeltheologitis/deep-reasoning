@@ -5,7 +5,7 @@ export GIT_TERMINAL_PROMPT=0
 export GIT_SSH_COMMAND
 case "$(uname -s)" in Darwin) PATH="$PATH:/opt/homebrew/bin:/usr/local/bin" ;; esac
 if ! git --version >/dev/null 2>&1; then
-  echo "✗ deep_reasoner is fetched with git, which was not found. On macOS run xcode-select --install; on Linux install git."
+  echo "✗ Deep Reasoning is installed with git, which was not found. On macOS run xcode-select --install; on Linux install git."
   exit 10
 fi
 uvx --from "$1" dr-app setup --repo "$2" --commit "$3"
