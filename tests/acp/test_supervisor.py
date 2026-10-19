@@ -165,6 +165,7 @@ def test_a_long_cell_keeps_the_root_sending_usage_on_the_heartbeat(
 
 
 def spinning(printer) -> bool:
+    """The spinning cell has started; the earlier prompt's cells are tool calls too."""
     return any(
         u["sessionUpdate"] == "tool_call"
         and u["rawInput"]["command"].endswith("while True: pass")

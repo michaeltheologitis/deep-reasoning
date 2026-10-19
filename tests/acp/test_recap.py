@@ -226,6 +226,7 @@ def test_the_oldest_turns_are_left_out_to_fit_and_the_rest_keep_their_numbers():
     )
     assert recap.text.endswith(f"Answer 20: {'a' * TEXT_CAP}{CUT_MARK}\n\n{RECAP_TAIL}")
 
+    # The newest turn is kept even at the largest block a turn can have, label included.
     newest = turn(1, "q" * 9_000, "answered", "a" * 9_000, namespace="math")
     assert recap_of([newest], "root").note == RecapNote(
         turns=1, left_out=0, shortened=True

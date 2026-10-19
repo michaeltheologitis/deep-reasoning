@@ -58,6 +58,11 @@ def until(predicate, deadline: float):
     return value
 
 
+def sleeping(home: Path) -> bool:
+    """Some run's log has the cell that sleeps."""
+    return any(SLEEP in log.read_text() for log in home.glob("runs/*/events.jsonl"))
+
+
 @pytest.mark.crossrepo
 def test_after_a_stop_through_the_bridge_the_next_message_is_given_the_first(
     tmp_path, home
@@ -91,8 +96,3 @@ def test_after_a_stop_through_the_bridge_the_next_message_is_given_the_first(
     assert (start.after, start.recap) == ("stopped", given)
     answers = [e.answer for e in fresh if isinstance(e, PromptEnd)]
     assert answers[-1] == FIRST
-
-
-def sleeping(home: Path) -> bool:
-    """Some run's log has the cell that sleeps."""
-    return any(SLEEP in log.read_text() for log in home.glob("runs/*/events.jsonl"))
