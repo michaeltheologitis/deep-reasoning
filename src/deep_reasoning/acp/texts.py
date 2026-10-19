@@ -99,8 +99,8 @@ def recap_from(first: int) -> str:
 
 def fresh_run_notice(after: str | None, recap: RecapNote | None = None) -> str | None:
     """The notice a run starts with: how the previous run ended, then what of the conversation
-    this one is given (§5.1). None for the first run and after build_failed; with no recap,
-    the lead sentence alone (a run logged before TASK-57)."""
+    this one is given (TASK-57 §5.1). None for the first run and after build_failed; with
+    no recap, the lead sentence alone (a run logged before TASK-57)."""
     lead = _FRESH_AFTER.get(after or "")
     if lead is None or recap is None:
         return lead

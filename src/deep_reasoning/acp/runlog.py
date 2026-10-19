@@ -35,8 +35,8 @@ class RecapNote(BaseModel):
     """TASK-57: what a fresh run was given of its conversation, for its notice."""
 
     turns: int  # the turns in the recap
-    left_out: int  # the oldest turns not in it, to fit RECAP_MAX_CHARS
-    shortened: bool  # a message or answer in it was cut at TEXT_CAP
+    left_out: int  # the oldest turns not in it, to fit its bound
+    shortened: bool  # a message or answer in it was cut short
 
 
 class RunStart(_Ev):
