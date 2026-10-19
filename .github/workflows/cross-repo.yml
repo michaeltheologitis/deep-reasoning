@@ -135,6 +135,13 @@ jobs:
               print(f"{fork}_repo=" + pins[fork]["repo"].removeprefix("https://github.com/"))
               print(f"{fork}_commit=" + commit)
           EOF
+          # The stack's uvx starts, and the two installs below, resolve PyPI as of the
+          # app's cutoff (TASK-66 §4.4); a Canvas fork before dr-4 ignores it.
+          python3 - >> "$GITHUB_ENV" <<'EOF'
+          import tomllib
+          pins = tomllib.load(open("desktop/pins.toml", "rb"))
+          print("OH_UV_EXCLUDE_NEWER=" + pins["app"]["uv_exclude_newer"])
+          EOF
       - uses: actions/checkout@v4
         with:
           repository: ${{ steps.pin.outputs.canvas_fork_repo }}
@@ -157,14 +164,14 @@ jobs:
         working-directory: canvas
       - run: npx playwright install --with-deps chromium
         working-directory: canvas
-      - name: The mock LLM's Python, at the agent-server's version
+      - name: The mock LLM's Python, at the agent-server's version and the cutoff
         working-directory: canvas
         run: |
           uv venv .mock-llm-venv
-          uv pip install -p .mock-llm-venv "openhands-sdk==$(node -p "require('./config/defaults.json').versions.agentServer")"
+          uv pip install -p .mock-llm-venv --exclude-newer "$OH_UV_EXCLUDE_NEWER" "openhands-sdk==$(node -p "require('./config/defaults.json').versions.agentServer")"
       - name: The automation backend in uvx's cache, inside the stack's 180 s start
         working-directory: canvas
-        run: uvx --from "openhands-automation==$(node -p "require('./config/defaults.json').versions.automation")" python -c "import openhands.automation.app"
+        run: uvx --exclude-newer "$OH_UV_EXCLUDE_NEWER" --from "openhands-automation==$(node -p "require('./config/defaults.json').versions.automation")" python -c "import openhands.automation.app"
       - run: npm run build:app
         working-directory: canvas
         env:

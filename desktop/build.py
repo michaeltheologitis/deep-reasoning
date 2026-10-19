@@ -26,6 +26,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Literal
 
@@ -39,6 +40,7 @@ PINS: Final = REPO / "desktop" / "pins.toml"
 BOOTSTRAP: Final = REPO / "desktop" / "bootstrap.sh"
 WRAPPER_CONFIG: Final = REPO / "desktop" / "electron-builder.dr.mjs"
 COMMIT: Final = re.compile(r"[0-9a-f]{40}")
+UTC_TIME: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 # The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
 STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
@@ -51,6 +53,7 @@ FORK_NULL_KEYS: Final = (
     "setup.command",
     "agent.lockedProfile",
     "branding.appTitle",
+    "uv.excludeNewer",
 )
 SETUP_PHASES: Final = ["before-start", "after-ready"]
 BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
@@ -95,6 +98,7 @@ class AppPin:
     version: str
     maintainer: str
     uv_version: str
+    uv_exclude_newer: str
 
 
 @dataclass(frozen=True)
@@ -224,8 +228,19 @@ def opens_too_early(declared: str | None) -> str:
     )
 
 
+def is_utc_time(value: str) -> bool:
+    if not UTC_TIME.fullmatch(value):
+        return False
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
+
+
 def load_pins(path: Path) -> Pins:
-    """Raises ValueError naming the key for a commit that is not 40 hex."""
+    """Raises ValueError naming the key for a commit that is not 40 hex, or an
+    app.uv_exclude_newer that is not UTC_TIME and an instant (TASK-66 K2)."""
     raw = tomllib.loads(path.read_text())
     for fork in ("canvas_fork", "sdk_fork"):
         if not COMMIT.fullmatch(raw[fork]["commit"]):
@@ -233,6 +248,12 @@ def load_pins(path: Path) -> Pins:
                 f"{path}: {fork}.commit must be a full 40-hex commit, "
                 f"not {raw[fork]['commit']!r}"
             )
+    cutoff = raw["app"]["uv_exclude_newer"]
+    if not is_utc_time(cutoff):
+        raise ValueError(
+            f"{path}: app.uv_exclude_newer must be a UTC time such as "
+            f"2026-10-04T00:00:00Z, not {cutoff!r}"
+        )
     return Pins(
         canvas_fork=ForkPin(**raw["canvas_fork"]),
         sdk_fork=ForkPin(**raw["sdk_fork"]),
@@ -365,10 +386,12 @@ def patch_defaults(
     state_dir: str,
     command: list[str],
     app_title: str,
+    exclude_newer: str,
 ) -> dict[str, Any]:
-    """§4.2.3's four keys, agent.lockedProfile = LOCKED_PROFILE and branding.appTitle =
-    app_title (TASK-65 §4.1, §13; the callers pass pins.app.product_name); every other
-    key unchanged."""
+    """§4.2.3's four keys, agent.lockedProfile = LOCKED_PROFILE, branding.appTitle =
+    app_title (TASK-65 §4.1, §13; the callers pass pins.app.product_name) and
+    uv.excludeNewer = exclude_newer (TASK-66 §4.1; pins.app.uv_exclude_newer); every
+    other key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
@@ -376,6 +399,7 @@ def patch_defaults(
     patched.setdefault("telemetry", {})["posthogApiKey"] = ""
     patched.setdefault("agent", {})["lockedProfile"] = LOCKED_PROFILE
     patched.setdefault("branding", {})["appTitle"] = app_title
+    patched.setdefault("uv", {})["excludeNewer"] = exclude_newer
     return patched
 
 
@@ -465,6 +489,7 @@ def build(target: Target, *, pins: Pins, repo: Path, work: Path) -> list[Path]:
         state_dir=STATE_DIR,
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
         app_title=pins.app.product_name,
+        exclude_newer=pins.app.uv_exclude_newer,
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
     # ELECTRON_ARCH unset: the fork builds for, and downloads runtimes for, this machine.

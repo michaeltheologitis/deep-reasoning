@@ -92,8 +92,15 @@ A splash shows each line setup prints. Setup:
 4. once the agent-server is up, makes Deep Reasoning's agent profile the default, and
    installs, approves and starts the Library App (`App dr-library … installed · backend ready`).
 
-A later launch with nothing changed installs nothing and needs no network. After an update,
-setup installs once more.
+A later launch with nothing changed installs nothing and needs no network, however long
+since the last one: the agent-server and the automation service beside it start from uv's
+cache, offline. Their Python packages are the versions PyPI had on a date each release
+fixes, so a new release of one of them changes nothing you run. After an update, setup and
+the agent-server install once more.
+
+If your uv installs from an index other than PyPI (`index-url` in a `uv.toml`, or
+`UV_INDEX_URL`), that index must publish when each file was uploaded, as PyPI does; without
+that, the agent-server cannot install.
 
 If setup fails, the window stays on the failure, and setup's last line says why and what to
 do. A setup still running at 15 minutes is stopped and the launch fails; the next launch
