@@ -407,9 +407,9 @@ def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
     page.goto(CANVAS_URL)
     page.get_by_test_id("command-menu-trigger").click()
     expect(page.get_by_test_id("command-menu")).to_be_visible()
-    expect(page.get_by_test_id("command-menu-item-secrets-settings")).to_be_visible()
+    expect(page.locator("#command-menu-option-secrets-settings")).to_be_visible()
     for item in ("agent-settings", "llm-settings", "condenser-settings"):
-        expect(page.get_by_test_id(f"command-menu-item-{item}")).to_have_count(0)
+        expect(page.locator(f"#command-menu-option-{item}")).to_have_count(0)
     page.keyboard.press("Escape")
     checklist = "sidebar-onboarding-checklist-item-"
     expect(page.get_by_test_id(f"{checklist}start-conversation")).to_be_attached()
