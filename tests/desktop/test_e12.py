@@ -1,22 +1,23 @@
 """E12: the installed Linux app, launched as a user would launch it, on a fake model
-(D5 §7.5).
+(D5 §7.5, TASK-65 §7.4).
 
 cross-repo.yml's desktop-e2e job builds the packages from the pins (desktop/build.py
 linux), installs the .deb and runs this module under xvfb-run. Its tests share one
-first launch and run in order: the launch; the page refusing a host name that is not
-this machine; onboarding, which asks no telemetry consent and keeps deep_reasoner; the
-conversation its hello starts; a keyless LLM profile titling no chat with an error;
-nothing recording consent; D3's frame through the bridge; then the final part: C1's
-nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
-picker, slash menu and header panel with Create decomposition, the Spend cap set in
-D4's Tools tab capping the next conversation, an MCP server granted there, and the
-panel past its first session; then the quit and an offline relaunch of setup. No test
-calls a real model.
+first launch and run in order: the launch onto the home screen, with no onboarding; the
+page refusing a host name that is not this machine; no telemetry consent; no screen
+offering another agent or an agent profile; a question asked before the model key is
+saved, answered with where it goes; the first answered conversation, from deep_reasoner
+although another profile is active, its key kept out; a keyless LLM profile titling no
+chat with an error; nothing recording consent; D3's frame through the bridge; then the
+final part: C1's nested sub-agents, their costs shown by default and a Stop of one, C2's
+namespace picker, slash menu and header panel with Create decomposition, the Spend cap
+set in D4's Tools tab capping the next conversation, an MCP server granted there, and
+the panel past its first session; then the quit and an offline relaunch of setup. No
+test calls a real model.
 """
 
 import json
 import os
-import re
 import subprocess
 import threading
 import time
@@ -35,9 +36,11 @@ from playwright.sync_api import (
 )
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
+from deep_reasoning.acp import texts as acp_texts
 from deep_reasoning.acp.catalog import slug
 from deep_reasoning.acp.runlog import Home, McpStatus, PromptStart, RunLog, RunStart
 from deep_reasoning.acp.testing.fake_model import FakeOpenAI
+from desktop import build
 from dr_app import texts
 from tests.acp.scenarios import repl, scripted, task_and_turn
 from tests.crossrepo.agent_server import conversation_events
@@ -85,6 +88,24 @@ ANSWER = secret("e12-answer-")
 E12_MODEL = "e12-model"
 NAMESPACE = "e12"
 OFFLINE_S = 5.0
+# TASK-50: the pages a locked build hides, and the ones it keeps, in the navigation's order.
+HIDDEN_SETTINGS = (
+    "settings/agents",
+    "settings/agent",
+    "settings/llm",
+    "settings/meta-llm",
+    "settings/condenser",
+)
+SHOWN_SETTINGS = [
+    "/settings/agent-context",
+    "/settings/verification",
+    "/settings/app",
+    "/settings/secrets",
+]
+# An automation of the pinned @openhands/extensions catalog whose setup needs no integration.
+AUTOMATION_TEMPLATE = "custom-automation"
+# Q1: asked before the model key is saved; dr-acp answers it before any run.
+NO_KEY_QUESTION = "What does E12 ask before its key?"
 # TASK-46: an LLM profile as Canvas's Settings → LLM saves it, with no key.
 KEYLESS_LLM_PROFILE = "gpt-5-5"
 TITLE_QUESTION = "What titles the e12 chat?"  # at most 50 characters: the whole title
@@ -233,10 +254,14 @@ def window(browser: Browser) -> Page:
     raise AssertionError("the window never loaded Canvas")
 
 
-def test_the_first_launch_installs_everything_and_opens_the_window(app, browser):
+def test_the_first_launch_installs_everything_and_opens_on_the_home_screen(
+    app, browser
+):
     app.wait_for_line("[setup after-ready] Done in", FIRST_LAUNCH_S)
     page = window(browser)
-    expect(page.get_by_test_id("first-run-onboarding-screen")).to_be_visible()
+    expect(page.get_by_test_id("chat-input")).to_be_visible()
+    expect(page.get_by_test_id("first-run-onboarding-screen")).to_have_count(0)
+    expect(page.get_by_test_id("onboarding-modal")).to_have_count(0)
     before, after = setup_lines(app, "before-start"), setup_lines(app, "after-ready")
     assert texts.home_local(str(app.data)) in before
     assert any(line.startswith("installed in ") for line in before)
@@ -247,9 +272,15 @@ def test_the_first_launch_installs_everything_and_opens_the_window(app, browser)
     assert app.request("GET", BACKEND)["state"] == "ready"
     info = app.request("GET", "/server_info")
     assert info["app_backend_ingress_url"] == INGRESS
-    profiles = app.request("GET", "/api/agent-profiles")
-    [ours] = [p for p in profiles["profiles"] if p["name"] == "deep_reasoner"]
-    assert profiles["active_agent_profile_id"] == ours["id"]
+    assert app.request("GET", "/api/agent-profiles")["active_agent_profile_id"] == (
+        locked_profile_id(app)
+    )
+
+
+def locked_profile_id(app: LaunchedApp) -> str:
+    profiles = app.request("GET", "/api/agent-profiles")["profiles"]
+    [ours] = [p for p in profiles if p["name"] == build.LOCKED_PROFILE]
+    return ours["id"]
 
 
 @pytest.mark.parametrize("port", [8000, 3001], ids=["ingress", "frontend"])
@@ -268,19 +299,68 @@ def test_the_page_refuses_a_host_name_that_is_not_this_machine(app, port):
 def test_the_first_launch_asks_for_no_telemetry_consent(app, browser):
     """Our build cannot report (decision K), so Canvas has nothing to ask (dr-3, #28).
     The consent dialog is lazy-loaded; where a build shows it, it is up within a few
-    seconds of the onboarding."""
+    seconds of the home screen."""
     page = window(browser)
-    expect(page.get_by_test_id("onboarding-step-choose-agent")).to_be_visible()
+    expect(page.get_by_test_id("chat-input")).to_be_visible()
     page.wait_for_timeout(CONSENT_SHOWS_S * 1000)
     expect(page.get_by_test_id("telemetry-consent-form")).to_have_count(0)
 
 
-def test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_it(
+def settings_navigation(page: Page) -> list[str]:
+    """The pages the settings navigation links to, in its order."""
+    return page.locator('[data-testid^="sidebar-settings-/settings/"]').evaluate_all(
+        "links => links.map(link => link.dataset.testid.slice('sidebar-settings-'.length))"
+    )
+
+
+def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
+    """TASK-50 and Q2: the "+" menu, Settings, the command menu, the checklist and an
+    automation's setup, as a locked build renders them."""
+    page = window(browser)
+    page.goto(CANVAS_URL)
+    page.get_by_test_id("chat-plus-button").click()
+    expect(page.get_by_test_id("tools-context-menu")).to_be_visible()
+    expect(page.get_by_test_id("switch-agent-profile-button")).to_have_count(0)
+    page.keyboard.press("Escape")
+    page.goto(CANVAS_URL + "settings")
+    page.wait_for_url(CANVAS_URL + "settings/app")
+    expect(page.get_by_test_id("app-settings-screen")).to_be_visible()
+    assert settings_navigation(page) == SHOWN_SETTINGS
+    expect(page.locator('a[href="/settings/llm"]')).to_have_count(0)
+    for hidden in HIDDEN_SETTINGS:
+        page.goto(CANVAS_URL + hidden)
+        page.wait_for_url(CANVAS_URL + "settings/app")
+    page.goto(CANVAS_URL)
+    page.get_by_test_id("command-menu-trigger").click()
+    expect(page.get_by_test_id("command-menu")).to_be_visible()
+    expect(page.locator("#command-menu-option-secrets-settings")).to_be_visible()
+    for item in ("agent-settings", "llm-settings", "condenser-settings"):
+        expect(page.locator(f"#command-menu-option-{item}")).to_have_count(0)
+    page.keyboard.press("Escape")
+    checklist = "sidebar-onboarding-checklist-item-"
+    expect(page.get_by_test_id(f"{checklist}start-conversation")).to_be_attached()
+    for item in ("configure-llm", "customize-agent"):
+        expect(page.get_by_test_id(f"{checklist}{item}")).to_have_count(0)
+    page.goto(CANVAS_URL + f"automations/new/{AUTOMATION_TEMPLATE}")
+    expect(page.get_by_test_id("setup-continue-button")).to_be_visible()
+    expect(page.get_by_test_id("automation-agent-profile")).to_have_count(0)
+
+
+def test_a_question_with_no_model_key_saved_says_where_the_key_goes(app, browser, fake):
+    """Q1: the reminder is dr-acp's answer to a question, before any run."""
+    page = window(browser)
+    start_conversation(page, NO_KEY_QUESTION)
+    reminder = acp_texts.missing_model_key(["OPENAI_API_KEY"])
+    expect(answer(page, reminder)).to_be_visible()
+    assert run_ids(app) == set()
+    assert fake.calls == []
+
+
+def test_every_conversation_starts_from_deep_reasoner_whatever_profile_is_active(
     app, browser, fake, tmp_path
 ):
-    """Onboarding offers the active profile setup made, first and chosen; keeping it
-    skips the model setup, writes no profile, and its hello starts the conversation
-    with it (dr-3, #29)."""
+    """TASK-50's launch: another profile is made active, here and for the rest of E12,
+    and the conversation still runs deep_reasoner."""
     point_the_library_at(
         app,
         fake.base_url,
@@ -290,18 +370,21 @@ def test_onboarding_keeps_deep_reasoner_and_starts_the_first_conversation_with_i
         namespace=NAMESPACE,
         decomposition=example(IMPORTED, "Triage e12."),
     )
-    profiles = app.request("GET", "/api/agent-profiles")
+    other = {"agent_kind": "acp", "acp_server": "custom", "acp_command": "false"}
+    app.request("POST", "/api/agent-profiles/e12-other", other)
+    [other_id] = [
+        p["id"]
+        for p in app.request("GET", "/api/agent-profiles")["profiles"]
+        if p["name"] == "e12-other"
+    ]
+    app.request("POST", f"/api/agent-profiles/{other_id}/activate")
     page = window(browser)
-    kept = page.get_by_test_id("onboarding-agent-option-active-profile")
-    expect(kept).to_contain_text("deep_reasoner")
-    expect(kept).to_have_attribute("aria-checked", "true")
-    page.get_by_test_id("onboarding-agent-next").click()
-    expect(page.get_by_test_id("onboarding-step-say-hello")).to_be_visible()
-    page.get_by_test_id("onboarding-hello-input").fill(QUESTION)
-    page.get_by_test_id("onboarding-hello-input").press("Enter")
-    page.wait_for_url(re.compile(r".*/conversations/[^/?]+$"))
-    expect(page.get_by_test_id("onboarding-modal")).to_have_count(0)
-    assert app.request("GET", "/api/agent-profiles") == profiles
+    conversation = start_conversation(page, QUESTION)
+    expect(answer(page, ANSWER)).to_be_visible()
+    launched = app.request("GET", f"/api/conversations/{conversation}")
+    assert launched["launched_agent_profile"]["agent_profile_id"] == (
+        locked_profile_id(app)
+    )
 
 
 def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
@@ -615,7 +698,7 @@ def test_the_spend_cap_set_in_the_tools_tab_caps_the_next_conversation(app, brow
     expect(tools.get_by_test_id("dr-spend-cap-status")).to_have_text(
         spend_cap_saved(CAP)
     )
-    profile = "/api/agent-profiles/deep_reasoner"
+    profile = f"/api/agent-profiles/{build.LOCKED_PROFILE}"
     args = app.request("GET", profile)["profile"]["acp_args"]
     assert args[:2] == ["--home", str(app.data)]
     assert args[-2:] == ["--spend-cap-usd", CAP]
