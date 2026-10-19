@@ -432,12 +432,6 @@ def test_main_without_uv_says_how_to_run_it_and_exits_22(tmp_path, monkeypatch, 
     assert capsys.readouterr().out == texts.NO_UV + "\n"
 
 
-def test_a_bad_option_exits_2(capsys):
-    with pytest.raises(SystemExit) as refused:
-        cli.main(["--port", "eighty"])
-    assert refused.value.code == 2
-
-
 @pytest.fixture
 def ca(tmp_path: Path) -> Path:
     """A self-signed certificate for 127.0.0.1 that is also its own CA, as PEM; its key

@@ -29,7 +29,6 @@ REPOSITORY: Final = "https://github.com/michaeltheologitis/deep-reasoning"
 SUBDIRECTORY: Final = "packages/dr-web"
 COMMAND: Final = "deep-reasoning"
 EXIT_NEEDS: Final = 22  # web.mjs's EXIT.needs
-EXIT_FETCH: Final = 23
 COMMIT: Final = re.compile(r"[0-9a-f]{40}")
 
 
