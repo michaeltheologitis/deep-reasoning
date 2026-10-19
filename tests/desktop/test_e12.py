@@ -359,8 +359,9 @@ def settings_navigation(page: Page) -> list[str]:
 
 
 def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
-    """TASK-50 and Q2: the "+" menu, Settings, the command menu, the checklist and an
-    automation's setup, as a locked build renders them."""
+    """TASK-50 and Q2: the "+" menu, Settings, the command menu, the checklist, an
+    automation's setup from the catalog and the setup page (TASK-67: upstream's, where
+    an automation is also edited), as a locked build renders them."""
     page = window(browser)
     page.goto(CANVAS_URL)
     page.get_by_test_id("chat-plus-button").click()
@@ -389,6 +390,10 @@ def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
     page.goto(CANVAS_URL + f"automations/new/{AUTOMATION_TEMPLATE}")
     expect(page.get_by_test_id("setup-continue-button")).to_be_visible()
     expect(page.get_by_test_id("automation-agent-profile")).to_have_count(0)
+    page.goto(CANVAS_URL + "automations/setup")
+    expect(page.get_by_test_id("automation-setup-prompt")).to_be_visible()
+    for pill in ("automation-setup-agent-profile", "automation-setup-model"):
+        expect(page.get_by_test_id(pill)).to_have_count(0)
 
 
 def test_a_question_with_no_model_key_saved_says_where_the_key_goes(app, browser, fake):
