@@ -14,7 +14,7 @@ NO_UV = (
 PROFILE_CREATED = "Deep Reasoning's agent profile created and made the default"
 PROFILE_UPDATED = "Deep Reasoning's agent profile updated"
 APP_DISABLED = (
-    "App dr-library is disabled, so Show decompositions is hidden. Enable it under Apps "
+    "App dr-library is disabled, so Show Decompositions is hidden. Enable it under Apps "
     "to use it."
 )
 APP_UNSUPPORTED = (

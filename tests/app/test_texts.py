@@ -10,6 +10,10 @@ def test_sentences_without_fields_are_the_designs_verbatim():
         "Deep Reasoning's agent profile created and made the default"
     )
     assert texts.PROFILE_UPDATED == "Deep Reasoning's agent profile updated"
+    assert texts.APP_DISABLED == (
+        "App dr-library is disabled, so Show Decompositions is hidden. Enable it under "
+        "Apps to use it."
+    )
 
 
 def test_sentences_with_fields_are_the_designs_verbatim():
