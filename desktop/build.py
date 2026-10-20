@@ -46,17 +46,25 @@ UTC_TIME: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 # The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
 STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
+# Where the agent-server reads OpenHands/extensions' skills (EXTENSIONS_PATH): an empty
+# directory, so no conversation's start clones or fetches that repository, whose skills
+# the locked profile's native skill sourcing drops. Beside STATE_DIR, in the
+# agent-server's persistence root where the clone would go: the app's state, not
+# ~/.openhands.
+NO_PUBLIC_SKILLS: Final = "~/.deep-reasoning/canvas/no-public-skills"
 # dr_app.profile.PROFILE_NAME, mirrored: this file imports nothing of deep-reasoning's.
 LOCKED_PROFILE: Final = "deep_reasoner"
 # The defaults.json keys this build writes that the Canvas fork must declare, as null
-# (checks 5, 5b and 5c).
+# (checks 5, 5b and 5c), and the first Canvas fork tag that declares them all.
 FORK_NULL_KEYS: Final = (
     "paths.stateDir",
     "setup.command",
     "agent.lockedProfile",
     "branding.appTitle",
     "uv.excludeNewer",
+    "skills.extensionsPath",
 )
+FORK_NULL_KEYS_SINCE: Final = "dr-5"
 SETUP_PHASES: Final = ["before-start", "after-ready"]
 BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
 TYPESCRIPT_CLIENT: Final = "@openhands/typescript-client"
@@ -102,8 +110,9 @@ WEB_TREES: Final = ("build", "config", "scripts", "tools")
 WEB_SCRIPT_SUFFIXES: Final = (".mjs", ".cjs")
 WEB_LICENSE: Final = "LICENSE"  # the fork's MIT licence, with the fork's files
 # The packages the launcher's scripts import, whose closure the app's afterPack restores
-# (the fork's RUNTIME_PACKAGES), mirrored and checked.
-WEB_RUNTIME_PACKAGES: Final = ("sirv", "httpxy")
+# (the fork's RUNTIME_PACKAGES), mirrored and checked. ws is Electron's alone (its MARS
+# tunnel client); the browser bundles it too, so the two lists stay one.
+WEB_RUNTIME_PACKAGES: Final = ("sirv", "httpxy", "ws")
 
 
 @dataclass(frozen=True)
@@ -193,7 +202,7 @@ def fork_sets_ours(canvas_tag: str, key: str, value: Any) -> str:
 def fork_lacks_setting(canvas_tag: str, key: str) -> str:
     return (
         f"✗ Canvas fork {canvas_tag}'s config/defaults.json has no {key}, so this build "
-        "cannot set it: pin dr-4 or later."
+        f"cannot set it: pin {FORK_NULL_KEYS_SINCE} or later."
     )
 
 
@@ -258,7 +267,8 @@ def opens_too_early(declared: str | None) -> str:
 def runtime_packages_changed(found: Sequence[str]) -> str:
     return (
         "✗ The Canvas fork's electron-builder.config.mjs strips the app's node_modules to "
-        f"{_and(found)}, but desktop/build.py bundles sirv and httpxy for the browser: "
+        f"{_and(found)}, but desktop/build.py bundles {_and(WEB_RUNTIME_PACKAGES)} for the "
+        "browser: "
         "bundle the same."
     )
 
@@ -272,7 +282,7 @@ def electron_call_changed(missing: Sequence[str]) -> str:
 
 def web_tarball_wrong(name: str, why: str) -> str:
     """why: carries deep_reasoner: <paths>, has a member outside package/: <path>,
-    bundles <paths> beyond sirv's and httpxy's closure, carries other defaults than this
+    bundles <paths> beyond the runtime packages' closure, carries other defaults than this
     build wrote, carries another bin/deep-reasoning.mjs than desktop/web.mjs, carries
     another package.json than the build writes."""
     return f"✗ {name} {why}."
@@ -445,11 +455,12 @@ def patch_defaults(
     command: list[str],
     app_title: str,
     exclude_newer: str,
+    extensions_path: str,
 ) -> dict[str, Any]:
     """§4.2.3's four keys, and the settings the Canvas fork declares null for a build
-    like this one: agent.lockedProfile = LOCKED_PROFILE, branding.appTitle = app_title
-    and uv.excludeNewer = exclude_newer (TASK-65 §4.1, §13; TASK-66 §4.1); every other
-    key unchanged."""
+    like this one: agent.lockedProfile = LOCKED_PROFILE, branding.appTitle = app_title,
+    uv.excludeNewer = exclude_newer (TASK-65 §4.1, §13; TASK-66 §4.1) and
+    skills.extensionsPath = extensions_path (TASK-67); every other key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
@@ -458,6 +469,7 @@ def patch_defaults(
     patched.setdefault("agent", {})["lockedProfile"] = LOCKED_PROFILE
     patched.setdefault("branding", {})["appTitle"] = app_title
     patched.setdefault("uv", {})["excludeNewer"] = exclude_newer
+    patched.setdefault("skills", {})["extensionsPath"] = extensions_path
     return patched
 
 
@@ -525,7 +537,7 @@ def web_package_json(version: str, closure: Mapping[str, str]) -> dict[str, Any]
 
 
 def check_web_contract(canvas: Path) -> list[str]:
-    """W13: the fork's app still bundles only sirv and httpxy, and Electron still calls
+    """W13: the fork's app still bundles only WEB_RUNTIME_PACKAGES, and Electron still calls
     main() with each option web.mjs copies; the problems as sentences."""
     problems: list[str] = []
     config = (canvas / "electron-builder.config.mjs").read_text()
@@ -649,6 +661,7 @@ def prepare(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, dict[str, Any]
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
         app_title=pins.app.product_name,
         exclude_newer=pins.app.uv_exclude_newer,
+        extensions_path=NO_PUBLIC_SKILLS,
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
     env = machine_environment()
@@ -875,7 +888,7 @@ def verify_web(
             raise wrong(f"carries {FORBIDDEN_IN_PAYLOAD}: {leaked[:3]}")
         beyond = sorted(_bundled(members) - set(closure))
         if beyond:
-            raise wrong(f"bundles {beyond} beyond sirv's and httpxy's closure")
+            raise wrong(f"bundles {beyond} beyond the runtime packages' closure")
         if _json(read("config/defaults.json")) != defaults:
             raise wrong("carries other defaults than this build wrote")
         if read("bin/deep-reasoning.mjs") != entry:

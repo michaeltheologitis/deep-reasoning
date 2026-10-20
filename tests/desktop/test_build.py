@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tarfile
 import tomllib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -24,7 +24,7 @@ SDK_REPO = "https://github.com/michaeltheologitis/software-agent-sdk"
 CANVAS_COMMIT = "c" * 40
 SDK_COMMIT = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
 CLIENT = f"{SDK_REPO}/releases/download/dr-2/openhands-typescript-client-1.50.1.tgz"
-CUTOFF = "2026-10-04T00:00:00Z"
+CUTOFF = "2026-10-20T00:00:00Z"
 PINS = build.Pins(
     canvas_fork=build.ForkPin(CANVAS_REPO, CANVAS_COMMIT, "dr-1"),
     sdk_fork=build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2"),
@@ -40,7 +40,7 @@ PINS = build.Pins(
 )
 # The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
 # plus the null settings a fork must declare for this build: the agent lock, the app's
-# title and the PyPI cutoff.
+# title, the PyPI cutoff and where the public skills are read.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -55,6 +55,7 @@ DEFAULTS = {
     "agent": {"lockedProfile": None},
     "branding": {"appTitle": None},
     "uv": {"excludeNewer": None},
+    "skills": {"extensionsPath": None},
 }
 GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -222,6 +223,7 @@ def change_defaults(canvas: Path, change) -> None:
         ("agent", "lockedProfile", "someone_elses_agent"),
         ("branding", "appTitle", "Someone Else's Canvas"),
         ("uv", "excludeNewer", "2026-01-01T00:00:00Z"),
+        ("skills", "extensionsPath", "~/.openhands/extensions"),
     ],
 )
 def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, value):
@@ -232,18 +234,25 @@ def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, val
 
 
 @pytest.mark.parametrize(
-    "key", ["agent.lockedProfile", "branding.appTitle", "uv.excludeNewer"]
+    "key",
+    [
+        "agent.lockedProfile",
+        "branding.appTitle",
+        "uv.excludeNewer",
+        "skills.extensionsPath",
+    ],
 )
 def test_a_canvas_fork_that_lacks_a_setting_the_build_writes_is_refused(
     canvas, repo, key
 ):
-    """As Canvas dr-3 lacks them: the whole block, which it would ignore if written."""
+    """As Canvas dr-3 lacks the first three and dr-4 the last: the whole block, which
+    it would ignore if written."""
     block = key.split(".")[0]
     change_defaults(canvas, lambda defaults: defaults.pop(block))
     assert problems(canvas, repo) == [
         (
             f"✗ Canvas fork dr-1's config/defaults.json has no {key}, so this build "
-            "cannot set it: pin dr-4 or later."
+            "cannot set it: pin dr-5 or later."
         )
     ]
 
@@ -271,6 +280,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         command=command,
         app_title="A Product",
         exclude_newer="2026-01-02T03:04:05Z",
+        extensions_path="~/.a-product/no-public-skills",
     )
     assert DEFAULTS == before
     written = {
@@ -281,6 +291,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         "agent.lockedProfile": "deep_reasoner",
         "branding.appTitle": "A Product",
         "uv.excludeNewer": "2026-01-02T03:04:05Z",
+        "skills.extensionsPath": "~/.a-product/no-public-skills",
     }
     assert set(written) == {
         *build.FORK_NULL_KEYS,
@@ -329,6 +340,19 @@ def test_the_build_writes_the_product_name_as_the_title_and_the_pinned_cutoff(
     assert written["uv"]["excludeNewer"] == "2026-01-02T03:04:05Z"
 
 
+def test_the_build_points_the_public_skills_at_an_empty_directory_beside_the_state(
+    canvas, repo, tmp_path, monkeypatch
+):
+    """The agent-server's persistence root is the state directory's parent, where its
+    clone of OpenHands/extensions would go (TASK-67)."""
+    written = written_defaults(
+        PINS, canvas=canvas, repo=repo, work=tmp_path, monkeypatch=monkeypatch
+    )
+    skills = PurePosixPath(written["skills"]["extensionsPath"])
+    assert skills == PurePosixPath("~/.deep-reasoning/canvas/no-public-skills")
+    assert skills.parent == PurePosixPath(written["paths"]["stateDir"]).parent
+
+
 def test_the_locked_profile_is_the_one_setup_creates():
     assert build.LOCKED_PROFILE == PROFILE_NAME
 
@@ -340,6 +364,7 @@ def test_telemetry_is_off_in_the_built_defaults():
         command=[],
         app_title="Deep Reasoning",
         exclude_newer=CUTOFF,
+        extensions_path=build.NO_PUBLIC_SKILLS,
     )
     assert patched["telemetry"] == {
         "posthogApiKey": "",
@@ -364,23 +389,23 @@ def test_the_setup_command_embeds_the_bootstrap_and_the_commit():
     ]
 
 
-DR_3 = "b82dffbaf0e3a58e4248878f01fe0a01ed011876"
+SDK_DR_4 = "9d0becb2c4512bdd60bf00fde976326a0106b407"
 
 
-def test_the_committed_sdk_pin_is_b82dffb_tagged_dr_3():
+def test_the_committed_sdk_pin_is_9d0becb_tagged_dr_4():
     raw = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())
-    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": DR_3, "tag": "dr-3"}
+    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": SDK_DR_4, "tag": "dr-4"}
     assert raw["app"]["uv_version"] == "0.12.23"
 
 
 def test_the_committed_pins_load():
     pins = build.load_pins(ROOT / "desktop" / "pins.toml")
     assert pins.canvas_fork == build.ForkPin(
-        CANVAS_REPO, "138d41fd3b540fe00fe88572db6e3968e19a820b", "dr-4"
+        CANVAS_REPO, "b7817c2198f096e217d81c5424eed652ba89bfb5", "dr-5"
     )
-    assert pins.sdk_fork == build.ForkPin(SDK_REPO, DR_3, "dr-3")
+    assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_DR_4, "dr-4")
     assert "@" in pins.app.maintainer
-    assert pins.app.uv_exclude_newer == "2026-10-04T00:00:00Z"
+    assert pins.app.uv_exclude_newer == "2026-10-20T00:00:00Z"
 
 
 @pytest.mark.skipif(
@@ -566,7 +591,14 @@ def test_a_release_never_builds_from_replaced_pins():
 SIRV_LOCK = {
     "lockfileVersion": 3,
     "packages": {
-        "": {"dependencies": {"sirv": "3.0.2", "httpxy": "0.5.5", "vite": "6.0.0"}},
+        "": {
+            "dependencies": {
+                "sirv": "3.0.2",
+                "httpxy": "0.5.5",
+                "ws": "8.21.0",
+                "vite": "6.0.0",
+            }
+        },
         "node_modules/sirv": {
             "version": "3.0.2",
             "dependencies": {
@@ -584,6 +616,11 @@ SIRV_LOCK = {
             "version": "0.5.5",
             "optionalDependencies": {"mrmime": "*"},
         },
+        # Its peers are optional, and npm's afterPack follows no peers either.
+        "node_modules/ws": {
+            "version": "8.21.0",
+            "peerDependencies": {"bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2"},
+        },
         "node_modules/vite": {"version": "6.0.0", "dependencies": {"totalist": "*"}},
     },
 }
@@ -593,9 +630,10 @@ SIRV_CLOSURE = {
     "node_modules/mrmime": "2.0.1",
     "node_modules/sirv/node_modules/totalist": "3.0.1",
     "node_modules/httpxy": "0.5.5",
+    "node_modules/ws": "8.21.0",
 }
-# The fork's two files W13 reads, as far as it reads them (dr-3's lines).
-BUILDER_CONFIG = 'const RUNTIME_PACKAGES = ["sirv", "httpxy"];\n'
+# The fork's two files W13 reads, as far as it reads them (dr-5's lines).
+BUILDER_CONFIG = 'const RUNTIME_PACKAGES = ["sirv", "httpxy", "ws"];\n'
 ELECTRON_MAIN = """async function startStack() {
   const result = await main({
     bannerTitle: "OpenHands Agent Canvas",
@@ -617,10 +655,11 @@ PATCHED = build.patch_defaults(
     command=COMMAND,
     app_title=PINS.app.product_name,
     exclude_newer=PINS.app.uv_exclude_newer,
+    extensions_path=build.NO_PUBLIC_SKILLS,
 )
 
 
-def test_the_runtime_closure_is_what_sirv_and_httpxy_resolve_to():
+def test_the_runtime_closure_is_what_the_runtime_packages_resolve_to():
     assert build.runtime_closure(SIRV_LOCK, build.WEB_RUNTIME_PACKAGES) == SIRV_CLOSURE
     broken = copy.deepcopy(SIRV_LOCK)
     del broken["packages"]["node_modules/mrmime"]
@@ -699,6 +738,7 @@ def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
     assert build.web_package_json("1.0.0-rc.1", SIRV_CLOSURE)["dependencies"] == {
         "sirv": "3.0.2",
         "httpxy": "0.5.5",
+        "ws": "8.21.0",
     }
     assert tarball_json(tarball, "config/defaults.json") == PATCHED
 
@@ -708,8 +748,8 @@ def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
     [
         (
             "electron-builder.config.mjs",
-            'const RUNTIME_PACKAGES = ["sirv", "httpxy", "winston"];\n',
-            build.runtime_packages_changed(["sirv", "httpxy", "winston"]),
+            'const RUNTIME_PACKAGES = ["sirv", "httpxy", "ws", "winston"];\n',
+            build.runtime_packages_changed(["sirv", "httpxy", "ws", "winston"]),
         ),
         (
             "electron/main.mjs",
@@ -754,7 +794,7 @@ GOOD_TARBALL = {
         ({"elsewhere/x.js": b""}, "has a member outside package/: elsewhere/x.js"),
         (
             {"package/node_modules/vite/package.json": b"{}"},
-            "bundles ['node_modules/vite'] beyond sirv's and httpxy's closure",
+            "bundles ['node_modules/vite'] beyond the runtime packages' closure",
         ),
         (
             {"package/config/defaults.json": json.dumps(DEFAULTS).encode()},
