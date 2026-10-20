@@ -6,17 +6,18 @@ linux), installs the .deb and runs this module under xvfb-run. Its tests run in 
 and share one first launch, all but the last two: the launch onto the home screen, with
 no onboarding, and the automation backend answering; the page refusing a host name that
 is not this machine; no telemetry consent; no screen offering another agent or an agent
-profile; a question asked before the model key is saved, answered with where it goes;
-the first answered conversation, from deep_reasoner although another profile is active,
-its key kept out, no public skills cloned for it, and the window title naming the
-product after its title and alone at home; a keyless LLM profile titling no chat with an
-error; nothing recording consent; D3's frame through the bridge; then the final part:
-C1's nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
-picker, slash menu and header panel with Create decomposition, the Spend cap set in D4's
-Tools tab capping the next conversation, an MCP server granted there, and the panel past
-its first session; then the quit and an offline relaunch of setup. Last, a second first
-launch, from a HOME whose uv index answers expire a second after their fetch, and its
-offline relaunch. No test calls a real model.
+profile; a preset automation refused; a question asked before the model key is saved,
+answered with where it goes; the first answered conversation, from deep_reasoner
+although another profile is active, its key kept out, no public skills cloned for it,
+and the window title naming the product after its title and alone at home; a keyless
+LLM profile titling no chat with an error; nothing recording consent; D3's frame
+through the bridge; then the final part: C1's nested sub-agents, their costs shown by
+default and a Stop of one, C2's namespace picker, slash menu and header panel with
+Create decomposition, the Spend cap set in D4's Tools tab capping the next
+conversation, an MCP server granted there, and the panel past its first session; then
+the quit and an offline relaunch of setup. Last, a second first launch, from a HOME
+whose uv index answers expire a second after their fetch, and its offline relaunch. No
+test calls a real model.
 """
 
 import json
@@ -29,6 +30,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from playwright.sync_api import (
@@ -36,6 +38,7 @@ from playwright.sync_api import (
     FrameLocator,
     Locator,
     Page,
+    Request,
     expect,
 )
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -115,6 +118,15 @@ SHOWN_SETTINGS = [
 ]
 # An automation of the pinned @openhands/extensions catalog whose setup needs no integration.
 AUTOMATION_TEMPLATE = "custom-automation"
+# APL-007: a preset automation runs a default OpenHands agent, never the locked one, so a
+# locked build refuses it with Canvas's AGENT_LOCK$PRESET_AUTOMATION_REFUSED (its
+# src/i18n/translation.json, en), and sends none of the automation backend's creates.
+PRESET_REFUSED = "This app's agent can't run preset automations."
+AUTOMATION_CREATES = {
+    "/api/automation/v1",
+    "/api/automation/v1/preset/prompt",
+    "/api/automation/v1/preset/plugin",
+}
 # Q1: asked before the model key is saved; dr-acp answers it before any run.
 NO_KEY_QUESTION = "What does E12 ask before its key?"
 # TASK-46: an LLM profile as Canvas's Settings → LLM saves it, with no key.
@@ -396,6 +408,29 @@ def test_no_screen_offers_another_agent_or_edits_an_agent_profile(app, browser):
     expect(page.get_by_test_id("automation-setup-prompt")).to_be_visible()
     for pill in ("automation-setup-agent-profile", "automation-setup-model"):
         expect(page.get_by_test_id(pill)).to_have_count(0)
+
+
+def test_creating_a_preset_automation_is_refused_and_sends_nothing(app, browser):
+    """TASK-67: the setup page's Create, for the prompt preset it starts on."""
+    page = window(browser)
+    page.goto(CANVAS_URL + "automations/setup")
+    expect(page.get_by_test_id("automation-setup-prompt")).to_be_visible()
+    creates: list[str] = []
+
+    def record(request: Request) -> None:
+        if (
+            request.method == "POST"
+            and urlparse(request.url).path in AUTOMATION_CREATES
+        ):
+            creates.append(request.url)
+
+    page.on("request", record)
+    try:
+        page.get_by_test_id("automation-setup-create").click()
+        expect(page.get_by_text(PRESET_REFUSED)).to_be_visible()
+    finally:
+        page.remove_listener("request", record)
+    assert creates == []
 
 
 def test_a_question_with_no_model_key_saved_says_where_the_key_goes(app, browser, fake):
