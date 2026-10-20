@@ -8,15 +8,15 @@ no onboarding, and the automation backend answering; the page refusing a host na
 is not this machine; no telemetry consent; no screen offering another agent or an agent
 profile; a question asked before the model key is saved, answered with where it goes;
 the first answered conversation, from deep_reasoner although another profile is active,
-its key kept out, and the window title naming the product after its title and alone at
-home; a keyless LLM profile titling no chat with an error; nothing recording consent;
-D3's frame through the bridge; then the final part: C1's nested sub-agents, their costs
-shown by default and a Stop of one, C2's namespace picker, slash menu and header panel
-with Create decomposition, the Spend cap set in D4's Tools tab capping the next
-conversation, an MCP server granted there, and the panel past its first session; then
-the quit and an offline relaunch of setup. Last, a second first launch, from a HOME
-whose uv index answers expire a second after their fetch, and its offline relaunch. No
-test calls a real model.
+its key kept out, no public skills cloned for it, and the window title naming the
+product after its title and alone at home; a keyless LLM profile titling no chat with an
+error; nothing recording consent; D3's frame through the bridge; then the final part:
+C1's nested sub-agents, their costs shown by default and a Stop of one, C2's namespace
+picker, slash menu and header panel with Create decomposition, the Spend cap set in D4's
+Tools tab capping the next conversation, an MCP server granted there, and the panel past
+its first session; then the quit and an offline relaunch of setup. Last, a second first
+launch, from a HOME whose uv index answers expire a second after their fetch, and its
+offline relaunch. No test calls a real model.
 """
 
 import json
@@ -53,11 +53,13 @@ from tests.desktop.app import (
     CANVAS_URL,
     FIRST_LAUNCH_S,
     NETWORK_CUT,
+    PUBLIC_SKILLS_CLONE,
     QUIT_S,
     SESSION,
     STARTING_OFFLINE,
     STARTUP_FAILED,
     LaunchedApp,
+    agent_server_environ,
     answer,
     eventually,
     example,
@@ -460,10 +462,21 @@ def test_a_conversation_in_the_window_runs_dr_acp_and_its_key_stays_out(
         assert not [text for text in stored if value in text]
 
 
+def test_conversations_clone_no_public_skills_and_read_the_built_empty_directory(app):
+    """TASK-67: the agent-server reads OpenHands/extensions' skills from the directory
+    the build names, which stays empty, so no conversation's start has cloned that
+    repository into the app's state."""
+    built = installed_defaults()["skills"]["extensionsPath"]
+    directory = app.home / built.removeprefix("~/")
+    assert agent_server_environ(app)["EXTENSIONS_PATH"] == str(directory)
+    assert list(directory.iterdir()) == []
+    assert not (app.data / PUBLIC_SKILLS_CLONE).exists()
+
+
 def test_the_window_title_names_deep_reasoning_at_home_and_after_a_conversations_title(
     browser,
 ):
-    """Step 5's conversation is still open, after step 6, which only reads it."""
+    """The first answered conversation is still open: the steps since only read it."""
     product = build.load_pins(build.PINS).app.product_name
     page = window(browser)
     expect(page).to_have_title(

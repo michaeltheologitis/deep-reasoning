@@ -50,6 +50,9 @@ STARTUP_FAILED = "[desktop] Startup failed"
 # cache, offline, and its records, one per service started online that then served.
 STARTING_OFFLINE: Final = "Starting from uv's cache, offline"
 UVX_STARTS: Final = "uvx-starts"
+# The agent-server's clone of OpenHands/extensions under ~/.deep-reasoning, in its
+# persistence root (the SDK's get_skills_cache_dir()), which EXTENSIONS_PATH replaces.
+PUBLIC_SKILLS_CLONE: Final = Path("canvas") / "cache" / "skills" / "public-skills"
 # The browser command's own last line when it fails (the launcher echoes setup's script,
 # which holds the same mark mid-line).
 WEB_FAILED = re.compile(r"^✗ ")
@@ -326,6 +329,13 @@ def environ(pid: int) -> dict[str, str]:
     with suppress(psutil.Error):
         return psutil.Process(pid).environ()
     return {}
+
+
+def agent_server_environ(app: LaunchedApp) -> dict[str, str]:
+    """The environment of the process the app or the command started that listens on
+    the agent-server's port."""
+    pids = [app.process.pid, *descendants(app.process.pid)]
+    return environ(listening_sockets(pids)[f"127.0.0.1:{AGENT_SERVER_PORT}"])
 
 
 def cmdline(pid: int) -> str:

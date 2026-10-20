@@ -4,13 +4,13 @@ build.py web made, and driven in Playwright's own browsers on a fake model (TASK
 Run it after uv run desktop/build.py web, as uv run pytest -m web
 tests/desktop/test_e13.py; without the tarball it skips. Its tests share one first start
 and run in order: the setup it ran; the stack's processes, environment and sockets; the
-page refusing a host name that is not this machine; a conversation; the Library panel
-through the bridge in Chromium, Firefox and WebKit; a second start refused; Ctrl+C; then
-a restart with the network cut. Last, from a second first start whose uv index answers
-expire a second after each fetch, the same restart, which starts both services from uv's
-cache at the tarball's PyPI cutoff (TASK-66). The terminal it starts from holds junk
-that a user's might: the command must keep all of it from the stack. No test calls a
-real model.
+page refusing a host name that is not this machine; a conversation, and no public skills
+cloned for it; the Library panel through the bridge in Chromium, Firefox and WebKit; a
+second start refused; Ctrl+C; then a restart with the network cut. Last, from a second
+first start whose uv index answers expire a second after each fetch, the same restart,
+which starts both services from uv's cache at the tarball's PyPI cutoff (TASK-66). The
+terminal it starts from holds junk that a user's might: the command must keep all of it
+from the stack. No test calls a real model.
 """
 
 import json
@@ -41,8 +41,10 @@ from tests.desktop.app import (
     FIRST_LAUNCH_S,
     LIBRARY_APP_VERSION,
     NETWORK_CUT,
+    PUBLIC_SKILLS_CLONE,
     STARTING_OFFLINE,
     LaunchedApp,
+    agent_server_environ,
     answer,
     cmdline,
     descendants,
@@ -227,6 +229,12 @@ def stack(web: LaunchedApp) -> list[int]:
     return descendants(launcher)
 
 
+def tarball_defaults(web: LaunchedApp) -> dict:
+    """The defaults.json of the tarball the command unpacked under the HOME."""
+    [tree] = (web.data / cache.WEB_DIRNAME).glob("tree-*")
+    return json.loads((tree / "package" / "config" / "defaults.json").read_text())
+
+
 def test_the_first_start_sets_up_as_the_app_does(first):
     web = first.web
     before, after = setup_lines(web, "before-start"), setup_lines(web, "after-ready")
@@ -335,6 +343,17 @@ def test_a_conversation_answers_and_the_key_stays_out(first, fake, chromium, tmp
         assert value not in environment
         assert not [text for text in stored if value in text]
     context.close()
+
+
+def test_conversations_clone_no_public_skills_and_read_the_built_empty_directory(first):
+    """TASK-67, as in the app: the tarball's empty directory, and no clone of
+    OpenHands/extensions in the state."""
+    web = first.web
+    built = tarball_defaults(web)["skills"]["extensionsPath"]
+    directory = web.home / built.removeprefix("~/")
+    assert agent_server_environ(web)["EXTENSIONS_PATH"] == str(directory)
+    assert list(directory.iterdir()) == []
+    assert not (web.data / PUBLIC_SKILLS_CLONE).exists()
 
 
 WEBKIT_REFUSED = pytest.mark.xfail(
@@ -468,8 +487,7 @@ def test_with_index_answers_that_expire_uv_goes_to_the_network_and_offline_uv_st
     """The negative control for claim 9: where uv's index answers expire a second after
     each fetch, uvx of the automation backend the first start there installed needs the
     network, even at the PyPI cutoff, and --offline still runs it from the cache."""
-    [tree] = (expiring.web.data / cache.WEB_DIRNAME).glob("tree-*")
-    defaults = json.loads((tree / "package" / "config" / "defaults.json").read_text())
+    defaults = tarball_defaults(expiring.web)
     package, version = (
         defaults["packages"]["automation"],
         defaults["versions"]["automation"],
