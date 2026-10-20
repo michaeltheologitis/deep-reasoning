@@ -591,7 +591,14 @@ def test_a_release_never_builds_from_replaced_pins():
 SIRV_LOCK = {
     "lockfileVersion": 3,
     "packages": {
-        "": {"dependencies": {"sirv": "3.0.2", "httpxy": "0.5.5", "vite": "6.0.0"}},
+        "": {
+            "dependencies": {
+                "sirv": "3.0.2",
+                "httpxy": "0.5.5",
+                "ws": "8.21.0",
+                "vite": "6.0.0",
+            }
+        },
         "node_modules/sirv": {
             "version": "3.0.2",
             "dependencies": {
@@ -609,6 +616,11 @@ SIRV_LOCK = {
             "version": "0.5.5",
             "optionalDependencies": {"mrmime": "*"},
         },
+        # Its peers are optional, and npm's afterPack follows no peers either.
+        "node_modules/ws": {
+            "version": "8.21.0",
+            "peerDependencies": {"bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2"},
+        },
         "node_modules/vite": {"version": "6.0.0", "dependencies": {"totalist": "*"}},
     },
 }
@@ -618,9 +630,10 @@ SIRV_CLOSURE = {
     "node_modules/mrmime": "2.0.1",
     "node_modules/sirv/node_modules/totalist": "3.0.1",
     "node_modules/httpxy": "0.5.5",
+    "node_modules/ws": "8.21.0",
 }
-# The fork's two files W13 reads, as far as it reads them (dr-3's lines).
-BUILDER_CONFIG = 'const RUNTIME_PACKAGES = ["sirv", "httpxy"];\n'
+# The fork's two files W13 reads, as far as it reads them (dr-5's lines).
+BUILDER_CONFIG = 'const RUNTIME_PACKAGES = ["sirv", "httpxy", "ws"];\n'
 ELECTRON_MAIN = """async function startStack() {
   const result = await main({
     bannerTitle: "OpenHands Agent Canvas",
@@ -646,7 +659,7 @@ PATCHED = build.patch_defaults(
 )
 
 
-def test_the_runtime_closure_is_what_sirv_and_httpxy_resolve_to():
+def test_the_runtime_closure_is_what_the_runtime_packages_resolve_to():
     assert build.runtime_closure(SIRV_LOCK, build.WEB_RUNTIME_PACKAGES) == SIRV_CLOSURE
     broken = copy.deepcopy(SIRV_LOCK)
     del broken["packages"]["node_modules/mrmime"]
@@ -725,6 +738,7 @@ def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
     assert build.web_package_json("1.0.0-rc.1", SIRV_CLOSURE)["dependencies"] == {
         "sirv": "3.0.2",
         "httpxy": "0.5.5",
+        "ws": "8.21.0",
     }
     assert tarball_json(tarball, "config/defaults.json") == PATCHED
 
@@ -734,8 +748,8 @@ def test_the_web_package_bundles_exactly_its_closure(tmp_path, web_checkout):
     [
         (
             "electron-builder.config.mjs",
-            'const RUNTIME_PACKAGES = ["sirv", "httpxy", "winston"];\n',
-            build.runtime_packages_changed(["sirv", "httpxy", "winston"]),
+            'const RUNTIME_PACKAGES = ["sirv", "httpxy", "ws", "winston"];\n',
+            build.runtime_packages_changed(["sirv", "httpxy", "ws", "winston"]),
         ),
         (
             "electron/main.mjs",
@@ -780,7 +794,7 @@ GOOD_TARBALL = {
         ({"elsewhere/x.js": b""}, "has a member outside package/: elsewhere/x.js"),
         (
             {"package/node_modules/vite/package.json": b"{}"},
-            "bundles ['node_modules/vite'] beyond sirv's and httpxy's closure",
+            "bundles ['node_modules/vite'] beyond the runtime packages' closure",
         ),
         (
             {"package/config/defaults.json": json.dumps(DEFAULTS).encode()},

@@ -110,8 +110,9 @@ WEB_TREES: Final = ("build", "config", "scripts", "tools")
 WEB_SCRIPT_SUFFIXES: Final = (".mjs", ".cjs")
 WEB_LICENSE: Final = "LICENSE"  # the fork's MIT licence, with the fork's files
 # The packages the launcher's scripts import, whose closure the app's afterPack restores
-# (the fork's RUNTIME_PACKAGES), mirrored and checked.
-WEB_RUNTIME_PACKAGES: Final = ("sirv", "httpxy")
+# (the fork's RUNTIME_PACKAGES), mirrored and checked. ws is Electron's alone (its MARS
+# tunnel client); the browser bundles it too, so the two lists stay one.
+WEB_RUNTIME_PACKAGES: Final = ("sirv", "httpxy", "ws")
 
 
 @dataclass(frozen=True)
@@ -266,7 +267,8 @@ def opens_too_early(declared: str | None) -> str:
 def runtime_packages_changed(found: Sequence[str]) -> str:
     return (
         "✗ The Canvas fork's electron-builder.config.mjs strips the app's node_modules to "
-        f"{_and(found)}, but desktop/build.py bundles sirv and httpxy for the browser: "
+        f"{_and(found)}, but desktop/build.py bundles {_and(WEB_RUNTIME_PACKAGES)} for the "
+        "browser: "
         "bundle the same."
     )
 
@@ -280,7 +282,7 @@ def electron_call_changed(missing: Sequence[str]) -> str:
 
 def web_tarball_wrong(name: str, why: str) -> str:
     """why: carries deep_reasoner: <paths>, has a member outside package/: <path>,
-    bundles <paths> beyond sirv's and httpxy's closure, carries other defaults than this
+    bundles <paths> beyond the runtime packages' closure, carries other defaults than this
     build wrote, carries another bin/deep-reasoning.mjs than desktop/web.mjs, carries
     another package.json than the build writes."""
     return f"✗ {name} {why}."
@@ -535,7 +537,7 @@ def web_package_json(version: str, closure: Mapping[str, str]) -> dict[str, Any]
 
 
 def check_web_contract(canvas: Path) -> list[str]:
-    """W13: the fork's app still bundles only sirv and httpxy, and Electron still calls
+    """W13: the fork's app still bundles only WEB_RUNTIME_PACKAGES, and Electron still calls
     main() with each option web.mjs copies; the problems as sentences."""
     problems: list[str] = []
     config = (canvas / "electron-builder.config.mjs").read_text()
@@ -886,7 +888,7 @@ def verify_web(
             raise wrong(f"carries {FORBIDDEN_IN_PAYLOAD}: {leaked[:3]}")
         beyond = sorted(_bundled(members) - set(closure))
         if beyond:
-            raise wrong(f"bundles {beyond} beyond sirv's and httpxy's closure")
+            raise wrong(f"bundles {beyond} beyond the runtime packages' closure")
         if _json(read("config/defaults.json")) != defaults:
             raise wrong("carries other defaults than this build wrote")
         if read("bin/deep-reasoning.mjs") != entry:
