@@ -9,8 +9,8 @@ Reasoning writes and stops a conversation's spending at a cap.
 
 This repository holds `dr-acp`, the Library (`dr-library` and its panel), the app's setup
 command (`packages/dr-app`) and the build (`desktop/`). The app's design is
-[docs/design/d5-desktop-app.md](https://github.com/michaeltheologitis/deep-reasoning/blob/design/d5-v3/docs/design/d5-desktop-app.md),
-on its branch `design/d5-v3`.
+[docs/design/d5-desktop-app.md](https://github.com/michaeltheologitis/deep-reasoning/blob/design-docs/docs/design/d5-desktop-app.md)
+on the `design-docs` branch, which holds every design and as-built.
 
 ## Install
 
