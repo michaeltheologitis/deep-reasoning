@@ -19,11 +19,12 @@ import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
 
+from desktop import build
 from dr_app.agent_server import AgentServer, AgentServerError
 from dr_app.profile import PROFILE_NAME, desired_profile
 
@@ -39,6 +40,9 @@ LOOPBACK = {"NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost"
 # LiteLLM's bundled price map, instead of the one it fetches from GitHub at start-up.
 LOCAL_COST_MAP = {"LITELLM_LOCAL_MODEL_COST_MAP": "True"}
 REFUSED = b"HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+# The empty directory, in its persistence root, the agent-server reads OpenHands/extensions'
+# skills from (EXTENSIONS_PATH), as in the app.
+NO_PUBLIC_SKILLS = PurePosixPath(build.NO_PUBLIC_SKILLS).name
 
 
 def sdk_checkout() -> Path:
@@ -162,10 +166,12 @@ def agent_server(
     checkout: Path, root: Path, *, outbound_proxy: str | None = None
 ) -> Iterator[RunningAgentServer]:
     """python -m openhands.agent_server from the checkout's environment, with its
-    persistence root, working directory and HOME under root; stopped on exit. With
+    persistence root, working directory and HOME under root, and its public skills read
+    from an empty directory in that root, as the app's are; stopped on exit. With
     outbound_proxy, every outbound connection goes through it and no model key is
     inherited."""
-    root.mkdir(parents=True, exist_ok=True)
+    persistence = root / "canvas"
+    (persistence / NO_PUBLIC_SKILLS).mkdir(parents=True, exist_ok=True)
     port, key = free_port(), f"session-{secrets.token_hex(16)}"
     inherited = dict(os.environ)
     if outbound_proxy is not None:
@@ -173,7 +179,8 @@ def agent_server(
     env = {
         **inherited,
         "HOME": str(root),
-        "OH_PERSISTENCE_DIR": str(root / "canvas"),
+        "OH_PERSISTENCE_DIR": str(persistence),
+        "EXTENSIONS_PATH": str(persistence / NO_PUBLIC_SKILLS),
         "OH_SESSION_API_KEYS_0": key,
         "OH_APP_BACKEND_PUBLIC_URL": f"http://127.0.0.1:{port}",
     }

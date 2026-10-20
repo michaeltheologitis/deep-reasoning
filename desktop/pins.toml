@@ -3,13 +3,13 @@
 
 [canvas_fork]
 repo = "https://github.com/michaeltheologitis/OpenHands"
-commit = "138d41fd3b540fe00fe88572db6e3968e19a820b"
-tag = "dr-4"
+commit = "b7817c2198f096e217d81c5424eed652ba89bfb5"
+tag = "dr-5"
 
 [sdk_fork]
 repo = "https://github.com/michaeltheologitis/software-agent-sdk"
-commit = "b82dffbaf0e3a58e4248878f01fe0a01ed011876"
-tag = "dr-3"
+commit = "9d0becb2c4512bdd60bf00fde976326a0106b407"
+tag = "dr-4"
 
 [app]
 product_name = "Deep Reasoning"
@@ -20,4 +20,4 @@ maintainer = "Michael Theologitis <michael.theologitis@outlook.com>"
 uv_version = "0.12.23"
 # PyPI as of this UTC time, for the agent-server's and automation's uvx (TASK-66 K3): moved with the pins, or
 # alone for a dependency fix, never past the day of the commit that moves it, and only on a green cross-repo.yml.
-uv_exclude_newer = "2026-10-04T00:00:00Z"
+uv_exclude_newer = "2026-10-20T00:00:00Z"
