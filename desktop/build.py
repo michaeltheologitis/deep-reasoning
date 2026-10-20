@@ -46,17 +46,25 @@ UTC_TIME: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 # The branch every pinned fork commit must be on (§4.2.2 check 8).
 FORK_BRANCH: Final = "deep-reasoning"
 STATE_DIR: Final = "~/.deep-reasoning/canvas/agent-canvas"
+# Where the agent-server reads OpenHands/extensions' skills (EXTENSIONS_PATH): an empty
+# directory, so no conversation's start clones or fetches that repository, whose skills
+# the locked profile's native skill sourcing drops. Beside STATE_DIR, in the
+# agent-server's persistence root where the clone would go: the app's state, not
+# ~/.openhands.
+NO_PUBLIC_SKILLS: Final = "~/.deep-reasoning/canvas/no-public-skills"
 # dr_app.profile.PROFILE_NAME, mirrored: this file imports nothing of deep-reasoning's.
 LOCKED_PROFILE: Final = "deep_reasoner"
 # The defaults.json keys this build writes that the Canvas fork must declare, as null
-# (checks 5, 5b and 5c).
+# (checks 5, 5b and 5c), and the first Canvas fork tag that declares them all.
 FORK_NULL_KEYS: Final = (
     "paths.stateDir",
     "setup.command",
     "agent.lockedProfile",
     "branding.appTitle",
     "uv.excludeNewer",
+    "skills.extensionsPath",
 )
+FORK_NULL_KEYS_SINCE: Final = "dr-5"
 SETUP_PHASES: Final = ["before-start", "after-ready"]
 BOOTSTRAP_NAME: Final = "dr-app-bootstrap"
 TYPESCRIPT_CLIENT: Final = "@openhands/typescript-client"
@@ -193,7 +201,7 @@ def fork_sets_ours(canvas_tag: str, key: str, value: Any) -> str:
 def fork_lacks_setting(canvas_tag: str, key: str) -> str:
     return (
         f"✗ Canvas fork {canvas_tag}'s config/defaults.json has no {key}, so this build "
-        "cannot set it: pin dr-4 or later."
+        f"cannot set it: pin {FORK_NULL_KEYS_SINCE} or later."
     )
 
 
@@ -445,11 +453,12 @@ def patch_defaults(
     command: list[str],
     app_title: str,
     exclude_newer: str,
+    extensions_path: str,
 ) -> dict[str, Any]:
     """§4.2.3's four keys, and the settings the Canvas fork declares null for a build
-    like this one: agent.lockedProfile = LOCKED_PROFILE, branding.appTitle = app_title
-    and uv.excludeNewer = exclude_newer (TASK-65 §4.1, §13; TASK-66 §4.1); every other
-    key unchanged."""
+    like this one: agent.lockedProfile = LOCKED_PROFILE, branding.appTitle = app_title,
+    uv.excludeNewer = exclude_newer (TASK-65 §4.1, §13; TASK-66 §4.1) and
+    skills.extensionsPath = extensions_path (TASK-67); every other key unchanged."""
     patched = copy.deepcopy(dict(defaults))
     patched.setdefault("paths", {})["stateDir"] = state_dir
     patched.setdefault("setup", {})["command"] = command
@@ -458,6 +467,7 @@ def patch_defaults(
     patched.setdefault("agent", {})["lockedProfile"] = LOCKED_PROFILE
     patched.setdefault("branding", {})["appTitle"] = app_title
     patched.setdefault("uv", {})["excludeNewer"] = exclude_newer
+    patched.setdefault("skills", {})["extensionsPath"] = extensions_path
     return patched
 
 
@@ -649,6 +659,7 @@ def prepare(pins: Pins, *, repo: Path, work: Path) -> tuple[Path, dict[str, Any]
         command=setup_command(DEEP_REASONING, head, BOOTSTRAP.read_text()),
         app_title=pins.app.product_name,
         exclude_newer=pins.app.uv_exclude_newer,
+        extensions_path=NO_PUBLIC_SKILLS,
     )
     defaults_file.write_text(json.dumps(defaults, indent=2) + "\n")
     env = machine_environment()

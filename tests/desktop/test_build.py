@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tarfile
 import tomllib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -40,7 +40,7 @@ PINS = build.Pins(
 )
 # The Canvas fork's config/defaults.json at 7c12afb, the keys D5 reads or writes, wired,
 # plus the null settings a fork must declare for this build: the agent lock, the app's
-# title and the PyPI cutoff.
+# title, the PyPI cutoff and where the public skills are read.
 DEFAULTS = {
     "_comment": "Single source of truth for version pins, ports, paths, and defaults.",
     "versions": {"agentServer": "1.50.1", "agentCanvas": "1.24.0"},
@@ -55,6 +55,7 @@ DEFAULTS = {
     "agent": {"lockedProfile": None},
     "branding": {"appTitle": None},
     "uv": {"excludeNewer": None},
+    "skills": {"extensionsPath": None},
 }
 GIT = ("git", "-c", "user.name=t", "-c", "user.email=t@example.invalid")
 
@@ -222,6 +223,7 @@ def change_defaults(canvas: Path, change) -> None:
         ("agent", "lockedProfile", "someone_elses_agent"),
         ("branding", "appTitle", "Someone Else's Canvas"),
         ("uv", "excludeNewer", "2026-01-01T00:00:00Z"),
+        ("skills", "extensionsPath", "~/.openhands/extensions"),
     ],
 )
 def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, value):
@@ -232,18 +234,25 @@ def test_a_fork_that_carries_our_values_is_refused(canvas, repo, block, key, val
 
 
 @pytest.mark.parametrize(
-    "key", ["agent.lockedProfile", "branding.appTitle", "uv.excludeNewer"]
+    "key",
+    [
+        "agent.lockedProfile",
+        "branding.appTitle",
+        "uv.excludeNewer",
+        "skills.extensionsPath",
+    ],
 )
 def test_a_canvas_fork_that_lacks_a_setting_the_build_writes_is_refused(
     canvas, repo, key
 ):
-    """As Canvas dr-3 lacks them: the whole block, which it would ignore if written."""
+    """As Canvas dr-3 lacks the first three and dr-4 the last: the whole block, which
+    it would ignore if written."""
     block = key.split(".")[0]
     change_defaults(canvas, lambda defaults: defaults.pop(block))
     assert problems(canvas, repo) == [
         (
             f"✗ Canvas fork dr-1's config/defaults.json has no {key}, so this build "
-            "cannot set it: pin dr-4 or later."
+            "cannot set it: pin dr-5 or later."
         )
     ]
 
@@ -271,6 +280,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         command=command,
         app_title="A Product",
         exclude_newer="2026-01-02T03:04:05Z",
+        extensions_path="~/.a-product/no-public-skills",
     )
     assert DEFAULTS == before
     written = {
@@ -281,6 +291,7 @@ def test_defaults_gain_only_the_keys_the_build_writes():
         "agent.lockedProfile": "deep_reasoner",
         "branding.appTitle": "A Product",
         "uv.excludeNewer": "2026-01-02T03:04:05Z",
+        "skills.extensionsPath": "~/.a-product/no-public-skills",
     }
     assert set(written) == {
         *build.FORK_NULL_KEYS,
@@ -329,6 +340,19 @@ def test_the_build_writes_the_product_name_as_the_title_and_the_pinned_cutoff(
     assert written["uv"]["excludeNewer"] == "2026-01-02T03:04:05Z"
 
 
+def test_the_build_points_the_public_skills_at_an_empty_directory_beside_the_state(
+    canvas, repo, tmp_path, monkeypatch
+):
+    """The agent-server's persistence root is the state directory's parent, where its
+    clone of OpenHands/extensions would go (TASK-67)."""
+    written = written_defaults(
+        PINS, canvas=canvas, repo=repo, work=tmp_path, monkeypatch=monkeypatch
+    )
+    skills = PurePosixPath(written["skills"]["extensionsPath"])
+    assert skills == PurePosixPath("~/.deep-reasoning/canvas/no-public-skills")
+    assert skills.parent == PurePosixPath(written["paths"]["stateDir"]).parent
+
+
 def test_the_locked_profile_is_the_one_setup_creates():
     assert build.LOCKED_PROFILE == PROFILE_NAME
 
@@ -340,6 +364,7 @@ def test_telemetry_is_off_in_the_built_defaults():
         command=[],
         app_title="Deep Reasoning",
         exclude_newer=CUTOFF,
+        extensions_path=build.NO_PUBLIC_SKILLS,
     )
     assert patched["telemetry"] == {
         "posthogApiKey": "",
@@ -617,6 +642,7 @@ PATCHED = build.patch_defaults(
     command=COMMAND,
     app_title=PINS.app.product_name,
     exclude_newer=PINS.app.uv_exclude_newer,
+    extensions_path=build.NO_PUBLIC_SKILLS,
 )
 
 
