@@ -42,4 +42,5 @@ The first commit took each file's newest version across the old `design/*`, `as-
 - **task-64** · [TASK-64 · As built: the launcher's page refuses other host names](as_built/task-64-host-check.md) (from `as-built/task-64`)
 - **task-65** · [TASK-65 · As built: the UX round](as_built/task-65-ux-round.md) (from `as-built/task-65`)
 - **task-66** · [TASK-66 · As built: the launcher's uvx starts, pinned to a PyPI time and offline from uv's cache](as_built/task-66-uv-pins.md) (from `as-built/task-66`)
+- **task-67** · [TASK-67 · As built: both forks synced with upstream, and what the sync changed in the app](as_built/task-67-upstream-sync.md) (written on `design-docs`; no design doc)
 - **task-69** · [TASK-69 · As built: after a Stop, the next message is sent alone](as_built/task-69-stop.md) (from `as-built/task-69`)
