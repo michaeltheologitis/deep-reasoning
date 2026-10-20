@@ -389,12 +389,12 @@ def test_the_setup_command_embeds_the_bootstrap_and_the_commit():
     ]
 
 
-DR_3 = "b82dffbaf0e3a58e4248878f01fe0a01ed011876"
+SDK_DR_4 = "9d0becb2c4512bdd60bf00fde976326a0106b407"
 
 
-def test_the_committed_sdk_pin_is_b82dffb_tagged_dr_3():
+def test_the_committed_sdk_pin_is_9d0becb_tagged_dr_4():
     raw = tomllib.loads((ROOT / "desktop" / "pins.toml").read_text())
-    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": DR_3, "tag": "dr-3"}
+    assert raw["sdk_fork"] == {"repo": SDK_REPO, "commit": SDK_DR_4, "tag": "dr-4"}
     assert raw["app"]["uv_version"] == "0.12.23"
 
 
@@ -403,7 +403,7 @@ def test_the_committed_pins_load():
     assert pins.canvas_fork == build.ForkPin(
         CANVAS_REPO, "138d41fd3b540fe00fe88572db6e3968e19a820b", "dr-4"
     )
-    assert pins.sdk_fork == build.ForkPin(SDK_REPO, DR_3, "dr-3")
+    assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_DR_4, "dr-4")
     assert "@" in pins.app.maintainer
     assert pins.app.uv_exclude_newer == "2026-10-20T00:00:00Z"
 

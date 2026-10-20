@@ -8,8 +8,8 @@ tag = "dr-4"
 
 [sdk_fork]
 repo = "https://github.com/michaeltheologitis/software-agent-sdk"
-commit = "b82dffbaf0e3a58e4248878f01fe0a01ed011876"
-tag = "dr-3"
+commit = "9d0becb2c4512bdd60bf00fde976326a0106b407"
+tag = "dr-4"
 
 [app]
 product_name = "Deep Reasoning"
