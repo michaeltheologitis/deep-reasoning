@@ -24,7 +24,7 @@ SDK_REPO = "https://github.com/michaeltheologitis/software-agent-sdk"
 CANVAS_COMMIT = "c" * 40
 SDK_COMMIT = "34c540ce0598b20ddf913d51968dd903c1c13b2e"
 CLIENT = f"{SDK_REPO}/releases/download/dr-2/openhands-typescript-client-1.50.1.tgz"
-CUTOFF = "2026-10-04T00:00:00Z"
+CUTOFF = "2026-10-20T00:00:00Z"
 PINS = build.Pins(
     canvas_fork=build.ForkPin(CANVAS_REPO, CANVAS_COMMIT, "dr-1"),
     sdk_fork=build.ForkPin(SDK_REPO, SDK_COMMIT, "dr-2"),
@@ -380,7 +380,7 @@ def test_the_committed_pins_load():
     )
     assert pins.sdk_fork == build.ForkPin(SDK_REPO, DR_3, "dr-3")
     assert "@" in pins.app.maintainer
-    assert pins.app.uv_exclude_newer == "2026-10-04T00:00:00Z"
+    assert pins.app.uv_exclude_newer == "2026-10-20T00:00:00Z"
 
 
 @pytest.mark.skipif(
