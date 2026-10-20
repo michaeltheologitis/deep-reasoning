@@ -6,6 +6,23 @@ is `ux-round` · against the approved spec
 [UX round](https://app.notion.com/p/3fe62fb222378105a96bd0427574a15d) (Gate A, Michael, 2026-10-19: Q1 (a) with the
 startup log's key line gone, Q2 (a), Q3 (b), Q4 (a); the 📝 amendment wins over the body).
 
+**As refactored** (2026-10-19, at the literate refactor; the design below is left as approved, and these lines win
+over it where they differ):
+- **D1, the key check.** `dr-acp` no longer mirrors `build_client`'s rule: `missing_model_keys(clients) -> list[str]`
+  validates each client block as deep_reasoner's `ClientConfig` and calls its `build_client` in `dr-acp`'s own
+  environment, naming each refused `api_key_env` once, in order. A block that is not a valid `ClientConfig` is skipped,
+  for the worker's build to report. `KEYLESS_BASE_URL_PREFIXES` and the move of the two key constants out of
+  `proxy.py` are gone, and one test of names, order and dedup replaces the contract test. Changed: §1.1 D9, §4.3's
+  `route.py` and `_start_run` bullets, §5.3's `route.py` block, §7.1's `test_route.py` line.
+- **C1, the Canvas fork's test ids.** No `command-menu-item-<id>`: E12 step 3 finds command-menu entries by upstream's
+  `#command-menu-option-<id>`. Changed: APL-006 (gone), §5.1's `CommandMenu` line, §7.1's `command-menu.test.tsx` case,
+  §7.4 step 3's ids.
+- **Tests, otherwise.** §7.2's test leaves `agentInfo.title` to `test_agent.py`, which pins it verbatim. Of §7.1's
+  browser tests, `test_each_tab_opens_on_its_content_with_no_dialog` is gone, the refused-amount test drives one
+  amount, and the Tools tab's first test is `test_the_tools_tab_opens_on_the_spend_cap_field_holding_the_cap`.
+  §13.2's `test_the_title_the_build_writes_is_the_product_name` and TASK-66's cutoff twin are one test,
+  `test_the_build_writes_the_product_name_as_the_title_and_the_pinned_cutoff`.
+
 **Pinned against** (every `file:line` below is from these):
 - deep-reasoning `main` `9e8109e`;
 - Canvas fork `deep-reasoning` at tag `dr-3` = `4355a36`;
