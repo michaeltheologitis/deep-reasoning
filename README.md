@@ -2,7 +2,7 @@
 
 Every design doc and as-built document of michaeltheologitis/deep-reasoning, at its final version. They never go on `main`: a task's design and as-built are written on its development branch and archived here once its pull requests merge.
 
-The first commit took each file's newest version across the old `design/*`, `as-built/*` and `ci/fork-live` branches; the merge after it records each of those branches' tips as a parent, so every commit an older link names is still here.
+The first commit took each file's newest version across the old `design/*`, `as-built/*` and `ci/fork-live` branches; the merge after it records each of those branches' tips as a parent, so every commit an older link names is still here. A second merge does the same for the deleted code branches (task-48-browser, task-57-recap, the v1-* branches, ux-round, the Scout experiments and others), whose work is on `main`.
 
 ## Designs
 
