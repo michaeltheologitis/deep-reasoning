@@ -401,7 +401,7 @@ def test_the_committed_sdk_pin_is_9d0becb_tagged_dr_4():
 def test_the_committed_pins_load():
     pins = build.load_pins(ROOT / "desktop" / "pins.toml")
     assert pins.canvas_fork == build.ForkPin(
-        CANVAS_REPO, "138d41fd3b540fe00fe88572db6e3968e19a820b", "dr-4"
+        CANVAS_REPO, "b7817c2198f096e217d81c5424eed652ba89bfb5", "dr-5"
     )
     assert pins.sdk_fork == build.ForkPin(SDK_REPO, SDK_DR_4, "dr-4")
     assert "@" in pins.app.maintainer
