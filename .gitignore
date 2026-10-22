@@ -1,6 +1,0 @@
-__pycache__/
-.pytest_cache/
-.ruff_cache/
-canvas-app/node_modules/
-.desktop-work/
-/dist/
