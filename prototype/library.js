@@ -88,14 +88,14 @@ function renderStep(step, key) {
   const open = opened.has(key);
   const toggle = { type: "button", "aria-expanded": String(open), "data-key": key, onclick: () => flip(key) };
   if (step.kind === "think") {
-    return el("button", { ...toggle, class: `think ${open ? "open" : ""}` }, el("span", {}, "✻"), el("span", { class: "body" }, step.text));
+    return el("button", { ...toggle, class: `think ${open ? "open" : ""}` }, el("span"), el("span", {}, "✻"), el("span", { class: "body" }, step.text));
   }
   const [first, ...rest] = step.code.split("\n");
   const label = step.code.startsWith("FinalAnswer(") ? "Final answer" : [el("b", {}, "Python"), `(${first}${rest.length ? " …" : ""})`];
   return el(
     "div",
-    { class: "cell is-done" },
-    el("button", { ...toggle, class: "line" }, el("span", { class: "glyph" }, "●"), el("span", { class: "head" }, label)),
+    { class: "cell" },
+    el("button", { ...toggle, class: "line" }, el("span"), el("span", { class: "glyph done" }, "●"), el("span", { class: "head" }, label)),
     open && el("pre", { class: "code" }, step.code),
     step.output != null && renderOutput(step.output, open),
   );
