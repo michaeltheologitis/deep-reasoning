@@ -12,11 +12,11 @@ This project's Notion page (todos, changelog, notes): https://app.notion.com/p/4
 
 ## Checks
 
-- No code yet. The prototype is static files in `prototype/`, which Michael runs with `python3 -m http.server 8000 --directory prototype`.
+- No code yet. The prototype will be static files in `prototype/`, which Michael runs with `python3 -m http.server 8000 --directory prototype`.
 
 ## Conventions
 
 - No paid model calls except the gpt-6-luna live tests, and the Claude Code on Sonnet live test through Michael's subscription token. Never set `ANTHROPIC_API_KEY`.
 - Kill only the processes you started: never `pkill -f` or `pgrep -f`.
 - `deep_reasoner`'s repository is read-only for us: no PRs, issues or comments there.
-- The previous app is in history at `a80bb2e` (`git show a80bb2e:<path>`), and its design docs are on the `design-docs` branch.
+- The previous app is in history at `a80bb2e` (`git show a80bb2e:<path>`), and its design docs are on the `design-docs` branch. In a shallow clone, run `git fetch --unshallow` or `git fetch origin design-docs` first.
