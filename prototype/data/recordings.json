@@ -1,0 +1,970 @@
+{
+ "chats": [
+  {
+   "id": "fanout2",
+   "title": "Summarize two courses.",
+   "turns": [
+    {
+     "prompt": "Summarize two courses.",
+     "steps": [
+      {
+       "kind": "think",
+       "text": "Fan out."
+      },
+      {
+       "kind": "cell",
+       "code": "r = run_all({c: anext(subagent().send(f'Summarize {c}.')) for c in ['C1', 'C2']})\nprint(r)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Summarize C1.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "print('C1 has 3 credits')",
+           "agents": [],
+           "output": "C1 has 3 credits",
+           "status": "done"
+          },
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C1: 3')",
+           "agents": [],
+           "output": "FinalAnswer: 'C1: 3'",
+           "status": "done"
+          }
+         ],
+         "result": "C1: 3",
+         "cost": 0.000846,
+         "seconds": 0.8
+        },
+        {
+         "kind": "agent",
+         "task": "Summarize C2.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "think",
+           "text": "Easy."
+          },
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C2: 4')",
+           "agents": [],
+           "output": "FinalAnswer: 'C2: 4'",
+           "status": "done"
+          }
+         ],
+         "result": "C2: 4",
+         "cost": 0.000417,
+         "seconds": 1.0
+        }
+       ],
+       "output": "{'C1': 'C1: 3', 'C2': 'C2: 4'}",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(r)",
+       "agents": [],
+       "output": "FinalAnswer: {'C1': 'C1: 3', 'C2': 'C2: 4'}",
+       "status": "done"
+      }
+     ],
+     "answer": "{'C1': 'C1: 3', 'C2': 'C2: 4'}",
+     "outcome": "answered",
+     "cost": 0.002138,
+     "seconds": 2.4
+    }
+   ]
+  },
+  {
+   "id": "fanout20",
+   "title": "Summarize twenty courses.",
+   "turns": [
+    {
+     "prompt": "Summarize twenty courses.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "r = run_all({c: anext(subagent().send(f'Count {c}.')) for c in ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19']})\nprint(len(r))",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Count C0.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C0')",
+           "agents": [],
+           "output": "FinalAnswer: 'C0'",
+           "status": "done"
+          }
+         ],
+         "result": "C0",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C1.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C1')",
+           "agents": [],
+           "output": "FinalAnswer: 'C1'",
+           "status": "done"
+          }
+         ],
+         "result": "C1",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C2.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C2')",
+           "agents": [],
+           "output": "FinalAnswer: 'C2'",
+           "status": "done"
+          }
+         ],
+         "result": "C2",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C3.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C3')",
+           "agents": [],
+           "output": "FinalAnswer: 'C3'",
+           "status": "done"
+          }
+         ],
+         "result": "C3",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C4.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C4')",
+           "agents": [],
+           "output": "FinalAnswer: 'C4'",
+           "status": "done"
+          }
+         ],
+         "result": "C4",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C5.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C5')",
+           "agents": [],
+           "output": "FinalAnswer: 'C5'",
+           "status": "done"
+          }
+         ],
+         "result": "C5",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C6.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C6')",
+           "agents": [],
+           "output": "FinalAnswer: 'C6'",
+           "status": "done"
+          }
+         ],
+         "result": "C6",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C7.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C7')",
+           "agents": [],
+           "output": "FinalAnswer: 'C7'",
+           "status": "done"
+          }
+         ],
+         "result": "C7",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C8.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C8')",
+           "agents": [],
+           "output": "FinalAnswer: 'C8'",
+           "status": "done"
+          }
+         ],
+         "result": "C8",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C9.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C9')",
+           "agents": [],
+           "output": "FinalAnswer: 'C9'",
+           "status": "done"
+          }
+         ],
+         "result": "C9",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C10.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C10')",
+           "agents": [],
+           "output": "FinalAnswer: 'C10'",
+           "status": "done"
+          }
+         ],
+         "result": "C10",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C11.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C11')",
+           "agents": [],
+           "output": "FinalAnswer: 'C11'",
+           "status": "done"
+          }
+         ],
+         "result": "C11",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C12.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C12')",
+           "agents": [],
+           "output": "FinalAnswer: 'C12'",
+           "status": "done"
+          }
+         ],
+         "result": "C12",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C13.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C13')",
+           "agents": [],
+           "output": "FinalAnswer: 'C13'",
+           "status": "done"
+          }
+         ],
+         "result": "C13",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C14.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C14')",
+           "agents": [],
+           "output": "FinalAnswer: 'C14'",
+           "status": "done"
+          }
+         ],
+         "result": "C14",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C15.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C15')",
+           "agents": [],
+           "output": "FinalAnswer: 'C15'",
+           "status": "done"
+          }
+         ],
+         "result": "C15",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C16.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C16')",
+           "agents": [],
+           "output": "FinalAnswer: 'C16'",
+           "status": "done"
+          }
+         ],
+         "result": "C16",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C17.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C17')",
+           "agents": [],
+           "output": "FinalAnswer: 'C17'",
+           "status": "done"
+          }
+         ],
+         "result": "C17",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C18.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C18')",
+           "agents": [],
+           "output": "FinalAnswer: 'C18'",
+           "status": "done"
+          }
+         ],
+         "result": "C18",
+         "cost": 0.000413,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Count C19.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('C19')",
+           "agents": [],
+           "output": "FinalAnswer: 'C19'",
+           "status": "done"
+          }
+         ],
+         "result": "C19",
+         "cost": 0.000413,
+         "seconds": 0.4
+        }
+       ],
+       "output": "20",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(sorted(r))",
+       "agents": [],
+       "output": "FinalAnswer: ['C0', 'C1', 'C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']",
+       "status": "done"
+      }
+     ],
+     "answer": "['C0', 'C1', 'C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']",
+     "outcome": "answered",
+     "cost": 0.009178,
+     "seconds": 1.2
+    }
+   ]
+  },
+  {
+   "id": "depth3",
+   "title": "Plan the term.",
+   "turns": [
+    {
+     "prompt": "Plan the term.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "plan = subagent('Survey CS.')\nprint(plan)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Survey CS.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "course = subagent('Read CS101.')\nprint(course)",
+           "agents": [
+            {
+             "kind": "agent",
+             "task": "Read CS101.",
+             "status": "done",
+             "namespace": "root",
+             "drive": 1,
+             "steps": [
+              {
+               "kind": "cell",
+               "code": "FinalAnswer('CS101 is light')",
+               "agents": [],
+               "output": "FinalAnswer: 'CS101 is light'",
+               "status": "done"
+              }
+             ],
+             "result": "CS101 is light",
+             "cost": 0.000417,
+             "seconds": 0.4
+            }
+           ],
+           "output": "CS101 is light",
+           "status": "done"
+          },
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('CS: ' + course)",
+           "agents": [],
+           "output": "FinalAnswer: 'CS: CS101 is light'",
+           "status": "done"
+          }
+         ],
+         "result": "CS: CS101 is light",
+         "cost": 0.001269,
+         "seconds": 1.2
+        }
+       ],
+       "output": "CS: CS101 is light",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(plan)",
+       "agents": [],
+       "output": "FinalAnswer: 'CS: CS101 is light'",
+       "status": "done"
+      }
+     ],
+     "answer": "CS: CS101 is light",
+     "outcome": "answered",
+     "cost": 0.002118,
+     "seconds": 2.0
+    }
+   ]
+  },
+  {
+   "id": "failing",
+   "title": "Survive failures.",
+   "turns": [
+    {
+     "prompt": "Survive failures.",
+     "steps": [
+      {
+       "kind": "think",
+       "text": "This cell fails."
+      },
+      {
+       "kind": "cell",
+       "code": "print(1 / 0)",
+       "agents": [],
+       "output": "Traceback (most recent call last):\n  File \"SITE/deep_reasoner/repls/backends.py\", line 522, in run_code\n    exec(code, self.env)  # noqa: S102\n    ^^^^^^^^^^^^^^^^^^^^\n  File \"<string>\", line 1, in <module>\nZeroDivisionError: division by zero",
+       "status": "failed"
+      },
+      {
+       "kind": "cell",
+       "code": "r = subagent('Break the model.')\nprint(r)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Break the model.",
+         "status": "failed",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "print('trying')",
+           "agents": [],
+           "output": "trying",
+           "status": "done"
+          }
+         ],
+         "result": "Failed: InternalServerError: Error code: 500 - {'error': {'message': \"the model is unavailable for 'Break the model.'\", 'type': 'server_error'}}",
+         "cost": 0.000414,
+         "seconds": 0.4
+        }
+       ],
+       "output": "Traceback (most recent call last):\n  File \"SITE/deep_reasoner/repls/backends.py\", line 522, in run_code\n    exec(code, self.env)  # noqa: S102\n    ^^^^^^^^^^^^^^^^^^^^\n  File \"<string>\", line 1, in <module>\n  File \"SITE/deep_reasoner/namespaces.py\", line 613, in subagent\n    return child(task)\n           ^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 437, in __call__\n    return _run_sync(self.acall(task))\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/coro_base.py\", line 92, in _run_sync\n    return pool.submit(lambda: ctx.run(asyncio.run, coro)).result()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/concurrent/futures/_base.py\", line 456, in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/concurrent/futures/_base.py\", line 401, in __get_result\n    raise self._exception\n  File \"STDLIB/concurrent/futures/thread.py\", line 58, in run\n    result = self.fn(*self.args, **self.kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/coro_base.py\", line 92, in <lambda>\n    return pool.submit(lambda: ctx.run(asyncio.run, coro)).result()\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/asyncio/runners.py\", line 194, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"STDLIB/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/asyncio/base_events.py\", line 687, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 427, in acall\n    return await _drain(self)\n           ^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 153, in _drain\n    async for _ in agent:\n  File \"SITE/deep_reasoner/v2/agent.py\", line 891, in __anext__\n    text = await self.think()\n           ^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 957, in think\n    return (await anext(self._llm))[\"content\"]\n            ^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/llm_coro.py\", line 232, in __anext__\n    text = await _openai_call(\n           ^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/llm_coro.py\", line 103, in _openai_call\n    completion = await client.chat.completions.create(\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/openai/resources/chat/completions/completions.py\", line 2952, in create\n    return await self._post(\n           ^^^^^^^^^^^^^^^^^\n  File \"SITE/openai/_base_client.py\", line 2053, in post\n    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/openai/_base_client.py\", line 1838, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.InternalServerError: Error code: 500 - {'error': {'message': \"the model is unavailable for 'Break the model.'\", 'type': 'server_error'}}",
+       "status": "failed"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer('recovered')",
+       "agents": [],
+       "output": "FinalAnswer: 'recovered'",
+       "status": "done"
+      }
+     ],
+     "answer": "recovered",
+     "outcome": "answered",
+     "cost": 0.001989,
+     "seconds": 2.2
+    }
+   ]
+  },
+  {
+   "id": "unanswered",
+   "title": "Compare two departments.",
+   "turns": [
+    {
+     "prompt": "Compare two departments.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "r = run_all({d: anext(subagent().send(f'Survey {d}.')) for d in ['CS', 'STAT']})\nprint(r)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Survey CS.",
+         "status": "failed",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [],
+         "result": "Failed: InternalServerError: Error code: 500 - {'error': {'message': \"the model is unavailable for 'Survey CS.'\", 'type': 'server_error'}}",
+         "cost": 0.0,
+         "seconds": 0.0
+        },
+        {
+         "kind": "agent",
+         "task": "Survey STAT.",
+         "status": "failed",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [],
+         "result": "Failed: CancelledError: ",
+         "cost": 0.0,
+         "seconds": 0.0
+        }
+       ],
+       "output": "Traceback (most recent call last):\n  File \"SITE/deep_reasoner/repls/backends.py\", line 522, in run_code\n    exec(code, self.env)  # noqa: S102\n    ^^^^^^^^^^^^^^^^^^^^\n  File \"<string>\", line 1, in <module>\n  File \"SITE/deep_reasoner/v2/agent.py\", line 173, in run_all\n    return dict(zip(coros, _run_sync(_gather(list(coros.values())))))\n                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/coro_base.py\", line 92, in _run_sync\n    return pool.submit(lambda: ctx.run(asyncio.run, coro)).result()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/concurrent/futures/_base.py\", line 456, in result\n    return self.__get_result()\n           ^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/concurrent/futures/_base.py\", line 401, in __get_result\n    raise self._exception\n  File \"STDLIB/concurrent/futures/thread.py\", line 58, in run\n    result = self.fn(*self.args, **self.kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/coro_base.py\", line 92, in <lambda>\n    return pool.submit(lambda: ctx.run(asyncio.run, coro)).result()\n                               ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/asyncio/runners.py\", line 194, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"STDLIB/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"STDLIB/asyncio/base_events.py\", line 687, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 170, in _gather\n    return await asyncio.gather(*cs)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 891, in __anext__\n    text = await self.think()\n           ^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/agent.py\", line 957, in think\n    return (await anext(self._llm))[\"content\"]\n            ^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/llm_coro.py\", line 232, in __anext__\n    text = await _openai_call(\n           ^^^^^^^^^^^^^^^^^^^\n  File \"SITE/deep_reasoner/v2/llm_coro.py\", line 103, in _openai_call\n    completion = await client.chat.completions.create(\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/openai/resources/chat/completions/completions.py\", line 2952, in create\n    return await self._post(\n           ^^^^^^^^^^^^^^^^^\n  File \"SITE/openai/_base_client.py\", line 2053, in post\n    return await self.request(cast_to, opts, stream=stream, stream_cls=stream_cls)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"SITE/openai/_base_client.py\", line 1838, in request\n    raise self._make_status_error_from_response(err.response) from None\nopenai.InternalServerError: Error code: 500 - {'error': {'message': \"the model is unavailable for 'Survey CS.'\", 'type': 'server_error'}}",
+       "status": "failed"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer('compared without them')",
+       "agents": [],
+       "output": "FinalAnswer: 'compared without them'",
+       "status": "done"
+      }
+     ],
+     "answer": "compared without them",
+     "outcome": "answered",
+     "cost": 0.001079,
+     "seconds": 0.8
+    }
+   ]
+  },
+  {
+   "id": "exhausted",
+   "title": "Never finish.",
+   "turns": [
+    {
+     "prompt": "Never finish.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "r = run_all([anext(subagent().send('Loop forever.'))])\nprint(r)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Loop forever.",
+         "status": "exhausted",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "print('looping')",
+           "agents": [],
+           "output": "looping",
+           "status": "done"
+          },
+          {
+           "kind": "cell",
+           "code": "print('looping')",
+           "agents": [],
+           "output": "looping",
+           "status": "done"
+          },
+          {
+           "kind": "cell",
+           "code": "print('looping')",
+           "agents": [],
+           "output": "looping",
+           "status": "done"
+          }
+         ],
+         "result": "Agent failed to produce a final answer within 3 iterations.",
+         "cost": 0.001257,
+         "seconds": 1.2
+        }
+       ],
+       "output": "['Agent failed to produce a final answer within 3 iterations.']",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "print('still thinking')",
+       "agents": [],
+       "output": "still thinking",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "print('still thinking')",
+       "agents": [],
+       "output": "still thinking",
+       "status": "done"
+      }
+     ],
+     "answer": "Agent failed to produce a final answer within 3 iterations.",
+     "outcome": "exhausted",
+     "cost": 0.002554,
+     "seconds": 2.4
+    }
+   ]
+  },
+  {
+   "id": "fork",
+   "title": "Remember and fork.",
+   "turns": [
+    {
+     "prompt": "Remember and fork.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "s = subagent()\nfirst = run_all([anext(s.send('Note that the answer is 42.'))])\nagain = run_all([anext(s.send('Say it again.'))])\nf = s.fork()\nforked = run_all([anext(f.send('Repeat it from the fork.'))])\nprint(first, again, forked)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Note that the answer is 42.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer(42)",
+           "agents": [],
+           "output": "FinalAnswer: 42",
+           "status": "done"
+          }
+         ],
+         "result": "42",
+         "cost": null,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Say it again.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 2,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('again 42')",
+           "agents": [],
+           "output": "FinalAnswer: 'again 42'",
+           "status": "done"
+          }
+         ],
+         "result": "again 42",
+         "cost": 0.000846,
+         "seconds": 0.4
+        },
+        {
+         "kind": "agent",
+         "task": "Repeat it from the fork.",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('forked 42')",
+           "agents": [],
+           "output": "FinalAnswer: 'forked 42'",
+           "status": "done"
+          }
+         ],
+         "result": "forked 42",
+         "cost": 0.000443,
+         "seconds": 0.4
+        }
+       ],
+       "output": "[42] ['again 42'] ['forked 42']",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer([first, again, forked])",
+       "agents": [],
+       "output": "FinalAnswer: [[42], ['again 42'], ['forked 42']]",
+       "status": "done"
+      }
+     ],
+     "answer": "[[42], ['again 42'], ['forked 42']]",
+     "outcome": "answered",
+     "cost": 0.002215,
+     "seconds": 1.2
+    }
+   ]
+  },
+  {
+   "id": "namespace",
+   "title": "Use the math namespace.",
+   "turns": [
+    {
+     "prompt": "Use the math namespace.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "x = subagent('Add pi and one.', namespace='math')\nprint(x)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "Add pi and one.",
+         "status": "done",
+         "namespace": "math",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "cell",
+           "code": "FinalAnswer(pi + 1)",
+           "agents": [],
+           "output": "FinalAnswer: 4.140000000000001",
+           "status": "done"
+          }
+         ],
+         "result": "4.140000000000001",
+         "cost": 0.000425,
+         "seconds": 0.4
+        }
+       ],
+       "output": "4.140000000000001",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(x)",
+       "agents": [],
+       "output": "FinalAnswer: 4.140000000000001",
+       "status": "done"
+      }
+     ],
+     "answer": "4.140000000000001",
+     "outcome": "answered",
+     "cost": 0.001282,
+     "seconds": 1.2
+    }
+   ]
+  },
+  {
+   "id": "linear",
+   "title": "/count-up Count to three.",
+   "turns": [
+    {
+     "prompt": "/count-up Count to three.",
+     "steps": [
+      {
+       "kind": "cell",
+       "code": "xs = [1, 2, 3]\nprint(xs)",
+       "agents": [],
+       "output": "[1, 2, 3]",
+       "status": "done"
+      },
+      {
+       "kind": "think",
+       "text": "xs holds the count."
+      },
+      {
+       "kind": "cell",
+       "code": "print(len(xs))",
+       "agents": [],
+       "output": "3",
+       "status": "done"
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(len(xs))",
+       "agents": [],
+       "output": "FinalAnswer: 3",
+       "status": "done"
+      }
+     ],
+     "answer": "3",
+     "outcome": "answered",
+     "cost": null,
+     "seconds": 1.8
+    },
+    {
+     "prompt": "Now add one.",
+     "steps": [
+      {
+       "kind": "think",
+       "text": "Resume."
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(len(xs) + 1)",
+       "agents": [],
+       "output": "FinalAnswer: 4",
+       "status": "done"
+      }
+     ],
+     "answer": "4",
+     "outcome": "answered",
+     "cost": 0.001343,
+     "seconds": 1.0
+    }
+   ]
+  },
+  {
+   "id": "claude",
+   "title": "Ask Claude.",
+   "turns": [
+    {
+     "prompt": "Ask Claude.",
+     "steps": [
+      {
+       "kind": "think",
+       "text": "ok"
+      }
+     ],
+     "answer": "The Claude session ended without calling FinalAnswer, and this reasoner has no run left in its budget. ok",
+     "outcome": "exhausted",
+     "cost": 0.01,
+     "seconds": 0.6
+    }
+   ]
+  }
+ ]
+}

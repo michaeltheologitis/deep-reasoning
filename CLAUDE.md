@@ -12,7 +12,9 @@ This project's Notion page (todos, changelog, notes): https://app.notion.com/p/4
 
 ## Checks
 
-- No code yet. The prototype will be static files in `prototype/`, which Michael runs with `python3 -m http.server 8000 --directory prototype`.
+- The prototype is static files in `prototype/` with mock data, no build step. Michael runs it with `python3 -m http.server 8000 --directory prototype`. Check each round in a real browser (Playwright is preinstalled in cloud sessions): every chat, a live run, Stop, both themes, phone width, no console errors.
+- `prototype/data/recordings.json` is generated from the old app's recordings: `python3 scripts/mock_from_recordings.py`. `prototype/data/showcase.json` is a hand-written mock run, also the one every new message plays back.
+- `node --check prototype/app.js`; `ruff check scripts && ruff format --check scripts`.
 
 ## Conventions
 

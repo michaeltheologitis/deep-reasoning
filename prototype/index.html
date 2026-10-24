@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deep Reasoning</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="brand"><span aria-hidden="true">✻</span> Deep Reasoning</div>
+    <div class="label">Chats</div>
+    <ul class="chats" id="chats"></ul>
+    <button type="button" class="new-chat" id="new-chat">+ New chat</button>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <button type="button" class="menu" id="menu" aria-label="Show chats">☰</button>
+      <h1 class="title" id="title"></h1>
+      <button type="button" class="theme" id="theme"></button>
+    </header>
+    <div class="scroll" id="scroll"><div class="log" id="log"></div></div>
+    <form class="composer" id="composer">
+      <div class="box">
+        <span class="prompt" aria-hidden="true">&gt;</span>
+        <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Message"></textarea>
+        <button type="button" class="stop" id="stop" hidden>esc to interrupt</button>
+      </div>
+      <div class="hints"><span id="hint"></span><span id="total"></span></div>
+    </form>
+  </main>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

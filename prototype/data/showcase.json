@@ -1,0 +1,163 @@
+{
+ "chats": [
+  {
+   "id": "sky",
+   "title": "why is the sky blue?",
+   "turns": [
+    {
+     "prompt": "why is the sky blue?",
+     "steps": [
+      {
+       "kind": "think",
+       "text": "Three questions in one: how scattering depends on wavelength, why the sky isn't violet when violet scatters even more, and why sunsets turn red. One sub-agent each, then combine."
+      },
+      {
+       "kind": "cell",
+       "code": "parts = run_all({\n    \"scattering\": anext(subagent().send(\"How does Rayleigh scattering depend on wavelength?\")),\n    \"violet\": anext(subagent().send(\"Violet scatters more than blue. Why isn't the sky violet?\")),\n    \"sunset\": anext(subagent().send(\"Why are sunsets red?\")),\n})\nprint(parts)",
+       "agents": [
+        {
+         "kind": "agent",
+         "task": "How does Rayleigh scattering depend on wavelength?",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "think",
+           "text": "Air molecules (N₂, O₂) are about 0.3 nm across, far smaller than visible wavelengths, so Rayleigh scattering applies and intensity goes as 1/λ⁴. Compare the two ends of the visible range."
+          },
+          {
+           "kind": "cell",
+           "code": "print(round((700 / 400) ** 4, 1))",
+           "agents": [],
+           "output": "9.4",
+           "status": "done"
+          },
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('Intensity goes as 1/λ⁴: 400 nm light scatters about 9.4× more than 700 nm light.')",
+           "agents": [],
+           "output": "FinalAnswer: 'Intensity goes as 1/λ⁴: 400 nm light scatters about 9.4× more than 700 nm light.'",
+           "status": "done"
+          }
+         ],
+         "result": "Intensity goes as 1/λ⁴: 400 nm light scatters about 9.4× more than 700 nm light.",
+         "cost": 0.0061,
+         "seconds": 4.2
+        },
+        {
+         "kind": "agent",
+         "task": "Violet scatters more than blue. Why isn't the sky violet?",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "think",
+           "text": "Two things to check: how much violet the sun sends, and how sensitive the eye is to it. The eye part is a lookup; hand it off."
+          },
+          {
+           "kind": "cell",
+           "code": "eye = subagent(\"Photopic eye sensitivity at 410 nm and 470 nm, as a ratio?\")\nprint(eye)",
+           "agents": [
+            {
+             "kind": "agent",
+             "task": "Photopic eye sensitivity at 410 nm and 470 nm, as a ratio?",
+             "status": "done",
+             "namespace": "root",
+             "drive": 1,
+             "steps": [
+              {
+               "kind": "cell",
+               "code": "eye = {410: 0.00121, 470: 0.09098}  # CIE 1924 photopic sensitivity\nprint(round(eye[470] / eye[410]))",
+               "agents": [],
+               "output": "75",
+               "status": "done"
+              },
+              {
+               "kind": "cell",
+               "code": "FinalAnswer('The eye is about 75× more sensitive at 470 nm than at 410 nm.')",
+               "agents": [],
+               "output": "FinalAnswer: 'The eye is about 75× more sensitive at 470 nm than at 410 nm.'",
+               "status": "done"
+              }
+             ],
+             "result": "The eye is about 75× more sensitive at 470 nm than at 410 nm.",
+             "cost": 0.0034,
+             "seconds": 2.9
+            }
+           ],
+           "output": "The eye is about 75× more sensitive at 470 nm than at 410 nm.",
+           "status": "done"
+          },
+          {
+           "kind": "think",
+           "text": "The solar spectrum also falls off below about 450 nm, and ozone absorbs some violet high up. With the eye's response, the scattered mix reads as blue."
+          },
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('Sunlight carries less violet than blue, ozone absorbs some of it, and the eye is about 75× less sensitive at 410 nm than at 470 nm, so the scattered mix looks blue.')",
+           "agents": [],
+           "output": "FinalAnswer: 'Sunlight carries less violet than blue, ozone absorbs some of it, and the eye is about 75× less sensitive at 410 nm than at 470 nm, so the scattered mix looks blue.'",
+           "status": "done"
+          }
+         ],
+         "result": "Sunlight carries less violet than blue, ozone absorbs some of it, and the eye is about 75× less sensitive at 410 nm than at 470 nm, so the scattered mix looks blue.",
+         "cost": 0.0118,
+         "seconds": 9.8
+        },
+        {
+         "kind": "agent",
+         "task": "Why are sunsets red?",
+         "status": "done",
+         "namespace": "root",
+         "drive": 1,
+         "steps": [
+          {
+           "kind": "think",
+           "text": "At sunset the light's path through the air is much longer, so more of the blue is scattered out of the beam before it arrives. How much longer?"
+          },
+          {
+           "kind": "cell",
+           "code": "import math\nzenith = 1 / math.cos(math.radians(0))\nhorizon = 38  # Kasten-Young air mass at 90 degrees\nprint(horizon / zenith)",
+           "agents": [],
+           "output": "38.0",
+           "status": "done"
+          },
+          {
+           "kind": "cell",
+           "code": "FinalAnswer('At the horizon sunlight crosses about 38× more air than at noon, so most blue is scattered away before it reaches you, leaving red and orange.')",
+           "agents": [],
+           "output": "FinalAnswer: 'At the horizon sunlight crosses about 38× more air than at noon, so most blue is scattered away before it reaches you, leaving red and orange.'",
+           "status": "done"
+          }
+         ],
+         "result": "At the horizon sunlight crosses about 38× more air than at noon, so most blue is scattered away before it reaches you, leaving red and orange.",
+         "cost": 0.0057,
+         "seconds": 5.1
+        }
+       ],
+       "output": "{'scattering': 'Intensity goes as 1/λ⁴: 400 nm light scatters about 9.4× more than 700 nm light.', 'violet': 'Sunlight carries less violet than blue, ozone absorbs some of it, and the eye is about 75× less sensitive at 410 nm than at 470 nm, so the scattered mix looks blue.', 'sunset': 'At the horizon sunlight crosses about 38× more air than at noon, so most blue is scattered away before it reaches you, leaving red and orange.'}",
+       "status": "done"
+      },
+      {
+       "kind": "think",
+       "text": "All three are back and consistent. Write the answer."
+      },
+      {
+       "kind": "cell",
+       "code": "FinalAnswer(answer)",
+       "agents": [],
+       "output": "FinalAnswer: 'The sky is blue because air scatters the short wavelengths of sunlight far more than the long ones.\\n\\n- **Scattering.** Nitrogen and oxygen molecules are much smaller than the wavelength of light, so they scatter it with an intensity that goes as 1/λ⁴ (Rayleigh scattering). Light at 400 nm scatters about **9.4×** more than light at 700 nm.\\n- **Why not violet.** Sunlight carries less violet than blue, ozone absorbs some of it, and the eye is about **75×** less sensitive at 410 nm than at 470 nm. The scattered mix looks blue.\\n- **Sunsets.** Near the horizon sunlight crosses about **38×** more air than at noon, so most of the blue is scattered out of the beam before it reaches you, leaving red and orange.'",
+       "status": "done"
+      }
+     ],
+     "answer": "The sky is blue because air scatters the short wavelengths of sunlight far more than the long ones.\n\n- **Scattering.** Nitrogen and oxygen molecules are much smaller than the wavelength of light, so they scatter it with an intensity that goes as 1/λ⁴ (Rayleigh scattering). Light at 400 nm scatters about **9.4×** more than light at 700 nm.\n- **Why not violet.** Sunlight carries less violet than blue, ozone absorbs some of it, and the eye is about **75×** less sensitive at 410 nm than at 470 nm. The scattered mix looks blue.\n- **Sunsets.** Near the horizon sunlight crosses about **38×** more air than at noon, so most of the blue is scattered out of the beam before it reaches you, leaving red and orange.",
+     "outcome": "answered",
+     "cost": 0.0371,
+     "seconds": 16.4
+    }
+   ]
+  }
+ ]
+}
