@@ -13,6 +13,7 @@
   --code: #f1eeea;
   --user: #eeebe6;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --indent: 2ch;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -55,7 +56,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .app { display: grid; grid-template-columns: 270px minmax(0, 1fr); height: 100%; }
 
-/* chat list */
 .sidebar {
   display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto;
   background: var(--panel); border-right: 1px solid var(--faint);
@@ -79,7 +79,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .new-chat { color: var(--dim); padding: 6px; margin-top: 8px; }
 .new-chat:hover { color: var(--fg); }
 
-/* conversation */
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .topbar {
   display: flex; align-items: center; gap: 1ch; border-bottom: 1px solid var(--faint);
@@ -98,41 +97,54 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .user { background: var(--user); padding: 6px 10px; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .user .prompt { color: var(--dim); }
 .steps, .children { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.turn > .steps { margin-left: 0.5ch; padding-left: 1.5ch; border-left: 1px solid var(--faint); }
 
-/* one step: ⏺ line, its code when open, its sub-agents, its ⎿ output */
-.line, .think { display: grid; grid-template-columns: 2ch minmax(0, 1fr); width: 100%; }
-.cell.is-done > .line .glyph { color: var(--ok); }
-.cell.is-failed > .line .glyph { color: var(--err); }
-.cell.is-stopped > .line .glyph { color: var(--dim); }
-.cell.is-running > .line .glyph { color: var(--dim); animation: blink 1s steps(2) infinite; }
+/* every line keeps a caret column, so glyphs line up whether or not the line opens a tree */
+.line, .think, .summary { display: grid; grid-template-columns: 2ch 2ch minmax(0, 1fr); width: 100%; }
+.glyph.done { color: var(--ok); }
+.glyph.failed { color: var(--err); }
+.glyph.stopped, .glyph.running { color: var(--dim); }
+.glyph.running { animation: blink 1s steps(2) infinite; }
 .head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .head b { font-weight: 600; }
-.line:hover .head, .think:hover .body { text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+.line:hover .head, .think:hover .body, .summary:hover .text { text-decoration: underline; text-decoration-color: var(--faint); text-underline-offset: 3px; }
+.summary { color: var(--dim); }
 .think { color: var(--dim); font-style: italic; }
 .think .body { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .think.open .body { white-space: pre-wrap; }
-.code { margin: 3px 0 3px 2ch; padding: 8px 10px; background: var(--code); border-radius: 4px; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
-.out { display: grid; grid-template-columns: 3ch minmax(0, 1fr); margin-left: 2ch; color: var(--dim); }
+.code { margin: 3px 0 3px 4ch; padding: 8px 10px; background: var(--code); border-radius: 4px; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.out { display: grid; grid-template-columns: 3ch minmax(0, 1fr); margin-left: 4ch; color: var(--dim); }
 .out .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .out.full .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .out.err { color: var(--err); }
 .out.warn { color: var(--warn); }
 .more { color: var(--dim); }
 
-/* sub-agent rows */
-.rows { margin-left: 2ch; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.row { display: flex; align-items: baseline; gap: 1ch; width: 100%; padding: 1px 4px; margin-left: -4px; border-radius: 3px; }
+.node { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 1ch; }
+.node .line { flex: 1 1 16ch; min-width: 0; }
+.show-code { flex: none; color: var(--dim); opacity: 0; }
+.show-code:hover { color: var(--fg); }
+.node:hover .show-code, .show-code:focus-visible, .show-code[aria-expanded="true"] { opacity: 1; }
+@media (hover: none) { .show-code { opacity: 1; } }
+.node .meta { flex-shrink: 1; min-width: 0; padding-left: 0; text-align: right; }
+.more-rows { color: var(--dim); padding-left: 2ch; }
+.more-rows button { color: var(--fg); }
+.more-rows button:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+.rows { margin-left: var(--indent); display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.row { display: flex; align-items: baseline; gap: 1ch; width: calc(100% + 8px); padding: 1px 4px; margin-inline: -4px; border-radius: 3px; }
 .row:hover { background: var(--hover); }
 .caret { width: 1ch; flex: none; color: var(--dim); }
 .task { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tag { flex: none; color: var(--dim); border: 1px solid var(--faint); border-radius: 3px; padding: 0 4px; font-size: 0.9em; }
 .meta { flex: none; margin-left: auto; padding-left: 2ch; color: var(--dim); font-variant-numeric: tabular-nums; }
-.children { margin: 2px 0 6px 0.5ch; padding-left: 1.5ch; border-left: 1px solid var(--faint); }
+.children { margin: 2px 0 6px calc(var(--indent) / 4); padding-left: calc(var(--indent) * 3 / 4); border-left: 1px solid var(--faint); }
+/* past a few levels each level indents less, so deep trees keep their width */
+.children .children .children { --indent: 1ch; }
 .word.err { color: var(--err); }
 .word.warn { color: var(--warn); }
 .spin { color: var(--accent); }
 
-/* the answer and the run's line under it */
 .answer { overflow-wrap: anywhere; }
 .answer > :first-child { margin-top: 0; }
 .answer > :last-child { margin-bottom: 0; }
@@ -142,16 +154,12 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .answer strong { font-weight: 600; }
 .answer code { background: var(--code); padding: 0 3px; border-radius: 3px; }
 .answer pre { background: var(--code); padding: 8px 10px; border-radius: 4px; overflow-x: auto; }
-.run-meta { color: var(--dim); font-variant-numeric: tabular-nums; }
 .working { color: var(--accent); }
-.working .dim { color: var(--dim); }
-.interrupted { margin-left: 2ch; color: var(--err); }
 
 .welcome { display: flex; flex-direction: column; gap: 8px; max-width: 62ch; border: 1px solid var(--accent); border-radius: 6px; padding: 12px 16px; }
 .welcome .hi { color: var(--accent); }
 .welcome p { margin: 0; color: var(--dim); }
 
-/* input */
 .composer { padding-block: 6px max(12px, env(safe-area-inset-bottom, 0px)); padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px)); }
 .box, .hints { max-width: 868px; margin: 0 auto; }
 .box { display: flex; align-items: flex-start; gap: 1ch; border: 1px solid var(--faint); border-radius: 6px; padding: 8px 10px; }
@@ -165,9 +173,10 @@ textarea::placeholder { color: var(--dim); }
 .hints { display: flex; justify-content: space-between; gap: 2ch; padding: 4px 2px 0; color: var(--dim); font-size: 0.92em; }
 
 @keyframes blink { 50% { opacity: 0.25; } }
-@media (prefers-reduced-motion: reduce) { .cell.is-running > .line .glyph { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .glyph.running { animation: none; } }
 
 @media (max-width: 720px) {
+  :root { --indent: 1ch; }
   .app { grid-template-columns: minmax(0, 1fr); }
   .menu { display: block; }
   .sidebar {
