@@ -606,6 +606,7 @@ name = "deep-reasoning"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "coolname" },
     { name = "deep-reasoner" },
     { name = "fastapi" },
     { name = "genai-prices" },
@@ -625,6 +626,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "coolname", specifier = ">=5.0.0" },
     { name = "deep-reasoner", git = "https://github.com/DeanLight/deep_reasoner_beta.git?rev=0.3.0" },
     { name = "fastapi", specifier = ">=0.162.0" },
     { name = "genai-prices", specifier = ">=0.1.13" },

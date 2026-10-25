@@ -10,6 +10,7 @@ import json
 import math
 import mmap
 import os
+import shutil
 import signal
 import sys
 import time
@@ -277,6 +278,16 @@ class Runs:
                 yield event
         finally:
             live.watchers.discard(queue)
+
+    async def remove(self, chat: str) -> None:
+        """Delete the chat's runs, once the one going, if any, has ended: its worker
+        writes into its folder until then."""
+        run = self.live(chat)
+        if run is not None:
+            self.stop(run)
+            await asyncio.wait([self._live[run].pump])
+        for start in turn_starts(self.home, chat):
+            shutil.rmtree(self.home / RUNS / start["run"])
 
     async def close(self) -> None:
         """End every run that is going: the app is shutting down."""
