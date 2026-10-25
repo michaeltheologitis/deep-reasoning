@@ -43,7 +43,7 @@ def scenario_prompts():
             isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Scenario"
         ):
             continue
-        fields = {k.arg: k.value for k in node.keywords}
+        fields = {keyword.arg: keyword.value for keyword in node.keywords}
         name = ast.literal_eval(fields["name"])
         prompts[name] = list(ast.literal_eval(fields["prompts"]))
     return prompts
@@ -59,6 +59,13 @@ def new_turn(prompt):
     }
 
 
+def record_answer(agents, update):
+    """A sub-agent's answer is the message it sends to another session."""
+    sender = update["senderSessionId"]
+    if sender in agents and sender != update["recipientSessionId"]:
+        agents[sender]["result"] = update["content"][0]["text"]
+
+
 def convert(messages, prompts):
     """The chat's turns: each a root run whose sub-agents nest under the cell that ran them."""
     prompts = iter(prompts)
@@ -72,15 +79,20 @@ def convert(messages, prompts):
             continue
         session, update = message["params"]["sessionId"], message["params"]["update"]
         kind = update["sessionUpdate"]
-        owner = agents.get(session, turn)
-        meta = update.get("_meta", {}).get("deep_reasoner", {})
         if kind in IGNORED_UPDATES:
             continue
+        owner = agents.get(session, turn)
+        meta = update.get("_meta", {}).get("deep_reasoner", {})
         if kind == "agent_thought_chunk":
             owner["steps"].append({"kind": "think", "text": update["content"]["text"]})
         elif kind == "tool_call":
-            cell = {"kind": "cell", "code": update["rawInput"]["command"], "agents": []}
-            cell |= {"output": None, "status": "running"}
+            cell = {
+                "kind": "cell",
+                "code": update["rawInput"]["command"],
+                "agents": [],
+                "output": None,
+                "status": "running",
+            }
             cells[update["toolCallId"]] = cell
             owner["steps"].append(cell)
         elif kind == "tool_call_update":
@@ -90,17 +102,22 @@ def convert(messages, prompts):
             cell["status"] = "failed" if failed else "done"
         elif kind == "subagent_update" and update["state"]["state"] == "running":
             spawner = update["_meta"]["openhands"]["parentToolCallId"]
-            row = {"kind": "agent", "task": update["title"], "status": "running"}
-            row |= {"namespace": meta["namespace"], "drive": meta["drive"]}
-            row |= {"steps": [], "result": None, "cost": None}
+            row = {
+                "kind": "agent",
+                "task": update["title"],
+                "status": "running",
+                "namespace": meta["namespace"],
+                "drive": meta["drive"],
+                "steps": [],
+                "result": None,
+                "cost": None,
+            }
             cells[spawner]["agents"].append(row)
             agents[update["sessionId"]] = row
         elif kind == "subagent_update":
             agents[update["sessionId"]]["status"] = meta["status"]
         elif kind == "session_message":
-            sender = update["senderSessionId"]
-            if sender in agents and sender != update["recipientSessionId"]:
-                agents[sender]["result"] = update["content"][0]["text"]
+            record_answer(agents, update)
         elif kind == "usage_update":
             owner["cost"] = update["cost"]["amount"]
         elif kind == "agent_message_chunk" and "outcome" in meta:

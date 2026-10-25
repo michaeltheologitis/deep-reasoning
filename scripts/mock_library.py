@@ -94,8 +94,8 @@ def own_namespaces(path, data):
     if "namespaces_dir" in data:
         folder = path.parent / data["namespaces_dir"]
         names = {
-            ".".join(f.relative_to(folder).with_suffix("").parts): f
-            for f in folder.rglob("*.yaml")
+            ".".join(file.relative_to(folder).with_suffix("").parts): file
+            for file in folder.rglob("*.yaml")
         }
         for name in sorted(names, key=lambda name: (name.count("."), name)):
             found[name] = read(names[name])
@@ -103,7 +103,10 @@ def own_namespaces(path, data):
 
 
 def merge(into, level):
-    """Lay one config's namespace over the Library's one of the same name."""
+    """Fold one config's namespace into the Library's one of the same name.
+
+    Tools, decompositions and vars add up; any other field keeps the first config's value.
+    """
     for key, value in level.items():
         if key == "tools":
             into["tools"] = list(dict.fromkeys(into.get("tools", []) + value))
@@ -136,17 +139,19 @@ def table(value):
     if (
         isinstance(value, dict)
         and value
-        and all(isinstance(v, dict) for v in value.values())
+        and all(isinstance(row, dict) for row in value.values())
     ):
         value = [{"id": key, **row} for key, row in value.items()]
     if not (
-        isinstance(value, list) and value and all(isinstance(v, dict) for v in value)
+        isinstance(value, list)
+        and value
+        and all(isinstance(row, dict) for row in value)
     ):
         return None
     columns = list(dict.fromkeys(key for row in value for key in row))
     return {
         "columns": columns,
-        "rows": [[cell(row.get(c)) for c in columns] for row in value],
+        "rows": [[cell(row.get(column)) for column in columns] for row in value],
     }
 
 
@@ -166,7 +171,11 @@ def item(value, level, name, verb="set"):
 
 def nearest(levels, key, name, show, unset):
     """A field the nearest level that sets it decides, or *unset* when none does."""
-    found = [(level, ns[key]) for level, ns in levels if ns.get(key) is not None]
+    found = [
+        (level, namespace[key])
+        for level, namespace in levels
+        if namespace.get(key) is not None
+    ]
     if not found:
         return [unset]
     level, value = found[-1]
@@ -186,9 +195,11 @@ def resolve(name, namespaces, run_repl):
     """Each field of a namespace with the level it came from, as deep_reasoner resolves it."""
     levels = [(level, namespaces[level]) for level in chain(name)]
     tools, variables = {}, {}
-    for level, ns in levels:
-        tools |= {tool: level for tool in ns.get("tools", []) if tool not in tools}
-        variables |= {key: (value, level) for key, value in ns.get("vars", {}).items()}
+    for level, namespace in levels:
+        own_tools = namespace.get("tools", [])
+        tools |= {tool: level for tool in own_tools if tool not in tools}
+        own_vars = namespace.get("vars", {})
+        variables |= {key: (value, level) for key, value in own_vars.items()}
     run_repl_item = {"value": flow(run_repl), "source": "from the run settings"}
     chat_item = {"value": "chat", "source": "the run's default"}
     anywhere_item = {"value": "any namespace", "source": "not set"}
@@ -197,9 +208,9 @@ def resolve(name, namespaces, run_repl):
         for key, (value, level) in variables.items()
     ]
     suffix_items = [
-        item(ns["system_suffix"].strip(), level, name)
-        for level, ns in levels
-        if ns.get("system_suffix")
+        item(namespace["system_suffix"].strip(), level, name)
+        for level, namespace in levels
+        if namespace.get("system_suffix")
     ]
     return [
         {"label": "REPL", "items": nearest(levels, "repl", name, flow, run_repl_item)},
@@ -213,7 +224,9 @@ def resolve(name, namespaces, run_repl):
         },
         {
             "label": "Tools",
-            "items": [item(t, lv, name, "granted") for t, lv in tools.items()],
+            "items": [
+                item(tool, level, name, "granted") for tool, level in tools.items()
+            ],
         },
         {"label": "Variables", "items": variable_items},
         {"label": "System suffix", "items": suffix_items},
@@ -222,7 +235,10 @@ def resolve(name, namespaces, run_repl):
 
 def own_decompositions(namespace):
     """A namespace's own decompositions, each as the YAML the Library shows."""
-    records = {d["name"]: d["messages"] for d in namespace.get("decompositions", [])}
+    records = {
+        decomposition["name"]: decomposition["messages"]
+        for decomposition in namespace.get("decompositions", [])
+    }
     return [
         {"name": name, "yaml": dump({"name": name, "messages": messages})}
         for name, messages in records.items()
@@ -246,12 +262,16 @@ def collect():
 
 
 def granted(tool, namespaces):
-    return [name for name, ns in namespaces.items() if tool in ns.get("tools", [])]
+    return [
+        name
+        for name, namespace in namespaces.items()
+        if tool in namespace.get("tools", [])
+    ]
 
 
 def tool_rows(blocks, namespaces):
     rows = []
-    for name in [*BUILTINS, *(b for b in blocks if b not in BUILTINS)]:
+    for name in dict.fromkeys([*BUILTINS, *blocks]):
         block = dict(blocks.get(name, {}))
         defined_in = block.pop("defined_in", None)
         factory = block.get("factory", name)
@@ -263,10 +283,16 @@ def tool_rows(blocks, namespaces):
             file, constant = BUILTINS[factory]
             description = block.get("description") or described(ENGINE / file, constant)
         source = defined_in and str(defined_in.relative_to(ENGINE))
-        row = {"name": name, "factory": factory, "file": str(file)}
-        row |= {"defined_in": source}
-        row |= {"granted_in": granted(name, namespaces), "description": description}
-        rows.append(row | {"config": dump({name: block}) if block else None})
+        row = {
+            "name": name,
+            "factory": factory,
+            "file": str(file),
+            "defined_in": source,
+            "granted_in": granted(name, namespaces),
+            "description": description,
+            "config": dump({name: block}) if block else None,
+        }
+        rows.append(row)
     return rows
 
 
@@ -293,8 +319,8 @@ def store(name, block, namespaces):
 def data_sections(namespaces, blocks):
     variables = [
         {"name": key, "where": name, "summary": table_summary(rows)} | rows
-        for name, ns in namespaces.items()
-        for key, value in ns.get("vars", {}).items()
+        for name, namespace in namespaces.items()
+        for key, value in namespace.get("vars", {}).items()
         if (rows := table(value))
     ]
     stores = [

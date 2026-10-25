@@ -141,8 +141,7 @@ checks = run_all([
 print("\\n".join(checks))"""
 
 CHECK_PREREQS = """\
-semesters = {semesters!r}
-term_of = {{c: n for n, chosen in enumerate(semesters) for c in chosen}}
+term_of = {c: n for n, chosen in enumerate(semesters) for c in chosen}
 late = [(c, p) for c, n in term_of.items() for p in course(c)["prereqs"] if term_of[p] >= n]
 print(late or "every prerequisite comes at least a term earlier")"""
 
@@ -232,7 +231,10 @@ def cell(code, agents=()):
     def run_in(env):
         env.update(repl_tools(agents))
         output, status = run(code, env)
-        return {"kind": "cell", "code": code, "agents": list(agents)} | {
+        return {
+            "kind": "cell",
+            "code": code,
+            "agents": list(agents),
             "output": output,
             "status": status,
         }
@@ -598,15 +600,15 @@ def year_check(year, autumn, spring):
 
 
 def plan_checker(semesters, plan):
-    years = [semesters[n : n + 2] for n in range(0, len(semesters), 2)]
-    checks = [year_check(y + 1, a, s) for y, (a, s) in enumerate(years)]
+    years = enumerate(zip(semesters[::2], semesters[1::2]), 1)
+    checks = [year_check(year, autumn, spring) for year, (autumn, spring) in years]
     return agent(
         f"Check this plan for prerequisites, load and term offerings:\n{plan}",
         [
             think(
                 "Two checks: prerequisites across the whole plan, which is quick in Python, then load and offerings, one sub-agent per year."
             ),
-            cell(CHECK_PREREQS.format(semesters=semesters)),
+            cell(f"semesters = {semesters!r}\n{CHECK_PREREQS}"),
             cell(CHECK_YEARS, checks),
             final(
                 "The plan holds: every prerequisite comes at least a term earlier, no term has more than three of these courses, and each course sits in a term it runs."
@@ -718,18 +720,19 @@ def essay_roles(rng):
 def essays_chat():
     rng = random.Random(SEED)
     ids = [f"{n:04d}" for n in range(1, ESSAY_COUNT + 1)]
-    graders = [essay_grader(e, rng, role) for e, role in zip(ids, essay_roles(rng))]
+    roles = zip(ids, essay_roles(rng))
+    graders = [essay_grader(essay_id, rng, role) for essay_id, role in roles]
     # the answer and a thought quote what the root's cells print, so run them ahead
     spawn = run_steps(
         [cell(ESSAYS_SPAWN, graders), cell(ESSAYS_UNGRADED)], {"essays": ids}
     )
     letters = ast.literal_eval(spawn[0]["output"])
     ungraded = spawn[1]["output"].split(": ", 1)[1]
-    short = sum(g["result"].startswith("D: under") for g in graders)
+    short = sum(grader["result"].startswith("D: under") for grader in graders)
     answer = f"""\
-Graded {sum(letters.get(g, 0) for g in GRADE_WEIGHTS):,} of {ESSAY_COUNT:,} essays against the rubric.
+Graded {sum(letters.get(grade, 0) for grade in GRADE_WEIGHTS):,} of {ESSAY_COUNT:,} essays against the rubric.
 
-- **Grades.** {" · ".join(f"{g}: {letters.get(g, 0):,}" for g in GRADE_WEIGHTS)}
+- **Grades.** {" · ".join(f"{grade}: {letters.get(grade, 0):,}" for grade in GRADE_WEIGHTS)}
 - **Too short.** {short} essays were under the {MIN_WORDS}-word minimum and got a D whatever their content.
 - **Borderline.** {BORDERLINE_ESSAYS} graders asked a second grader, and the second grade stands.
 - **Need a person.** {letters["failed"]} graders timed out and {letters["out of turns"]} ran out of turns: essays {ungraded}."""
