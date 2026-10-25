@@ -27,6 +27,6 @@ This project's Notion page (todos, changelog, notes): https://app.notion.com/p/4
 
 - No paid model calls except the gpt-6-luna live tests, and the Claude Code on Sonnet live test through Michael's subscription token. Never set `ANTHROPIC_API_KEY`.
 - Tests import copies of `deep_reasoner`'s example configs in `tests/configs/` (0.3.0's `docs/configs`, same layout); refresh them from the pinned tag, never edit them.
-- Kill only the processes you started: never `pkill -f` or `pgrep -f`.
+- Kill only the processes you started: never `pkill -f` or `pgrep -f`. `uv run` puts a Python child under its own process, so stop both (or run `.venv/bin/python` directly), and check with `ps` that nothing you started is left before you report.
 - `deep_reasoner`'s repository is read-only for us: no PRs, issues or comments there. The app depends on it from GitHub, pinned to a tag in `pyproject.toml`.
 - The previous app is in history at `a80bb2e` (`git show a80bb2e:<path>`), and its design docs are on the `design-docs` branch. In a shallow clone, run `git fetch --unshallow` or `git fetch origin design-docs` first.
