@@ -250,15 +250,23 @@ async def test_a_run_gets_the_librarys_tools_in_a_folder_of_its_own(
     assert (home / "runs" / run / "tools" / "waitlist.py").is_file()
 
 
-@pytest.mark.anyio
-async def test_a_second_message_while_a_run_is_going_is_refused(library_on, connect):
+def held_on(prompt, plan):
+    """A responder that follows *plan*, holding *prompt*'s first call until released;
+    and the release."""
     release = threading.Event()
-    follow = scripted(PLAN)
+    follow = scripted(plan)
 
     def held(messages):
-        release.wait(HELD_S)
+        if task_and_turn(messages) == (prompt, 0):
+            release.wait(HELD_S)
         return follow(messages)
 
+    return held, release
+
+
+@pytest.mark.anyio
+async def test_a_second_message_while_a_run_is_going_is_refused(library_on, connect):
+    held, release = held_on("Count to two.", PLAN)
     with FakeOpenAI(held) as fake:
         async with connect(library_on(fake)) as api:
             chat = await new_chat(api)
@@ -384,20 +392,6 @@ async def test_a_chat_reads_back_with_its_turns_in_order(library_on, connect):
         {"run": first, "events": first_events},
         {"run": second, "events": second_events},
     ]
-
-
-def held_on(prompt, plan):
-    """A responder that follows *plan*, holding *prompt*'s first call until released;
-    and the release."""
-    release = threading.Event()
-    follow = scripted(plan)
-
-    def held(messages):
-        if task_and_turn(messages) == (prompt, 0):
-            release.wait(HELD_S)
-        return follow(messages)
-
-    return held, release
 
 
 @pytest.mark.anyio

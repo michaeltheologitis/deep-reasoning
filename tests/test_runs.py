@@ -348,26 +348,6 @@ async def test_a_chat_runs_one_message_at_a_time(home, fake_config):
     assert runs.live(CHAT) is None
 
 
-async def test_a_chat_takes_its_next_message_once_its_turn_has_ended(
-    home, fake_config, tmp_path
-):
-    settings, saved = slow_saving(tmp_path)
-    plan = {"Hi.": [repl("FinalAnswer('hello')")]}
-    with FakeOpenAI(scripted(plan)) as fake:
-        runs = Runs(home)
-        config = fake_config(fake, **settings)
-        run = runs.start(CHAT, "Hi.", config, [])
-        async with aclosing(runs.events(run)) as stream:
-            async for event in stream:
-                if event["kind"] == "turn.end":
-                    break
-        assert not saved.exists()  # the worker is still closing the run
-        assert runs.live(CHAT) is None and runs.stop(run) is False
-        _, events = await run_to_the_end(runs, "Hi.", config)
-        _ = [event async for event in runs.events(run)]
-    assert events[-1]["outcome"] == "answered"
-
-
 async def until(runs, run, done):
     """The run's events up to the first one *done* accepts."""
     events = []
@@ -377,6 +357,23 @@ async def until(runs, run, done):
             if done(event):
                 return events
     return events
+
+
+async def test_a_chat_takes_its_next_message_once_its_turn_has_ended(
+    home, fake_config, tmp_path
+):
+    settings, saved = slow_saving(tmp_path)
+    plan = {"Hi.": [repl("FinalAnswer('hello')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(home)
+        config = fake_config(fake, **settings)
+        run = runs.start(CHAT, "Hi.", config, [])
+        await until(runs, run, lambda event: event["kind"] == "turn.end")
+        assert not saved.exists()  # the worker is still closing the run
+        assert runs.live(CHAT) is None and runs.stop(run) is False
+        _, events = await run_to_the_end(runs, "Hi.", config)
+        _ = [event async for event in runs.events(run)]
+    assert events[-1]["outcome"] == "answered"
 
 
 async def test_remove_stops_the_chats_run_and_deletes_its_folder_once_it_ended(
