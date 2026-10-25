@@ -6,9 +6,7 @@ uv run --with pyyaml python scripts/mock_library.py [ENGINE_CHECKOUT, default ..
 
 import ast
 import json
-import re
 import sys
-import textwrap
 from pathlib import Path
 
 import yaml
@@ -16,10 +14,9 @@ import yaml
 ENGINE = Path(sys.argv[1] if len(sys.argv) > 1 else "../deep_reasoner_beta")
 OUT = Path(__file__).resolve().parents[1] / "prototype" / "data" / "library.json"
 ROOT = "root"
-REVISION = 14
-# The configs the Library is made of, and the namespace each one's `root` becomes:
-# "root" shares it, None keeps only its decompositions, unattached. The first config's
-# run settings are the Library's.
+# The configs the Library is made of, and the namespace each one's `root` becomes. A
+# config's top-level decompositions go to root. The first config's run settings are the
+# Library's.
 SOURCES = {
     "docs/configs/catalog/advisors.yaml": ROOT,
     "docs/configs/catalog/llm_tool.yaml": ROOT,
@@ -28,7 +25,7 @@ SOURCES = {
     "docs/configs/examples/experience/experience.yaml": ROOT,
     "docs/configs/catalog/kg_agent.yaml": "kg_agent",
     "docs/configs/examples/waitlist/waitlist.yaml": "waitlist",
-    "docs/configs/catalog/kg_query.yaml": None,
+    "docs/configs/catalog/kg_query.yaml": "kg_query",
     "docs/configs/incidents/triage.yaml": ROOT,
 }
 # MainConfig's defaults, deep_reasoner/config.py
@@ -47,25 +44,6 @@ BUILTINS = {
     "safe_url": ("deep_reasoner/tools/safe_url.py", "DEFAULT_SAFE_URL_DESCRIPTION"),
     "claude_code": ("deep_reasoner/tools/base.py", "DEFAULT_CLAUDE_DESCRIPTION"),
 }
-# The Library's own fields, which no config holds: mock.
-USE_WHEN = {
-    "full_triage": ("the incidents' rule is fixed, so code alone answers", "the task"),
-    "survey_only": ("gather the incidents, then let the model decide", "the task"),
-    "triage the TA inbox": ("a gist for many messages, a review for any code", None),
-    "route a course question": ("a question about courses or the catalog", None),
-    "route a wellbeing question": ("a student asks for wellbeing advice", None),
-    "decline anything else": ("neither courses nor wellbeing", None),
-    "catalog lookup": ("one course at a time", "the course question"),
-    "answer then sanitize": ("advice that must stay non-clinical", "the question"),
-    "delegate the crunch": ("number-crunching over the dataset", None),
-    "crunch the sales with pandas": ("aggregates over the `sales` table", None),
-    "parse a drug label into the graph": ("a new document to add as facts", "the text"),
-    "answer with a cited proof": ("a question whose answer needs its source", None),
-}
-VERSIONS = {"catalog lookup": 2, "answer then sanitize": 3, "code_reviewer": 2}
-THINK = re.compile(r"<think>(.*?)</think>", re.DOTALL)
-CODE = re.compile(r"<repl>(.*?)</repl>", re.DOTALL)
-OBSERVATION = re.compile(r"<observation>(.*?)</observation>", re.DOTALL)
 
 
 def literal_block(dumper, text):
@@ -103,10 +81,6 @@ def described(path, name):
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == name:
             return ast.literal_eval(node.value)
     raise LookupError(f"{name} is not in {path}")
-
-
-def slug(name):
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
 
 
 def chain(name):
@@ -184,28 +158,6 @@ def cell(value):
     return "" if value is None else str(value).strip()
 
 
-def steps(messages):
-    """The worked example as the chat shows a run: tasks, thoughts, cells and outputs."""
-    shown = []
-    for message in messages:
-        text = message["content"]
-        observed = OBSERVATION.search(text)
-        if message["role"] == "assistant":
-            shown += [
-                {"kind": "think", "text": " ".join(t.split())}
-                for t in THINK.findall(text)
-            ]
-            shown += [
-                {"kind": "cell", "code": textwrap.dedent(code).strip(), "output": None}
-                for code in CODE.findall(text)
-            ]
-        elif observed and shown and shown[-1]["kind"] == "cell":
-            shown[-1]["output"] = textwrap.dedent(observed[1]).strip()
-        else:
-            shown.append({"kind": "task", "text": text.strip()})
-    return shown
-
-
 def item(value, level, name, verb="set"):
     """A field's value in namespace *name*, and where it comes from."""
     source = f"{verb} here" if level == name else f"inherited from {level}"
@@ -233,11 +185,10 @@ def var_summary(value):
 def resolve(name, namespaces, run_repl):
     """Each field of a namespace with the level it came from, as deep_reasoner resolves it."""
     levels = [(level, namespaces[level]) for level in chain(name)]
-    tools, variables, decompositions = {}, {}, {}
+    tools, variables = {}, {}
     for level, ns in levels:
         tools |= {tool: level for tool in ns.get("tools", []) if tool not in tools}
         variables |= {key: (value, level) for key, value in ns.get("vars", {}).items()}
-        decompositions |= {d["name"]: level for d in ns.get("decompositions", [])}
     run_repl_item = {"value": flow(run_repl), "source": "from the run settings"}
     chat_item = {"value": "chat", "source": "the run's default"}
     anywhere_item = {"value": "any namespace", "source": "not set"}
@@ -266,50 +217,32 @@ def resolve(name, namespaces, run_repl):
         },
         {"label": "Variables", "items": variable_items},
         {"label": "System suffix", "items": suffix_items},
-        {
-            "label": "Decompositions",
-            "items": [
-                item(d, lv, name, "attached") for d, lv in decompositions.items()
-            ],
-        },
     ]
 
 
-def decomposition(record, attached):
-    name = record["name"]
-    use_when, hint = USE_WHEN.get(name, (None, None))
-    return {
-        "name": name,
-        "slug": slug(name),
-        "version": VERSIONS.get(name, 1),
-        "use_when": use_when,
-        "hint": hint,
-        "attached": attached,
-        "steps": steps(record["messages"]),
-        "yaml": dump({"name": name, "messages": record["messages"]}),
-    }
+def own_decompositions(namespace):
+    """A namespace's own decompositions, each as the YAML the Library shows."""
+    records = {d["name"]: d["messages"] for d in namespace.get("decompositions", [])}
+    return [
+        {"name": name, "yaml": dump({"name": name, "messages": messages})}
+        for name, messages in records.items()
+    ]
 
 
 def collect():
-    """The Library's namespaces, tool blocks, menu and unattached decompositions."""
-    namespaces, blocks, menu, unattached = {}, {}, [], []
+    """The Library's namespaces and tool blocks."""
+    namespaces, blocks = {}, {}
     for relative, root_as in SOURCES.items():
         path = ENGINE / relative
         data = read(path)
-        menu += data.get("decompositions", [])
-        levels = {
-            name: level or {} for name, level in own_namespaces(path, data).items()
-        }
-        if root_as is None:
-            unattached += [
-                d for lv in levels.values() for d in lv.get("decompositions", [])
-            ]
-            continue
-        for name, level in levels.items():
-            merge(namespaces.setdefault(root_as if name == ROOT else name, {}), level)
+        for name, level in own_namespaces(path, data).items():
+            into = namespaces.setdefault(root_as if name == ROOT else name, {})
+            merge(into, level or {})
+        menu = {"decompositions": data.get("decompositions", [])}
+        merge(namespaces.setdefault(ROOT, {}), menu)
         for name, block in (data.get("tools") or {}).items():
             blocks.setdefault(name, block | {"defined_in": path})
-    return namespaces, blocks, menu, unattached
+    return namespaces, blocks
 
 
 def granted(tool, namespaces):
@@ -330,8 +263,8 @@ def tool_rows(blocks, namespaces):
             file, constant = BUILTINS[factory]
             description = block.get("description") or described(ENGINE / file, constant)
         source = defined_in and str(defined_in.relative_to(ENGINE))
-        row = {"name": name, "version": defined_in and VERSIONS.get(name, 1)}
-        row |= {"factory": factory, "file": str(file), "defined_in": source}
+        row = {"name": name, "factory": factory, "file": str(file)}
+        row |= {"defined_in": source}
         row |= {"granted_in": granted(name, namespaces), "description": description}
         rows.append(row | {"config": dump({name: block}) if block else None})
     return rows
@@ -375,47 +308,6 @@ def data_sections(namespaces, blocks):
     ]
 
 
-def holders(record, namespaces):
-    return [n for n, ns in namespaces.items() if record in ns.get("decompositions", [])]
-
-
-def decomposition_index(namespaces, menu, unattached):
-    attached = [d for ns in namespaces.values() for d in ns.get("decompositions", [])]
-    return {
-        slug(record["name"]): decomposition(record, holders(record, namespaces))
-        for record in attached + menu + unattached
-    }
-
-
-def groups(namespaces, menu, unattached):
-    """The Decompositions tab's groups: the menu, root's, each namespace's own and what
-    it inherits below root (root's group says every namespace inherits it), the rest."""
-    found = [
-        {
-            "title": "Every namespace's menu",
-            "rows": [{"slug": slug(d["name"])} for d in menu],
-        }
-    ]
-    for name in namespaces:
-        shown_levels = chain(name) if name == ROOT else chain(name)[1:]
-        levels = {
-            d["name"]: lv
-            for lv in shown_levels
-            for d in namespaces[lv].get("decompositions", [])
-        }
-        rows = [
-            {"slug": slug(d)} | ({} if lv == name else {"from": lv})
-            for d, lv in levels.items()
-        ]
-        title = f"{ROOT} · every namespace inherits these" if name == ROOT else name
-        found.append({"title": title, "rows": rows})
-    rest = {
-        "title": "Not attached",
-        "rows": [{"slug": slug(d["name"])} for d in unattached],
-    }
-    return [group for group in [*found, rest] if group["rows"]]
-
-
 def shown(value):
     if isinstance(value, dict):
         return flow(value)
@@ -423,11 +315,10 @@ def shown(value):
 
 
 def main():
-    namespaces, blocks, menu, unattached = collect()
+    namespaces, blocks = collect()
     settings = run_settings(ENGINE / next(iter(SOURCES)))
     run_repl = settings["repl"][0]
     library = {
-        "revision": REVISION,
         "default_namespace": settings["entry_namespace"][0],
         "run_settings": [
             {"label": key, "items": [{"value": shown(value), "source": source}]}
@@ -436,10 +327,9 @@ def main():
         "namespaces": [
             {"name": name, "depth": len(chain(name)) - 1}
             | {"fields": resolve(name, namespaces, run_repl)}
+            | {"decompositions": own_decompositions(namespaces[name])}
             for name in namespaces
         ],
-        "decompositions": decomposition_index(namespaces, menu, unattached),
-        "groups": groups(namespaces, menu, unattached),
         "tools": tool_rows(blocks, namespaces),
         "data": data_sections(namespaces, blocks),
     }
