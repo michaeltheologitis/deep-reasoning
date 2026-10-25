@@ -46,7 +46,7 @@ def list_chats(path: Path) -> list[Chat]:
     """Every chat, newest first."""
     with connect(path) as connection:
         rows = connection.execute(
-            "SELECT id, title, created FROM chats ORDER BY created DESC"
+            "SELECT id, title, created FROM chats ORDER BY created DESC, rowid DESC"
         )
         return [dict(row) for row in rows]
 

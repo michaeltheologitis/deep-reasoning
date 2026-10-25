@@ -1,4 +1,5 @@
 import re
+import time
 
 import pytest
 
@@ -15,6 +16,7 @@ from deep_reasoning.chats import (
 )
 
 MANY = 200
+NOW = 1_800_000_000.0
 
 
 @pytest.fixture
@@ -25,6 +27,12 @@ def chats(tmp_path):
 def test_new_chats_are_titled_new_chat_and_listed_newest_first(chats):
     first, second = create_chat(chats), create_chat(chats)
     assert first["title"] == second["title"] == NEW_TITLE
+    assert list_chats(chats) == [second, first]
+
+
+def test_chats_made_in_the_same_clock_tick_are_listed_newest_first(chats, monkeypatch):
+    monkeypatch.setattr(time, "time", lambda: NOW)
+    first, second = create_chat(chats), create_chat(chats)
     assert list_chats(chats) == [second, first]
 
 
