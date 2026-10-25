@@ -1,0 +1,176 @@
+# A router over two specialist sub-agents. Three namespaces, minimal sharing:
+#   router          — the entry point; classifies a question and delegates
+#   course_advisor  — self-contained, holds the full course catalog
+#   health_advisor  — self-contained, answers via one LLM then sanitizes via another
+# We compose ONLY client.yaml (infra). `root` carries just the shared `llm` tool —
+# every namespace inherits it (DRY), and each specialist adds only its own data and
+# decompositions; no vars or decompositions leak between them.
+_compose:
+  - client.yaml
+
+model: "qwen/qwen3.6-flash"
+entry_namespace: router
+
+# One agent-wide prompt (system prompts are not per-namespace); the routing and the
+# specialist behaviours come entirely from each namespace's decompositions.
+system_prompt: |
+  You solve each request by writing Python in a REPL and observing the results —
+  never by replying to the user directly. Each turn you output exactly two things,
+  in order:
+   1. **Reason** — a short paragraph inside <think> … </think>.
+   2. **Act** — exactly one <repl> … </repl> block of valid Python, then stop.
+
+  The code runs in the REPL; its printed output returns in an <observation> …
+  </observation> block in the next message. Continue until you call
+  `FinalAnswer(value)` in a <repl> block, which ends the run.
+
+  **Follow the worked examples.** The transcripts before the live task (the
+  user/assistant turns) show exactly how to handle this kind of request. Reproduce
+  their approach and call tools in the same way they do.
+
+  Rules:
+   - Every turn contains exactly one <repl> block. Never write a plain-prose reply
+     to the user — the ONLY way to answer is `FinalAnswer(value)` inside <repl>,
+     and that value should be produced by code (e.g. an `llm(...)` call), matching
+     the example, not written by you directly.
+   - <repl> contains only Python — no markdown fences, no other tags, no prose.
+   - Delegate a sub-task to a specialist with `subagent(task, namespace=...)`; it
+     runs the task to completion and returns its answer.
+
+  
+namespaces:
+  # Universal defaults live in root; every namespace inherits them.
+  root:
+    tools: [llm]                              # granted once, shared by all namespaces
+
+  # ── Entry point: classify, then delegate (or decline) ──────────────────────
+  router:
+    spawn: [course_advisor, health_advisor]   # may delegate ONLY to these two
+    decompositions:
+      - name: route a course question
+        messages:
+          - {role: user, content: "Which course can I take right after CS101?"}
+          - role: assistant
+            content: |
+              <think>A course-catalog question — hand it to the course_advisor.</think>
+              <repl>
+              FinalAnswer(subagent("Which course can I take right after CS101?",
+                                   namespace="course_advisor"))
+              </repl>
+      - name: route a wellbeing question
+        messages:
+          - {role: user, content: "I'm overwhelmed by my workload — any advice?"}
+          - role: assistant
+            content: |
+              <think>A student-wellbeing question — hand it to the health_advisor.</think>
+              <repl>
+              FinalAnswer(subagent("I'm overwhelmed by my workload — any advice?",
+                                   namespace="health_advisor"))
+              </repl>
+      - name: decline anything else
+        messages:
+          - {role: user, content: "What's the weather in Paris tomorrow?"}
+          - role: assistant
+            content: |
+              <think>Neither a course nor a wellbeing question — I'm not qualified.</think>
+              <repl>
+              FinalAnswer("I can only help with course-catalog or student-wellbeing questions.")
+              </repl>
+
+  # ── Specialist 1: self-contained, owns the full catalog ────────────────────
+  course_advisor:                             # inherits `llm` from root
+    vars:
+      catalog:
+        CS101:   {title: "Intro to Programming", credits: 3, prereqs: [],               dept: CS,   instructor: "A. Turing"}
+        MATH200: {title: "Linear Algebra",       credits: 3, prereqs: [],               dept: MATH, instructor: "E. Noether"}
+        CS201:   {title: "Data Structures",      credits: 4, prereqs: [CS101],          dept: CS,   instructor: "A. Turing"}
+        CS310:   {title: "Algorithms",           credits: 4, prereqs: [CS201],          dept: CS,   instructor: "Prof. Turing"}
+        CS330:   {title: "Databases",            credits: 3, prereqs: [CS201],          dept: CS,   instructor: "E. Codd"}
+        CS450:   {title: "Machine Learning",     credits: 4, prereqs: [CS310, MATH200], dept: CS,   instructor: "A. M. Turing"}
+    decompositions:
+      - name: catalog lookup
+        messages:
+          - {role: user, content: "Which course can I take right after CS101?"}
+          - role: assistant
+            content: |
+              <think>
+              A course is takeable after CS101 if CS101 is one of its prereqs. Scan the
+              catalog and PRINT the candidates first, so I can check them before answering.
+              </think>
+              <repl>
+              nxt = [cid for cid, c in catalog.items() if "CS101" in c["prereqs"]]
+              print(nxt)
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              ['CS201']
+              </observation>
+          - role: assistant
+            content: |
+              <think>The observation shows only CS201 lists CS101 as a prereq. Answer it.</think>
+              <repl>
+              FinalAnswer("CS201")
+              </repl>
+
+  # ── Specialist 2: self-contained, answer-then-sanitize ─────────────────────
+  health_advisor:                             # inherits `llm` from root
+    decompositions:
+      - name: answer then sanitize
+        messages:
+          - {role: user, content: "I'm stressed about finals. What can I do?"}
+          - role: assistant
+            content: |
+              <think>
+              Draft a supportive answer with the base LLM, then run a SECOND LLM pass
+              to strip any risky or clinical advice and add a gentle disclaimer.
+              </think>
+              <repl>
+              draft = llm("A student says: 'I'm stressed about finals. What can I do?' "
+                          "Reply supportively with three short, practical tips.")
+              print(draft)
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              Here are three practical tips to help you manage stress during finals:
+              1. Prioritize sleep and rest over cramming.
+              2. Break your study material into small, manageable chunks.
+              3. Take regular breaks (use the Pomodoro technique).
+              </observation>
+          - role: assistant
+            content: |
+              <think>Looks good, but let's sanitize it to avoid any clinical advice and add a disclaimer.</think>
+              <repl>
+              safe = llm("Rewrite the text below so it gives no medical or clinical "
+                         "advice, encourages reaching out to campus support, and adds a "
+                         "one-line disclaimer that you are not a therapist:\n\n" + draft)
+              print(safe)
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              Hey there! 👋
+
+              First off, take a deep breath. Finals week can feel like a lot, but please remember that you've prepared for this, and you are capable of handling it. It's completely normal to feel stressed, so be kind to yourself as you navigate these final exams. Here are some friendly reminders to help you stay on track and keep stress at bay:
+
+              🌙 **Sleep is your superpower.** Try to prioritize rest over late-night cramming. Your brain needs sleep to consolidate what you've learned, so getting good rest will actually help you perform better than pulling an all-nighter. Your future self will thank you!
+
+              🧱 **Break it down.** When the material feels massive, break your study sessions into small, manageable chunks. Tackling one bite-sized piece at a time makes everything feel more achievable and less intimidating.
+
+              ⏸️ **Take regular breaks.** Your focus will drop if you don't pause. Try the Pomodoro technique—study for a focused sprint, then take a short break to stretch, breathe, or grab a snack. Regular pauses help your brain reset and retain information better.
+
+              🏃‍♀️ **Fuel and move.** Treat your body well! A quick walk, some light exercise, and healthy snacks or hydration can really help your brain function at its peak. You think and feel better when you're cared for.
+
+              🗣️ **You're not alone.** If you're feeling overwhelmed, talk to a friend or family member about how you're feeling. Sharing your thoughts can lighten the mental load, and you might find they're feeling the same way. It's always okay to seek support.
+
+              Keep going, take it one step at a time, and be proud of how hard you're working. You've got this! ✨
+
+              Disclaimer: I'm an AI, not a licensed professional. If you are feeling overwhelmed or having thoughts of self-harm, please contact your school's counseling center or a local helpline immediately.
+              </observation>
+          - role: assistant
+            content: |
+              <think>Sanitized and supportive response looks good. Final answer.</think>
+              <repl>
+              FinalAnswer(safe)
+              </repl>

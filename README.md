@@ -4,7 +4,7 @@ A minimal chat for Dean's `deep_reasoner`, in one browser tab: your chats on the
 right, and each run's sub-agents as a tree you click open, in the look of Claude Code.
 
 **Building v1 (2026-10-25).** The UI was agreed on a clickable prototype (PR #73), and v1 now builds it for real.
-Until the last of its PRs lands, the app shows the prototype's mock data.
+Until the last of its PRs lands, the chat shows the prototype's mock data; the Library panel is real.
 
 ## Install and run
 
@@ -23,3 +23,17 @@ The first run takes a minute while uv installs everything. It serves on http://1
 
 The previous app, a desktop and browser app built on OpenHands, is in this repository's history: its last commit is
 `a80bb2e` (`git show a80bb2e:<path>`), and every design doc and as-built is on the `design-docs` branch.
+
+## The Library
+
+Every namespace, decomposition and custom tool your chats draw on, and the run settings, live in one file:
+`~/.deep-reasoning/library.sqlite`, made on the first run. A new Library runs chats on gpt-6-luna with the key in
+`OPENAI_API_KEY`. To bring in a `deep_reasoner` config, with its namespaces, decompositions and the Python files of
+its tools:
+
+```
+uv run deep-reasoning import path/to/config.yaml
+```
+
+Items with the same name are replaced; the Library's model and key stay as they are. To share a Library, share the
+file; open one with `--library PATH` (on `import` too).

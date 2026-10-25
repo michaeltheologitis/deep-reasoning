@@ -24,3 +24,7 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.17.2",
 ]
+
+[tool.ruff]
+# verbatim copies of deep_reasoner's example configs, used as test data
+extend-exclude = ["tests/configs"]
