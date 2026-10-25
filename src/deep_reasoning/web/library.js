@@ -1,5 +1,6 @@
 // The Library panel: the decompositions, namespaces, tools and data every run draws on, read from the server's Library file; Add saves there.
-// It draws with app.js's element(), caret() and fetchJson(), which load before this module.
+import { caret, element, request } from "./app.js";
+
 const LIBRARY_URL = "api/library";
 const ADD_URL = "api/decompositions";
 const TABS = ["Decompositions", "Namespaces", "Tools", "Data"];
@@ -149,13 +150,6 @@ function showProblems(found) {
   problemList.replaceChildren(...found.map((text) => element("p", {}, text)));
 }
 
-async function postJson(url, payload) {
-  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const answer = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof answer.detail === "string" ? answer.detail : `${url} answered ${response.status}`);
-  return answer;
-}
-
 // The live check gives instant feedback; the server checks again and has the last word, and its refusal shows in the same place.
 async function addDecomposition(e) {
   e.preventDefault();
@@ -164,7 +158,7 @@ async function addDecomposition(e) {
   saving = addButton.disabled = true;
   let added;
   try {
-    added = await postJson(ADD_URL, { namespace: namespace.name, yaml: yamlInput.value });
+    added = await request("POST", ADD_URL, { namespace: namespace.name, yaml: yamlInput.value });
   } catch (error) {
     showProblems(error.message.split("\n"));
     return;
@@ -381,7 +375,7 @@ function setOpen(open) {
 
 async function load() {
   try {
-    library = await fetchJson(LIBRARY_URL);
+    library = await request("GET", LIBRARY_URL);
     fileName.textContent = ` · ${library.file}`;
     picker.append(...library.namespaces.map(({ name }) => element("option", { value: name, selected: name === ROOT }, name)));
   } catch (error) {

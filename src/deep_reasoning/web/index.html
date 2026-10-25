@@ -30,15 +30,15 @@
         <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Message"></textarea>
         <button type="button" class="stop" id="stop" hidden>esc to interrupt</button>
       </div>
-      <div class="hints"><span id="hint"></span><span id="total"></span></div>
+      <div class="hints"><span id="hint" aria-live="polite"></span><span id="total"></span></div>
     </form>
   </main>
   <aside class="library" id="library" aria-label="Library" hidden></aside>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
-<script src="app.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script type="module" src="app.js"></script>
 <script type="module" src="library.js"></script>
 </body>
 </html>
