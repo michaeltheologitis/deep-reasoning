@@ -10,6 +10,7 @@ This project's Notion page (todos, changelog, notes): https://app.notion.com/p/4
 - The UI is agreed: the clickable prototype of PR #73. v1 builds it for real, in five PRs: (1) the app shell; (2) the Library in `library.sqlite`; (3) runs: `deep_reasoner` in a subprocess, steps streamed live, Stop ends the tree, costs per call; (4) chats saved in `chats.sqlite`; (5) the UI wired to real data. Until (5) the chat shows its mock data; the Library panel already shows the real Library.
 - The server listens on 127.0.0.1 only, and refuses requests naming another host.
 - The Library is one SQLite file (default `~/.deep-reasoning/library.sqlite`, `--library PATH` for another) holding every namespace, decomposition and custom tool's Python source, and the run settings, each as the engine's own YAML. Latest only: sharing or copying the file is the snapshot. `src/deep_reasoning/library.py` is the store; `engine_config()` turns it into the config dict `V2Config` reads at run start. `deep_reasoner` is never changed for it.
+- Chats are personal, so they are kept apart from the shareable Library: `chats.sqlite` in the app's home (`~/.deep-reasoning`, beside `runs/`, wherever `--library` points) holds each chat's id, title and when it was made. A chat's turns are its runs, read from `runs/<run>/events.jsonl`, never copied. `src/deep_reasoning/chats.py` is the store.
 - No sandboxing or safety layers, and nothing from the old app's OpenHands or ACP stack.
 
 ## Checks

@@ -1,15 +1,19 @@
+import errno
 import json
 import os
+import shutil
 import threading
 import time
 from contextlib import aclosing, closing
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 import structlog
 import yaml
 from fake_model import FakeOpenAI, repl, scripted, task_and_turn
 from genai_prices import Usage, calc_price
+from structlog.testing import capture_logs
 
 from deep_reasoning import runs as runs_module
 from deep_reasoning.library import (
@@ -348,6 +352,17 @@ async def test_a_chat_runs_one_message_at_a_time(home, fake_config):
     assert runs.live(CHAT) is None
 
 
+async def until(runs, run, done):
+    """The run's events up to the first one *done* accepts."""
+    events = []
+    async with aclosing(runs.events(run)) as stream:
+        async for event in stream:
+            events.append(event)
+            if done(event):
+                return events
+    return events
+
+
 async def test_a_chat_takes_its_next_message_once_its_turn_has_ended(
     home, fake_config, tmp_path
 ):
@@ -357,15 +372,67 @@ async def test_a_chat_takes_its_next_message_once_its_turn_has_ended(
         runs = Runs(home)
         config = fake_config(fake, **settings)
         run = runs.start(CHAT, "Hi.", config, [])
-        async with aclosing(runs.events(run)) as stream:
-            async for event in stream:
-                if event["kind"] == "turn.end":
-                    break
+        await until(runs, run, lambda event: event["kind"] == "turn.end")
         assert not saved.exists()  # the worker is still closing the run
         assert runs.live(CHAT) is None and runs.stop(run) is False
         _, events = await run_to_the_end(runs, "Hi.", config)
         _ = [event async for event in runs.events(run)]
     assert events[-1]["outcome"] == "answered"
+
+
+async def test_remove_stops_the_chats_run_and_deletes_its_folder_once_it_ended(
+    home, fake_config
+):
+    spin = "while True:\n    pass"
+    with FakeOpenAI(scripted({"Spin.": [PRINT_GROUP, repl(spin)]})) as fake:
+        runs = Runs(home)
+        run = runs.start(CHAT, "Spin.", fake_config(fake), [])
+        watching = runs.events(run)
+        await anext(watching)  # a stream open on the run, as a tab's is
+        events = await until(runs, run, lambda event: event.get("code") == spin)
+        await runs.remove(CHAT)
+        rest = [event async for event in watching]
+    with pytest.raises(ProcessLookupError):
+        os.killpg(group_of(events), 0)
+    assert rest[-1]["kind"] == "turn.end" and rest[-1]["outcome"] == "stopped"
+    assert not (home / "runs" / run).exists()
+
+
+async def test_remove_waits_for_a_worker_still_closing_its_run(
+    home, fake_config, tmp_path
+):
+    settings, saved = slow_saving(tmp_path)
+    with FakeOpenAI(scripted({"Hi.": [repl("FinalAnswer('hello')")]})) as fake:
+        runs = Runs(home)
+        run = runs.start(CHAT, "Hi.", fake_config(fake, **settings), [])
+        await until(runs, run, lambda event: event["kind"] == "turn.end")
+        assert not saved.exists()  # the worker is still closing the run
+        await runs.remove(CHAT)
+    assert saved.read_text() == "whole"
+    assert not (home / "runs" / run).exists()
+
+
+async def test_remove_logs_a_folder_it_cannot_delete_and_deletes_the_rest(
+    home, fake_config, monkeypatch
+):
+    with FakeOpenAI(scripted({"Hi.": [repl("FinalAnswer('hello')")]})) as fake:
+        runs = Runs(home)
+        stuck, _ = await run_to_the_end(runs, "Hi.", fake_config(fake))
+        removed, _ = await run_to_the_end(runs, "Hi.", fake_config(fake))
+    rmtree = shutil.rmtree
+
+    def rmtree_refusing_stuck(path, *args, **kwargs):
+        if Path(path).name == stuck:
+            raise PermissionError(errno.EACCES, "Permission denied", str(path))
+        rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", rmtree_refusing_stuck)
+    with capture_logs() as logs:
+        await runs.remove(CHAT)
+    assert (home / "runs" / stuck).exists()
+    assert not (home / "runs" / removed).exists()
+    not_removed = [each for each in logs if each["event"] == "runs.folder_not_removed"]
+    assert [each["run"] for each in not_removed] == [stuck]
 
 
 async def test_an_event_too_long_to_read_ends_the_turn_failed(

@@ -21,7 +21,8 @@ from deep_reasoning.library import LibraryError, import_config, open_library
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 MAX_PORT = 65535
-HOME_DIR = ".deep-reasoning"  # the app's home: its runs, and its Library by default
+# The app's home: its chats and runs, and its Library by default.
+HOME_DIR = ".deep-reasoning"
 LIBRARY_FILE = "library.sqlite"
 
 log = structlog.get_logger()

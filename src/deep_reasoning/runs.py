@@ -10,6 +10,7 @@ import json
 import math
 import mmap
 import os
+import shutil
 import signal
 import sys
 import time
@@ -277,6 +278,23 @@ class Runs:
                 yield event
         finally:
             live.watchers.discard(queue)
+
+    async def remove(self, chat: str) -> None:
+        """Delete the chat's runs, stopping the one going, once each of their workers has
+        exited: a worker writes into its run's folder until then, even after turn.end."""
+        workers = []
+        for run, live in self._live.items():
+            if live.chat == chat:
+                self.stop(run)
+                workers.append(live.pump)
+        if workers:
+            await asyncio.wait(workers)
+        for start in turn_starts(self.home, chat):
+            try:
+                shutil.rmtree(self.home / RUNS / start["run"])
+            except OSError:
+                # The chat is gone already: a folder left behind is logged, not raised.
+                log.exception("runs.folder_not_removed", run=start["run"])
 
     async def close(self) -> None:
         """End every run that is going: the app is shutting down."""
