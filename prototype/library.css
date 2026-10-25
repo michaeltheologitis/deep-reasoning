@@ -1,0 +1,90 @@
+/* The Library panel: a column right of the conversation when there is room, over it when not, the whole screen on a phone. */
+.library-toggle { color: var(--dim); padding: 2px 6px; }
+.library-toggle:hover, .library-toggle[aria-expanded="true"] { color: var(--fg); }
+
+.library {
+  --library-width: 440px;
+  --label-width: 16ch;
+  --table-cell-max: 44ch;
+  --editor-max-height: 60vh;
+  display: flex; flex-direction: column; min-width: 0; min-height: 0; width: var(--library-width); max-width: 100%;
+  background: var(--bg); border-left: 1px solid var(--faint);
+}
+.library[hidden] { display: none; }
+@media (min-width: 1200px) { .library { grid-column: 3; grid-row: 1; } }
+@media (max-width: 1199px) {
+  .library { position: fixed; inset: 0 0 0 auto; z-index: 6; box-shadow: -10px 0 30px color-mix(in srgb, var(--fg) 14%, transparent); }
+}
+@media (max-width: 720px) {
+  .library { width: 100%; border-left: 0; box-shadow: none; padding-top: env(safe-area-inset-top, 0px); }
+}
+
+.lib-head {
+  display: flex; align-items: baseline; gap: 1ch; border-bottom: 1px solid var(--faint);
+  padding-block: 10px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.lib-title { flex: 1; min-width: 0; margin: 0; font: inherit; font-weight: 600; }
+.lib-filename { color: var(--dim); font-weight: 400; }
+.lib-close { color: var(--dim); padding: 0 6px; }
+.lib-close:hover { color: var(--fg); }
+.lib-tabs { display: flex; flex-wrap: wrap; gap: 0 1ch; padding: 8px 16px; border-bottom: 1px solid var(--faint); }
+.lib-tab, .lib-dot { color: var(--dim); }
+.lib-tab:hover { color: var(--fg); }
+.lib-tab[aria-selected="true"] { color: var(--fg); font-weight: 600; }
+.lib-body {
+  flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+  padding-block: 12px max(28px, env(safe-area-inset-bottom, 0px)); padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* rows: the chat's sub-agent rows, opening onto what they hold */
+.lib-group, .lib-rows { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.lib-label { margin: 0 0 2px; font: inherit; color: var(--dim); }
+.lib-name { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-detail { color: var(--dim); }
+.lib-star { flex: none; color: var(--accent); }
+.lib-tree .row { padding-left: calc(4px + var(--depth, 0) * 2ch); }
+.lib-tree .lib-open { margin-left: calc(0.5ch + var(--depth, 0) * 2ch); }
+.lib-open { gap: 8px; padding-block: 4px 6px; }
+
+.lib-fields { display: grid; grid-template-columns: var(--label-width) minmax(0, 1fr); gap: 3px 1ch; margin: 0; }
+.lib-fields dt { color: var(--dim); }
+.lib-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+/* a value of many lines, a system suffix, takes the whole width under its label */
+.lib-fields dd:has(.lib-block) { grid-column: 1 / -1; }
+.lib-source { color: var(--dim); font-style: italic; }
+.lib-source.here { color: var(--accent); font-style: normal; }
+
+.lib-actions { display: flex; flex-wrap: wrap; gap: 2ch; }
+.lib-action { color: var(--dim); }
+.lib-action:hover, .lib-action[aria-expanded="true"] { color: var(--fg); }
+.lib-pre, .lib-doc { margin-left: 0; }
+/* YAML and docstrings keep their lines and scroll sideways */
+.lib-pre { white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+
+.lib-table { max-width: 100%; overflow-x: auto; }
+.lib-table table { width: max-content; border-collapse: collapse; }
+.lib-table th, .lib-table td { text-align: left; vertical-align: top; padding: 2px 2ch 2px 0; border-bottom: 1px solid var(--faint); }
+.lib-table th { color: var(--dim); font-weight: 400; }
+.lib-table div { max-width: var(--table-cell-max); white-space: pre-wrap; overflow-wrap: anywhere; }
+.lib-note { margin: 0; color: var(--dim); }
+
+/* adding a decomposition: one YAML editor that grows with what it holds */
+.lib-add { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.lib-form { align-self: stretch; gap: 6px; }
+.lib-form[hidden] { display: none; }
+.lib-form label { color: var(--dim); }
+.lib-form-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 2ch; }
+.lib-yaml {
+  flex: none; box-sizing: border-box; width: 100%; max-height: var(--editor-max-height); overflow: auto;
+  padding: 8px 10px; background: var(--code); border: 1px solid var(--faint); border-radius: 4px; white-space: pre; tab-size: 2;
+}
+.lib-yaml:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.lib-form select { max-width: 100%; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--faint); border-radius: 3px; padding: 1px 4px; }
+.lib-file-pick { position: relative; cursor: pointer; }
+.lib-file-pick:has(:focus-visible) { outline: 1px solid var(--accent); outline-offset: 1px; }
+.lib-file-pick input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
+.lib-problems { display: flex; flex-direction: column; gap: 2px; color: var(--err); }
+.lib-problems p { margin: 0; overflow-wrap: anywhere; }
+.lib-primary { color: var(--accent); }
+.lib-primary:disabled { color: var(--dim); cursor: default; }
+.lib-confirm { margin: 0; color: var(--ok); overflow-wrap: anywhere; }
