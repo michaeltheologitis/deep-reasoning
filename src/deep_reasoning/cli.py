@@ -1,8 +1,8 @@
 """The `deep-reasoning` command: serve the app on 127.0.0.1 and open it in a tab."""
 
 import argparse
+import contextlib
 import errno
-import http.client
 import socket
 import sys
 import threading
@@ -15,6 +15,7 @@ from deep_reasoning.app import create_app
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
+MAX_PORT = 65535
 
 log = structlog.get_logger()
 
@@ -32,15 +33,6 @@ def listen(port):
         )
 
 
-def open_browser_once_up(port, url):
-    # The socket already listens, so this request waits until uvicorn answers it.
-    connection = http.client.HTTPConnection(HOST, port)
-    connection.request("GET", "/")
-    connection.getresponse()
-    connection.close()
-    webbrowser.open(url)
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Start Deep Reasoning and open it in a browser tab."
@@ -49,17 +41,21 @@ def main(argv=None):
         "--port",
         type=int,
         default=DEFAULT_PORT,
-        help=f"the port to serve on (default {DEFAULT_PORT})",
+        help=f"the port to serve on (default {DEFAULT_PORT}; 0 picks a free one)",
     )
     parser.add_argument(
         "--no-browser", action="store_true", help="don't open a browser tab"
     )
     args = parser.parse_args(argv)
-    url = f"http://{HOST}:{args.port}/"
+    if not 0 <= args.port <= MAX_PORT:
+        parser.error(f"--port must be between 0 and {MAX_PORT}")
+    server = uvicorn.Server(uvicorn.Config(create_app()))
     with listen(args.port) as sock:
-        if not args.no_browser:
-            threading.Thread(
-                target=open_browser_once_up, args=(args.port, url), daemon=True
-            ).start()
+        url = f"http://{HOST}:{sock.getsockname()[1]}/"
         log.info("Deep Reasoning is running", url=url)
-        uvicorn.Server(uvicorn.Config(create_app())).run(sockets=[sock])
+        if not args.no_browser:
+            # The tab's request waits for uvicorn; a thread, as some launchers block.
+            threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
+        # uvicorn re-raises Ctrl+C after a clean shutdown; uvicorn.run hides it too.
+        with contextlib.suppress(KeyboardInterrupt):
+            server.run(sockets=[sock])
