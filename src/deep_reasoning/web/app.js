@@ -1,16 +1,18 @@
-// The Deep Reasoning chat prototype: mock data, no server, nothing saved.
-const THINK_MS = 550;
-const CELL_MS = 190;
-const ANSWER_TICK_MS = 40;
-const WORDS_PER_TICK = 6;
+// The Deep Reasoning chat: chats and their runs from the app's API, each run's events folded into its tree, live as they stream.
+import { foldEvent, foldEvents, newFold } from "./fold.js";
+
 const SPIN_MS = 120;
 const STICK_PX = 80;
 const FIRST_ROWS = 20;
 const MORE_ROWS = 100;
 const TRAIL_CHARS = 22;
 const TRAIL_PARTS = 3;
-const TEMPLATE_CHAT = "degree";
 const SECONDS_PER_MINUTE = 60;
+const MS_PER_SECOND = 1000;
+const CONFLICT = 409;
+const NEW_TITLE = "New chat";
+const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
+const RECONNECTING = "Lost the connection to the run; reconnecting…";
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
 const SPIN = ["·", "✢", "✳︎", "✶", "✻", "✽", "✻", "✶", "✳︎", "✢"];
 const STATUS = {
@@ -27,7 +29,7 @@ const OUTCOME = {
 };
 
 const byId = (id) => document.getElementById(id);
-const state = { chats: [], current: null, live: null, template: null };
+const state = { chats: [], current: null, live: null, sending: false, problem: null };
 const ui = { renaming: null, deleting: null };
 const opened = new WeakSet();
 const showingCode = new WeakSet();
@@ -37,6 +39,7 @@ const keys = new WeakMap();
 const counter = new Intl.NumberFormat();
 let nextId = 1;
 let frame = 0;
+let drawing = 0;
 
 function element(tag, props = {}, ...kids) {
   const el = document.createElement(tag);
@@ -51,7 +54,7 @@ function element(tag, props = {}, ...kids) {
 }
 
 const join = (items, separator) => items.flatMap((item, i) => (i ? [separator, item] : [item]));
-const since = (start) => (Date.now() - start) / 1000;
+const since = (start) => Date.now() / MS_PER_SECOND - start;
 const isFinal = (cell) => cell.code.startsWith("FinalAnswer(");
 const formatCount = (count) => counter.format(count);
 const plural = (count, noun) => `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
@@ -303,32 +306,37 @@ function summary(turn) {
   return join([lead, agents > 0 && plural(agents, "sub-agent"), formatCost(turn.cost)].filter(Boolean), " · ");
 }
 
-function liveSummary(turn) {
+function liveSummary(turn, followed) {
   const running = countAgents(turn, (agent) => agent.status === "running");
-  const facts = [clock(state.live.started), running > 0 && `${plural(running, "sub-agent")} running`, "esc to interrupt"];
+  const facts = [clock(turn.started), running > 0 && `${plural(running, "sub-agent")} running`, followed && "esc to interrupt"];
   return [element("span", { class: "working" }, "Reasoning… "), "(", join(facts.filter(Boolean), " · "), ")"];
 }
 
-function trailText(trail) {
+function trailText({ tasks, step }) {
+  const trail = [...tasks.map((task) => clip(task, TRAIL_CHARS)), stepLabel(step, TRAIL_CHARS)];
   const parts = trail.length > TRAIL_PARTS ? [trail[0], "…", ...trail.slice(1 - TRAIL_PARTS)] : trail;
   return parts.join(" › ");
 }
 
 function renderTurn(turn) {
   const live = state.live?.turn === turn;
+  // no turn.end yet: still going, though this page may not follow it (a run started in another tab)
+  const going = turn.outcome == null;
   const open = opened.has(turn);
+  const latest = live && state.live.fold.latest;
   const el = element(
     "section",
     { class: "turn" },
     element("div", { class: "user" }, element("span", { class: "prompt" }, "> "), turn.prompt),
     toggler(turn, { class: "summary" }, [
       caret(open),
-      live ? spinner() : element("span", {}, "✻"),
-      element("span", { class: "text" }, live ? liveSummary(turn) : summary(turn)),
+      going ? spinner() : element("span", {}, "✻"),
+      element("span", { class: "text" }, going ? liveSummary(turn, live) : summary(turn)),
     ]),
-    live && !open && state.live.trail.length > 0 && out(trailText(state.live.trail), { full: true }),
+    live && !open && latest && out(trailText(latest), { full: true }),
     open && element("div", { class: "steps" }, turn.steps.map((step) => renderStep(step, true))),
     turn.answer != null && renderAnswer(turn.answer),
+    turn.outcome === "failed" && turn.detail && out(turn.detail, { tone: "err", full: true }),
   );
   return remember(turn, el, () => renderTurn(turn));
 }
@@ -339,7 +347,6 @@ function renderWelcome() {
     { class: "welcome" },
     element("div", { class: "hi" }, "✻ Deep Reasoning"),
     element("p", {}, "Ask anything. Each run shows how it got its answer as a tree you open level by level."),
-    element("p", {}, "Prototype: every message plays back the same mock run, the degree-planning one. Press esc to stop it."),
   );
 }
 
@@ -377,7 +384,7 @@ function renderChat(chat) {
   if (ui.renaming === chat) return renderRename(chat);
   if (ui.deleting === chat) return renderConfirmDelete(chat);
   const current = chat === state.current;
-  const live = state.live?.chat === chat;
+  const live = chat.live != null;
   return element(
     "li",
     { class: `chat ${current ? "current" : ""}` },
@@ -403,22 +410,35 @@ function keepScroll(scroll, draw) {
   if (scroll === "bottom" || (scroll === "follow" && nearBottom)) box.scrollTop = box.scrollHeight;
 }
 
+function logOf(chat) {
+  if (!chat.turns) return [];
+  return chat.turns.length ? chat.turns.map(renderTurn) : [renderWelcome()];
+}
+
 function renderLog(scroll) {
   const chat = state.current;
   const focused = document.activeElement?.dataset?.key;
   byId("title").textContent = chat.title;
-  keepScroll(scroll, () => byId("log").replaceChildren(...(chat.turns.length ? chat.turns.map(renderTurn) : [renderWelcome()])));
+  keepScroll(scroll, () => byId("log").replaceChildren(...logOf(chat)));
   refocus(focused);
+}
+
+function usualHint(live, here) {
+  if (here) return live.stopping ? "stopping…" : "";
+  if (live) return `a run is going in “${live.chat.title}”`;
+  return "enter to send · shift+enter for a new line";
 }
 
 function renderComposer() {
   const live = state.live;
   const here = live?.chat === state.current;
+  const hint = byId("hint");
+  const text = state.problem ?? usualHint(live, here);
   byId("stop").hidden = !here;
-  if (here) byId("hint").textContent = "";
-  else if (live) byId("hint").textContent = `a run is going in “${live.chat.title}”`;
-  else byId("hint").textContent = "enter to send · shift+enter for a new line";
-  const total = state.current.turns.reduce((sum, turn) => sum + (turn.cost ?? 0), 0);
+  hint.classList.toggle("err", state.problem != null);
+  // the hint is a live region: setting the same text again would announce it again
+  if (hint.textContent !== text) hint.textContent = text;
+  const total = (state.current?.turns ?? []).reduce((sum, turn) => sum + (turn.cost ?? 0), 0);
   byId("total").textContent = total ? `${formatCost(total)} this chat` : "";
 }
 
@@ -433,133 +453,194 @@ function setUi(change) {
   renderList();
 }
 
-function select(chat) {
+function report(problem) {
+  state.problem = problem;
+  renderComposer();
+}
+
+async function request(method, url, body) {
+  const options = body === undefined ? { method } : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch {
+    throw new Error(NOT_ANSWERING);
+  }
+  const answer = await response.json().catch(() => ({}));
+  if (response.ok) return answer;
+  const problem = typeof answer.detail === "string" ? answer.detail : `${url} answered ${response.status}`;
+  throw Object.assign(new Error(problem), { status: response.status });
+}
+
+// A run still going in a chat is followed from where its turns end, unless the page follows another or the chat is gone.
+async function readTurns(chat) {
+  const { title, live, turns } = await request("GET", `api/chats/${chat.id}`);
+  const folds = turns.map((turn) => foldEvents(turn.events));
+  Object.assign(chat, { title, live, turns: folds.map((fold) => fold.turn) });
+  if (live && !state.live && state.chats.includes(chat)) follow(chat, live, folds.at(-1));
+}
+
+async function select(chat) {
   state.current = chat;
+  state.problem = null;
   ui.deleting = null;
   byId("app").classList.remove("list-open");
   render("bottom");
   byId("input").focus();
+  // read once, or each time while its run goes on unfollowed, so its turn never stays half-folded
+  if (chat.turns && (chat.live == null || state.live?.chat === chat)) return;
+  chat.reading ??= readTurns(chat);
+  try {
+    await chat.reading;
+  } catch (error) {
+    if (state.current === chat) report(`Could not open this chat: ${error.message}`);
+    return;
+  } finally {
+    chat.reading = null;
+  }
+  if (state.current === chat) render("bottom");
 }
 
-function newChat() {
-  const chat = { id: `new-${nextId++}`, title: "New chat", turns: [] };
+async function newChat() {
+  let chat;
+  try {
+    chat = await request("POST", "api/chats");
+  } catch (error) {
+    report(`No new chat: ${error.message}`);
+    return;
+  }
+  chat.turns = [];
   state.chats.unshift(chat);
   select(chat);
 }
 
-function remove(chat) {
-  if (state.live?.chat === chat) stop();
+// The list drops the chat at once; the server may take a few seconds, stopping a run that is going first.
+async function remove(chat) {
   const index = state.chats.indexOf(chat);
+  if (state.live?.chat === chat) {
+    state.live.source.close();
+    state.live = null;
+  }
   state.chats.splice(index, 1);
   ui.deleting = null;
-  if (!state.chats.length) return newChat();
-  if (state.current === chat) state.current = state.chats[Math.min(index, state.chats.length - 1)];
-  render("bottom");
+  renderList();
+  if (state.current !== chat) renderComposer();
+  else if (state.chats.length) select(state.chats[Math.min(index, state.chats.length - 1)]);
+  else newChat();
+  try {
+    await request("DELETE", `api/chats/${chat.id}`);
+  } catch (error) {
+    // back in the list, read afresh when next opened
+    state.chats.splice(Math.min(index, state.chats.length), 0, Object.assign(chat, { turns: null }));
+    state.problem = `Not deleted: ${error.message}`;
+    render();
+  }
 }
 
-function finishRename(chat, title) {
+async function finishRename(chat, typed) {
   if (ui.renaming !== chat) return;
   ui.renaming = null;
-  if (title.trim()) chat.title = title.trim();
+  const before = chat.title;
+  const title = typed.trim();
+  if (!title || title === before) return render();
+  chat.title = title;
   render();
+  try {
+    await request("PATCH", `api/chats/${chat.id}`, { title });
+  } catch (error) {
+    chat.title = before;
+    state.problem = `Not renamed: ${error.message}`;
+    render();
+  }
 }
 
-// A live run plays the template run back step by step; sub-agents of one cell take turns.
-function* together(sources, cell, path) {
-  const kids = sources.map((source) => {
-    const row = { ...source, steps: [], status: "running", result: null, cost: null, started: Date.now() };
-    cell.agents.push(row);
-    return playAgent(source, row, [...path, clip(source.task, TRAIL_CHARS)]);
+function follow(chat, run, fold) {
+  const source = new EventSource(`api/runs/${run}/events?after=${fold.seq}`);
+  const live = { chat, run, fold, turn: fold.turn, source, stopping: false };
+  state.live = live;
+  chat.live = run;
+  source.onopen = () => {
+    if (state.problem === RECONNECTING) report(null);
+  };
+  source.onmessage = (message) => receive(live, JSON.parse(message.data));
+  source.onerror = () => lost(live);
+}
+
+function receive(live, event) {
+  if (!foldEvent(live.fold, event)) return;
+  if (event.kind === "turn.end") return finish(live);
+  drawLive(live);
+}
+
+// Events come in bursts, as when catching up on a long run, so the live turn redraws at most once a frame.
+function drawLive(live) {
+  if (drawing) return;
+  drawing = requestAnimationFrame(() => {
+    drawing = 0;
+    if (state.live !== live || live.chat !== state.current || !views.has(live.turn)) return;
+    keepScroll("follow", () => redraw(live.turn));
+    renderComposer();
   });
-  while (kids.length) {
-    for (const kid of [...kids]) {
-      const { value, done } = kid.next();
-      if (done) kids.splice(kids.indexOf(kid), 1);
-      else yield value / kids.length;
-    }
-  }
 }
 
-function* playAgent(source, row, path) {
-  yield* play(source, row, path);
-  const { status, result, cost, seconds } = source;
-  Object.assign(row, { status, result, cost, seconds });
-}
-
-function* play(source, target, path) {
-  for (const step of source.steps) {
-    yield step.kind === "think" ? THINK_MS : CELL_MS;
-    state.live.trail = [...path, stepLabel(step, TRAIL_CHARS)];
-    if (step.kind === "think") {
-      target.steps.push({ ...step });
-      continue;
-    }
-    const cell = { ...step, agents: [], output: null, status: "running" };
-    target.steps.push(cell);
-    if (step.agents.length) yield* together(step.agents, cell, path);
-    yield CELL_MS;
-    Object.assign(cell, { output: step.output, status: step.status });
-  }
-}
-
-function* playTurn(source, turn) {
-  yield* play(source, turn, []);
-  const words = source.answer.split(/(\s+)/);
-  for (let i = 1; i < words.length; i += WORDS_PER_TICK) {
-    turn.answer = words.slice(0, i).join("");
-    yield ANSWER_TICK_MS;
-  }
-  const { answer, outcome, cost, seconds } = source;
-  Object.assign(turn, { answer, outcome, cost, seconds });
-}
-
-function advance() {
-  const live = state.live;
-  const { value, done } = live.steps.next();
-  if (done) {
-    state.live = null;
-    render("follow");
-    return;
-  }
-  live.timer = setTimeout(advance, value);
-  // a tick changes only the live turn, so it leaves the rest of the log alone
-  if (live.chat === state.current) keepScroll("follow", () => redraw(live.turn));
-}
-
-function send() {
-  const input = byId("input");
-  const text = input.value.trim();
-  if (!text || state.live) return;
-  const chat = state.current;
-  if (!chat.turns.length) chat.title = text.split("\n")[0];
-  const turn = { prompt: text, steps: [], answer: null, outcome: null, cost: null, seconds: null };
-  chat.turns.push(turn);
-  input.value = "";
-  grow();
-  state.live = { chat, turn, started: Date.now(), steps: playTurn(state.template, turn), timer: null, trail: [] };
-  render("bottom");
-  advance();
-}
-
-function markStopped(holder) {
-  for (const step of holder.steps) {
-    if (step.kind !== "cell") continue;
-    if (step.status === "running") step.status = "stopped";
-    for (const agent of step.agents) {
-      if (agent.status === "running") Object.assign(agent, { status: "stopped", seconds: since(agent.started) });
-      markStopped(agent);
-    }
-  }
-}
-
-function stop() {
-  const live = state.live;
-  if (!live) return;
-  clearTimeout(live.timer);
-  markStopped(live.turn);
-  Object.assign(live.turn, { outcome: "stopped", seconds: since(live.started) });
-  state.live = null;
+// The stream closes after turn.end; left open, EventSource would reconnect to it.
+function finish(live) {
+  live.source.close();
+  live.chat.live = null;
+  if (state.live === live) state.live = null;
   render("follow");
+}
+
+// EventSource retries a dropped stream itself; it gives up only when refused (a run deleted meanwhile), so the chat is read afresh.
+function lost(live) {
+  if (live.source.readyState !== EventSource.CLOSED) return report(RECONNECTING);
+  if (state.live === live) state.live = null;
+  if (state.problem === RECONNECTING) state.problem = null;
+  Object.assign(live.chat, { live: null, turns: null });
+  if (live.chat === state.current) select(live.chat);
+  else render();
+}
+
+async function send() {
+  const input = byId("input");
+  const prompt = input.value.trim();
+  const chat = state.current;
+  if (!prompt || state.live || state.sending || !chat?.turns) return;
+  state.sending = true;
+  let run;
+  try {
+    ({ run } = await request("POST", `api/chats/${chat.id}/runs`, { prompt }));
+  } catch (error) {
+    report(`Not sent: ${error.status === CONFLICT ? "this chat already has a run going" : error.message}`);
+    return;
+  } finally {
+    state.sending = false;
+  }
+  if (input.value.trim() === prompt) input.value = "";
+  grow();
+  // as the server titles it
+  if (!chat.turns.length && chat.title === NEW_TITLE) chat.title = prompt.split("\n")[0].trim();
+  const fold = newFold();
+  Object.assign(fold.turn, { prompt, started: Date.now() / MS_PER_SECOND });
+  chat.turns.push(fold.turn);
+  state.problem = null;
+  follow(chat, run, fold);
+  render("bottom");
+}
+
+async function stop() {
+  const live = state.live;
+  if (!live || live.stopping) return;
+  live.stopping = true;
+  renderComposer();
+  try {
+    await request("POST", `api/runs/${live.run}/stop`);
+  } catch (error) {
+    // a conflict: the run has just ended, and its turn.end is on its way
+    if (error.status === CONFLICT) return;
+    live.stopping = false;
+    report(`Not stopped: ${error.message}`);
+  }
 }
 
 function grow() {
@@ -633,24 +714,20 @@ function wire() {
   }, SPIN_MS);
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`${url} answered ${response.status}`);
-  return response.json();
+// A run going in a chat is what the page was showing before a reload, so that chat opens first.
+async function start() {
+  try {
+    state.chats = await request("GET", "api/chats");
+  } catch (error) {
+    byId("log").textContent = `Could not load the chats (${error.message}). Start the app with: uv run deep-reasoning`;
+    return;
+  }
+  const first = state.chats.find((chat) => chat.live) ?? state.chats[0];
+  if (first) select(first);
+  else newChat();
 }
 
-async function load() {
-  const urls = ["data/showcase.json", "data/recordings.json"];
-  try {
-    const [showcase, recordings] = await Promise.all(urls.map(fetchJson));
-    state.template = showcase.chats.find((chat) => chat.id === TEMPLATE_CHAT).turns[0];
-    state.chats = [...showcase.chats, ...recordings.chats];
-    state.current = state.chats[0];
-    render("bottom");
-  } catch (error) {
-    byId("log").textContent = `Could not load the mock chats (${error.message}). Start the app with: uv run deep-reasoning`;
-  }
-}
+export { caret, element, request };
 
 wire();
-load();
+start();

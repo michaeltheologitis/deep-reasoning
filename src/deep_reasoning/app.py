@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import structlog
-from fastapi import Body, Depends, FastAPI, Header, HTTPException
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
 from fastapi import Path as InPath
 from fastapi.responses import JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
@@ -173,9 +173,11 @@ def create_app(library, home):
     @app.get("/api/runs/{run}/events", response_class=EventSourceResponse)
     async def run_events(
         run: Annotated[str, Depends(known_run)],
+        after: Annotated[int, Query(ge=0)] = 0,
         last_event_id: Annotated[int, Header(ge=0)] = 0,
     ):
-        async for event in runs.events(run, after=last_event_id):
+        # EventSource sends no Last-Event-ID on its first connect, hence ?after=.
+        async for event in runs.events(run, after=max(after, last_event_id)):
             yield ServerSentEvent(data=event, id=str(event["seq"]))
 
     # A mount at / answers every path, so API routes must be added above it.

@@ -96,7 +96,7 @@ def test_root_serves_the_ui(client):
     assert "<title>Deep Reasoning</title>" in response.text
 
 
-@pytest.mark.parametrize("path", ["app.js", "style.css", "library.js"])
+@pytest.mark.parametrize("path", ["app.js", "fold.js", "style.css", "library.js"])
 def test_static_assets_are_served(client, path):
     response = client.get(f"/{path}")
     assert response.status_code == 200
@@ -202,6 +202,23 @@ async def test_a_message_runs_and_its_events_stream_with_ids(library_on, connect
     assert events[0][1]["kind"] == "turn.start" and events[0][1]["namespace"] == "root"
     assert events[-1][1]["outcome"] == "answered" and events[-1][1]["answer"] == "2"
     assert server_sent(resumed.text) == events[3:]
+
+
+@pytest.mark.anyio
+async def test_a_stream_resumes_after_its_query_or_its_header_whichever_is_later(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            run = await send(api, await new_chat(api), "Count to two.")
+            url = f"/api/runs/{run}/events"
+            events = server_sent((await api.get(url)).text)
+            after = await api.get(url, params={"after": 3})
+            reconnected = await api.get(
+                url, params={"after": 3}, headers={"Last-Event-ID": "5"}
+            )
+    assert server_sent(after.text) == events[3:]
+    assert server_sent(reconnected.text) == events[5:]
 
 
 @pytest.mark.anyio
