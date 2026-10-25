@@ -648,7 +648,7 @@ async function load() {
     state.current = state.chats[0];
     render("bottom");
   } catch (error) {
-    byId("log").textContent = `Could not load the mock chats (${error.message}). Serve this folder: python3 -m http.server 8000 --directory prototype`;
+    byId("log").textContent = `Could not load the mock chats (${error.message}). Start the app with: uv run deep-reasoning`;
   }
 }
 
