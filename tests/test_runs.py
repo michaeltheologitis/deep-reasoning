@@ -368,6 +368,45 @@ async def test_a_chat_takes_its_next_message_once_its_turn_has_ended(
     assert events[-1]["outcome"] == "answered"
 
 
+async def until(runs, run, done):
+    """The run's events up to the first one *done* accepts."""
+    events = []
+    async with aclosing(runs.events(run)) as stream:
+        async for event in stream:
+            events.append(event)
+            if done(event):
+                return events
+    return events
+
+
+async def test_remove_stops_the_chats_run_and_deletes_its_folder_once_it_ended(
+    home, fake_config
+):
+    spin = "while True:\n    pass"
+    with FakeOpenAI(scripted({"Spin.": [PRINT_GROUP, repl(spin)]})) as fake:
+        runs = Runs(home)
+        run = runs.start(CHAT, "Spin.", fake_config(fake), [])
+        events = await until(runs, run, lambda event: event.get("code") == spin)
+        await runs.remove(CHAT)
+    with pytest.raises(ProcessLookupError):
+        os.killpg(group_of(events), 0)
+    assert not (home / "runs" / run).exists()
+
+
+async def test_remove_waits_for_a_worker_still_closing_its_run(
+    home, fake_config, tmp_path
+):
+    settings, saved = slow_saving(tmp_path)
+    with FakeOpenAI(scripted({"Hi.": [repl("FinalAnswer('hello')")]})) as fake:
+        runs = Runs(home)
+        run = runs.start(CHAT, "Hi.", fake_config(fake, **settings), [])
+        await until(runs, run, lambda event: event["kind"] == "turn.end")
+        assert not saved.exists()  # the worker is still closing the run
+        await runs.remove(CHAT)
+    assert saved.read_text() == "whole"
+    assert not (home / "runs" / run).exists()
+
+
 async def test_an_event_too_long_to_read_ends_the_turn_failed(
     home, fake_config, monkeypatch
 ):

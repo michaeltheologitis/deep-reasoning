@@ -280,12 +280,15 @@ class Runs:
             live.watchers.discard(queue)
 
     async def remove(self, chat: str) -> None:
-        """Delete the chat's runs, once the one going, if any, has ended: its worker
-        writes into its folder until then."""
-        run = self.live(chat)
-        if run is not None:
-            self.stop(run)
-            await asyncio.wait([self._live[run].pump])
+        """Delete the chat's runs, stopping the one going, once each of their workers has
+        exited: a worker writes into its run's folder until then, even after turn.end."""
+        workers = []
+        for run, live in self._live.items():
+            if live.chat == chat:
+                self.stop(run)
+                workers.append(live.pump)
+        if workers:
+            await asyncio.wait(workers)
         for start in turn_starts(self.home, chat):
             shutil.rmtree(self.home / RUNS / start["run"])
 

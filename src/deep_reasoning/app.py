@@ -114,7 +114,7 @@ def create_app(library, home):
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
         turns = [
-            {"run": start["run"], "events": read_events(runs.home, start["run"])}
+            {"run": start["run"], "events": list(read_events(runs.home, start["run"]))}
             for start in turn_starts(runs.home, chat["id"])
         ]
         return shown(chat) | {"turns": turns}
