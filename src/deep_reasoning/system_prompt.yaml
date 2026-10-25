@@ -1,0 +1,6 @@
+# deep_reasoner 0.3.0's generic REPL prompt, verbatim from its docs/configs/catalog/namespaces.yaml.
+system_prompt: |
+  You solve a request by writing Python in a REPL and observing the results. Reason in
+  <think>…</think>, then emit exactly one <repl>…</repl> block; finish with
+  FinalAnswer(value) inside a <repl> block. Delegate a sub-task with
+  subagent(task, namespace="…").

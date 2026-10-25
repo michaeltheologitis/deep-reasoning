@@ -28,8 +28,8 @@ The previous app, a desktop and browser app built on OpenHands, is in this repos
 
 Every namespace, decomposition and custom tool your chats draw on, and the run settings, live in one file:
 `~/.deep-reasoning/library.sqlite`, made on the first run. A new Library runs chats on gpt-6-luna with the key in
-`OPENAI_API_KEY`. To bring in a `deep_reasoner` config, with its namespaces, their decompositions and the Python
-files of its tools:
+`OPENAI_API_KEY`, under `deep_reasoner`'s generic REPL prompt. To bring in a `deep_reasoner` config, with its
+namespaces, their decompositions and the Python files of its tools:
 
 ```
 uv run deep-reasoning import path/to/config.yaml

@@ -85,6 +85,12 @@ def test_a_fresh_library_has_root_and_runs_on_gpt_6_luna_with_the_openai_key(
     assert FAKE_KEY.encode() not in library.read_bytes()
 
 
+def test_a_fresh_library_carries_a_generic_repl_prompt(library, tmp_path):
+    prompt = run_config(library, tmp_path).system_prompt
+    assert "<repl>" in prompt
+    assert "FinalAnswer" in prompt
+
+
 def test_a_file_that_is_not_a_library_is_refused_and_left_alone(tmp_path):
     other = tmp_path / "chats.sqlite"
     with closing(sqlite3.connect(other)) as connection:

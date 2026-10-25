@@ -50,12 +50,14 @@ UPSERT_TOOL = (
     "INSERT INTO tools VALUES (?, ?, ?)"
     " ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml, source = excluded.source"
 )
+SYSTEM_PROMPT_FILE = Path(__file__).with_name("system_prompt.yaml")
 DEFAULT_SETTINGS = {
     "model": "gpt-6-luna",
     "client": {
         "base_url": "https://api.openai.com/v1",
         "api_key_env": "OPENAI_API_KEY",
     },
+    **yaml.safe_load(SYSTEM_PROMPT_FILE.read_text(encoding="utf-8")),
 }
 # Left to the Library, not a config: content (own tables), per-run paths, and the model and its key.
 NOT_IMPORTED = {
