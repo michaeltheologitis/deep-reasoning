@@ -1,8 +1,9 @@
-"""Turn the old app's golden recordings into the prototype's mock chats.
+"""Turn the old app's golden recordings into the UI's mock chats.
 
 Reads tests/acp/golden/<name>.native.jsonl and the scenarios' prompts from commit
-a80bb2e, and writes prototype/data/recordings.json. The recordings carry no timings,
-so the seconds are made up: a fixed time per step, sub-agents of one cell in parallel.
+a80bb2e, and writes src/deep_reasoning/web/data/recordings.json. The recordings carry
+no timings, so the seconds are made up: a fixed time per step, sub-agents of one cell
+in parallel.
 
 Run from the repo root: python3 scripts/mock_from_recordings.py
 """
@@ -28,7 +29,9 @@ SCENARIOS = [
 THINK_SECONDS = 0.6
 CELL_SECONDS = 0.4
 IGNORED_UPDATES = {"available_commands_update", "config_option_update"}
-OUT = Path(__file__).resolve().parents[1] / "prototype" / "data" / "recordings.json"
+OUT = (
+    Path(__file__).resolve().parents[1] / "src/deep_reasoning/web/data/recordings.json"
+)
 
 
 def git_show(path):

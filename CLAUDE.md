@@ -7,18 +7,20 @@ This project's Notion page (todos, changelog, notes): https://app.notion.com/p/4
 
 ## Goals and non-goals
 
-- First, agree the UI with Michael on a clickable prototype he runs on his own machine. Nothing is built before he says the UI is agreed.
+- The UI is agreed: the clickable prototype of PR #73. v1 builds it for real, in five PRs: (1) the app shell; (2) the Library in `library.sqlite`; (3) runs: `deep_reasoner` in a subprocess, steps streamed live, Stop ends the tree, costs per call; (4) chats saved in `chats.sqlite`; (5) the UI wired to real data. Until (5) the UI shows its mock data.
+- The server listens on 127.0.0.1 only.
 - No sandboxing or safety layers, and nothing from the old app's OpenHands or ACP stack.
 
 ## Checks
 
-- The prototype is static files in `prototype/` with mock data, no build step. Michael runs it with `python3 -m http.server 8000 --directory prototype`. Check each round in a real browser (Playwright is preinstalled in cloud sessions): every chat, a live run, Stop, both themes, phone width, no console errors.
-- The mock data is generated, never typed: `python3 scripts/mock_from_recordings.py` (the old app's recorded runs → `recordings.json`), `python3 scripts/mock_showcase.py` (the sky, degree and 3,000-essay chats → `showcase.json`; every new message plays back the degree chat), `uv run --with pyyaml python scripts/mock_library.py` (deep_reasoner's configs beside this repo → `library.json`, the decompositions panel).
-- `node --check prototype/app.js`; `ruff check scripts && ruff format --check scripts`.
+- `uv sync`, then `uv run deep-reasoning` serves the app at http://127.0.0.1:8000 and opens a tab (`--port` to change the port, `--no-browser` to skip the tab). The UI is static files in `src/deep_reasoning/web/`, no build step, served at `/`.
+- `uv run pytest`; `uv run ruff check && uv run ruff format --check`; `node --check src/deep_reasoning/web/app.js && node --check src/deep_reasoning/web/library.js` (one file per `node --check`: it ignores the rest).
+- Check each UI change in a real browser against `uv run deep-reasoning --no-browser` (Playwright is preinstalled in cloud sessions): every chat, a live run, Stop, both themes, phone width, no console errors.
+- The mock data in `src/deep_reasoning/web/data/` is generated, never typed: `python3 scripts/mock_from_recordings.py` (the old app's recorded runs → `recordings.json`), `python3 scripts/mock_showcase.py` (the sky, degree and 3,000-essay chats → `showcase.json`; every new message plays back the degree chat), `uv run --with pyyaml python scripts/mock_library.py` (deep_reasoner's configs beside this repo → `library.json`, the decompositions panel).
 
 ## Conventions
 
 - No paid model calls except the gpt-6-luna live tests, and the Claude Code on Sonnet live test through Michael's subscription token. Never set `ANTHROPIC_API_KEY`.
 - Kill only the processes you started: never `pkill -f` or `pgrep -f`.
-- `deep_reasoner`'s repository is read-only for us: no PRs, issues or comments there.
+- `deep_reasoner`'s repository is read-only for us: no PRs, issues or comments there. The app depends on it from GitHub, pinned to a tag in `pyproject.toml`.
 - The previous app is in history at `a80bb2e` (`git show a80bb2e:<path>`), and its design docs are on the `design-docs` branch. In a shallow clone, run `git fetch --unshallow` or `git fetch origin design-docs` first.

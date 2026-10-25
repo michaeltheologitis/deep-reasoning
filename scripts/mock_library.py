@@ -1,6 +1,6 @@
-"""Build the prototype's mock Library from deep_reasoner's example configs.
+"""Build the UI's mock Library from deep_reasoner's example configs.
 
-Writes prototype/data/library.json. Run from the repo root:
+Writes src/deep_reasoning/web/data/library.json. Run from the repo root:
 uv run --with pyyaml python scripts/mock_library.py [ENGINE_CHECKOUT, default ../deep_reasoner_beta]
 """
 
@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 ENGINE = Path(sys.argv[1] if len(sys.argv) > 1 else "../deep_reasoner_beta")
-OUT = Path(__file__).resolve().parents[1] / "prototype" / "data" / "library.json"
+OUT = Path(__file__).resolve().parents[1] / "src/deep_reasoning/web/data/library.json"
 ROOT = "root"
 # The configs the Library is made of, and the namespace each one's `root` becomes. A
 # config's top-level decompositions go to root. The first config's run settings are the
