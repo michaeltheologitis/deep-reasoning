@@ -1,4 +1,4 @@
-"""Build the prototype's showcase chats: made-up runs that show off the tree.
+"""Build the UI's showcase chats: made-up runs that show off the tree.
 
 The sky chat is the brief's example. The degree chat delegates six levels deep, has a
 failure that its parent recovers from, and has a course lookup at the bottom that
@@ -19,7 +19,7 @@ import traceback
 from pathlib import Path
 from types import SimpleNamespace
 
-OUT = Path(__file__).resolve().parents[1] / "prototype" / "data" / "showcase.json"
+OUT = Path(__file__).resolve().parents[1] / "src/deep_reasoning/web/data/showcase.json"
 CELL_FILE = "<cell>"
 TIMEOUT = "the model did not answer within 120 s"
 THINK_SECONDS = 1.4
