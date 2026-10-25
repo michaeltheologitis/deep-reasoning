@@ -1,4 +1,5 @@
 // The Library panel: the decompositions, namespaces, tools and data every run draws on. Mock data; an added decomposition lives in memory.
+// It draws with app.js's element(), caret() and fetchJson(), which load before this module.
 const DATA_URL = "data/library.json";
 const LIBRARY_FILE = "library.sqlite";
 const TABS = ["Decompositions", "Namespaces", "Tools", "Data"];
@@ -41,64 +42,48 @@ let problem = null;
 let tab = TABS[0];
 let checkTimer = null;
 
-function el(tag, props = {}, ...kids) {
-  const node = document.createElement(tag);
-  for (const [name, value] of Object.entries(props)) {
-    if (value == null || value === false) continue;
-    if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
-    else if (name === "class") node.className = value;
-    else node.setAttribute(name, value);
-  }
-  node.append(...kids.flat(Infinity).filter((kid) => kid != null && kid !== false));
-  return node;
-}
-
-const join = (items, separator) => items.flatMap((item, i) => (i ? [separator(), item] : [item]));
-const dot = () => el("span", { class: "lib-dot", "aria-hidden": "true" }, "·");
+const dot = () => element("span", { class: "lib-dot", "aria-hidden": "true" }, "·");
 const namespaceNamed = (name) => library.namespaces.find((namespace) => namespace.name === name);
 const decompositionKey = (namespace, name) => `d:${namespace}:${name}`;
 
-// ── the panel's frame, built once ────────────────────────────────────────
-
-const body = el("div", { class: "lib-body", id: "library-body", role: "tabpanel" });
+const body = element("div", { class: "lib-body", id: "library-body", role: "tabpanel" });
 const tabButtons = TABS.map((name) =>
-  el("button", { type: "button", role: "tab", class: "lib-tab", id: `library-tab-${name.toLowerCase()}`, "aria-controls": body.id, onclick: () => selectTab(name) }, name),
+  element("button", { type: "button", role: "tab", class: "lib-tab", id: `library-tab-${name.toLowerCase()}`, "aria-controls": body.id, onclick: () => selectTab(name) }, name),
 );
 panel.append(
-  el(
+  element(
     "header",
     { class: "lib-head" },
-    el("h2", { class: "lib-title" }, "Library", el("span", { class: "lib-filename" }, ` · ${LIBRARY_FILE}`)),
-    el("button", { type: "button", class: "lib-close", "aria-label": "Close the Library", onclick: () => setOpen(false) }, "×"),
+    element("h2", { class: "lib-title" }, "Library", element("span", { class: "lib-filename" }, ` · ${LIBRARY_FILE}`)),
+    element("button", { type: "button", class: "lib-close", "aria-label": "Close the Library", onclick: () => setOpen(false) }, "×"),
   ),
-  el("div", { class: "lib-tabs", role: "tablist", "aria-label": "Library", onkeydown: arrowTabs }, join(tabButtons, dot)),
+  element("div", { class: "lib-tabs", role: "tablist", "aria-label": "Library", onkeydown: arrowTabs }, tabButtons.flatMap((button, i) => (i ? [dot(), button] : [button]))),
   body,
 );
 
-// ── adding a decomposition: one YAML editor, checked as it is typed; built once so a draft survives re-renders ──
-
-const addToggle = el("button", { type: "button", class: "lib-action", "aria-expanded": "false", "aria-controls": "lib-add-form", onclick: () => (addForm.hidden ? openForm() : closeForm()) }, "+ Add decomposition");
-const yamlInput = el(
+// the add form is built once, so a draft survives re-renders
+const addToggle = element("button", { type: "button", class: "lib-action", "aria-expanded": "false", "aria-controls": "lib-add-form", onclick: () => (addForm.hidden ? openForm() : closeForm()) }, "+ Add decomposition");
+const yamlInput = element(
   "textarea",
   { id: "lib-yaml", class: "lib-yaml", wrap: "off", spellcheck: "false", autocapitalize: "off", "aria-describedby": "lib-problems", oninput: edited, onkeydown: indentOnTab },
   TEMPLATE,
 );
-const fileInput = el("input", { type: "file", accept: ".yaml,.yml", onchange: readFile });
-const picker = el("select", { id: "lib-namespace", onchange: check });
-const problemList = el("div", { id: "lib-problems", class: "lib-problems", "aria-live": "polite" });
-const addButton = el("button", { type: "submit", class: "lib-action lib-primary" }, "Add");
-const addForm = el(
+const fileInput = element("input", { type: "file", accept: ".yaml,.yml", onchange: readFile });
+const picker = element("select", { id: "lib-namespace", onchange: check });
+const problemList = element("div", { id: "lib-problems", class: "lib-problems", "aria-live": "polite" });
+const addButton = element("button", { type: "submit", class: "lib-action lib-primary" }, "Add");
+const addForm = element(
   "form",
   { id: "lib-add-form", class: "children lib-open lib-form", hidden: true, onsubmit: addDecomposition },
-  el("div", { class: "lib-form-line" }, el("label", { for: yamlInput.id }, "YAML"), el("label", { class: "lib-action lib-file-pick" }, "or choose a .yaml file", fileInput)),
+  element("div", { class: "lib-form-line" }, element("label", { for: yamlInput.id }, "YAML"), element("label", { class: "lib-action lib-file-pick" }, "or choose a .yaml file", fileInput)),
   yamlInput,
-  el("div", { class: "lib-form-line" }, el("label", { for: picker.id }, "namespace"), picker),
+  element("div", { class: "lib-form-line" }, element("label", { for: picker.id }, "namespace"), picker),
   problemList,
-  el("div", { class: "lib-actions" }, addButton, el("button", { type: "button", class: "lib-action", onclick: closeForm }, "Cancel")),
-  el("p", { class: "lib-note" }, "the prototype doesn't save; a reload forgets it"),
+  element("div", { class: "lib-actions" }, addButton, element("button", { type: "button", class: "lib-action", onclick: closeForm }, "Cancel")),
+  element("p", { class: "lib-note" }, "the prototype doesn't save; a reload forgets it"),
 );
-const confirmation = el("p", { class: "lib-confirm", role: "status" });
-const addSection = el("section", { class: "lib-add" }, addToggle, addForm, confirmation);
+const confirmation = element("p", { class: "lib-confirm", role: "status" });
+const addSection = element("section", { class: "lib-add" }, addToggle, addForm, confirmation);
 
 function openForm() {
   addForm.hidden = false;
@@ -160,7 +145,7 @@ function check() {
 // unchanged problems are left alone, so the live region doesn't repeat them at every pause in typing
 function showProblems(found) {
   if ([...problemList.children].map((line) => line.textContent).join("\n") === found.join("\n")) return;
-  problemList.replaceChildren(...found.map((text) => el("p", {}, text)));
+  problemList.replaceChildren(...found.map((text) => element("p", {}, text)));
 }
 
 function addDecomposition(e) {
@@ -179,8 +164,7 @@ function addDecomposition(e) {
   confirmation.textContent = `Added "${name}" to ${namespace.name}`;
 }
 
-// ── checking the YAML as deep_reasoner's Decomposition model would (name, messages, nothing else) ──
-
+// the YAML is checked as deep_reasoner's Decomposition model would: name, messages, nothing else
 const isMapping = (value) => Object.prototype.toString.call(value) === "[object Object]";
 const quoted = (keys) => keys.map((key) => `"${key}"`).join(", ");
 
@@ -228,47 +212,38 @@ function turnProblems(message, label) {
   ].filter(Boolean);
 }
 
-// ── shared pieces ────────────────────────────────────────────────────────
-
 function disclosure(key, head, content) {
   const open = opened.has(key);
-  return el(
+  return element(
     "div",
     { class: "lib-entry" },
-    el(
-      "button",
-      { type: "button", class: "row", "aria-expanded": String(open), "data-key": key, onclick: () => flip(key) },
-      el("span", { class: "caret" }, open ? "▾" : "▸"),
-      head,
-    ),
-    open && el("div", { class: "children lib-open" }, content()),
+    element("button", { type: "button", class: "row", "aria-expanded": String(open), "data-key": key, onclick: () => flip(key) }, caret(open), head),
+    open && element("div", { class: "children lib-open" }, content()),
   );
 }
 
 // one span, so a long row cuts the detail before the name
 function rowHead(name, detail, meta) {
-  return [el("span", { class: "lib-name" }, name, " ", el("span", { class: "lib-detail" }, detail)), el("span", { class: "meta" }, meta)];
+  return [element("span", { class: "lib-name" }, name, " ", element("span", { class: "lib-detail" }, detail)), element("span", { class: "meta" }, meta)];
 }
 
 function fields(rows) {
-  return el("dl", { class: "lib-fields" }, rows.map(([label, value]) => [el("dt", {}, label), el("dd", {}, value)]));
+  return element("dl", { class: "lib-fields" }, rows.map(([label, value]) => [element("dt", {}, label), element("dd", {}, value)]));
 }
 
 function sourced(items) {
   if (!items.length) return "—";
   return items.map(({ value, source, here }) => {
-    const label = el("span", { class: `lib-source ${here ? "here" : ""}` }, source);
-    if (value.includes("\n")) return el("div", { class: "lib-item lib-block" }, el("pre", { class: "code lib-doc" }, value), label);
-    return el("div", { class: "lib-item" }, value, " ", label);
+    const label = element("span", { class: `lib-source ${here ? "here" : ""}` }, source);
+    if (value.includes("\n")) return element("div", { class: "lib-item lib-block" }, element("pre", { class: "code lib-doc" }, value), label);
+    return element("div", { class: "lib-item" }, value, " ", label);
   });
 }
 
-const group = (title, rows) => el("section", { class: "lib-group" }, el("h3", { class: "lib-label" }, title), el("div", { class: "lib-rows" }, rows));
-
-// ── Decompositions: each namespace's own, each opening on its YAML ────────
+const group = (title, rows) => element("section", { class: "lib-group" }, element("h3", { class: "lib-label" }, title), element("div", { class: "lib-rows" }, rows));
 
 function decompositionRow(namespace, { name, yaml }) {
-  return disclosure(decompositionKey(namespace, name), el("span", { class: "lib-name" }, name), () => el("pre", { class: "code lib-pre" }, yaml));
+  return disclosure(decompositionKey(namespace, name), element("span", { class: "lib-name" }, name), () => element("pre", { class: "code lib-pre" }, yaml));
 }
 
 function renderDecompositions() {
@@ -280,8 +255,6 @@ function renderDecompositions() {
     });
   return [addSection, ...groups];
 }
-
-// ── Namespaces, Tools, Data ──────────────────────────────────────────────
 
 const namespaceFields = (list) => fields(list.map(({ label, items }) => [label, sourced(items)]));
 
@@ -302,13 +275,13 @@ function decompositionsField(name) {
 
 function renderNamespaces() {
   const tree = library.namespaces.map((namespace) => {
-    const star = namespace.name === library.default_namespace && el("span", { class: "lib-star" }, "★ new chats start here");
-    const head = [el("span", { class: "lib-name" }, namespace.name), star];
+    const star = namespace.name === library.default_namespace && element("span", { class: "lib-star" }, "★ new chats start here");
+    const head = [element("span", { class: "lib-name" }, namespace.name), star];
     const content = () => namespaceFields([...namespace.fields, decompositionsField(namespace.name)]);
-    return el("div", { style: `--depth: ${namespace.depth}` }, disclosure(`n:${namespace.name}`, head, content));
+    return element("div", { style: `--depth: ${namespace.depth}` }, disclosure(`n:${namespace.name}`, head, content));
   });
-  const run = disclosure("n:run", el("span", { class: "lib-name" }, "Run settings"), () => namespaceFields(library.run_settings));
-  return [el("div", { class: "lib-rows lib-tree" }, run, tree)];
+  const run = disclosure("n:run", element("span", { class: "lib-name" }, "Run settings"), () => namespaceFields(library.run_settings));
+  return [element("div", { class: "lib-rows lib-tree" }, run, tree)];
 }
 
 function renderTool(tool) {
@@ -319,8 +292,8 @@ function renderTool(tool) {
       ["Defined in", tool.defined_in ?? "the deep_reasoner package"],
       ["Granted in", tool.granted_in.join(", ") || "no namespace"],
     ]),
-    tool.config && el("pre", { class: "code lib-pre" }, tool.config),
-    el("pre", { class: `code ${tool.description.includes("\n") ? "lib-pre" : "lib-doc"}` }, tool.description),
+    tool.config && element("pre", { class: "code lib-pre" }, tool.config),
+    element("pre", { class: `code ${tool.description.includes("\n") ? "lib-pre" : "lib-doc"}` }, tool.description),
   ];
 }
 
@@ -329,24 +302,24 @@ function renderTools() {
     const granted = tool.granted_in.length ? `granted in ${tool.granted_in.join(", ")}` : "not granted";
     return disclosure(`t:${tool.name}`, rowHead(tool.name, granted, tool.defined_in ? null : "built-in"), () => renderTool(tool));
   });
-  return [el("div", { class: "lib-rows" }, rows)];
+  return [element("div", { class: "lib-rows" }, rows)];
 }
 
 function dataTable({ name, columns, rows }) {
-  const cell = (tag, text) => el(tag, tag === "th" ? { scope: "col" } : {}, el("div", {}, text));
-  return el(
+  const cell = (tag, text) => element(tag, tag === "th" ? { scope: "col" } : {}, element("div", {}, text));
+  return element(
     "div",
     { class: "lib-table", role: "region", tabindex: "0", "aria-label": `${name}, scrolls sideways` },
-    el("table", {}, el("thead", {}, el("tr", {}, columns.map((column) => cell("th", column)))), el("tbody", {}, rows.map((row) => el("tr", {}, row.map((text) => cell("td", text)))))),
+    element("table", {}, element("thead", {}, element("tr", {}, columns.map((column) => cell("th", column)))), element("tbody", {}, rows.map((row) => element("tr", {}, row.map((text) => cell("td", text)))))),
   );
 }
 
 function renderData() {
-  return library.data.map((section, s) =>
+  return library.data.map((section, sectionIndex) =>
     group(
       section.title,
-      section.items.map((entry, i) =>
-        disclosure(`v:${s}:${i}`, rowHead(entry.name, entry.where, entry.summary), () => (entry.rows ? dataTable(entry) : el("p", { class: "lib-note" }, entry.note))),
+      section.items.map((entry, entryIndex) =>
+        disclosure(`v:${sectionIndex}:${entryIndex}`, rowHead(entry.name, entry.where, entry.summary), () => (entry.rows ? dataTable(entry) : element("p", { class: "lib-note" }, entry.note))),
       ),
     ),
   );
@@ -354,13 +327,11 @@ function renderData() {
 
 const RENDERERS = { Decompositions: renderDecompositions, Namespaces: renderNamespaces, Tools: renderTools, Data: renderData };
 
-// ── state and wiring ─────────────────────────────────────────────────────
-
 function render() {
   for (const button of tabButtons) button.setAttribute("aria-selected", String(button.textContent === tab));
   body.setAttribute("aria-labelledby", `library-tab-${tab.toLowerCase()}`);
   const focused = document.activeElement?.dataset?.key;
-  if (problem || !library) body.replaceChildren(el("p", { class: "lib-note" }, problem ?? "Loading the Library…"));
+  if (problem || !library) body.replaceChildren(element("p", { class: "lib-note" }, problem ?? "Loading the Library…"));
   else body.replaceChildren(...RENDERERS[tab]());
   if (focused) body.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus();
 }
@@ -395,10 +366,8 @@ function setOpen(open) {
 
 async function load() {
   try {
-    const response = await fetch(DATA_URL);
-    if (!response.ok) throw new Error(`${DATA_URL} answered ${response.status}`);
-    library = await response.json();
-    picker.append(...library.namespaces.map(({ name }) => el("option", { value: name, selected: name === ROOT }, name)));
+    library = await fetchJson(DATA_URL);
+    picker.append(...library.namespaces.map(({ name }) => element("option", { value: name, selected: name === ROOT }, name)));
   } catch (error) {
     problem = `Could not load the Library (${error.message}).`;
   }
@@ -412,14 +381,8 @@ panel.addEventListener("keydown", (e) => {
   e.stopPropagation();
   setOpen(false);
 });
-// Elsewhere, Esc closes the panel only while no run is going; during a run it stops the run.
-// Capture, to see whether a run is going before the chat's own Esc stops it.
-document.addEventListener(
-  "keydown",
-  (e) => {
-    if (e.key !== "Escape" || panel.hidden || panel.contains(e.target)) return;
-    if (document.getElementById("stop").hidden) setOpen(false);
-  },
-  true,
-);
+// Elsewhere, Esc closes the panel unless the chat used it, to stop its run or keep a chat; app.js's handler runs first.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !e.defaultPrevented && !panel.hidden) setOpen(false);
+});
 load();

@@ -10,6 +10,7 @@ const MORE_ROWS = 100;
 const TRAIL_CHARS = 22;
 const TRAIL_PARTS = 3;
 const TEMPLATE_CHAT = "degree";
+const SECONDS_PER_MINUTE = 60;
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
 const SPIN = ["·", "✢", "✳︎", "✶", "✻", "✽", "✻", "✶", "✳︎", "✢"];
 const STATUS = {
@@ -68,8 +69,10 @@ function formatCost(usd) {
 
 function formatSeconds(seconds) {
   if (seconds == null) return null;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+  const tenths = seconds.toFixed(1);
+  if (Number(tenths) < SECONDS_PER_MINUTE) return `${tenths}s`;
+  const whole = Math.round(seconds);
+  return `${Math.floor(whole / SECONDS_PER_MINUTE)}m ${whole % SECONDS_PER_MINUTE}s`;
 }
 
 const spinner = () => element("span", { class: "spin" }, SPIN[frame]);
@@ -153,7 +156,7 @@ function renderOutput(cell, full, root) {
   if (full) return out(cell.output, { tone, full: true });
   const lines = cell.output.trimEnd().split("\n");
   if (cell.status === "failed") return out(lines.at(-1), { tone });
-  // a delegation's rows show what its sub-agents answered, and the answer below shows the root's
+  // each sub-agent's row opens onto its answer, and the answer below shows the root's
   if (cell.agents.length || (root && isFinal(cell))) return null;
   if (isFinal(cell)) return out(finalValue(cell.output));
   const more = lines.length > 1 ? ` … +${lines.length - 1} lines` : null;
@@ -286,7 +289,8 @@ function renderAgent(agent) {
 
 function renderAnswer(text) {
   const el = element("div", { class: "answer" });
-  if (window.marked) el.innerHTML = window.marked.parse(text);
+  // answers are model output, and marked passes raw HTML through
+  if (window.marked && window.DOMPurify) el.innerHTML = window.DOMPurify.sanitize(window.marked.parse(text));
   else Object.assign(el, { textContent: text, style: "white-space: pre-wrap" });
   return el;
 }
@@ -339,62 +343,71 @@ function renderWelcome() {
   );
 }
 
-function renderList() {
-  const items = state.chats.map((chat) => {
-    if (ui.renaming === chat) {
-      const input = element("input", {
-        class: "rename",
-        id: "rename",
-        value: chat.title,
-        "aria-label": "Chat name",
-        onkeydown: (e) => {
-          e.stopPropagation();
-          if (e.key === "Enter") input.blur();
-          if (e.key === "Escape") finishRename(chat, chat.title);
-        },
-        onblur: () => finishRename(chat, input.value),
-      });
-      requestAnimationFrame(() => {
-        input.focus();
-        input.select();
-      });
-      return element("li", { class: "chat current" }, input);
-    }
-    if (ui.deleting === chat) {
-      return element(
-        "li",
-        { class: "chat confirm" },
-        "Delete this chat?",
-        element("button", { type: "button", class: "yes", onclick: () => remove(chat) }, "Delete"),
-        element("button", { type: "button", class: "no", onclick: () => setUi({ deleting: null }) }, "Keep"),
-      );
-    }
-    const current = chat === state.current;
-    const live = state.live?.chat === chat;
-    return element(
-      "li",
-      { class: `chat ${current ? "current" : ""}` },
-      element(
-        "button",
-        { type: "button", class: "pick", onclick: () => select(chat), ondblclick: () => setUi({ renaming: chat }) },
-        element("span", { class: "mark" }, live ? spinner() : current ? "●" : ""),
-        element("span", { class: "name" }, chat.title),
-      ),
-      element("button", { type: "button", class: "icon", title: "Rename", "aria-label": "Rename", onclick: () => setUi({ renaming: chat }) }, "✎"),
-      element("button", { type: "button", class: "icon", title: "Delete", "aria-label": "Delete", onclick: () => setUi({ deleting: chat }) }, "✕"),
-    );
+function renderRename(chat) {
+  const input = element("input", {
+    class: "rename",
+    id: "rename",
+    value: chat.title,
+    "aria-label": "Chat name",
+    onkeydown: (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") input.blur();
+      if (e.key === "Escape") finishRename(chat, chat.title);
+    },
+    onblur: () => finishRename(chat, input.value),
   });
-  byId("chats").replaceChildren(...items);
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+  return element("li", { class: "chat current" }, input);
+}
+
+function renderConfirmDelete(chat) {
+  return element(
+    "li",
+    { class: "chat confirm" },
+    "Delete this chat?",
+    element("button", { type: "button", class: "yes", onclick: () => remove(chat) }, "Delete"),
+    element("button", { type: "button", class: "no", onclick: () => setUi({ deleting: null }) }, "Keep"),
+  );
+}
+
+function renderChat(chat) {
+  if (ui.renaming === chat) return renderRename(chat);
+  if (ui.deleting === chat) return renderConfirmDelete(chat);
+  const current = chat === state.current;
+  const live = state.live?.chat === chat;
+  return element(
+    "li",
+    { class: `chat ${current ? "current" : ""}` },
+    element(
+      "button",
+      { type: "button", class: "pick", onclick: () => select(chat), ondblclick: () => setUi({ renaming: chat }) },
+      element("span", { class: "mark" }, live ? spinner() : current ? "●" : ""),
+      element("span", { class: "name" }, chat.title),
+    ),
+    element("button", { type: "button", class: "icon", title: "Rename", "aria-label": "Rename", onclick: () => setUi({ renaming: chat }) }, "✎"),
+    element("button", { type: "button", class: "icon", title: "Delete", "aria-label": "Delete", onclick: () => setUi({ deleting: chat }) }, "✕"),
+  );
+}
+
+function renderList() {
+  byId("chats").replaceChildren(...state.chats.map(renderChat));
+}
+
+function keepScroll(scroll, draw) {
+  const box = byId("scroll");
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < STICK_PX;
+  draw();
+  if (scroll === "bottom" || (scroll === "follow" && nearBottom)) box.scrollTop = box.scrollHeight;
 }
 
 function renderLog(scroll) {
   const chat = state.current;
-  const box = byId("scroll");
-  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < STICK_PX;
   const focused = document.activeElement?.dataset?.key;
   byId("title").textContent = chat.title;
-  byId("log").replaceChildren(...(chat.turns.length ? chat.turns.map(renderTurn) : [renderWelcome()]));
-  if (scroll === "bottom" || (scroll === "follow" && nearBottom)) box.scrollTop = box.scrollHeight;
+  keepScroll(scroll, () => byId("log").replaceChildren(...(chat.turns.length ? chat.turns.map(renderTurn) : [renderWelcome()])));
   refocus(focused);
 }
 
@@ -456,20 +469,21 @@ function* together(sources, cell, path) {
   const kids = sources.map((source) => {
     const row = { ...source, steps: [], status: "running", result: null, cost: null, started: Date.now() };
     cell.agents.push(row);
-    return { source, row, steps: play(source, row, [...path, clip(source.task, TRAIL_CHARS)]) };
+    return playAgent(source, row, [...path, clip(source.task, TRAIL_CHARS)]);
   });
   while (kids.length) {
     for (const kid of [...kids]) {
-      const { value, done } = kid.steps.next();
-      if (!done) {
-        yield value / kids.length;
-        continue;
-      }
-      const { status, result, cost, seconds } = kid.source;
-      Object.assign(kid.row, { status, result, cost, seconds });
-      kids.splice(kids.indexOf(kid), 1);
+      const { value, done } = kid.next();
+      if (done) kids.splice(kids.indexOf(kid), 1);
+      else yield value / kids.length;
     }
   }
+}
+
+function* playAgent(source, row, path) {
+  yield* play(source, row, path);
+  const { status, result, cost, seconds } = source;
+  Object.assign(row, { status, result, cost, seconds });
 }
 
 function* play(source, target, path) {
@@ -508,7 +522,8 @@ function advance() {
     return;
   }
   live.timer = setTimeout(advance, value);
-  if (live.chat === state.current) renderLog("follow");
+  // a tick changes only the live turn, so it leaves the rest of the log alone
+  if (live.chat === state.current) keepScroll("follow", () => redraw(live.turn));
 }
 
 function send() {
@@ -522,8 +537,8 @@ function send() {
   input.value = "";
   grow();
   state.live = { chat, turn, started: Date.now(), steps: playTurn(state.template, turn), timer: null, trail: [] };
-  advance();
   render("bottom");
+  advance();
 }
 
 function markStopped(holder) {
@@ -601,8 +616,12 @@ function wire() {
     e.preventDefault();
     send();
   });
+  // Esc acts only on what this chat shows; the Library closes on an Esc left unused
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    const runHere = state.live?.chat === state.current;
+    if (!ui.deleting && !runHere) return;
+    e.preventDefault();
     if (ui.deleting) setUi({ deleting: null });
     else stop();
   });
@@ -614,16 +633,16 @@ function wire() {
   }, SPIN_MS);
 }
 
+async function fetchJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} answered ${response.status}`);
+  return response.json();
+}
+
 async function load() {
   const urls = ["data/showcase.json", "data/recordings.json"];
   try {
-    const [showcase, recordings] = await Promise.all(
-      urls.map(async (url) => {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`${url} answered ${response.status}`);
-        return response.json();
-      }),
-    );
+    const [showcase, recordings] = await Promise.all(urls.map(fetchJson));
     state.template = showcase.chats.find((chat) => chat.id === TEMPLATE_CHAT).turns[0];
     state.chats = [...showcase.chats, ...recordings.chats];
     state.current = state.chats[0];
