@@ -7,6 +7,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Self
 
@@ -16,7 +17,6 @@ log = structlog.get_logger()
 
 Messages = list[dict[str, Any]]
 Plan = Mapping[str, list[str]]
-SERVER_ERROR = 500
 
 
 @dataclass(frozen=True)
@@ -103,8 +103,8 @@ class FakeOpenAI:
             reply = self._responder(messages)
         except Exception as error:
             log.exception("fake_model.answered_500")
-            return SERVER_ERROR, {"error": {"message": str(error)}}
-        return 200, {
+            return HTTPStatus.INTERNAL_SERVER_ERROR, {"error": {"message": str(error)}}
+        return HTTPStatus.OK, {
             "id": f"chatcmpl-{len(self.calls)}",
             "object": "chat.completion",
             "created": int(time.time()),

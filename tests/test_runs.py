@@ -2,9 +2,11 @@ import json
 import os
 import threading
 import time
-from contextlib import closing
+from contextlib import aclosing, closing
+from datetime import UTC, datetime
 
 import pytest
+import structlog
 import yaml
 from fake_model import FakeOpenAI, repl, scripted, task_and_turn
 from genai_prices import Usage, calc_price
@@ -23,8 +25,12 @@ from deep_reasoning.runs import (
     Runs,
     Turn,
     end_unfinished,
+    new_run_id,
     read_turn,
+    recap_of,
 )
+
+log = structlog.get_logger()
 
 pytestmark = pytest.mark.anyio
 
@@ -44,6 +50,30 @@ FAN_OUT = {
 }
 FAN_OUT_ANSWER = "{'C1': 'C1: 3', 'C2': 'C2: 4'}"
 PRINT_GROUP = repl("import os", "print(os.getpgrp())")
+SAVE_S = 1.0
+LEDGER = """\
+import time
+from pathlib import Path
+
+from deep_reasoner.primitives import Func
+
+
+class Ledger:
+    \"\"\"A tool that takes a while to save itself when the run ends.\"\"\"
+
+    def __init__(self, persist, seconds):
+        self.persist_dir = Path(persist)
+        self.seconds = seconds
+
+    def save(self):
+        time.sleep(self.seconds)
+        self.persist_dir.mkdir(parents=True, exist_ok=True)
+        (self.persist_dir / "saved").write_text("whole")
+
+
+def build_ledger(client, tool_cfg):
+    return Func(Ledger(tool_cfg["persist"], tool_cfg["seconds"]))
+"""
 
 
 async def run_to_the_end(runs, prompt, config, earlier=()):
@@ -58,6 +88,21 @@ def of_kind(events, kind):
 def group_of(events):
     """The worker's process group, which the run's first cell printed."""
     return int(of_kind(events, "cell.end")[0]["output"])
+
+
+def slow_saving(folder):
+    """Engine settings for a tool that takes SAVE_S to save itself as the run closes,
+    and the file it writes once it has."""
+    source = folder / "ledger.py"
+    source.write_text(LEDGER)
+    state = folder / "ledger"
+    tool = {
+        "factory": "build_ledger",
+        "factory_from": str(source),
+        "persist": str(state),
+        "seconds": SAVE_S,
+    }
+    return {"tools": {"ledger": tool}}, state / "saved"
 
 
 async def stop_at(runs, run, code):
@@ -130,6 +175,21 @@ async def test_stop_kills_a_cell_blocked_in_c(home, fake_config):
     assert events[-1]["outcome"] == "stopped"
     with pytest.raises(ProcessLookupError):
         os.killpg(group_of(events), 0)
+
+
+async def test_after_a_stop_the_run_still_gets_the_grace_period_to_save(
+    home, fake_config, tmp_path
+):
+    blocked_s, grace_s = 1.5, 2.0  # the stop lands 1.5 s in; saving would end at 2.5 s
+    sleep = repl("import time", f"time.sleep({blocked_s})")
+    settings, saved = slow_saving(tmp_path)
+    with FakeOpenAI(scripted({"Wait a moment.": [sleep]})) as fake:
+        runs = Runs(home, stop_grace_s=grace_s)
+        config = fake_config(fake, **settings)
+        run = runs.start(CHAT, "Wait a moment.", config, [])
+        events, _ = await stop_at(runs, run, f"import time\ntime.sleep({blocked_s})")
+    assert events[-1]["outcome"] == "stopped"
+    assert saved.read_text() == "whole"
 
 
 async def test_stop_before_the_root_starts_calls_no_model(home, fake_config):
@@ -230,6 +290,22 @@ async def test_a_dead_worker_ends_the_turn_failed(home, fake_config):
     assert str(home / "runs" / run / "worker.log") in events[-1]["detail"]
 
 
+async def test_a_child_a_cell_forked_ends_with_the_run(home, fake_config):
+    # The child holds the events pipe: the run can end before its sleep only if it died.
+    fork = repl(
+        "import os, time",
+        "if os.fork() == 0:",
+        f"    time.sleep({HELD_S})",
+        "    os._exit(0)",
+    )
+    plan = {"Fork.": [fork, repl("FinalAnswer('forked')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        started = time.monotonic()
+        _, events = await run_to_the_end(Runs(home), "Fork.", fake_config(fake))
+    assert time.monotonic() - started < HELD_S
+    assert events[-1]["outcome"] == "answered"
+
+
 async def test_a_stream_rejoined_mid_run_replays_without_gaps(home, fake_config):
     release = threading.Event()
     follow = scripted(FAN_OUT)
@@ -272,6 +348,26 @@ async def test_a_chat_runs_one_message_at_a_time(home, fake_config):
     assert runs.live(CHAT) is None
 
 
+async def test_a_chat_takes_its_next_message_once_its_turn_has_ended(
+    home, fake_config, tmp_path
+):
+    settings, saved = slow_saving(tmp_path)
+    plan = {"Hi.": [repl("FinalAnswer('hello')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(home)
+        config = fake_config(fake, **settings)
+        run = runs.start(CHAT, "Hi.", config, [])
+        async with aclosing(runs.events(run)) as stream:
+            async for event in stream:
+                if event["kind"] == "turn.end":
+                    break
+        assert not saved.exists()  # the worker is still closing the run
+        assert runs.live(CHAT) is None and runs.stop(run) is False
+        _, events = await run_to_the_end(runs, "Hi.", config)
+        _ = [event async for event in runs.events(run)]
+    assert events[-1]["outcome"] == "answered"
+
+
 async def test_an_event_too_long_to_read_ends_the_turn_failed(
     home, fake_config, monkeypatch
 ):
@@ -309,6 +405,54 @@ def test_a_run_the_app_stopped_under_is_ended_failed(home):
     assert read_turn(home, run) == Turn("Hi.", "failed", None, LOST)
     last = json.loads((folder / "events.jsonl").read_text().splitlines()[-1])
     assert (last["seq"], last["cost"], last["seconds"]) == (3, 0.25, 1.5)
+
+
+def test_a_line_the_app_was_killed_while_writing_is_cut_at_the_next_start(home):
+    folder = home / "runs"
+    run, empty = folder / "20261025-120000-000000", folder / "20261025-120001-000000"
+    run.mkdir(parents=True)
+    empty.mkdir()
+    started = {"seq": 1, "t": 100.0, "kind": "turn.start", "prompt": "Hi."}
+    torn = json.dumps({"seq": 2, "t": 101.5, "kind": "think", "text": "x" * 100})[:50]
+    (run / "events.jsonl").write_text(json.dumps(started) + "\n" + torn)
+    (empty / "events.jsonl").write_text("")
+    assert end_unfinished(home) == [run.name]
+    assert read_turn(home, run.name) == Turn("Hi.", "failed", None, LOST)
+    lines = (run / "events.jsonl").read_text().splitlines()
+    assert [json.loads(line)["seq"] for line in lines] == [1, 2]
+    assert not (empty / "events.jsonl").exists()
+
+
+def test_run_ids_are_utc_so_they_sort_in_order_across_a_clock_change(monkeypatch):
+    monkeypatch.setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3")
+    time.tzset()
+    try:
+        before = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+        run = new_run_id()
+        after = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+    assert before <= run <= after
+
+
+def test_the_recap_says_why_a_turn_has_no_answer():
+    turns = [
+        Turn("One?", "answered", "1", None),
+        Turn("Two?", "failed", None, "KeyError: 2"),
+        Turn("Three?", "stopped", None, None),
+        Turn("Four?", "exhausted", "Agent failed to produce a final answer.", None),
+    ]
+    blocks = recap_of(turns).split("\n\n")
+    assert blocks[0].startswith("This conversation began before this run.")
+    assert blocks[1:] == [
+        "Message 1: One?\nAnswer 1: 1",
+        "Message 2: Two?\nAnswer 2: (none: the run failed: KeyError: 2)",
+        "Message 3: Three?\nAnswer 3: (none: the user stopped the run before it answered)",
+        "Message 4: Four?\nAnswer 4: (none: the run ended without a final answer)",
+        "The user's next message follows.",
+    ]
+    assert recap_of([]) is None
 
 
 COURSES = {
@@ -359,9 +503,12 @@ async def test_gpt_6_luna_on_the_librarys_defaults_answers_and_remembers_the_cha
     )
     assert follow_up[-1]["outcome"] == "answered", follow_up[-1]
     assert "first-year" in follow_up[-1]["answer"]
-    print(
-        f"\nfirst: {events[-1]['answer']!r} (${events[-1]['cost']:.6f}, "
-        f"{len(costs)} calls, {len(of_kind(events, 'agent.start'))} agents, "
-        f"{events[-1]['seconds']} s)\nfollow-up: {follow_up[-1]['answer']!r} "
-        f"(${follow_up[-1]['cost']:.6f})"
+    log.warning(
+        "The live test spent real money",
+        cost=events[-1]["cost"] + follow_up[-1]["cost"],
+        first=events[-1]["answer"],
+        calls=len(costs),
+        agents=len(of_kind(events, "agent.start")),
+        seconds=events[-1]["seconds"],
+        follow_up=follow_up[-1]["answer"],
     )

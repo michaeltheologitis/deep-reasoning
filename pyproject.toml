@@ -8,6 +8,7 @@ dependencies = [
     "deep-reasoner @ git+https://github.com/DeanLight/deep_reasoner_beta.git@0.3.0",
     "fastapi>=0.162.0",
     "genai-prices>=0.1.13",
+    "jinja2>=3.1.6",
     "pydantic>=2.14.1",
     "pyyaml>=6.0.3",
     "structlog>=25.5.0",

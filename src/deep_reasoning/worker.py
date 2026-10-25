@@ -56,12 +56,10 @@ def output_of(observation: str) -> str:
 
 def final_answer_of(output: str) -> str | None:
     """The repr after the last line that starts with "FinalAnswer: ", to the end."""
-    if output.startswith(FINAL_ANSWER):
-        return output[len(FINAL_ANSWER) :].rstrip("\n")
-    at = output.rfind("\n" + FINAL_ANSWER)
+    at = ("\n" + output).rfind("\n" + FINAL_ANSWER)
     if at < 0:
         return None
-    return output[at + 1 + len(FINAL_ANSWER) :].rstrip("\n")
+    return output[at + len(FINAL_ANSWER) :].rstrip("\n")
 
 
 def unquote(answer_repr: str) -> str:
@@ -108,7 +106,9 @@ class Recorder:
     JSON line each on *out*.
 
     deep_reasoner calls it on every thread a run logs from, so it holds one lock for its
-    state and its writes. It returns every event dict unchanged and never raises.
+    state and its writes. It returns every event dict unchanged and never raises. It
+    writes nothing after the turn.end: sub-agents' threads may still log while the run
+    closes, and the turn.end is the run's last event.
     """
 
     def __init__(self, out: TextIO, on_root_start: Callable[[], None]) -> None:
@@ -118,6 +118,7 @@ class Recorder:
         self._agents: dict[int, _Agent] = {}
         self._cells = 0
         self._root: int | None = None
+        self._ended = False
         self._handlers = {
             "agent.start": self._agent_start,
             "llm.call": self._llm_call,
@@ -143,6 +144,9 @@ class Recorder:
     def emit(self, kind: str, **fields: Any) -> None:
         """Write one event; under the lock, so lines from different threads never mix."""
         with self._lock:
+            if self._ended:
+                return
+            self._ended = kind == "turn.end"
             self._out.write(json.dumps({"kind": kind, **fields}, default=str) + "\n")
             self._out.flush()
 
@@ -259,23 +263,30 @@ class Recorder:
         return node == event.get("agent_id") and node in self._agents
 
 
+def end_group() -> NoReturn:
+    """SIGKILL the worker's process group, the worker included. Nothing it started may
+    outlive it: a child a cell forked holds the events pipe, and so the run, open."""
+    os.killpg(0, signal.SIGKILL)
+
+
 def read_commands(stop: Callable[[], None]) -> None:
     """Stdin, on its own thread. At EOF the server is gone, so nothing would read the
     events: the worker ends its whole process group."""
     for line in sys.stdin:
         if line.strip() == "stop":
             stop()
-    os.killpg(0, signal.SIGKILL)
+    end_group()
 
 
 def exit_after(seconds: float) -> None:
     time.sleep(seconds)
     log.warning("worker.close_run_hung", seconds=seconds)
-    os._exit(0)
+    end_group()
 
 
 def finish(reasoner: Any) -> NoReturn:
-    """close_run under a watchdog, then exit without waiting for sub-agents' threads."""
+    """close_run under a watchdog, then end the group without waiting for sub-agents'
+    threads."""
     threading.Thread(
         target=exit_after, args=(CLOSE_RUN_WATCHDOG_S,), daemon=True
     ).start()
@@ -284,7 +295,7 @@ def finish(reasoner: Any) -> NoReturn:
             close_run(reasoner)
         except Exception:
             log.exception("worker.close_run_failed")
-    os._exit(0)
+    end_group()
 
 
 async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:

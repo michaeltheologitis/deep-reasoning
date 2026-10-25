@@ -136,6 +136,16 @@ def test_a_tools_model_call_is_priced_for_its_agent_but_is_not_a_thought():
     assert events[-1]["node"] == ROOT
 
 
+def test_nothing_is_written_after_the_turn_ends():
+    out = io.StringIO()
+    recorder = Recorder(out, on_root_start=lambda: None)
+    recorder(None, "debug", agent_start(ROOT, None))
+    recorder.emit("turn.end", outcome="answered", answer="done", detail=None)
+    recorder(None, "debug", agent_start(CHILD, ROOT))
+    lines = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert [line["kind"] for line in lines] == ["agent.start", "turn.end"]
+
+
 def test_the_roots_start_is_reported():
     started = []
     recorder = Recorder(io.StringIO(), on_root_start=lambda: started.append(True))
@@ -150,6 +160,7 @@ def test_the_roots_start_is_reported():
         ("FinalAnswer: 'C1: 3'", "'C1: 3'"),
         ("thinking aloud\nFinalAnswer: {'a': 1}", "{'a': 1}"),
         ("no answer yet", None),
+        ("FinalAnswer: 'printed'\nFinalAnswer: 'returned'", "'returned'"),
     ],
 )
 def test_the_final_answer_is_read_from_a_cells_output(output, answer):

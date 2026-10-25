@@ -8,16 +8,19 @@ worker's stderr. The server numbers each event (seq, from 1) and stamps its time
 import asyncio
 import json
 import math
+import mmap
 import os
 import signal
 import sys
 import time
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
+from itertools import islice
 from pathlib import Path
 from typing import Any, Literal
 
+import jinja2
 import structlog
 
 log = structlog.get_logger()
@@ -35,16 +38,21 @@ TOO_LONG = (
 )
 SHUT_DOWN = "Deep Reasoning shut down while the run was going."
 LOST = "Deep Reasoning stopped while the run was going, so the run was lost."
-RECAP_HEAD = (
-    "This conversation began before this run. Its earlier runs have ended, so their "
-    "variables and sub-agents are gone; below are the user's earlier messages, each "
-    "with the answer it got."
+RECAP = jinja2.Template(
+    """\
+This conversation began before this run. Its earlier runs have ended, so their \
+variables and sub-agents are gone; below are the user's earlier messages, each with \
+the answer it got.
+{% for turn in turns %}
+Message {{ loop.index }}: {{ turn.message }}
+Answer {{ loop.index }}: {% if turn.outcome == "answered" %}{{ turn.answer or "" }}
+{%- elif turn.outcome == "failed" %}(none: the run failed: {{ turn.detail }})
+{%- elif turn.outcome == "stopped" %}(none: the user stopped the run before it answered)
+{%- else %}(none: the run ended without a final answer){% endif %}
+{% endfor %}
+The user's next message follows.""",
+    undefined=jinja2.StrictUndefined,
 )
-RECAP_TAIL = "The user's next message follows."
-WITHOUT_ANSWER = {
-    "exhausted": "(none: the run ended without a final answer)",
-    "stopped": "(none: the user stopped the run before it answered)",
-}
 
 
 class RunInProgress(Exception):
@@ -68,13 +76,49 @@ class _Live:
     pump: asyncio.Task | None = None
     stop_asked: bool = False
     kill_timer: asyncio.TimerHandle | None = None
-    ended: bool = False  # a turn.end is recorded
     detail: str | None = None  # why the server ended it, if it did
 
+    @property
+    def ended(self) -> bool:
+        """A turn.end is recorded; the worker may still be closing the run."""
+        return self.events[-1]["kind"] == "turn.end"
 
-def read_events(home: Path, run: str) -> list[dict[str, Any]]:
-    lines = (home / RUNS / run / EVENTS).read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines]
+
+def read_events(home: Path, run: str) -> Iterator[dict[str, Any]]:
+    """The run's events, read from its file a line at a time."""
+    with (home / RUNS / run / EVENTS).open(encoding="utf-8") as events:
+        for line in events:
+            yield json.loads(line)
+
+
+def first_event(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as events:
+        return json.loads(events.readline())
+
+
+def last_event(path: Path) -> dict[str, Any]:
+    """The last event of a non-empty events file, found from the end without reading
+    the rest."""
+    with (
+        path.open("rb") as file,
+        mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data,
+    ):
+        return json.loads(data[data.rfind(b"\n", 0, len(data) - 1) + 1 :])
+
+
+def cut_torn_line(path: Path) -> int:
+    """Cut off a last line the app was killed while writing; the size left."""
+    size = path.stat().st_size
+    if size == 0:
+        return 0
+    with (
+        path.open("rb") as file,
+        mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data,
+    ):
+        whole = data.rfind(b"\n") + 1
+    if whole < size:
+        os.truncate(path, whole)
+    return whole
 
 
 def append_event(home: Path, run: str, event: dict[str, Any]) -> None:
@@ -86,35 +130,37 @@ def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
     """A turn's cost, None when any call's is unknown, and its seconds until *until*."""
     costs = [event["cost"] for event in events if event["kind"] == "usage"]
     cost = None if None in costs else math.fsum(costs)
-    return {"cost": cost, "seconds": round(until - events[0]["t"], 2)}
+    return {"cost": cost, "seconds": until - events[0]["t"]}
 
 
 def read_turn(home: Path, run: str) -> Turn:
-    """An ended run's message, and how it ended."""
-    events = read_events(home, run)
-    start, end = events[0], events[-1]
+    """An ended run's message, and how it ended, from its first and last events."""
+    path = home / RUNS / run / EVENTS
+    start, end = first_event(path), last_event(path)
     return Turn(start["prompt"], end["outcome"], end["answer"], end["detail"])
 
 
 def turn_starts(home: Path, chat: str) -> list[dict[str, Any]]:
     """The turn.start of each of the chat's runs, oldest first."""
-    starts = []
-    for path in sorted((home / RUNS).glob(f"*/{EVENTS}")):
-        with path.open(encoding="utf-8") as events:
-            start = json.loads(events.readline())
-        if start["chat"] == chat:
-            starts.append(start)
-    return starts
+    starts = [first_event(path) for path in sorted((home / RUNS).glob(f"*/{EVENTS}"))]
+    return [start for start in starts if start["chat"] == chat]
 
 
 def end_unfinished(home: Path) -> list[str]:
-    """End, as failed, every run the app stopped under without a turn.end; their ids."""
+    """End, as failed, every run the app stopped under without a turn.end; their ids.
+
+    A last line the app was killed while writing is cut off first. A run left with no
+    whole event loses its events file: as far as the app can tell, it never started.
+    """
     ended = []
     for path in sorted((home / RUNS).glob(f"*/{EVENTS}")):
-        run = path.parent.name
-        events = read_events(home, run)
-        if events[-1]["kind"] == "turn.end":
+        if not cut_torn_line(path):
+            path.unlink()
             continue
+        if last_event(path)["kind"] == "turn.end":
+            continue
+        run = path.parent.name
+        events = list(read_events(home, run))
         end = {"kind": "turn.end", "outcome": "failed", "answer": None, "detail": LOST}
         stamp = {"seq": len(events) + 1, "t": time.time()}
         append_event(home, run, stamp | end | totals(events, events[-1]["t"]))
@@ -122,30 +168,16 @@ def end_unfinished(home: Path) -> list[str]:
     return ended
 
 
-def answer_of(turn: Turn) -> str:
-    """What follows "Answer i:" in a recap: the answer, or why the turn has none."""
-    if turn.outcome == "answered":
-        return turn.answer or ""
-    if turn.outcome == "failed":
-        return f"(none: the run failed: {turn.detail})"
-    return WITHOUT_ANSWER[turn.outcome]
-
-
 def recap_of(turns: Sequence[Turn]) -> str | None:
     """The chat so far as one user message for a fresh run: every earlier message and
     its answer, whole. None before the first answer."""
-    if not turns:
-        return None
-    blocks = [
-        f"Message {i}: {turn.message}\nAnswer {i}: {answer_of(turn)}"
-        for i, turn in enumerate(turns, 1)
-    ]
-    return "\n\n".join([RECAP_HEAD, *blocks, RECAP_TAIL])
+    return RECAP.render(turns=turns) if turns else None
 
 
 def new_run_id() -> str:
-    """The start time, to the microsecond: run ids sort in the order the runs began."""
-    return datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    """The start time in UTC, to the microsecond: run ids sort in the order the runs
+    began, across a change of the local clock."""
+    return datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
 
 
 def kill_group(pid: int) -> None:
@@ -165,9 +197,14 @@ class Runs:
         self._live: dict[str, _Live] = {}
 
     def live(self, chat: str) -> str | None:
-        """The chat's run that is going, if one is."""
+        """The chat's run that is going, if one is: one whose turn has not ended."""
         return next(
-            (run for run, live in self._live.items() if live.chat == chat), None
+            (
+                run
+                for run, live in self._live.items()
+                if live.chat == chat and not live.ended
+            ),
+            None,
         )
 
     def exists(self, run: str) -> bool:
@@ -191,9 +228,11 @@ class Runs:
         config = config_for(folder)
         spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier)}
         (folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
-        live = self._live[run] = _Live(chat)
+        live = _Live(chat)
+        # Recorded before the run is listed, so a start that fails holds up no chat.
         self._record(
             run,
+            live,
             {
                 "kind": "turn.start",
                 "run": run,
@@ -203,14 +242,15 @@ class Runs:
                 "model": config.get("model"),
             },
         )
-        live.pump = asyncio.create_task(self._pump(run))
+        self._live[run] = live
+        live.pump = asyncio.create_task(self._pump(run, live))
         return run
 
     def stop(self, run: str) -> bool:
         """Ask a run to stop: its worker stops the agent tree and ends the turn, or the
         group is killed after the grace period. False when the run is not going."""
         live = self._live.get(run)
-        if live is None:
+        if live is None or live.ended:
             return False
         if not live.stop_asked:
             live.stop_asked = True
@@ -222,7 +262,7 @@ class Runs:
         as it happens, until the run is over."""
         live = self._live.get(run)
         if live is None:
-            for event in read_events(self.home, run)[after:]:
+            for event in islice(read_events(self.home, run), after, None):
                 yield event
             return
         # The backlog and the subscription are taken in one step on the event loop, so
@@ -254,23 +294,28 @@ class Runs:
         if process is None or process.returncode is not None:
             return
         process.stdin.write(b"stop\n")
-        loop = asyncio.get_running_loop()
-        live.kill_timer = loop.call_later(self._stop_grace_s, kill_group, process.pid)
+        self._kill_after_grace(live)
 
-    def _record(self, run: str, event: dict[str, Any]) -> None:
-        live = self._live[run]
+    def _kill_after_grace(self, live: _Live) -> None:
+        """Kill the worker's group after the grace period, unless it exits first."""
+        if live.kill_timer is not None:
+            live.kill_timer.cancel()
+        loop = asyncio.get_running_loop()
+        live.kill_timer = loop.call_later(
+            self._stop_grace_s, kill_group, live.process.pid
+        )
+
+    def _record(self, run: str, live: _Live, event: dict[str, Any]) -> None:
         event = {"seq": len(live.events) + 1, "t": time.time()} | event
         if event["kind"] == "turn.end":
-            live.ended = True
             event |= totals(live.events, event["t"])
         append_event(self.home, run, event)
         live.events.append(event)
         for queue in live.watchers:
             queue.put_nowait(event)
 
-    async def _pump(self, run: str) -> None:
+    async def _pump(self, run: str, live: _Live) -> None:
         """Start the worker and record its events until it exits; then end the run."""
-        live = self._live[run]
         folder = self.home / RUNS / run
         try:
             with (folder / "worker.log").open("ab") as worker_log:
@@ -288,38 +333,43 @@ class Runs:
                 )
             if live.stop_asked:
                 self._ask_to_stop(live)
-            await self._read(run, live.process.stdout)
+            await self._read(run, live)
         except Exception as error:
             log.exception("runs.lost_the_worker", run=run)
             live.detail = f"The app lost the run's worker: {error}"
         finally:
-            await self._end(run)
+            await self._end(run, live)
 
-    async def _read(self, run: str, stdout: asyncio.StreamReader) -> None:
+    async def _read(self, run: str, live: _Live) -> None:
         while True:
             try:
-                line = await stdout.readline()
+                line = await live.process.stdout.readline()
             except ValueError:
-                self._live[run].detail = TOO_LONG
+                live.detail = TOO_LONG
                 return
             if not line:
                 return
-            self._record(run, json.loads(line))
+            self._record(run, live, json.loads(line))
+            if live.ended:
+                # The worker saves the run's tools as it closes: it gets the whole grace
+                # period for that, even after a Stop that used up most of it.
+                self._kill_after_grace(live)
 
-    async def _end(self, run: str) -> None:
+    async def _end(self, run: str, live: _Live) -> None:
         """Kill what is left of the worker's group, wait for the worker, and end the
-        turn if the worker didn't."""
-        live = self._live[run]
-        if live.process is not None:
-            kill_group(live.process.pid)
-            await live.process.wait()
-        if live.kill_timer is not None:
-            live.kill_timer.cancel()
-        if not live.ended:
-            self._record(run, self._turn_end(run, live))
-        del self._live[run]
-        for queue in live.watchers:
-            queue.put_nowait(None)
+        turn if the worker didn't. The chat and the streams are let go whatever fails."""
+        try:
+            if live.process is not None:
+                kill_group(live.process.pid)
+                await live.process.wait()
+            if live.kill_timer is not None:
+                live.kill_timer.cancel()
+            if not live.ended:
+                self._record(run, live, self._turn_end(run, live))
+        finally:
+            del self._live[run]
+            for queue in live.watchers:
+                queue.put_nowait(None)
 
     def _turn_end(self, run: str, live: _Live) -> dict[str, Any]:
         """The turn.end of a run whose worker ended without writing one."""
