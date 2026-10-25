@@ -5,6 +5,7 @@ import webbrowser
 
 import pytest
 import uvicorn
+from fastapi.testclient import TestClient
 
 from deep_reasoning import cli
 
@@ -46,6 +47,15 @@ def served(monkeypatch):
 def test_serves_on_localhost_only(served, free_port):
     cli.main(["--port", str(free_port), "--no-browser"])
     assert served == [("127.0.0.1", free_port)]
+
+
+def test_says_where_it_runs_and_which_library_it_serves(
+    served, capsys, home, free_port
+):
+    cli.main(["--port", str(free_port), "--no-browser"])
+    said = capsys.readouterr().out
+    assert f"url=http://127.0.0.1:{free_port}/" in said
+    assert str(home / ".deep-reasoning" / "library.sqlite") in said
 
 
 def test_opens_a_tab_at_the_port_it_listens_on(monkeypatch, opened):
@@ -95,3 +105,42 @@ def test_ctrl_c_stops_the_server_without_a_traceback(monkeypatch, free_port):
         cli.main(["--port", str(free_port), "--no-browser"])
     except KeyboardInterrupt:
         pytest.fail("Ctrl+C escaped main, so the terminal shows a traceback")
+
+
+def test_the_library_defaults_to_one_under_the_home_directory(served, home, free_port):
+    cli.main(["--port", str(free_port), "--no-browser"])
+    assert (home / ".deep-reasoning" / "library.sqlite").is_file()
+
+
+def test_library_opens_the_given_file_and_import_fills_it(
+    monkeypatch, tmp_path, advisors, free_port
+):
+    shared = tmp_path / "shared.sqlite"
+    cli.main(["import", str(advisors), "--library", str(shared)])
+    seen = []
+
+    def serve(server, sockets):
+        client = TestClient(server.config.app, base_url="http://127.0.0.1")
+        seen.append(client.get("/api/library").json())
+
+    monkeypatch.setattr(uvicorn.Server, "run", serve)
+    cli.main(["--port", str(free_port), "--no-browser", "--library", str(shared)])
+    [library] = seen
+    assert library["file"] == "shared.sqlite"
+    assert library["default_namespace"] == "router"
+
+
+def test_a_failed_import_exits_with_a_plain_error(tmp_path):
+    missing = tmp_path / "missing.yaml"
+    with pytest.raises(SystemExit, match="Could not import .*the Library is unchanged"):
+        cli.main(["import", str(missing), "--library", str(tmp_path / "lib.sqlite")])
+
+
+def test_a_file_that_is_not_a_library_exits_with_a_plain_error(
+    served, tmp_path, free_port
+):
+    notes = tmp_path / "notes.txt"
+    notes.write_text("not a database\n")
+    with pytest.raises(SystemExit, match="Could not open the Library at .*notes.txt"):
+        cli.main(["--port", str(free_port), "--no-browser", "--library", str(notes)])
+    assert served == []

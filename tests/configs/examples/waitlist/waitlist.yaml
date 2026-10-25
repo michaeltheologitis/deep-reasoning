@@ -1,0 +1,35 @@
+# Waitlist agent — its one tool is built by a factory in `tools.py`, next to this file.
+# Nothing about that tool is in the deep_reasoner package and the CLI is not forked:
+#   dr configs/examples/waitlist/waitlist.yaml "Put ada on the CS201 waitlist" logs/waitlist
+_compose:
+  - ../../catalog/client.yaml
+
+model: "qwen/qwen3.6-flash"
+run_prefix: logs/waitlist
+max_iter: 6
+
+tools:
+  waitlist:
+    factory: build_waitlist          # the function to call
+    factory_from: ./tools.py         # the file it lives in — RELATIVE TO THIS CONFIG
+    capacity: 2                      # ── from here down it is the factory's kwargs,
+    persist: logs/waitlist-state     #    exactly as for a built-in. Under logs/, so the
+                                     #    saved queues stay out of git.
+
+system_prompt: |
+  You manage course waitlists by writing Python in a REPL and observing the results.
+
+  Each turn, do exactly two things in order:
+   1. **Reason** — a short paragraph inside <think> … </think>.
+   2. **Act** — exactly one <repl> … </repl> block of valid Python, then stop.
+
+  The code runs in the REPL; its printed output returns in an <observation> …
+  </observation> block in the next message. Continue until you call `FinalAnswer(value)`
+  in a <repl> block, which ends the run.
+
+  The `waitlist` tool is already bound in your REPL — never import it. It remembers
+  everyone added by earlier runs, so check before you add.
+
+namespaces:
+  root:
+    tools: [waitlist]

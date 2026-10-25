@@ -1,0 +1,14 @@
+# Infrastructure: HTTP client, logging, iteration limits. Compose this first.
+# Runs on OpenRouter; point at another provider by changing `base_url` /`api_key_env`.
+client:
+  base_url: "https://openrouter.ai/api/v1"
+  api_key_env: "OPENROUTER_API_KEY"
+
+log_dir: "logs"
+max_iter: 20
+
+# Qwen supports `stop`; cut generation at the end of the <repl> block so the model
+# can't run past it and hallucinate an observation.
+llm_kwargs:
+  stop:
+    - "</repl>"

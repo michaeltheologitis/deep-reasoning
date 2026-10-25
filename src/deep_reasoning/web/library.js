@@ -1,7 +1,7 @@
-// The Library panel: the decompositions, namespaces, tools and data every run draws on. Mock data; an added decomposition lives in memory.
+// The Library panel: the decompositions, namespaces, tools and data every run draws on, read from the server's Library file; Add saves there.
 // It draws with app.js's element(), caret() and fetchJson(), which load before this module.
-const DATA_URL = "data/library.json";
-const LIBRARY_FILE = "library.sqlite";
+const LIBRARY_URL = "api/library";
+const ADD_URL = "api/decompositions";
 const TABS = ["Decompositions", "Namespaces", "Tools", "Data"];
 const ROOT = "root";
 const ROLES = ["user", "assistant", "system"];
@@ -41,12 +41,14 @@ let library = null;
 let problem = null;
 let tab = TABS[0];
 let checkTimer = null;
+let saving = false;
 
 const dot = () => element("span", { class: "lib-dot", "aria-hidden": "true" }, "·");
 const namespaceNamed = (name) => library.namespaces.find((namespace) => namespace.name === name);
 const decompositionKey = (namespace, name) => `d:${namespace}:${name}`;
 
 const body = element("div", { class: "lib-body", id: "library-body", role: "tabpanel" });
+const fileName = element("span", { class: "lib-filename" });
 const tabButtons = TABS.map((name) =>
   element("button", { type: "button", role: "tab", class: "lib-tab", id: `library-tab-${name.toLowerCase()}`, "aria-controls": body.id, onclick: () => selectTab(name) }, name),
 );
@@ -54,7 +56,7 @@ panel.append(
   element(
     "header",
     { class: "lib-head" },
-    element("h2", { class: "lib-title" }, "Library", element("span", { class: "lib-filename" }, ` · ${LIBRARY_FILE}`)),
+    element("h2", { class: "lib-title" }, "Library", fileName),
     element("button", { type: "button", class: "lib-close", "aria-label": "Close the Library", onclick: () => setOpen(false) }, "×"),
   ),
   element("div", { class: "lib-tabs", role: "tablist", "aria-label": "Library", onkeydown: arrowTabs }, tabButtons.flatMap((button, i) => (i ? [dot(), button] : [button]))),
@@ -80,7 +82,6 @@ const addForm = element(
   element("div", { class: "lib-form-line" }, element("label", { for: picker.id }, "namespace"), picker),
   problemList,
   element("div", { class: "lib-actions" }, addButton, element("button", { type: "button", class: "lib-action", onclick: closeForm }, "Cancel")),
-  element("p", { class: "lib-note" }, "the prototype doesn't save; a reload forgets it"),
 );
 const confirmation = element("p", { class: "lib-confirm", role: "status" });
 const addSection = element("section", { class: "lib-add" }, addToggle, addForm, confirmation);
@@ -138,7 +139,7 @@ function check() {
   clearTimeout(checkTimer);
   const found = problems(yamlInput.value, namespaceNamed(picker.value));
   showProblems(found);
-  addButton.disabled = found.length > 0;
+  addButton.disabled = saving || found.length > 0;
   return found;
 }
 
@@ -148,19 +149,38 @@ function showProblems(found) {
   problemList.replaceChildren(...found.map((text) => element("p", {}, text)));
 }
 
-function addDecomposition(e) {
+async function postJson(url, payload) {
+  const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const answer = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(typeof answer.detail === "string" ? answer.detail : `${url} answered ${response.status}`);
+  return answer;
+}
+
+// The live check gives instant feedback; the server checks again and has the last word, and its refusal shows in the same place.
+async function addDecomposition(e) {
   e.preventDefault();
-  if (check().length) return;
+  if (saving || check().length) return;
   const namespace = namespaceNamed(picker.value);
-  const { name } = jsyaml.load(yamlInput.value);
-  namespace.decompositions.push({ name, yaml: yamlInput.value.trimEnd() });
+  saving = addButton.disabled = true;
+  let added;
+  try {
+    added = await postJson(ADD_URL, { namespace: namespace.name, yaml: yamlInput.value });
+  } catch (error) {
+    showProblems(error.message.split("\n"));
+    return;
+  } finally {
+    saving = addButton.disabled = false;
+  }
+  const { name, yaml } = added;
+  namespace.decompositions.push({ name, yaml });
   const key = decompositionKey(namespace.name, name);
   opened.add(key);
   closeForm();
   render();
+  // the row is drawn only if its tab is still the one showing
   const row = body.querySelector(`[data-key="${CSS.escape(key)}"]`);
-  row.focus({ preventScroll: true });
-  row.parentElement.scrollIntoView({ block: "nearest" });
+  row?.focus({ preventScroll: true });
+  row?.parentElement.scrollIntoView({ block: "nearest" });
   confirmation.textContent = `Added "${name}" to ${namespace.name}`;
 }
 
@@ -315,14 +335,9 @@ function dataTable({ name, columns, rows }) {
 }
 
 function renderData() {
-  return library.data.map((section, sectionIndex) =>
-    group(
-      section.title,
-      section.items.map((entry, entryIndex) =>
-        disclosure(`v:${sectionIndex}:${entryIndex}`, rowHead(entry.name, entry.where, entry.summary), () => (entry.rows ? dataTable(entry) : element("p", { class: "lib-note" }, entry.note))),
-      ),
-    ),
-  );
+  if (!library.variables.length) return [element("p", { class: "lib-note" }, "No namespace's vars hold a table yet.")];
+  const rows = library.variables.map((entry) => disclosure(`v:${entry.where}:${entry.name}`, rowHead(entry.name, entry.where, entry.summary), () => dataTable(entry)));
+  return [group("Preloaded variables", rows)];
 }
 
 const RENDERERS = { Decompositions: renderDecompositions, Namespaces: renderNamespaces, Tools: renderTools, Data: renderData };
@@ -366,7 +381,8 @@ function setOpen(open) {
 
 async function load() {
   try {
-    library = await fetchJson(DATA_URL);
+    library = await fetchJson(LIBRARY_URL);
+    fileName.textContent = ` · ${library.file}`;
     picker.append(...library.namespaces.map(({ name }) => element("option", { value: name, selected: name === ROOT }, name)));
   } catch (error) {
     problem = `Could not load the Library (${error.message}).`;
