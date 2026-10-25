@@ -290,7 +290,11 @@ class Runs:
         if workers:
             await asyncio.wait(workers)
         for start in turn_starts(self.home, chat):
-            shutil.rmtree(self.home / RUNS / start["run"])
+            try:
+                shutil.rmtree(self.home / RUNS / start["run"])
+            except OSError:
+                # The chat is gone already: a folder left behind is logged, not raised.
+                log.exception("runs.folder_not_removed", run=start["run"])
 
     async def close(self) -> None:
         """End every run that is going: the app is shutting down."""
