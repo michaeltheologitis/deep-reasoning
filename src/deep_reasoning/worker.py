@@ -1,0 +1,339 @@
+"""One run of deep_reasoner, as `python -m deep_reasoning.worker <run folder>`.
+
+It runs the folder's spec.json and writes the run's events to stdout, one JSON line each.
+It takes one command on stdin, `stop`. Anything else the run prints lands on stderr,
+which the server sends to the folder's worker.log.
+"""
+
+import ast
+import asyncio
+import json
+import os
+import re
+import signal
+import sys
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, NoReturn, TextIO
+
+import structlog
+from deep_reasoner.core import configure_structlog_fixture
+from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
+from deep_reasoner.v2.messages import NoCodeBlock, code, user
+from genai_prices import Usage, calc_price
+
+log = structlog.get_logger()
+
+FINAL_ANSWER = "FinalAnswer: "
+TRACEBACK = "Traceback (most recent call last):"
+CLOSE_RUN_WATCHDOG_S = 2.0
+REPL_BLOCK = re.compile(r"<repl>.*?(?:</repl>|$)", re.DOTALL)
+THINK_TAG = re.compile(r"</?think>")
+OBSERVATION = re.compile(r"\A<observation>\n?(.*?)\n?</observation>\Z", re.DOTALL)
+
+
+def source_of(reply: str) -> str | None:
+    """The <repl> block deep_reasoner would run from this reply, if it has one."""
+    try:
+        return code(reply).source
+    except NoCodeBlock:
+        return None
+
+
+def thought_of(reply: str) -> str:
+    """The reply without its <repl> block and <think> tags."""
+    return THINK_TAG.sub("", REPL_BLOCK.sub("", reply)).strip()
+
+
+def output_of(observation: str) -> str:
+    """What a cell printed, without the <observation> tags around it."""
+    match = OBSERVATION.match(observation)
+    return match.group(1) if match else observation
+
+
+def final_answer_of(output: str) -> str | None:
+    """The repr after the last line that starts with "FinalAnswer: ", to the end."""
+    if output.startswith(FINAL_ANSWER):
+        return output[len(FINAL_ANSWER) :].rstrip("\n")
+    at = output.rfind("\n" + FINAL_ANSWER)
+    if at < 0:
+        return None
+    return output[at + 1 + len(FINAL_ANSWER) :].rstrip("\n")
+
+
+def unquote(answer_repr: str) -> str:
+    """A FinalAnswer repr, unquoted when it is a Python string literal."""
+    try:
+        value = ast.literal_eval(answer_repr)
+    except (ValueError, SyntaxError, MemoryError, RecursionError):
+        return answer_repr
+    return value if isinstance(value, str) else answer_repr
+
+
+def cost_of(model: str, usage: dict[str, Any]) -> float | None:
+    """One model call's cost in USD: the provider's own figure when it sends one, else
+    genai-prices' bundled price, with cached input at its rate; None for an unknown model."""
+    if usage.get("cost") is not None:
+        return float(usage["cost"])
+    cached = (usage.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+    tokens = Usage(
+        input_tokens=usage.get("prompt_tokens") or 0,
+        cache_read_tokens=cached,
+        output_tokens=usage.get("completion_tokens") or 0,
+    )
+    try:
+        return float(calc_price(tokens, model).total_price)
+    except LookupError:
+        return None
+
+
+def detail_of(error: BaseException) -> str:
+    """An exception as deep_reasoner words agent.end's detail."""
+    return f"{type(error).__name__}: {error}"
+
+
+@dataclass
+class _Agent:
+    drive: int
+    cell: int | None = None  # its open cell
+    code: str = ""  # the open cell's code
+    answer: str | None = None  # the repr of the FinalAnswer this drive reached
+
+
+class Recorder:
+    """The structlog processor that turns deep_reasoner's run events into the app's, one
+    JSON line each on *out*.
+
+    deep_reasoner calls it on every thread a run logs from, so it holds one lock for its
+    state and its writes. It returns every event dict unchanged and never raises.
+    """
+
+    def __init__(self, out: TextIO, on_root_start: Callable[[], None]) -> None:
+        self._out = out
+        self._on_root_start = on_root_start
+        self._lock = threading.RLock()
+        self._agents: dict[int, _Agent] = {}
+        self._cells = 0
+        self._root: int | None = None
+        self._handlers = {
+            "agent.start": self._agent_start,
+            "llm.call": self._llm_call,
+            "claude.call": self._claude_call,
+            "repl.execute": self._repl_execute,
+            "agent.end": self._agent_end,
+        }
+
+    def __call__(
+        self, logger: Any, method_name: str, event_dict: dict[str, Any]
+    ) -> dict[str, Any]:
+        name = event_dict.get("event")
+        handler = self._handlers.get(name)
+        if handler is None:
+            return event_dict
+        try:
+            with self._lock:
+                handler(event_dict)
+        except Exception:
+            log.exception("worker.event_not_recorded", name=name)
+        return event_dict
+
+    def emit(self, kind: str, **fields: Any) -> None:
+        """Write one event; under the lock, so lines from different threads never mix."""
+        with self._lock:
+            self._out.write(json.dumps({"kind": kind, **fields}, default=str) + "\n")
+            self._out.flush()
+
+    def _open_cell(self, node: int, source: str) -> int:
+        self._cells += 1
+        agent = self._agents[node]
+        agent.cell, agent.code = self._cells, source
+        self.emit("cell.start", node=node, cell=self._cells, code=source)
+        return self._cells
+
+    def _close_cell(self, node: int, source: str, output: str, status: str) -> None:
+        agent = self._agents[node]
+        self.emit(
+            "cell.end",
+            node=node,
+            cell=agent.cell,
+            code=source,
+            output=output,
+            status=status,
+        )
+        agent.cell, agent.code = None, ""
+
+    def _agent_start(self, event: dict[str, Any]) -> None:
+        node, parent = event["node_id"], event["parent"]
+        if parent is None:
+            self._root = node
+            self._on_root_start()
+        cell = None
+        if parent in self._agents:
+            # Under Claude Code or an opening turn, no cell of the parent's is known when
+            # a sub-agent starts: an empty one opens for it to show in.
+            cell = self._agents[parent].cell or self._open_cell(parent, "")
+        drive = self._agents[node].drive + 1 if node in self._agents else 1
+        self._agents[node] = _Agent(drive)
+        self.emit(
+            "agent.start",
+            node=node,
+            parent=parent,
+            cell=cell,
+            task=event["task"],
+            namespace=event["namespace"],
+            drive=drive,
+        )
+
+    def _llm_call(self, event: dict[str, Any]) -> None:
+        node = event.get("agent_id") or self._root
+        usage = event.get("usage") or {}
+        self.emit(
+            "usage",
+            node=node,
+            model=event["model"],
+            tokens_in=usage.get("prompt_tokens") or 0,
+            tokens_out=usage.get("completion_tokens") or 0,
+            cost=cost_of(event["model"], usage),
+        )
+        if not self._own(event):
+            return
+        reply = event.get("response") or ""
+        if thought := thought_of(reply):
+            self.emit("think", node=node, text=thought)
+        if (source := source_of(reply)) is not None:
+            self._open_cell(node, source)
+
+    def _claude_call(self, event: dict[str, Any]) -> None:
+        node = event.get("agent_id") or self._root
+        usage = event.get("usage") or {}
+        cached = ("cache_read_input_tokens", "cache_creation_input_tokens")
+        self.emit(
+            "usage",
+            node=node,
+            model=event.get("model"),
+            tokens_in=sum(usage.get(key) or 0 for key in ("input_tokens", *cached)),
+            tokens_out=usage.get("output_tokens") or 0,
+            cost=event.get("cost_usd"),
+        )
+        if self._own(event) and (response := (event.get("response") or "").strip()):
+            self.emit("think", node=node, text=response)
+
+    def _repl_execute(self, event: dict[str, Any]) -> None:
+        if not self._own(event):
+            return
+        node, source = event["agent_id"], event["source"]
+        output = output_of(event["observation"])
+        agent = self._agents[node]
+        if agent.cell is None:
+            self._open_cell(node, source)
+        status = "failed" if TRACEBACK in output else "done"
+        self._close_cell(node, source, output, status)
+        if (answer := final_answer_of(output)) is not None:
+            agent.answer = answer
+
+    def _agent_end(self, event: dict[str, Any]) -> None:
+        node, status = event["node_id"], event["status"]
+        agent = self._agents.get(node)
+        if agent is None:
+            return
+        if agent.cell is not None:
+            cell_status = "stopped" if status == "stopped" else "failed"
+            self._close_cell(node, agent.code, "", cell_status)
+        result = None
+        if status == "done" and agent.answer is not None:
+            result = unquote(agent.answer)
+        self.emit(
+            "agent.end",
+            node=node,
+            status=status,
+            result=result,
+            detail=event.get("detail"),
+        )
+
+    def _own(self, event: dict[str, Any]) -> bool:
+        """The event is a known agent's own model call or cell, not a tool's inside it."""
+        node = event.get("node_id")
+        return node == event.get("agent_id") and node in self._agents
+
+
+def read_commands(stop: Callable[[], None]) -> None:
+    """Stdin, on its own thread. At EOF the server is gone, so nothing would read the
+    events: the worker ends its whole process group."""
+    for line in sys.stdin:
+        if line.strip() == "stop":
+            stop()
+    os.killpg(0, signal.SIGKILL)
+
+
+def exit_after(seconds: float) -> None:
+    time.sleep(seconds)
+    log.warning("worker.close_run_hung", seconds=seconds)
+    os._exit(0)
+
+
+def finish(reasoner: Any) -> NoReturn:
+    """close_run under a watchdog, then exit without waiting for sub-agents' threads."""
+    threading.Thread(
+        target=exit_after, args=(CLOSE_RUN_WATCHDOG_S,), daemon=True
+    ).start()
+    if reasoner is not None:
+        try:
+            close_run(reasoner)
+        except Exception:
+            log.exception("worker.close_run_failed")
+    os._exit(0)
+
+
+async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:
+    stop_asked = threading.Event()
+    reasoner = None
+
+    def stop() -> None:
+        stop_asked.set()
+        if reasoner is not None:
+            reasoner.stop()
+
+    def stop_if_asked() -> None:
+        # A stop does nothing before the root's first drive, so one asked earlier is
+        # repeated here, when the root's drive has begun.
+        if stop_asked.is_set():
+            reasoner.stop()
+
+    recorder = Recorder(out, on_root_start=stop_if_asked)
+    configure_structlog_fixture(console=False, extra_processors=[recorder])
+    threading.Thread(target=read_commands, args=(stop,), daemon=True).start()
+    try:
+        config = V2Config.model_validate(spec["config"])
+        reasoner, alias = build_reasoner(config, run_dir=folder)
+        with alias:
+            if spec["recap"] is not None:
+                reasoner.send(user(spec["recap"]))
+            answer = await reasoner.acall(spec["prompt"])
+    except Exception as error:
+        log.exception("worker.run_failed")
+        outcome = "stopped" if stop_asked.is_set() else "failed"
+        recorder.emit("turn.end", outcome=outcome, answer=None, detail=detail_of(error))
+        finish(reasoner)
+    if reasoner.stopped:
+        recorder.emit("turn.end", outcome="stopped", answer=None, detail=None)
+        finish(reasoner)
+    outcome = "exhausted" if reasoner.exhausted else "answered"
+    text = answer if isinstance(answer, str) else repr(answer)
+    recorder.emit("turn.end", outcome=outcome, answer=text, detail=None)
+    finish(reasoner)
+
+
+def main() -> None:
+    folder = Path(sys.argv[1])
+    # The events keep the real stdout; anything else printed goes to stderr.
+    out = os.fdopen(os.dup(1), "w", buffering=1)
+    os.dup2(2, 1)
+    spec = json.loads((folder / "spec.json").read_text())
+    asyncio.run(run(spec, folder, out))
+
+
+if __name__ == "__main__":
+    main()

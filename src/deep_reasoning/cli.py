@@ -21,10 +21,19 @@ from deep_reasoning.library import LibraryError, import_config, open_library
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 MAX_PORT = 65535
-LIBRARY_DIR = ".deep-reasoning"
+HOME_DIR = ".deep-reasoning"  # the app's home: its runs, and its Library by default
 LIBRARY_FILE = "library.sqlite"
 
 log = structlog.get_logger()
+
+
+class Server(uvicorn.Server):
+    """uvicorn's server, ending the runs before it waits on open responses: a run's
+    stream stays open until the run ends, so uvicorn would wait on it for good."""
+
+    async def shutdown(self, sockets=None):
+        await self.config.app.state.runs.close()
+        await super().shutdown(sockets)
 
 
 def listen(port):
@@ -62,9 +71,9 @@ def import_or_exit(library, config):
     )
 
 
-def serve(port, no_browser, library):
+def serve(port, no_browser, library, home):
     open_or_exit(library).close()
-    server = uvicorn.Server(uvicorn.Config(create_app(library)))
+    server = Server(uvicorn.Config(create_app(library, home)))
     with listen(port) as sock:
         url = f"http://{HOST}:{sock.getsockname()[1]}/"
         log.info("Deep Reasoning is running", url=url, library=str(library))
@@ -84,7 +93,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Start Deep Reasoning and open it in a browser tab."
     )
-    default_library = Path.home() / LIBRARY_DIR / LIBRARY_FILE
+    home = Path.home() / HOME_DIR
+    default_library = home / LIBRARY_FILE
     library_help = f"the Library file to use (default {default_library})"
     parser.add_argument(
         "--port",
@@ -115,4 +125,4 @@ def main(argv=None):
     if args.command == "import":
         import_or_exit(args.library, args.config)
         return
-    serve(args.port, args.no_browser, args.library)
+    serve(args.port, args.no_browser, args.library, home)

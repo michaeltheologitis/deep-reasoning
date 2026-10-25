@@ -1,0 +1,181 @@
+import io
+import json
+
+import pytest
+from genai_prices import Usage, calc_price
+
+from deep_reasoning.worker import Recorder, cost_of, final_answer_of
+
+ROOT, CHILD = 1, 2
+
+
+def recorded(*engine_events):
+    """The app's events a Recorder writes for deep_reasoner's *engine_events*."""
+    out = io.StringIO()
+    recorder = Recorder(out, on_root_start=lambda: None)
+    for event in engine_events:
+        recorder(None, "debug", dict(event))
+    return [json.loads(line) for line in out.getvalue().splitlines()]
+
+
+def agent_start(node, parent, task="a task"):
+    return {
+        "event": "agent.start",
+        "node_id": node,
+        "agent_id": node,
+        "parent": parent,
+        "task": task,
+        "namespace": "root",
+        "messages": [{"role": "system", "content": "the whole prompt"}],
+    }
+
+
+def model_reply(node, response):
+    return {
+        "event": "llm.call",
+        "node_id": node,
+        "agent_id": node,
+        "model": "gpt-6-luna",
+        "messages": [{"role": "user", "content": "the conversation so far"}],
+        "response": response,
+        "usage": {"prompt_tokens": 100, "completion_tokens": 10},
+    }
+
+
+def cell_ran(node, source, printed):
+    return {
+        "event": "repl.execute",
+        "node_id": node,
+        "agent_id": node,
+        "source": source,
+        "observation": f"<observation>\n{printed}\n</observation>",
+    }
+
+
+def agent_end(node, status):
+    return {"event": "agent.end", "node_id": node, "agent_id": node, "status": status}
+
+
+def test_a_reply_becomes_a_thought_and_the_cell_it_asks_for():
+    events = recorded(
+        agent_start(ROOT, None),
+        model_reply(ROOT, "<think>Count them.</think>\n<repl>\nprint(3)\n</repl>"),
+        cell_ran(ROOT, "print(3)", "3"),
+    )
+    steps = [event for event in events if event["kind"] in ("think", "cell.start")]
+    assert steps == [
+        {"kind": "think", "node": ROOT, "text": "Count them."},
+        {"kind": "cell.start", "node": ROOT, "cell": 1, "code": "print(3)"},
+    ]
+    assert events[-1] == {
+        "kind": "cell.end",
+        "node": ROOT,
+        "cell": 1,
+        "code": "print(3)",
+        "output": "3",
+        "status": "done",
+    }
+
+
+def test_a_sub_agent_started_outside_a_cell_gets_an_empty_cell_of_its_parent():
+    events = recorded(agent_start(ROOT, None), agent_start(CHILD, ROOT))
+    assert events[1] == {"kind": "cell.start", "node": ROOT, "cell": 1, "code": ""}
+    assert events[2]["kind"] == "agent.start" and events[2]["cell"] == 1
+
+
+def test_a_cell_open_when_its_agent_stops_ends_stopped():
+    events = recorded(
+        agent_start(ROOT, None),
+        model_reply(ROOT, "<repl>\nwhile True:\n    pass\n</repl>"),
+        agent_end(ROOT, "stopped"),
+    )
+    assert events[-2] == {
+        "kind": "cell.end",
+        "node": ROOT,
+        "cell": 1,
+        "code": "while True:\n    pass",
+        "output": "",
+        "status": "stopped",
+    }
+    assert events[-1]["kind"] == "agent.end" and events[-1]["status"] == "stopped"
+
+
+def test_a_cell_that_prints_a_traceback_failed():
+    traceback = 'Traceback (most recent call last):\n  File "<repl>"\nKeyError: 3'
+    events = recorded(agent_start(ROOT, None), cell_ran(ROOT, "{}[3]", traceback))
+    assert events[-1]["status"] == "failed"
+
+
+def test_an_agent_that_answers_has_its_final_answer_as_result():
+    events = recorded(
+        agent_start(ROOT, None),
+        cell_ran(ROOT, "FinalAnswer('C1: 3')", "FinalAnswer: 'C1: 3'"),
+        agent_end(ROOT, "done"),
+    )
+    assert events[-1] == {
+        "kind": "agent.end",
+        "node": ROOT,
+        "status": "done",
+        "result": "C1: 3",
+        "detail": None,
+    }
+
+
+def test_the_conversation_is_never_forwarded():
+    events = recorded(
+        agent_start(ROOT, None), model_reply(ROOT, "<repl>\nprint(1)\n</repl>")
+    )
+    assert all("messages" not in event for event in events)
+    assert all("the whole prompt" not in json.dumps(event) for event in events)
+
+
+def test_a_tools_model_call_is_priced_for_its_agent_but_is_not_a_thought():
+    call = model_reply(3, "a summary") | {"agent_id": ROOT}
+    events = recorded(agent_start(ROOT, None), call)
+    assert [event["kind"] for event in events] == ["agent.start", "usage"]
+    assert events[-1]["node"] == ROOT
+
+
+def test_the_roots_start_is_reported():
+    started = []
+    recorder = Recorder(io.StringIO(), on_root_start=lambda: started.append(True))
+    recorder(None, "debug", agent_start(ROOT, None))
+    recorder(None, "debug", agent_start(CHILD, ROOT))
+    assert started == [True]
+
+
+@pytest.mark.parametrize(
+    ("output", "answer"),
+    [
+        ("FinalAnswer: 'C1: 3'", "'C1: 3'"),
+        ("thinking aloud\nFinalAnswer: {'a': 1}", "{'a': 1}"),
+        ("no answer yet", None),
+    ],
+)
+def test_the_final_answer_is_read_from_a_cells_output(output, answer):
+    assert final_answer_of(output) == answer
+
+
+def test_cached_input_is_billed_at_its_own_rate():
+    usage = {
+        "prompt_tokens": 10_000,
+        "completion_tokens": 2_000,
+        "prompt_tokens_details": {"cached_tokens": 8_000},
+    }
+    tokens = Usage(input_tokens=10_000, cache_read_tokens=8_000, output_tokens=2_000)
+    expected = float(calc_price(tokens, "gpt-6-luna").total_price)
+    assert cost_of("gpt-6-luna", usage) == pytest.approx(expected)
+    assert cost_of("gpt-6-luna", usage) < cost_of(
+        "gpt-6-luna", usage | {"prompt_tokens_details": {}}
+    )
+
+
+def test_the_providers_own_cost_wins():
+    usage = {"prompt_tokens": 10, "completion_tokens": 2, "cost": 0.5}
+    assert cost_of("gpt-6-luna", usage) == 0.5
+
+
+def test_an_unknown_models_cost_is_none_not_zero():
+    assert (
+        cost_of("no-such-model", {"prompt_tokens": 10, "completion_tokens": 2}) is None
+    )
