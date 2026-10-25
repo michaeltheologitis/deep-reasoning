@@ -306,9 +306,9 @@ function summary(turn) {
   return join([lead, agents > 0 && plural(agents, "sub-agent"), formatCost(turn.cost)].filter(Boolean), " · ");
 }
 
-function liveSummary(turn) {
+function liveSummary(turn, followed) {
   const running = countAgents(turn, (agent) => agent.status === "running");
-  const facts = [clock(turn.started), running > 0 && `${plural(running, "sub-agent")} running`, "esc to interrupt"];
+  const facts = [clock(turn.started), running > 0 && `${plural(running, "sub-agent")} running`, followed && "esc to interrupt"];
   return [element("span", { class: "working" }, "Reasoning… "), "(", join(facts.filter(Boolean), " · "), ")"];
 }
 
@@ -320,6 +320,8 @@ function trailText({ tasks, step }) {
 
 function renderTurn(turn) {
   const live = state.live?.turn === turn;
+  // no turn.end yet: still going, though this page may not follow it (a run started in another tab)
+  const going = turn.outcome == null;
   const open = opened.has(turn);
   const latest = live && state.live.fold.latest;
   const el = element(
@@ -328,8 +330,8 @@ function renderTurn(turn) {
     element("div", { class: "user" }, element("span", { class: "prompt" }, "> "), turn.prompt),
     toggler(turn, { class: "summary" }, [
       caret(open),
-      live ? spinner() : element("span", {}, "✻"),
-      element("span", { class: "text" }, live ? liveSummary(turn) : summary(turn)),
+      going ? spinner() : element("span", {}, "✻"),
+      element("span", { class: "text" }, going ? liveSummary(turn, live) : summary(turn)),
     ]),
     live && !open && latest && out(trailText(latest), { full: true }),
     open && element("div", { class: "steps" }, turn.steps.map((step) => renderStep(step, true))),
@@ -470,12 +472,12 @@ async function request(method, url, body) {
   throw Object.assign(new Error(problem), { status: response.status });
 }
 
-// A chat's turns are read once, when it is first opened; a run still going in it is followed from where they end.
+// A run still going in a chat is followed from where its turns end, unless the page follows another or the chat is gone.
 async function readTurns(chat) {
   const { title, live, turns } = await request("GET", `api/chats/${chat.id}`);
   const folds = turns.map((turn) => foldEvents(turn.events));
   Object.assign(chat, { title, live, turns: folds.map((fold) => fold.turn) });
-  if (live && !state.live) follow(chat, live, folds.at(-1));
+  if (live && !state.live && state.chats.includes(chat)) follow(chat, live, folds.at(-1));
 }
 
 async function select(chat) {
@@ -485,7 +487,8 @@ async function select(chat) {
   byId("app").classList.remove("list-open");
   render("bottom");
   byId("input").focus();
-  if (chat.turns) return;
+  // read once, or each time while its run goes on unfollowed, so its turn never stays half-folded
+  if (chat.turns && (chat.live == null || state.live?.chat === chat)) return;
   chat.reading ??= readTurns(chat);
   try {
     await chat.reading;
@@ -592,7 +595,8 @@ function finish(live) {
 function lost(live) {
   if (live.source.readyState !== EventSource.CLOSED) return report(RECONNECTING);
   if (state.live === live) state.live = null;
-  live.chat.turns = null;
+  if (state.problem === RECONNECTING) state.problem = null;
+  Object.assign(live.chat, { live: null, turns: null });
   if (live.chat === state.current) select(live.chat);
   else render();
 }
@@ -601,7 +605,7 @@ async function send() {
   const input = byId("input");
   const prompt = input.value.trim();
   const chat = state.current;
-  if (!prompt || state.live || state.sending || !chat.turns) return;
+  if (!prompt || state.live || state.sending || !chat?.turns) return;
   state.sending = true;
   let run;
   try {
