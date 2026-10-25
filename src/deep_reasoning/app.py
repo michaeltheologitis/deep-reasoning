@@ -176,8 +176,7 @@ def create_app(library, home):
         after: Annotated[int, Query(ge=0)] = 0,
         last_event_id: Annotated[int, Header(ge=0)] = 0,
     ):
-        # A page catching up names the last seq it has in ?after=, as EventSource sends
-        # no Last-Event-ID on its first connect; on a reconnect the header is newer.
+        # EventSource sends no Last-Event-ID on its first connect, hence ?after=.
         async for event in runs.events(run, after=max(after, last_event_id)):
             yield ServerSentEvent(data=event, id=str(event["seq"]))
 

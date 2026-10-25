@@ -9,7 +9,6 @@ const TRAIL_CHARS = 22;
 const TRAIL_PARTS = 3;
 const SECONDS_PER_MINUTE = 60;
 const MS_PER_SECOND = 1000;
-const NO_CONTENT = 204;
 const CONFLICT = 409;
 const NEW_TITLE = "New chat";
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
@@ -465,7 +464,6 @@ async function request(method, url, body) {
   } catch {
     throw new Error(NOT_ANSWERING);
   }
-  if (response.status === NO_CONTENT) return null;
   const answer = await response.json().catch(() => ({}));
   if (response.ok) return answer;
   const problem = typeof answer.detail === "string" ? answer.detail : `${url} answered ${response.status}`;
@@ -590,8 +588,7 @@ function finish(live) {
   render("follow");
 }
 
-// EventSource retries a dropped connection by itself, resuming after the last event it had; it gives up only when
-// the stream is refused, as for a run deleted meanwhile, and then the chat is read afresh to show where it stands.
+// EventSource retries a dropped stream itself; it gives up only when refused (a run deleted meanwhile), so the chat is read afresh.
 function lost(live) {
   if (live.source.readyState !== EventSource.CLOSED) return report(RECONNECTING);
   if (state.live === live) state.live = null;
