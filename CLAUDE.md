@@ -15,7 +15,8 @@ This project's Notion page (todos, changelog, notes): https://app.notion.com/p/4
 ## Checks
 
 - `uv sync`, then `uv run deep-reasoning` serves the app at http://127.0.0.1:8000 and opens a tab (`--port` to change the port, `--no-browser` to skip the tab). `uv run deep-reasoning import CONFIG.yaml` reads an engine config into the Library. The UI is static files in `src/deep_reasoning/web/`, no build step, served at `/`.
-- `uv run pytest`; `uv run ruff check && uv run ruff format --check`; `node --check src/deep_reasoning/web/app.js && node --check src/deep_reasoning/web/library.js` (one file per `node --check`: it ignores the rest).
+- `uv run pytest` (no network: the model is a fake on 127.0.0.1); `uv run ruff check && uv run ruff format --check`; `node --check src/deep_reasoning/web/app.js && node --check src/deep_reasoning/web/library.js` (one file per `node --check`: it ignores the rest).
+- `uv run pytest -m live -s` runs the gpt-6-luna live test, a paid call, and logs what it spent; it needs `OPENAI_API_KEY` (in a cloud session `OPENAI_API_KEY=placeholder`: the network proxy adds the real one).
 - Check each UI change in a real browser against `uv run deep-reasoning --no-browser` (Playwright is preinstalled in cloud sessions): every chat, a live run, Stop, both themes, phone width, no console errors.
 - The chat's mock data in `src/deep_reasoning/web/data/` is generated, never typed: `python3 scripts/mock_from_recordings.py` (the old app's recorded runs → `recordings.json`), `python3 scripts/mock_showcase.py` (the sky, degree and 3,000-essay chats → `showcase.json`; every new message plays back the degree chat).
 
