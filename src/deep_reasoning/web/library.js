@@ -41,6 +41,7 @@ let library = null;
 let problem = null;
 let tab = TABS[0];
 let checkTimer = null;
+let saving = false;
 
 const dot = () => element("span", { class: "lib-dot", "aria-hidden": "true" }, "·");
 const namespaceNamed = (name) => library.namespaces.find((namespace) => namespace.name === name);
@@ -138,7 +139,7 @@ function check() {
   clearTimeout(checkTimer);
   const found = problems(yamlInput.value, namespaceNamed(picker.value));
   showProblems(found);
-  addButton.disabled = found.length > 0;
+  addButton.disabled = saving || found.length > 0;
   return found;
 }
 
@@ -158,16 +159,17 @@ async function postJson(url, payload) {
 // The live check gives instant feedback; the server checks again and has the last word, and its refusal shows in the same place.
 async function addDecomposition(e) {
   e.preventDefault();
-  if (check().length) return;
+  if (saving || check().length) return;
   const namespace = namespaceNamed(picker.value);
-  addButton.disabled = true;
+  saving = addButton.disabled = true;
   let added;
   try {
     added = await postJson(ADD_URL, { namespace: namespace.name, yaml: yamlInput.value });
   } catch (error) {
     showProblems(error.message.split("\n"));
-    addButton.disabled = false;
     return;
+  } finally {
+    saving = addButton.disabled = false;
   }
   const { name, yaml } = added;
   namespace.decompositions.push({ name, yaml });
@@ -175,9 +177,10 @@ async function addDecomposition(e) {
   opened.add(key);
   closeForm();
   render();
+  // the row is drawn only if its tab is still the one showing
   const row = body.querySelector(`[data-key="${CSS.escape(key)}"]`);
-  row.focus({ preventScroll: true });
-  row.parentElement.scrollIntoView({ block: "nearest" });
+  row?.focus({ preventScroll: true });
+  row?.parentElement.scrollIntoView({ block: "nearest" });
   confirmation.textContent = `Added "${name}" to ${namespace.name}`;
 }
 

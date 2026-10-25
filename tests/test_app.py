@@ -79,7 +79,7 @@ def test_a_valid_decomposition_is_stored_and_listed_under_its_namespace(client):
     assert response.json() == {
         "namespace": "course_advisor",
         "name": "next course",
-        "yaml": VALID.rstrip(),
+        "yaml": VALID,
     }
     stored = namespaces(client)["course_advisor"]["decompositions"]
     assert [each["name"] for each in stored] == ["catalog lookup", "next course"]

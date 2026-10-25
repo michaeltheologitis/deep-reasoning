@@ -134,3 +134,13 @@ def test_a_failed_import_exits_with_a_plain_error(tmp_path):
     missing = tmp_path / "missing.yaml"
     with pytest.raises(SystemExit, match="Could not import .*the Library is unchanged"):
         cli.main(["import", str(missing), "--library", str(tmp_path / "lib.sqlite")])
+
+
+def test_a_file_that_is_not_a_library_exits_with_a_plain_error(
+    served, tmp_path, free_port
+):
+    notes = tmp_path / "notes.txt"
+    notes.write_text("not a database\n")
+    with pytest.raises(SystemExit, match="Could not open the Library at .*notes.txt"):
+        cli.main(["--port", str(free_port), "--no-browser", "--library", str(notes)])
+    assert served == []

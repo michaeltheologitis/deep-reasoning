@@ -1,6 +1,7 @@
 """The web app: the Library's API, and the UI's static files at /."""
 
 from contextlib import closing
+from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated
 
@@ -14,8 +15,6 @@ from deep_reasoning.library import LibraryError, add_decomposition, open_library
 WEB = Path(__file__).parent / "web"
 # Requests naming any other host are refused, so a web page can't reach the API by DNS rebinding.
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]
-BAD_REQUEST = 400
-CREATED = 201
 
 
 def create_app(library):
@@ -26,14 +25,14 @@ def create_app(library):
 
     @app.exception_handler(LibraryError)
     async def refused(request, error):
-        return JSONResponse({"detail": str(error)}, status_code=BAD_REQUEST)
+        return JSONResponse({"detail": str(error)}, status_code=HTTPStatus.BAD_REQUEST)
 
     @app.get("/api/library")
     def read_library():
         with closing(open_library(library)) as connection:
             return {"file": library.name, **panel(connection)}
 
-    @app.post("/api/decompositions", status_code=CREATED)
+    @app.post("/api/decompositions", status_code=HTTPStatus.CREATED)
     def post_decomposition(
         namespace: Annotated[str, Body()], yaml: Annotated[str, Body()]
     ):

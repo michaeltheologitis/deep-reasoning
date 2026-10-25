@@ -16,7 +16,7 @@ import uvicorn
 import yaml
 
 from deep_reasoning.app import create_app
-from deep_reasoning.library import import_config, open_library
+from deep_reasoning.library import LibraryError, import_config, open_library
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -44,7 +44,7 @@ def open_or_exit(path):
     """The Library at *path*, created if new, or a plain error when it can't be one."""
     try:
         return open_library(path)
-    except (OSError, sqlite3.DatabaseError) as error:
+    except (OSError, sqlite3.Error, LibraryError) as error:
         sys.exit(f"Could not open the Library at {path}: {error}")
 
 
@@ -52,7 +52,7 @@ def import_or_exit(library, config):
     with contextlib.closing(open_or_exit(library)) as connection:
         try:
             imported = import_config(connection, config)
-        except (OSError, ValueError, yaml.YAMLError) as error:
+        except (OSError, ValueError, yaml.YAMLError, sqlite3.Error) as error:
             sys.exit(f"Could not import {config}; the Library is unchanged.\n{error}")
     log.info(
         "Imported into the Library",

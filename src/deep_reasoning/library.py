@@ -9,7 +9,7 @@ import json
 import sqlite3
 import sys
 from collections import defaultdict
-from contextlib import closing
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 import yaml
@@ -57,9 +57,7 @@ DEFAULT_SETTINGS = {
         "api_key_env": "OPENAI_API_KEY",
     },
 }
-# What an import leaves alone: the content, which has its own tables; where one `dr`
-# invocation writes, which the app decides per run; and the model and how to reach it,
-# which stay the Library's, so an import never moves chats to another model or key.
+# Left to the Library, not a config: content (own tables), per-run paths, and the model and its key.
 NOT_IMPORTED = {
     "namespaces",
     "namespaces_dir",
@@ -80,6 +78,7 @@ NOT_IMPORTED = {
 }
 # The run settings the panel always lists, with the engine's default when unset.
 SHOWN_SETTINGS = ("model", "client", "max_iter", "max_depth", "entry_namespace", "repl")
+LINE_WIDTH = 88
 ROLES = "user, assistant or system"
 # make_tool builds `factory: llm` with v2's own builder, the rest from TOOL_BUILDERS.
 BUILDERS = {**TOOL_BUILDERS, "llm": build_llm_tool}
@@ -110,8 +109,8 @@ BlockDumper.add_representer(
 
 def dump(value):
     return yaml.dump(
-        value, Dumper=BlockDumper, sort_keys=False, allow_unicode=True, width=88
-    ).rstrip()
+        value, Dumper=BlockDumper, sort_keys=False, allow_unicode=True, width=LINE_WIDTH
+    )
 
 
 def flow(value):
@@ -125,24 +124,56 @@ def flow(value):
     return one_line.strip()
 
 
+@contextmanager
+def writing(connection):
+    """One transaction that takes the write lock up front, so concurrent writers wait their turn instead of failing."""
+    with connection:
+        connection.execute("BEGIN IMMEDIATE")
+        yield
+
+
+def schema_version(connection):
+    return connection.execute("PRAGMA user_version").fetchone()[0]
+
+
 def open_library(path):
     """The Library at *path*; a new file starts with a root namespace and the default run settings."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path, autocommit=False)
-    if connection.execute("PRAGMA user_version").fetchone()[0]:
-        return connection
-    with connection:
+    # Autocommit: a read holds no lock once it has run; writes go through writing().
+    connection = sqlite3.connect(path, isolation_level=None)
+    try:
+        if schema_version(connection) != SCHEMA_VERSION:
+            lay_out(connection, path)
+    except BaseException:
+        connection.close()
+        raise
+    return connection
+
+
+def lay_out(connection, path):
+    """Write a new Library into an empty file, or refuse a file that already holds something else."""
+    with writing(connection):
+        # Read again under the lock: another process may have just laid it out.
+        found = schema_version(connection)
+        if found == SCHEMA_VERSION:
+            return
+        if found or connection.execute("SELECT 1 FROM sqlite_master").fetchone():
+            raise LibraryError(
+                f"{path} is not a Library this version of Deep Reasoning can open."
+            )
         for statement in SCHEMA:
             connection.execute(statement)
         connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
         settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
         connection.executemany(UPSERT_SETTING, settings)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-    return connection
 
 
 def tool_file(name):
+    """A custom tool's file name; a Python name keeps it inside the folder it is written to."""
+    if not name.isidentifier():
+        raise LibraryError(f'Tool "{name}" needs a Python name, like "waitlist".')
     return f"{name}.py"
 
 
@@ -204,16 +235,21 @@ def check(connection):
 def tool_row(name, block, config_dir):
     """A tool's row: its config block, and for a tool of your own its Python source."""
     factory = block.get("factory", name)
-    if "factory_from" not in block:
+    factory_from = block.get("factory_from")
+    if not isinstance(factory, str) or not isinstance(factory_from, str | None):
+        raise LibraryError(f'Tool "{name}": factory and factory_from should be text.')
+    if factory_from is None:
         if factory not in BUILDERS:
             raise LibraryError(
                 f'Tool "{name}" names factory "{factory}", which is not built in; '
                 "give its block a factory_from: file."
             )
+        if factory == "llm":
+            # It runs on the Library's model, as chats do; the config's model or preset may not exist there.
+            block = {key: value for key, value in block.items() if key != "model"}
         return name, dump(block), None
-    if not name.isidentifier():
-        raise LibraryError(f'Tool "{name}" needs a Python name, like "waitlist".')
-    file = config_dir / block["factory_from"]
+    stored_file = tool_file(name)
+    file = config_dir / factory_from
     source = file.read_text(encoding="utf-8")
     try:
         ast.parse(source, filename=str(file))
@@ -221,14 +257,11 @@ def tool_row(name, block, config_dir):
         raise LibraryError(
             f"{file} is not valid Python (line {error.lineno}: {error.msg})."
         ) from error
-    return name, dump({**block, "factory_from": tool_file(name)}), source
+    return name, dump({**block, "factory_from": stored_file}), source
 
 
 def store_decompositions(connection, namespace, decompositions):
-    rows = [
-        (namespace, each.name, dump(each.model_dump(mode="json")))
-        for each in decompositions
-    ]
+    rows = [(namespace, each.name, dump(each.model_dump())) for each in decompositions]
     connection.executemany(UPSERT_DECOMPOSITION, rows)
 
 
@@ -237,12 +270,13 @@ def import_config(connection, path):
 
     It takes the config's namespaces (inline and from its namespaces_dir) with their
     decompositions, its tools with the Python files their factory_from: names, and its run
-    settings but for the model and how to reach it. Top-level decompositions go to root.
+    settings but for the model and how to reach it. Top-level decompositions are left out:
+    with namespaces they are only `dr --main-decomposition` openings, which a chat has none of.
     All of it lands, or none.
     """
     config = load_cli_config(path, schema=V2Config)
     registry = build_namespace_registry(config)
-    settings = config.model_dump(mode="json", exclude_unset=True, exclude=NOT_IMPORTED)
+    settings = config.model_dump(exclude_unset=True, exclude=NOT_IMPORTED)
     tools = [
         tool_row(name, block, config.config_dir) for name, block in config.tools.items()
     ]
@@ -252,23 +286,21 @@ def import_config(connection, path):
         for namespace in map(registry.config, registry.names)
         if namespace.name != ROOT or namespace.model_fields_set != {"name"}
     ]
-    with connection:
+    with writing(connection):
         connection.executemany(
             UPSERT_SETTING, [(k, dump(v)) for k, v in settings.items()]
         )
         connection.executemany(UPSERT_TOOL, tools)
         for namespace in namespaces:
             own = namespace.model_dump(
-                mode="json", exclude_unset=True, exclude={"name", "decompositions"}
+                exclude_unset=True, exclude={"name", "decompositions"}
             )
             connection.execute(UPSERT_NAMESPACE, (namespace.name, dump(own)))
             store_decompositions(connection, namespace.name, namespace.decompositions)
-        store_decompositions(connection, ROOT, config.decompositions)
         check(connection)
-    in_namespaces = sum(len(namespace.decompositions) for namespace in namespaces)
     return {
         "namespaces": len(namespaces),
-        "decompositions": in_namespaces + len(config.decompositions),
+        "decompositions": sum(len(each.decompositions) for each in namespaces),
         "tools": len(tools),
     }
 
@@ -337,9 +369,9 @@ def add_decomposition(connection, namespace, text):
         raise LibraryError(
             f'The Library has no namespace "{namespace}"; pick one from the list.'
         )
-    stored = {"namespace": namespace, "name": name, "yaml": text.rstrip()}
+    stored = {"namespace": namespace, "name": name, "yaml": text}
     try:
-        with connection:
+        with writing(connection):
             connection.execute(
                 "INSERT INTO decompositions VALUES (?, ?, ?)", tuple(stored.values())
             )
@@ -491,7 +523,7 @@ def tool_rows(config, registry, names, sources):
                 each for each in names if name in registry.config(each).tools
             ],
             "description": description,
-            "config": dump({name: block}) if block else None,
+            "config": dump({name: block}).rstrip() if block else None,
         }
         rows.append(row)
     return rows

@@ -28,12 +28,13 @@ The previous app, a desktop and browser app built on OpenHands, is in this repos
 
 Every namespace, decomposition and custom tool your chats draw on, and the run settings, live in one file:
 `~/.deep-reasoning/library.sqlite`, made on the first run. A new Library runs chats on gpt-6-luna with the key in
-`OPENAI_API_KEY`. To bring in a `deep_reasoner` config, with its namespaces, decompositions and the Python files of
-its tools:
+`OPENAI_API_KEY`. To bring in a `deep_reasoner` config, with its namespaces, their decompositions and the Python
+files of its tools:
 
 ```
 uv run deep-reasoning import path/to/config.yaml
 ```
 
-Items with the same name are replaced; the Library's model and key stay as they are. To share a Library, share the
+Items with the same name are replaced. The Library's model and key stay as they are, and its `llm` tools run on them.
+A config's top-level decompositions, `dr --main-decomposition` openings, are left out. To share a Library, share the
 file; open one with `--library PATH` (on `import` too).
