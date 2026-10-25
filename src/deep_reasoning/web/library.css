@@ -88,3 +88,8 @@
 .lib-primary { color: var(--accent); }
 .lib-primary:disabled { color: var(--dim); cursor: default; }
 .lib-confirm { margin: 0; color: var(--ok); overflow-wrap: anywhere; }
+
+/* the settings panel, in the same frame */
+.set-fields { display: grid; grid-template-columns: 9ch minmax(0, 1fr); align-items: baseline; gap: 4px 1ch; }
+.set-note { grid-column: 2; color: var(--dim); }
+.set-model { color: var(--fg); }

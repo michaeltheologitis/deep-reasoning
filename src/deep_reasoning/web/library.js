@@ -1,5 +1,5 @@
 // The Library panel: the decompositions, namespaces, tools and data every run draws on, read from the server's Library file; Add saves there.
-import { caret, element, request } from "./app.js";
+import { PANEL_CLOSE, caret, closeOtherPanels, element, request } from "./app.js";
 
 const LIBRARY_URL = "api/library";
 const ADD_URL = "api/decompositions";
@@ -369,6 +369,7 @@ function setOpen(open) {
   panel.hidden = !open;
   toggleButton.setAttribute("aria-expanded", String(open));
   if (!open) return;
+  closeOtherPanels(panel);
   render();
   tabButtons[TABS.indexOf(tab)].focus();
 }
@@ -385,6 +386,7 @@ async function load() {
 }
 
 toggleButton.addEventListener("click", () => setOpen(panel.hidden));
+panel.addEventListener(PANEL_CLOSE, () => setOpen(false));
 // Esc inside the panel closes it and stops there, so it never also stops a run.
 panel.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
