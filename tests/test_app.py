@@ -152,6 +152,25 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
     )
 
 
+def test_a_fresh_library_shows_llm_granted_at_root_and_inherited_below(
+    library, home, tmp_path
+):
+    child = tmp_path / "child.yaml"
+    child.write_text("namespaces:\n  helper: {spawn: []}\n")
+    with closing(open_library(library)) as connection:
+        import_config(connection, child)
+    client = TestClient(create_app(library, home), base_url=LOCAL)
+    by_name = namespaces(client)
+    tools = client.get("/api/library").json()["tools"]
+    assert field(by_name["root"], "Tools") == [
+        {"value": "llm", "source": "granted here", "here": True}
+    ]
+    assert field(by_name["helper"], "Tools") == [
+        {"value": "llm", "source": "inherited from root", "here": False}
+    ]
+    assert [(tool["name"], tool["granted_in"]) for tool in tools] == [("llm", ["root"])]
+
+
 def test_a_valid_decomposition_is_stored_and_listed_under_its_namespace(client):
     response = client.post(
         "/api/decompositions", json={"namespace": "course_advisor", "yaml": VALID}
@@ -285,6 +304,20 @@ async def test_a_run_gets_the_librarys_tools_in_a_folder_of_its_own(
     assert events[-1]["outcome"] == "answered", events[-1]
     assert events[-1]["answer"] == "enrolled"
     assert (home / "runs" / run / "tools" / "waitlist.py").is_file()
+
+
+@pytest.mark.anyio
+async def test_a_run_on_a_fresh_library_gets_the_llm_tools_answer(library_on, connect):
+    plan = {
+        "Ask the llm tool.": [repl("FinalAnswer(llm('Name a prime.'))")],
+        "Name a prime.": ["7"],
+    }
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            run = await send(api, await new_chat(api), "Ask the llm tool.")
+            events = await run_events(api, run)
+    assert events[-1]["outcome"] == "answered", events[-1]
+    assert events[-1]["answer"] == "7"
 
 
 def held_on(prompt, plan):

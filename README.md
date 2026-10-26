@@ -72,8 +72,9 @@ package of the same name.
 ## The Library
 
 Every namespace, decomposition and custom tool your chats draw on, and the run settings, live in one file:
-`~/.deep-reasoning/library.sqlite`, made on the first run with `deep_reasoner`'s generic REPL prompt. To bring in a
-`deep_reasoner` config, with its namespaces, their decompositions and the Python files of its tools:
+`~/.deep-reasoning/library.sqlite`, made on the first run with `deep_reasoner`'s generic REPL prompt and a `root`
+namespace that grants the `llm` tool, so every namespace has it. To bring in a `deep_reasoner` config, with its
+namespaces, their decompositions and the Python files of its tools:
 
 ```
 uv run deep-reasoning import path/to/config.yaml

@@ -12,6 +12,7 @@ from collections import defaultdict
 from contextlib import closing, contextmanager
 from pathlib import Path
 
+import structlog
 import yaml
 from deep_reasoner.config import load_cli_config
 from deep_reasoner.namespaces import CONFIG_SOURCE, ROOT
@@ -28,6 +29,8 @@ from deep_reasoner.v2.cli import (
     declared_tool_names,
 )
 from pydantic import ValidationError
+
+log = structlog.get_logger()
 
 SCHEMA_VERSION = 1
 SCHEMA = (
@@ -49,6 +52,13 @@ UPSERT_DECOMPOSITION = (
 UPSERT_TOOL = (
     "INSERT INTO tools VALUES (?, ?, ?)"
     " ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml, source = excluded.source"
+)
+# A new root grants the llm tool, so every namespace inherits it, as in the engine's example
+# configs. A Library made before started with root empty; one still untouched gets this on open.
+FRESH_ROOT = {"tools": ["llm"]}
+UNTOUCHED_ROOT = (
+    "name = :root AND yaml = :empty"
+    " AND NOT EXISTS (SELECT 1 FROM decompositions WHERE namespace = :root)"
 )
 SYSTEM_PROMPT_FILE = Path(__file__).with_name("system_prompt.yaml")
 DEFAULT_SETTINGS = yaml.safe_load(SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"))
@@ -138,7 +148,7 @@ def schema_version(connection):
 
 
 def open_library(path):
-    """The Library at *path*; a new file starts with a root namespace and the generic REPL prompt."""
+    """The Library at *path*; a new file starts with a root namespace granting llm and the generic REPL prompt."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Autocommit: a read holds no lock once it has run; writes go through writing().
@@ -146,6 +156,7 @@ def open_library(path):
     try:
         if schema_version(connection) != SCHEMA_VERSION:
             lay_out(connection, path)
+        grant_llm_at_an_untouched_root(connection)
     except BaseException:
         connection.close()
         raise
@@ -165,10 +176,29 @@ def lay_out(connection, path):
             )
         for statement in SCHEMA:
             connection.execute(statement)
-        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
+        connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
         settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
         connection.executemany(UPSERT_SETTING, settings)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+def grant_llm_at_an_untouched_root(connection):
+    """Give a Library made with an empty root the root a new one starts with."""
+    parameters = {"root": ROOT, "empty": dump({}), "fresh": dump(FRESH_ROOT)}
+    found = connection.execute(
+        f"SELECT 1 FROM namespaces WHERE {UNTOUCHED_ROOT}", parameters
+    )
+    if not found.fetchone():
+        return
+    try:
+        with writing(connection):
+            connection.execute(
+                f"UPDATE namespaces SET yaml = :fresh WHERE {UNTOUCHED_ROOT}",
+                parameters,
+            )
+    except sqlite3.OperationalError as error:
+        # A file it can't write, such as a read-only copy, still opens as it is.
+        log.warning("library.root_not_upgraded", error=str(error))
 
 
 def tool_file(name):

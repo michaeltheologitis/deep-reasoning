@@ -10,9 +10,16 @@ from deep_reasoner.config import load_cli_config, resolve_api_key
 from deep_reasoner.namespaces import ROOT, build_registry
 from deep_reasoner.tools import load_tool_factory
 from deep_reasoner.v2 import DeepReasoner
-from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
+from deep_reasoner.v2.cli import (
+    V2Config,
+    build_namespace_registry,
+    build_reasoner,
+    close_run,
+    declared_tool_names,
+)
 
 from deep_reasoning.library import (
+    UPSERT_NAMESPACE,
     UPSERT_SETTING,
     LibraryError,
     add_decomposition,
@@ -94,6 +101,52 @@ def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
     assert "model" not in config and "client" not in config
     assert resolve_api_key(run_config(library, tmp_path).client) == FAKE_KEY
     assert FAKE_KEY.encode() not in library.read_bytes()
+
+
+def test_a_fresh_library_grants_llm_at_root_and_the_engine_accepts_it(
+    library, tmp_path
+):
+    config = run_config(library, tmp_path)
+    build_namespace_registry(config).check(declared_tool_names(config))
+    assert config.namespaces[ROOT].tools == ["llm"]
+
+
+def test_a_library_made_with_an_empty_root_is_given_llm_there_once(library, tmp_path):
+    with closing(open_library(library)) as connection, writing(connection):
+        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
+    upgraded = dumped(library)
+    assert dumped(library) == upgraded
+    assert run_config(library, tmp_path).namespaces[ROOT].tools == ["llm"]
+
+
+def test_a_read_only_library_with_an_empty_root_still_opens_as_it_is(
+    library, monkeypatch
+):
+    with closing(open_library(library)) as connection, writing(connection):
+        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
+    connect = sqlite3.connect
+
+    def read_only(path, **options):
+        return connect(f"{Path(path).as_uri()}?mode=ro", uri=True, **options)
+
+    monkeypatch.setattr(sqlite3, "connect", read_only)
+    with closing(open_library(library)) as connection:
+        assert stored_config(connection)["namespaces"][ROOT] == {"decompositions": []}
+
+
+@pytest.mark.parametrize(
+    "root",
+    [
+        "{tools: []}",
+        "{vars: {term: fall}}",
+        "{decompositions: [{name: hi, messages: [{role: user, content: hi}]}]}",
+    ],
+)
+def test_a_root_that_was_imported_or_edited_keeps_what_it_has(library, tmp_path, root):
+    written = tmp_path / "root.yaml"
+    written.write_text(f"namespaces:\n  root: {root}\n")
+    import_into(library, written)
+    assert run_config(library, tmp_path).namespaces[ROOT].tools == []
 
 
 def test_a_library_that_still_holds_a_model_and_client_opens_and_they_go_unread(
