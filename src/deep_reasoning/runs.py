@@ -1,10 +1,11 @@
 """Runs: each message is one run of deep_reasoner in a worker subprocess, streamed as events.
 
-A run lives in runs/<run>/ under the app's home: spec.json, what the worker runs;
-events.jsonl, every event as one JSON line, appended as it happens; and worker.log, the
-worker's stderr. The server numbers each event (seq, from 1) and stamps its time (t). The
-model's key reaches the worker in its environment only, never in the run's folder. The
-worker works in the chat's folder: its cwd, where the agent's Python reads and writes.
+A run lives in runs/<run>/ under the app's home: spec.yaml, what the worker runs, with
+the engine config; events.jsonl, every event as one JSON line, appended as it happens;
+and worker.log, the worker's stderr. The server numbers each event (seq, from 1) and
+stamps its time (t). The model's key reaches the worker in its environment only, never
+in the run's folder. The worker works in the chat's folder: its cwd, where the agent's
+Python reads and writes.
 """
 
 import asyncio
@@ -24,6 +25,7 @@ from typing import Any, Literal
 
 import jinja2
 import structlog
+import yaml
 
 from deep_reasoning.folders import remove_unless_kept
 
@@ -32,6 +34,9 @@ log = structlog.get_logger()
 Outcome = Literal["answered", "exhausted", "failed", "stopped"]
 RUNS = "runs"
 EVENTS = "events.jsonl"
+SPEC = "spec.yaml"
+# libyaml's where PyYAML has it: the pure-Python one takes ~0.6 s a MiB, on the loop.
+YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
 RUN_ID = r"^\d{8}-\d{6}-\d{6}$"
 STOP_GRACE_S = 5.0
 MIB = 1024 * 1024
@@ -257,8 +262,11 @@ class Runs:
         run_folder.mkdir(parents=True)
         config = config_for(run_folder)
         namespace = config.get("entry_namespace")
-        spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier, namespace)}
-        (run_folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
+        recap = recap_of(earlier, namespace)
+        spec = {"chat": chat, "prompt": prompt, "recap": recap, "config": config}
+        # YAML keeps dates and int keys; ASCII, as a raw NEL would read back as a space.
+        spec_yaml = yaml.dump(spec, Dumper=YAML_DUMPER, sort_keys=False)
+        (run_folder / SPEC).write_text(spec_yaml)
         live = _Live(chat, folder or run_folder, keys or {})
         # Recorded before the run is listed, so a start that fails holds up no chat.
         self._record(

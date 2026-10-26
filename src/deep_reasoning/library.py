@@ -130,8 +130,6 @@ SHAPES = {
 # How a namespace that sets nothing is kept by an import, or a Library made before
 # FRESH_ROOT; the panel saves one as blank text, so a root saved blank is never upgraded.
 EMPTY_NAMESPACE = "{}\n"
-# What a run's spec.json carries to the worker; YAML's dates, times, binary and sets aren't.
-JSON_TYPES = str | int | float | bool | None
 
 
 class LibraryError(ValueError):
@@ -472,18 +470,6 @@ def namespace_problem(error):
     return f"{'.'.join(map(str, error['loc']))}: {error['msg']}."
 
 
-def uncarried(value, place):
-    """Each place in *value*, and what it holds there, that a run can't carry."""
-    if isinstance(value, dict):
-        for key, each in value.items():
-            yield from uncarried(each, f"{place}.{key}")
-    elif isinstance(value, list):
-        for index, each in enumerate(value):
-            yield from uncarried(each, f"{place}.{index}")
-    elif not isinstance(value, JSON_TYPES):
-        yield place, value
-
-
 def authored(name, text):
     """Namespace *name* as its YAML *text* describes it, checked by the engine's own model,
     and the YAML to store for it."""
@@ -496,12 +482,6 @@ def authored(name, text):
         )
     problems = [NAMED_ELSEWHERE[key] for key in NAMED_ELSEWHERE if key in data]
     fields = {key: value for key, value in data.items() if key not in NAMED_ELSEWHERE}
-    problems += [
-        f"{place} reads as a {type(value).__name__}, which a run can't carry;"
-        " quote it to keep it as text."
-        for key, field in fields.items()
-        for place, value in uncarried(field, key)
-    ]
     try:
         namespace = NamespaceConfig.model_validate(fields | {"name": name})
     except ValidationError as error:

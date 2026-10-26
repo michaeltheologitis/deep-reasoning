@@ -6,7 +6,7 @@ import shutil
 import threading
 import time
 from contextlib import aclosing, closing
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -169,7 +169,7 @@ async def test_a_run_works_in_its_folder_and_keeps_its_own_files_in_the_run_fold
     assert [path.name for path in folder.iterdir()] == ["note.txt"]
     assert (folder / "note.txt").read_text() == "written in the folder"
     run_folder = {path.name for path in (home / "runs" / run).iterdir()}
-    assert {"events.jsonl", "spec.json", "worker.log"} <= run_folder
+    assert {"events.jsonl", "spec.yaml", "worker.log"} <= run_folder
 
 
 async def test_the_folders_modules_import_but_never_shadow_installed_ones(
@@ -190,6 +190,19 @@ async def test_the_folders_modules_import_but_never_shadow_installed_ones(
         events = [event async for event in runs.events(run)]
     assert of_kind(events, "cell.end")[0]["output"] == "hi from helpers True"
     assert events[-1]["outcome"] == "answered", events[-1]
+
+
+async def test_a_run_gets_its_vars_exactly_as_the_yaml_typed_them(home, fake_config):
+    look = repl("print(type(due).__name__, due, by_year, ascii(note))")
+    plan = {"Read the vars.": [look, repl("FinalAnswer('read')")]}
+    note = "café\x85中"  # NEL: written raw in YAML, it reads back as a space
+    typed = {"due": date(2026, 10, 25), "by_year": {2024: 10}, "note": note}
+    with FakeOpenAI(scripted(plan)) as fake:
+        config = fake_config(fake, namespaces={"root": {"vars": typed}})
+        _, events = await run_to_the_end(Runs(home), "Read the vars.", config)
+    assert events[-1]["outcome"] == "answered", events[-1]
+    output = of_kind(events, "cell.end")[0]["output"]
+    assert output == "date 2026-10-25 {2024: 10} " + ascii(note)
 
 
 async def test_stop_ends_every_agent_and_cell_stopped(home, fake_config):
