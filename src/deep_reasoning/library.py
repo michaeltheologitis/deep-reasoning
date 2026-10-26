@@ -128,7 +128,8 @@ SHAPES = {
     "system_suffix": 'system_suffix should be text; write "system_suffix: |" with the text indented below.',
     "reasoner": 'reasoner should be a mapping, like "reasoner: {type: claude_code}".',
 }
-# How a namespace that sets nothing is stored, as dump({}) writes it: it inherits everything.
+# How a namespace that sets nothing is kept by an import, or a Library made before
+# FRESH_ROOT; the panel saves one as blank text, so a root saved blank is never upgraded.
 EMPTY_NAMESPACE = "{}\n"
 
 
@@ -255,7 +256,7 @@ def stored_config(connection):
         decompositions[namespace].append(yaml.safe_load(text))
     rows = connection.execute("SELECT name, yaml FROM namespaces ORDER BY rowid")
     namespaces = {
-        name: {**yaml.safe_load(text), "decompositions": decompositions[name]}
+        name: {**(yaml.safe_load(text) or {}), "decompositions": decompositions[name]}
         for name, text in rows
     }
     return {**stored_settings(connection), "tools": tools, "namespaces": namespaces}
@@ -474,7 +475,7 @@ def authored(name, text):
     and the YAML to store for it."""
     data = loaded(text)
     if data is None:
-        return NamespaceConfig(name=name), EMPTY_NAMESPACE
+        return NamespaceConfig(name=name), ""
     if not isinstance(data, dict):
         raise LibraryError(
             'The YAML should be a mapping of fields, like "tools: [llm]".'
@@ -488,7 +489,7 @@ def authored(name, text):
         raise LibraryError("\n".join(problems)) from error
     if problems:
         raise LibraryError("\n".join(problems))
-    return namespace, text if data else EMPTY_NAMESPACE
+    return namespace, text if data else ""
 
 
 def accepted(connection):

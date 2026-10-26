@@ -514,6 +514,11 @@ def test_root_can_be_edited(imported, tmp_path):
     assert registry.resolve("course_advisor").vars["term"] == "fall"
 
 
+def test_a_root_saved_blank_stays_blank_when_the_library_opens_again(library, tmp_path):
+    change(library, change_namespace, ROOT, "")
+    assert run_config(library, tmp_path).namespaces[ROOT].tools == []
+
+
 def test_deleting_a_namespace_removes_it_and_its_decompositions(imported, tmp_path):
     change(imported, add_namespace, "research", RESEARCH)
     change(imported, add_decomposition, "research", ADDED)

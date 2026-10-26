@@ -39,8 +39,9 @@ messages:
     FinalAnswer(12)
     </repl>
 `;
-// a namespace's own fields; what it leaves out it inherits
-const NAMESPACE_TEMPLATE = `tools: [llm]
+// a namespace's own fields; what it leaves out it inherits, as llm from root
+const NAMESPACE_TEMPLATE = `vars:
+  topic: machine learning
 system_suffix: |
   Answer in plain words, and say where each fact comes from.
 `;
