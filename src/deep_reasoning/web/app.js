@@ -68,7 +68,8 @@ const since = (start) => Date.now() / MS_PER_SECOND - start;
 const isFinal = (cell) => cell.code.startsWith("FinalAnswer(");
 const formatCount = (count) => counter.format(count);
 const plural = (count, noun) => `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
-const clip = (text, chars) => (text.length > chars ? `${text.slice(0, chars - 1)}…` : text);
+// a cut never keeps half of an emoji, or of another character past U+FFFF: alone, it shows as �
+const clip = (text, chars) => (text.length > chars ? `${text.slice(0, chars - 1).replace(/[\uD800-\uDBFF]$/, "")}…` : text);
 const keyOf = (node) => {
   if (!keys.has(node)) keys.set(node, String(nextId++));
   return keys.get(node);
