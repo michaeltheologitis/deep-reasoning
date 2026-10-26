@@ -15,6 +15,7 @@ const NEW_TITLE = "New chat";
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
 const RECONNECTING = "Lost the connection to the run; reconnecting…";
 const PANEL_CLOSE = "panel-close";
+const PANEL_OPEN = "panel-open";
 const MENU_STEPS = { ArrowDown: 1, ArrowUp: -1 };
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
 const SPIN = ["·", "✢", "✳︎", "✶", "✻", "✽", "✻", "✶", "✳︎", "✢"];
@@ -40,9 +41,21 @@ const shown = new WeakMap();
 const views = new WeakMap();
 const keys = new WeakMap();
 const counter = new Intl.NumberFormat();
+// Known vendors: the app knows their addresses, each from the vendor's own docs, so settings ask them only for a key, kept as keyName.
+const VENDORS = [
+  { name: "OpenAI", url: "https://api.openai.com/v1", keyName: "OPENAI_API_KEY" },
+  { name: "OpenRouter", url: "https://openrouter.ai/api/v1", keyName: "OPENROUTER_API_KEY" },
+  // never ANTHROPIC_API_KEY: with it set, Claude Code bills that key instead of the subscription
+  { name: "Anthropic", url: "https://api.anthropic.com/v1/", keyName: "DEEP_REASONING_ANTHROPIC_KEY" },
+  { name: "Google Gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/", keyName: "GEMINI_API_KEY" },
+];
+// The page can't see your shell until this is wired, so the mock takes these keys as set there.
+const MOCK_SHELL_KEYS = ["OPENAI_API_KEY"];
+const MOCK_MODELS = { OpenAI: OPENAI_MODELS };
 // This round's settings, and each chat's model, namespace and folder, live in the page only: nothing is saved or sent, and a reload resets them.
-const OPENAI = { name: "OpenAI", url: "https://api.openai.com/v1", key: "shell", models: OPENAI_MODELS };
-const settings = { providers: [OPENAI], defaultModel: null, defaultFolder: null };
+const vendors = VENDORS.map((vendor) => ({ ...vendor, saved: false, shell: MOCK_SHELL_KEYS.includes(vendor.keyName), models: MOCK_MODELS[vendor.name] ?? null }));
+const OPENAI = vendors.find(({ name }) => name === "OpenAI");
+const settings = { vendors, servers: [], defaultModel: null, defaultFolder: null };
 const library = { namespaces: null, defaultNamespace: null };
 // The folder browser lists these this round, until the server lists folders; MISSING_FOLDER shows what a vanished folder looks like.
 const MOCK_FOLDERS = {
@@ -528,6 +541,7 @@ function pickModel() {
 }
 
 function modelMenu(button, host, current, pick) {
+  if (!usableProviders().length) return noProviderMenu(button, host);
   showMenu(button, host, {
     label: "Models",
     filter: "filter, or type a model name",
@@ -537,10 +551,26 @@ function modelMenu(button, host, current, pick) {
   });
 }
 
+// With no key anywhere there is no model to list, so the menu points to settings.
+function noProviderMenu(button, host) {
+  if (isOpenFrom(button)) return closePopover(true);
+  const add = element("button", { type: "button", class: "lib-action lib-primary", onclick: openSettings }, "Add a key in settings");
+  openPopover(button, host, element("div", { class: "menu-pop", role: "dialog", "aria-label": "Models" }, element("p", { class: "menu-note" }, "No provider has a key yet."), add), add);
+}
+
+function openSettings() {
+  closePopover(false);
+  byId("settings").dispatchEvent(new Event(PANEL_OPEN));
+}
+
+// Only providers that can answer: vendors with a key, and custom servers, which may need none.
+const hasKey = (vendor) => vendor.saved || vendor.shell;
+const usableProviders = () => [...settings.vendors.filter(hasKey), ...settings.servers];
+
 // Mock lists this round: OpenAI's names come from genai-prices' data; another provider's would come from its GET /models.
 function modelGroups(query) {
   const typed = query.trim();
-  return settings.providers.map((provider) => {
+  return usableProviders().map((provider) => {
     if (!provider.models) return typedModelGroup(provider, typed);
     const names = provider.models.filter((name) => name.includes(typed.toLowerCase()));
     const options = names.map((name) => ({ value: { provider, name }, label: name }));
@@ -1038,7 +1068,7 @@ async function start() {
   else newChat();
 }
 
-export { PANEL_CLOSE, caret, closeOtherPanels, element, folderPicker, modelMenu, renderComposer, request, settings };
+export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, modelMenu, renderComposer, request, settings };
 
 wire();
 start();
