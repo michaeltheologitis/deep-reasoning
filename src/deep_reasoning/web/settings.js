@@ -43,7 +43,7 @@ panel.append(
     { class: "lib-body" },
     element("section", { class: "lib-group" }, element("h3", { class: "lib-label" }, "Providers"), providerRows, addArea),
     element("p", { class: "lib-note" }, `Keys are kept in ${ENV_FILE}, readable only by you. Keys already set in your shell keep working; one saved here wins.`),
-    pickerSection("default-folder", "Default folder", folderButton, folderHost, "New chats work in it; each chat can pick its own from the top bar."),
+    pickerSection("default-folder", "Default folder", folderButton, folderHost, "New chats work in it; each chat can pick its own under the message box."),
   ),
 );
 
