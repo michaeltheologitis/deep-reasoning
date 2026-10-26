@@ -1,9 +1,10 @@
-"""Settings: the providers a chat's model runs on, their keys, and the custom servers.
+"""Settings: the providers a chat's model runs on, their keys, the custom servers, and the
+folder new chats work in.
 
 Keys live in .env in the app's home, readable only by you: never in the Library, a chat, a
 run's folder, an event, a log or a response. A key saved there wins over the same variable
-in the shell. The custom servers, and the model picked last, none of it secret, live in
-settings.json beside it.
+in the shell. The custom servers, the model picked last and the default folder, none of it
+secret, live in settings.json beside it.
 """
 
 import asyncio
@@ -300,6 +301,16 @@ def starting_model(home: Path) -> dict[str, str] | None:
     if first is None:
         return None
     return {"provider": first.name, "name": first.first_model}
+
+
+def default_folder(home: Path) -> str | None:
+    """The folder new chats work in; None: each in its own scratch folder."""
+    return read_settings(home).get("default_folder")
+
+
+def save_default_folder(home: Path, folder: Path | None) -> None:
+    folder = None if folder is None else str(folder)
+    write_settings(home, read_settings(home) | {"default_folder": folder})
 
 
 def run_key(home: Path, provider: Provider) -> str:

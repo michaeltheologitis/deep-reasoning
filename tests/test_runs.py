@@ -148,6 +148,50 @@ async def test_a_fan_out_streams_one_tree_in_order(home, fake_config):
     assert [json.loads(line) for line in logged] == events
 
 
+async def test_a_run_works_in_its_folder_and_keeps_its_own_files_in_the_run_folder(
+    home, fake_config, tmp_path
+):
+    folder = tmp_path / "thesis"
+    folder.mkdir()
+    write = repl(
+        "import os, pathlib",
+        "pathlib.Path('note.txt').write_text('written in the folder')",
+        "print(os.getcwd())",
+    )
+    plan = {"Write a note.": [write, repl("FinalAnswer('noted')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(home)
+        run = runs.start(CHAT, "Write a note.", fake_config(fake), [], folder=folder)
+        events = [event async for event in runs.events(run)]
+    assert events[-1]["outcome"] == "answered", events[-1]
+    assert events[0]["folder"] == of_kind(events, "cell.end")[0]["output"]
+    assert events[0]["folder"] == str(folder)
+    assert [path.name for path in folder.iterdir()] == ["note.txt"]
+    assert (folder / "note.txt").read_text() == "written in the folder"
+    run_folder = {path.name for path in (home / "runs" / run).iterdir()}
+    assert {"events.jsonl", "spec.json", "worker.log"} <= run_folder
+
+
+async def test_the_folders_modules_import_but_never_shadow_installed_ones(
+    home, fake_config, tmp_path
+):
+    folder = tmp_path / "project"
+    folder.mkdir()
+    (folder / "helpers.py").write_text("def greet():\n    return 'hi from helpers'\n")
+    (folder / "json.py").write_text("raise SystemExit('the folder shadowed json')\n")
+    look = repl(
+        "import helpers, json, sys",
+        "print(helpers.greet(), json.__file__ != sys.path[-1] + '/json.py')",
+    )
+    plan = {"Use my helpers.": [look, repl("FinalAnswer('used')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(home)
+        run = runs.start(CHAT, "Use my helpers.", fake_config(fake), [], folder=folder)
+        events = [event async for event in runs.events(run)]
+    assert of_kind(events, "cell.end")[0]["output"] == "hi from helpers True"
+    assert events[-1]["outcome"] == "answered", events[-1]
+
+
 async def test_stop_ends_every_agent_and_cell_stopped(home, fake_config):
     spin = repl("while True:", "    pass")
     plan = {

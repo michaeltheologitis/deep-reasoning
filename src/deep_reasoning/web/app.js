@@ -40,20 +40,9 @@ const shown = new WeakMap();
 const views = new WeakMap();
 const keys = new WeakMap();
 const counter = new Intl.NumberFormat();
-// The default folder, and each chat's folder, live in the page only until folders are wired: a reload resets them.
-const settings = { defaultFolder: null };
 const library = { namespaces: null, defaultNamespace: null };
-// The folder browser lists these this round, until the server lists folders; MISSING_FOLDER shows what a vanished folder looks like.
-const MOCK_FOLDERS = {
-  "~": ["code", "data", "Documents"],
-  "~/code": ["deep-reasoning", "thesis"],
-  "~/code/thesis": ["chapters", "figures", "results"],
-  "~/data": ["course-catalog", "survey-2026"],
-  "~/Documents": ["papers", "reviews"],
-};
-const MISSING_FOLDER = "/no/such/folder";
+// where the folder browser starts when the field is empty
 const HOME_FOLDER = "~";
-const SCRATCH_FOLDERS = "~/.deep-reasoning/work";
 let popover = null;
 // Each provider's models, as the server lists them with its key: read once per page load, and again after settings change.
 let modelLists = null;
@@ -490,7 +479,7 @@ async function choose(chat, change) {
 
 // A chat with no folder of its own works in a scratch folder, which goes when the chat does.
 function renderFolder(chat) {
-  byId("folder-path").textContent = chat.folder ?? `${SCRATCH_FOLDERS}/${chat.id}/`;
+  byId("folder-path").textContent = chat.folder ?? `${chat.scratch_folder}/`;
   byId("folder-note").textContent = chat.folder ? "" : "· deleted with the chat";
 }
 
@@ -501,9 +490,9 @@ function pickFolder() {
     current: chat.folder,
     empty: "its own scratch folder, deleted with the chat",
     note: "Its Python runs there and reads and writes files there, from the next message. A folder you choose is never deleted.",
-    pick: (folder) => {
-      chat.folder = folder;
-      renderFolder(chat);
+    pick: async (folder) => {
+      ({ folder: chat.folder } = await request("PATCH", `api/chats/${chat.id}`, { folder }));
+      if (chat === state.current) renderFolder(chat);
     },
   });
 }
@@ -713,13 +702,14 @@ function chooseOption(open, option) {
 }
 
 // A folder typed or pasted, or found in the browser under the field, which follows what the field holds; empty means the scratch folder.
+// The server lists the folders and checks the one picked: spec.pick throws its refusal, which the picker shows.
 function folderPicker(button, host, spec) {
   if (isOpenFrom(button)) return closePopover(true);
   const field = element("input", { id: "folder-field", class: "menu-filter", value: spec.current ?? "", placeholder: `empty: ${spec.empty}`, autocomplete: "off", spellcheck: "false", "aria-describedby": "folder-problem folder-note" });
   const problem = element("div", { id: "folder-problem", class: "folder-problem", "aria-live": "polite" });
   const browser = element("div", { class: "folder-browser", role: "group", "aria-label": "Folders", onmousedown: (e) => e.preventDefault() });
   const use = element("button", { type: "submit", class: "lib-action lib-primary" });
-  const picker = { spec, field, problem, browser, use };
+  const picker = { button, spec, field, problem, browser, use, asked: null };
   const el = element(
     "form",
     { class: "menu-pop folder-pop", method: "dialog", role: "dialog", "aria-label": spec.label, onsubmit: (e) => useFolder(e, picker) },
@@ -739,37 +729,45 @@ function folderPicker(button, host, spec) {
 }
 
 const cleanFolder = (path) => path.trim().replace(/(.)\/+$/, "$1");
-const parentFolder = (path) => path.slice(0, path.lastIndexOf("/")) || "/";
-// "~" and a bare name have no parent the page can name
-const hasParent = (path) => path.includes("/") && path !== "/";
 
-function fillBrowser(picker) {
+// Each keystroke asks again; an answer to an older question is dropped.
+async function fillBrowser(picker) {
   const here = cleanFolder(picker.field.value) || HOME_FOLDER;
-  const folders = MOCK_FOLDERS[here];
-  const row = (label, path) => element("button", { type: "button", class: "row", onclick: () => goToFolder(picker, path) }, label);
-  const rows = folders ? folders.map((name) => row(`${name}/`, `${here}/${name}`)) : [element("p", { class: "menu-note" }, `would list the folders in ${here}`)];
-  picker.browser.replaceChildren(element("div", { class: "folder-here" }, here), ...(hasParent(here) ? [row("..", parentFolder(here))] : []), ...rows);
   picker.use.textContent = picker.field.value.trim() ? "Use this folder" : "Use a scratch folder";
+  picker.asked = here;
+  let listing;
+  try {
+    listing = await request("GET", `api/folders?path=${encodeURIComponent(here)}`);
+  } catch (error) {
+    if (picker.asked === here) picker.browser.replaceChildren(element("div", { class: "folder-here" }, here), element("p", { class: "menu-note" }, error.message));
+    return;
+  }
+  if (picker.asked !== here) return;
+  const row = (label, path) => element("button", { type: "button", class: "row", onclick: () => goToFolder(picker, path) }, label);
+  const up = listing.parent == null ? [] : [row("..", listing.parent)];
+  const rows = listing.folders.length ? listing.folders.map(({ name, path }) => row(`${name}/`, path)) : [element("p", { class: "menu-note" }, "no folders in here")];
+  picker.browser.replaceChildren(element("div", { class: "folder-here" }, listing.path), ...up, ...rows);
 }
 
-function goToFolder(picker, path) {
+async function goToFolder(picker, path) {
   picker.field.value = path;
   picker.problem.textContent = "";
   const fromKeyboard = picker.browser.contains(document.activeElement);
-  fillBrowser(picker);
+  await fillBrowser(picker);
   if (fromKeyboard) picker.browser.querySelector(".row")?.focus();
 }
 
-function useFolder(e, picker) {
+async function useFolder(e, picker) {
   e.preventDefault();
   const path = cleanFolder(picker.field.value);
-  if (path === MISSING_FOLDER) {
-    picker.problem.textContent = "That folder no longer exists — pick another.";
+  try {
+    await picker.spec.pick(path || null);
+  } catch (error) {
+    picker.problem.textContent = error.message;
     picker.field.focus();
     return;
   }
-  closePopover(true);
-  picker.spec.pick(path || null);
+  if (isOpenFrom(picker.button)) closePopover(true);
 }
 
 // One side panel at a time: opening one asks the others to close.
@@ -811,9 +809,9 @@ async function request(method, url, body) {
 
 // A run still going in a chat is followed from where its turns end, unless the page follows another or the chat is gone.
 async function readTurns(chat) {
-  const { title, live, turns, namespace, model } = await request("GET", `api/chats/${chat.id}`);
+  const { title, live, turns, namespace, model, folder } = await request("GET", `api/chats/${chat.id}`);
   const folds = turns.map((turn) => foldEvents(turn.events));
-  Object.assign(chat, { title, live, namespace, model, turns: folds.map((fold) => fold.turn) });
+  Object.assign(chat, { title, live, namespace, model, folder, turns: folds.map((fold) => fold.turn) });
   if (live && !state.live && state.chats.includes(chat)) follow(chat, live, folds.at(-1));
 }
 
@@ -846,7 +844,7 @@ async function newChat() {
     report(`No new chat: ${error.message}`);
     return;
   }
-  Object.assign(chat, { turns: [], folder: settings.defaultFolder });
+  chat.turns = [];
   state.chats.unshift(chat);
   select(chat);
 }
@@ -1083,7 +1081,7 @@ async function start() {
   else newChat();
 }
 
-export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settings, settingsChanged };
+export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settingsChanged };
 
 wire();
 start();

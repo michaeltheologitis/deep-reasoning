@@ -1,4 +1,4 @@
-"""The web app: the Library's, the settings', the chats' and the runs' API, and the UI's static files at /."""
+"""The web app: the Library's, the settings', the folders', the chats' and the runs' API, and the UI's static files at /."""
 
 from contextlib import asynccontextmanager, closing
 from http import HTTPStatus
@@ -17,14 +17,25 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from deep_reasoning.chats import (
+    CHAT_ID,
     CHATS_FILE,
     choose,
+    choose_folder,
     create_chat,
     delete_chat,
     find_chat,
     list_chats,
     rename_chat,
     title_new_chat,
+)
+from deep_reasoning.folders import (
+    FolderError,
+    chosen_folder,
+    list_folders,
+    remove_scratch,
+    scratch_folder,
+    short_path,
+    working_folder,
 )
 from deep_reasoning.library import (
     LibraryError,
@@ -48,6 +59,7 @@ from deep_reasoning.settings import (
     Provider,
     SettingsError,
     add_server,
+    default_folder,
     drop_key,
     find_provider,
     model_lists,
@@ -55,6 +67,7 @@ from deep_reasoning.settings import (
     remember_pick,
     remove_server,
     run_key,
+    save_default_folder,
     save_key,
     starting_model,
     update_server,
@@ -63,8 +76,6 @@ from deep_reasoning.settings import (
 WEB = Path(__file__).parent / "web"
 # Requests naming any other host are refused, so a web page can't reach the API by DNS rebinding.
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]
-# A chat id in a path: plain characters only, like the ids the app makes.
-CHAT_ID = r"^[A-Za-z0-9_-]{1,100}$"
 MODEL_NAME = r"^[^\x00-\x1f\x7f]{1,200}$"
 
 log = structlog.get_logger()
@@ -79,12 +90,19 @@ class ModelPick(BaseModel):
 
 
 class ChatChange(BaseModel):
-    """What a PATCH of a chat may change: its title, namespace or model, from its next message."""
+    """What a PATCH of a chat may change: its title; its namespace, model or folder, from
+    its next message. A folder sent as null or blank is its scratch folder."""
 
     model_config = ConfigDict(extra="forbid")
     title: Title | None = None
     namespace: str | None = None
     model: ModelPick | None = None
+    folder: str | None = None
+
+
+def shown_folder(folder):
+    """A folder kept as an absolute path, as the page shows it; None stays None."""
+    return None if folder is None else short_path(Path(folder))
 
 
 def same_origin(
@@ -130,6 +148,7 @@ def create_app(library, home):
 
     @app.exception_handler(LibraryError)
     @app.exception_handler(SettingsError)
+    @app.exception_handler(FolderError)
     async def refused(request, error):
         return JSONResponse({"detail": str(error)}, status_code=HTTPStatus.BAD_REQUEST)
 
@@ -223,6 +242,19 @@ def create_app(library, home):
     async def read_models():
         return await model_lists(home)
 
+    @app.get("/api/folders")
+    def read_folders(path: str = "~"):
+        return list_folders(path)
+
+    @app.get("/api/default-folder")
+    def read_default_folder():
+        return {"folder": shown_folder(default_folder(home))}
+
+    @app.put("/api/default-folder")
+    def put_default_folder(folder: Annotated[str | None, Body(embed=True)]):
+        save_default_folder(home, chosen_folder(folder))
+        return read_default_folder()
+
     def starting_points():
         """Where a chat that hasn't picked starts: the Library's default namespace, and the
         model new chats start on."""
@@ -241,6 +273,8 @@ def create_app(library, home):
             "live": runs.live(chat["id"]),
             "namespace": chat["namespace"] or namespace,
             "model": model,
+            "folder": shown_folder(chat["folder"]),
+            "scratch_folder": short_path(scratch_folder(home, chat["id"])),
         }
 
     # The chat routes are coroutines, so they run on the event loop with the runs: what
@@ -260,7 +294,7 @@ def create_app(library, home):
 
     @app.post("/api/chats", status_code=HTTPStatus.CREATED)
     async def post_chat():
-        return shown(create_chat(chats), starting_points())
+        return shown(create_chat(chats, default_folder(home)), starting_points())
 
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
@@ -278,10 +312,14 @@ def create_app(library, home):
         model = change.model
         if model is not None and find_provider(home, model.provider) is None:
             raise SettingsError(f"There is no provider {model.provider}.")
+        moved = "folder" in change.model_fields_set
+        folder = chosen_folder(change.folder) if moved else None
         if change.title is not None:
             rename_chat(chats, chat["id"], change.title)
         provider, name = (model.provider, model.name) if model else (None, None)
         choose(chats, chat["id"], change.namespace, provider, name)
+        if moved:
+            choose_folder(chats, chat["id"], None if folder is None else str(folder))
         if model is not None:
             remember_pick(home, provider, name)
         return shown(find_chat(chats, chat["id"]), starting_points())
@@ -292,6 +330,9 @@ def create_app(library, home):
         # lists, never a chat missing some of its turns.
         delete_chat(chats, chat["id"])
         await runs.remove(chat["id"])
+        # Once its workers have exited, as one works in it until then.
+        chosen = [each["folder"] for each in [chat, *list_chats(chats)]]
+        remove_scratch(home, chat["id"], [each for each in chosen if each])
 
     @app.post("/api/chats/{chat}/runs", status_code=HTTPStatus.CREATED)
     async def start_run(
@@ -310,6 +351,7 @@ def create_app(library, home):
                 f"There is no provider {model['provider']} any more; pick another model."
             )
         key = run_key(home, provider)
+        folder = working_folder(home, chat)
         starts = turn_starts(runs.home, chat["id"])
         earlier = [read_turn(runs.home, start["run"]) for start in starts]
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
@@ -320,7 +362,9 @@ def create_app(library, home):
             return config | {"model": model["name"], "client": client}
 
         keys = {provider.key_env: key}
-        run = runs.start(chat["id"], prompt, config_for, earlier, provider.name, keys)
+        run = runs.start(
+            chat["id"], prompt, config_for, earlier, provider.name, keys, folder
+        )
         choose(chats, chat["id"], namespace, provider.name, model["name"])
         if not starts:
             title_new_chat(chats, chat["id"], prompt)

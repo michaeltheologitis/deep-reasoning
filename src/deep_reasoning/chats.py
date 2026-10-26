@@ -1,5 +1,5 @@
-"""Chats: each one's id, title, when it was made, and what its next message runs on, in
-chats.sqlite in the app's home.
+"""Chats: each one's id, title, when it was made, and what its next message runs on and in,
+in chats.sqlite in the app's home.
 
 A chat's turns are its runs, under runs/ beside it; this file holds none of their events.
 """
@@ -14,17 +14,21 @@ from typing import Any
 from coolname import generate_slug
 
 CHATS_FILE = "chats.sqlite"
+# A chat id: plain characters only, like the ids the app makes.
+CHAT_ID = r"^[A-Za-z0-9_-]{1,100}$"
 SCHEMA = (
     "CREATE TABLE IF NOT EXISTS chats"
     " (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL)"
 )
-# Its namespace, and its model with the provider that serves it; null until picked or run.
-# A file made before they were added gets them when next opened.
-CHOICES = ("namespace", "provider", "model")
-COLUMNS = "id, title, created, namespace, provider, model"
+# Its namespace, and its model with the provider that serves it, null until picked or run;
+# and the working folder it chose, null for its scratch folder. A file made before they
+# were added gets them when next opened.
+CHOICES = ("namespace", "provider", "model", "folder")
+COLUMNS = "id, title, created, namespace, provider, model, folder"
 # Adds no row when the id is taken.
 ADD_CHAT = (
-    "INSERT OR IGNORE INTO chats (id, title, created) VALUES (:id, :title, :created)"
+    "INSERT OR IGNORE INTO chats (id, title, created, folder)"
+    " VALUES (:id, :title, :created, :folder)"
 )
 NEW_TITLE = "New chat"
 # Three words, like "tunneling-easygoing-mosquito": over 300 million ids.
@@ -71,13 +75,19 @@ def find_chat(path: Path, chat: str) -> Chat | None:
     return None if row is None else dict(row)
 
 
-def create_chat(path: Path) -> Chat:
-    """A new chat titled "New chat", under a readable id no other chat has."""
-    chat = {"id": generate_slug(ID_WORDS), "title": NEW_TITLE, "created": time.time()}
+def create_chat(path: Path, folder: str | None = None) -> Chat:
+    """A new chat titled "New chat", under a readable id no other chat has, working in
+    *folder*, or in its scratch folder when None."""
+    chat = {
+        "id": generate_slug(ID_WORDS),
+        "title": NEW_TITLE,
+        "created": time.time(),
+        "folder": folder,
+    }
     with connect(path) as connection:
         while not connection.execute(ADD_CHAT, chat).rowcount:
             chat["id"] = generate_slug(ID_WORDS)
-    return chat | dict.fromkeys(CHOICES)
+    return dict.fromkeys(CHOICES) | chat
 
 
 def rename_chat(path: Path, chat: str, title: str) -> None:
@@ -99,6 +109,12 @@ def choose(
             " provider = coalesce(?, provider), model = coalesce(?, model) WHERE id = ?",
             (namespace, provider, model, chat),
         )
+
+
+def choose_folder(path: Path, chat: str, folder: str | None) -> None:
+    """Set the folder the chat's next message works in; None for its scratch folder."""
+    with connect(path) as connection:
+        connection.execute("UPDATE chats SET folder = ? WHERE id = ?", (folder, chat))
 
 
 def title_new_chat(path: Path, chat: str, message: str) -> None:

@@ -1,5 +1,6 @@
 import json
 import socket
+import sqlite3
 import stat
 import threading
 from contextlib import closing
@@ -775,3 +776,187 @@ def test_a_request_from_another_sites_page_is_refused(client):
     own = client.post("/api/chats", headers={"Origin": LOCAL})
     assert (refused.status_code, own.status_code) == (403, 201)
     assert len(client.get("/api/chats").json()) == 1
+
+
+WRITE_THEN_READ = {
+    "Write a note.": [
+        repl("import pathlib", "pathlib.Path('note.txt').write_text('from message 1')"),
+        repl("FinalAnswer('noted')"),
+    ],
+    "Read the note.": [
+        repl("print(open('note.txt').read())"),
+        repl("FinalAnswer('read')"),
+    ],
+}
+
+
+def cell_outputs(events):
+    return [event["output"] for event in events if event["kind"] == "cell.end"]
+
+
+def folder_of(read):
+    """The folder a chat's next message works in, as the page shows it."""
+    return read["folder"] or read["scratch_folder"]
+
+
+@pytest.mark.anyio
+async def test_a_chat_without_a_folder_works_in_its_scratch_folder_across_messages(
+    library_on, connect, home
+):
+    with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            before = (home / "work" / chat).exists()
+            first = await run_events(api, await send(api, chat, "Write a note."))
+            second = await run_events(api, await send(api, chat, "Read the note."))
+            read = (await api.get(f"/api/chats/{chat}")).json()
+    scratch = home / "work" / chat
+    assert not before
+    assert (read["folder"], read["scratch_folder"]) == (None, f"~/work/{chat}")
+    assert first[0]["folder"] == second[0]["folder"] == str(scratch)
+    assert (scratch / "note.txt").read_text() == "from message 1"
+    assert cell_outputs(second)[0] == "from message 1"
+    assert second[-1]["outcome"] == "answered", second[-1]
+
+
+@pytest.mark.anyio
+async def test_a_folder_changed_mid_chat_applies_from_the_next_message(
+    library_on, connect, home
+):
+    thesis, data = home / "code" / "thesis", home / "data"
+    thesis.mkdir(parents=True)
+    data.mkdir()
+    with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            picked = await api.patch(
+                f"/api/chats/{chat}", json={"folder": "~/code/thesis/"}
+            )
+            first = await run_events(api, await send(api, chat, "Write a note."))
+            moved = await api.patch(f"/api/chats/{chat}", json={"folder": str(data)})
+            second = await run_events(api, await send(api, chat, "Read the note."))
+            back = await api.patch(f"/api/chats/{chat}", json={"folder": None})
+    assert picked.json()["folder"] == "~/code/thesis"
+    assert moved.json()["folder"] == "~/data" and back.json()["folder"] is None
+    assert (first[0]["folder"], second[0]["folder"]) == (str(thesis), str(data))
+    assert (thesis / "note.txt").read_text() == "from message 1"
+    assert "FileNotFoundError" in cell_outputs(second)[0]
+    assert not (home / "work" / chat).exists()
+
+
+@pytest.mark.anyio
+async def test_a_run_in_a_folder_that_is_gone_is_refused_and_nothing_starts(
+    library_on, connect, home
+):
+    thesis = home / "thesis"
+    thesis.mkdir()
+    with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            await api.patch(f"/api/chats/{chat}", json={"folder": str(thesis)})
+            thesis.rmdir()
+            refused = await api.post(
+                f"/api/chats/{chat}/runs", json={"prompt": "Write a note."}
+            )
+            read = (await api.get(f"/api/chats/{chat}")).json()
+    assert refused.status_code == 400
+    assert refused.json() == {"detail": "That folder no longer exists — pick another."}
+    assert read["turns"] == [] and read["title"] == "New chat"
+    assert fake.calls == [] and not (home / "runs").exists()
+
+
+@pytest.mark.parametrize(
+    ("folder", "problem"),
+    [
+        ("/no/such/folder", "There is no folder /no/such/folder."),
+        ("~/notes.txt", "~/notes.txt is a file, not a folder."),
+    ],
+)
+def test_a_folder_that_is_not_there_is_refused_and_the_chat_keeps_its_own(
+    client, home, folder, problem
+):
+    (home / "notes.txt").write_text("not a folder")
+    chat = client.post("/api/chats").json()
+    refused = client.patch(f"/api/chats/{chat['id']}", json={"folder": folder})
+    assert refused.status_code == 400
+    assert refused.json() == {"detail": problem}
+    assert client.get("/api/chats").json() == [chat]
+
+
+def test_folders_are_listed_for_the_picker_and_a_missing_one_is_refused(client, home):
+    (home / "code" / "thesis").mkdir(parents=True)
+    (home / ".cache").mkdir()
+    (home / "notes.txt").write_text("not a folder")
+    listed = client.get("/api/folders")
+    code = client.get("/api/folders", params={"path": "~/code"})
+    missing = client.get("/api/folders", params={"path": "~/gone"})
+    assert listed.json() == {
+        "path": "~",
+        "parent": str(home.parent),
+        "folders": [
+            {"name": "code", "path": "~/code"},
+            {"name": ".cache", "path": "~/.cache"},
+        ],
+    }
+    assert code.json()["folders"] == [{"name": "thesis", "path": "~/code/thesis"}]
+    assert (missing.status_code, missing.json()) == (
+        400,
+        {"detail": "There is no folder ~/gone."},
+    )
+
+
+def test_new_chats_start_in_the_default_folder_and_older_chats_keep_theirs(
+    client, home
+):
+    (home / "code").mkdir()
+    before = client.post("/api/chats").json()
+    unset = client.get("/api/default-folder").json()
+    saved = client.put("/api/default-folder", json={"folder": "~/code"})
+    refused = client.put("/api/default-folder", json={"folder": "~/gone"})
+    after = client.post("/api/chats").json()
+    cleared = client.put("/api/default-folder", json={"folder": ""})
+    last = client.post("/api/chats").json()
+    assert unset == {"folder": None} and saved.json() == {"folder": "~/code"}
+    assert refused.status_code == 400
+    assert json.loads((home / "settings.json").read_text())["default_folder"] is None
+    assert cleared.json() == {"folder": None}
+    assert [each["folder"] for each in (before, after, last)] == [None, "~/code", None]
+    listed = {each["id"]: each["folder"] for each in client.get("/api/chats").json()}
+    assert listed[before["id"]] is None and listed[after["id"]] == "~/code"
+
+
+@pytest.mark.anyio
+async def test_deleting_a_chat_removes_its_scratch_folder_and_never_a_chosen_one(
+    library_on, connect, home
+):
+    chosen = home / "thesis"
+    chosen.mkdir()
+    (chosen / "keep.txt").write_text("mine")
+    with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
+        async with connect(library_on(fake)) as api:
+            scratch, kept = await new_chat(api), await new_chat(api)
+            await api.patch(f"/api/chats/{kept}", json={"folder": str(chosen)})
+            await run_events(api, await send(api, scratch, "Write a note."))
+            await run_events(api, await send(api, kept, "Write a note."))
+            written = (home / "work" / scratch / "note.txt").is_file()
+            gone = await api.delete(f"/api/chats/{scratch}")
+            also = await api.delete(f"/api/chats/{kept}")
+    assert written and (gone.status_code, also.status_code) == (204, 204)
+    assert not (home / "work" / scratch).exists()
+    assert (chosen / "keep.txt").read_text() == "mine"
+    assert (chosen / "note.txt").read_text() == "from message 1"
+
+
+@pytest.mark.parametrize("tampered", ["precious", "work/{chat}"])
+def test_a_folder_in_a_tampered_chats_file_is_treated_as_chosen_and_kept(
+    client, home, tampered
+):
+    chat = client.post("/api/chats").json()["id"]
+    folder = home / tampered.format(chat=chat)
+    folder.mkdir(parents=True)
+    (folder / "keep.txt").write_text("mine")
+    with closing(sqlite3.connect(home / "chats.sqlite")) as connection, connection:
+        connection.execute("UPDATE chats SET folder = ?", (str(folder),))
+    deleted = client.delete(f"/api/chats/{chat}")
+    assert deleted.status_code == 204
+    assert (folder / "keep.txt").read_text() == "mine"

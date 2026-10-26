@@ -60,6 +60,15 @@ name you type. A choice applies from the chat's next message, and the chat keeps
 picked last, or on OpenAI's `gpt-6-luna` when OpenAI has a key and nothing was picked yet. The namespace menu beside
 it works the same way: a new chat starts in the Library's default namespace (★), and you can switch mid-chat.
 
+## Working folders
+
+Each chat works in a folder, shown in the top bar: the agent's Python runs there and reads and writes its files there,
+so a file one message writes is there for the next. Click the folder to pick another, by typing a path or browsing; the
+change applies from the chat's next message. A chat you don't pick a folder for works in its own scratch folder,
+`~/.deep-reasoning/work/<chat>/`, deleted with the chat; a folder you pick is never deleted. **settings** has a
+default folder for new chats. Python modules in a chat's folder can be imported, but never in place of an installed
+package of the same name.
+
 ## The Library
 
 Every namespace, decomposition and custom tool your chats draw on, and the run settings, live in one file:

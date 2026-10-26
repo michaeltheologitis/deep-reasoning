@@ -3,7 +3,8 @@
 A run lives in runs/<run>/ under the app's home: spec.json, what the worker runs;
 events.jsonl, every event as one JSON line, appended as it happens; and worker.log, the
 worker's stderr. The server numbers each event (seq, from 1) and stamps its time (t). The
-model's key reaches the worker in its environment only, never in the run's folder.
+model's key reaches the worker in its environment only, never in the run's folder. The
+worker works in the chat's folder: its cwd, where the agent's Python reads and writes.
 """
 
 import asyncio
@@ -75,6 +76,7 @@ class Turn:
 @dataclass
 class _Live:
     chat: str
+    folder: Path  # the worker's cwd
     # for the worker's environment only, and in no repr a traceback might show
     keys: dict[str, str] = field(default_factory=dict, repr=False)
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -240,21 +242,23 @@ class Runs:
         earlier: Sequence[Turn],
         provider: str | None = None,
         keys: dict[str, str] | None = None,
+        folder: Path | None = None,
     ) -> str:
         """Start a run of *prompt* in *chat*, given the chat's *earlier* turns, and return
         its id. *config_for* gives the engine config for the run's folder; *provider*
         names who serves its model, and *keys* go into the worker's environment only.
+        The worker works in *folder*, the run's own folder unless given.
         Raises RunInProgress while the chat has a run going."""
         if self.live(chat) is not None:
             raise RunInProgress(chat)
         run = new_run_id()
-        folder = self.home / RUNS / run
-        folder.mkdir(parents=True)
-        config = config_for(folder)
+        run_folder = self.home / RUNS / run
+        run_folder.mkdir(parents=True)
+        config = config_for(run_folder)
         namespace = config.get("entry_namespace")
         spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier, namespace)}
-        (folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
-        live = _Live(chat, keys or {})
+        (run_folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
+        live = _Live(chat, folder or run_folder, keys or {})
         # Recorded before the run is listed, so a start that fails holds up no chat.
         self._record(
             run,
@@ -267,6 +271,7 @@ class Runs:
                 "namespace": namespace,
                 "model": config.get("model"),
                 "provider": provider,
+                "folder": str(live.folder),
             },
         )
         self._live[run] = live
@@ -363,15 +368,18 @@ class Runs:
         folder = self.home / RUNS / run
         try:
             with (folder / "worker.log").open("ab") as worker_log:
+                # -P: the cwd is the chat's folder, and a module there mustn't shadow
+                # one the worker imports; the worker puts the folder last on its path.
                 live.process = await asyncio.create_subprocess_exec(
                     sys.executable,
+                    "-P",
                     "-m",
                     "deep_reasoning.worker",
                     str(folder),
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=worker_log,
-                    cwd=folder,
+                    cwd=live.folder,
                     env=worker_env(live.keys),
                     start_new_session=True,
                     limit=LINE_LIMIT,
