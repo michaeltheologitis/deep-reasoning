@@ -51,14 +51,13 @@ UPSERT_TOOL = (
     " ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml, source = excluded.source"
 )
 SYSTEM_PROMPT_FILE = Path(__file__).with_name("system_prompt.yaml")
-DEFAULT_SETTINGS = {
-    "model": "gpt-6-luna",
-    "client": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key_env": "OPENAI_API_KEY",
-    },
-    **yaml.safe_load(SYSTEM_PROMPT_FILE.read_text(encoding="utf-8")),
-}
+DEFAULT_SETTINGS = yaml.safe_load(SYSTEM_PROMPT_FILE.read_text(encoding="utf-8"))
+# Each chat picks its model, and the provider that serves it; a Library made before that
+# may still hold these, which are left unread.
+CHATS_DECIDE = {"model", "client"}
+# Every run has one, so the Library is checked and shown as a run sees it: with the llm
+# tool a model brings.
+A_MODEL = {"model": "the chat's model"}
 # Left to the Library, not a config: content (own tables), per-run paths, and the model and its key.
 NOT_IMPORTED = {
     "namespaces",
@@ -79,7 +78,7 @@ NOT_IMPORTED = {
     "reasoner",
 }
 # The run settings the panel always lists, with the engine's default when unset.
-SHOWN_SETTINGS = ("model", "client", "max_iter", "max_depth", "entry_namespace", "repl")
+SHOWN_SETTINGS = ("max_iter", "max_depth", "entry_namespace", "repl")
 LINE_WIDTH = 88
 ROLES = "user, assistant or system"
 # make_tool builds `factory: llm` with v2's own builder, the rest from TOOL_BUILDERS.
@@ -139,7 +138,7 @@ def schema_version(connection):
 
 
 def open_library(path):
-    """The Library at *path*; a new file starts with a root namespace and the default run settings."""
+    """The Library at *path*; a new file starts with a root namespace and the generic REPL prompt."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Autocommit: a read holds no lock once it has run; writes go through writing().
@@ -181,7 +180,7 @@ def tool_file(name):
 
 def stored_settings(connection):
     rows = connection.execute("SELECT key, yaml FROM settings ORDER BY rowid")
-    return {key: yaml.safe_load(text) for key, text in rows}
+    return {key: yaml.safe_load(text) for key, text in rows if key not in CHATS_DECIDE}
 
 
 def stored_config(connection):
@@ -203,7 +202,8 @@ def stored_config(connection):
 
 
 def engine_config(library_path, namespace, tools_dir):
-    """The Library as one plain dict that V2Config accepts, for a run that enters *namespace*.
+    """The Library as one plain dict that V2Config accepts, for a run that enters *namespace*;
+    the run's model and client are the chat's to put in.
 
     Each custom tool's source is written into *tools_dir*, and its factory_from points at that file.
     """
@@ -228,9 +228,18 @@ def default_namespace(library_path):
         return stored_settings(connection).get("entry_namespace", ROOT)
 
 
+def check_namespace(connection, name):
+    """Raise unless the Library has a namespace *name*."""
+    found = connection.execute("SELECT 1 FROM namespaces WHERE name = ?", (name,))
+    if not found.fetchone():
+        raise LibraryError(
+            f'The Library has no namespace "{name}"; pick one from the list.'
+        )
+
+
 def check(connection):
     """Raise unless the engine would accept the Library: every chain resolves and every tool granted exists."""
-    config = V2Config.model_validate(stored_config(connection))
+    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
     build_namespace_registry(config).check(declared_tool_names(config))
 
 
@@ -247,7 +256,7 @@ def tool_row(name, block, config_dir):
                 "give its block a factory_from: file."
             )
         if factory == "llm":
-            # It runs on the Library's model, as chats do; the config's model or preset may not exist there.
+            # It runs on the chat's model, as the chat does; the config's model or preset may not exist there.
             block = {key: value for key, value in block.items() if key != "model"}
         return name, dump(block), None
     stored_file = tool_file(name)
@@ -365,12 +374,7 @@ def parsed(text):
 def add_decomposition(connection, namespace, text):
     """Store the decomposition written as YAML *text* under *namespace*, or raise LibraryError saying why not."""
     name = parsed(text).name
-    if not connection.execute(
-        "SELECT 1 FROM namespaces WHERE name = ?", (namespace,)
-    ).fetchone():
-        raise LibraryError(
-            f'The Library has no namespace "{namespace}"; pick one from the list.'
-        )
+    check_namespace(connection, namespace)
     stored = {"namespace": namespace, "name": name, "yaml": text}
     try:
         with writing(connection):
@@ -553,7 +557,7 @@ def shape(rows):
 
 def panel(connection):
     """What the Library panel shows: run settings, namespaces as the engine resolves them, tools, tabular vars."""
-    config = V2Config.model_validate(stored_config(connection))
+    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
     registry = build_namespace_registry(config)
     names = sorted(registry.names, key=registry.chain)
     decompositions = defaultdict(list)

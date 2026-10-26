@@ -2,7 +2,8 @@
 
 A run lives in runs/<run>/ under the app's home: spec.json, what the worker runs;
 events.jsonl, every event as one JSON line, appended as it happens; and worker.log, the
-worker's stderr. The server numbers each event (seq, from 1) and stamps its time (t).
+worker's stderr. The server numbers each event (seq, from 1) and stamps its time (t). The
+model's key reaches the worker in its environment only, never in the run's folder.
 """
 
 import asyncio
@@ -37,6 +38,8 @@ TOO_LONG = (
     f"The run sent an event longer than {LINE_LIMIT // MIB} MiB, more than the app "
     "reads as one event, so the app ended the run."
 )
+# Never handed to a run: with it set, Claude Code bills that key instead of the subscription.
+WITHHELD = "ANTHROPIC_API_KEY"
 SHUT_DOWN = "Deep Reasoning shut down while the run was going."
 LOST = "Deep Reasoning stopped while the run was going, so the run was lost."
 RECAP = jinja2.Template(
@@ -45,7 +48,7 @@ This conversation began before this run. Its earlier runs have ended, so their \
 variables and sub-agents are gone; below are the user's earlier messages, each with \
 the answer it got.
 {% for turn in turns %}
-Message {{ loop.index }}: {{ turn.message }}
+Message {{ loop.index }}{% if turn.namespace and turn.namespace != namespace %} (in namespace {{ turn.namespace }}){% endif %}: {{ turn.message }}
 Answer {{ loop.index }}: {% if turn.outcome == "answered" %}{{ turn.answer or "" }}
 {%- elif turn.outcome == "failed" %}(none: the run failed: {{ turn.detail }})
 {%- elif turn.outcome == "stopped" %}(none: the user stopped the run before it answered)
@@ -66,11 +69,14 @@ class Turn:
     outcome: Outcome
     answer: str | None
     detail: str | None
+    namespace: str | None = None
 
 
 @dataclass
 class _Live:
     chat: str
+    # for the worker's environment only, and in no repr a traceback might show
+    keys: dict[str, str] = field(default_factory=dict, repr=False)
     events: list[dict[str, Any]] = field(default_factory=list)
     watchers: set[asyncio.Queue] = field(default_factory=set)
     process: asyncio.subprocess.Process | None = None
@@ -135,10 +141,17 @@ def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
 
 
 def read_turn(home: Path, run: str) -> Turn:
-    """An ended run's message, and how it ended, from its first and last events."""
+    """An ended run's message, how it ended and its namespace, from its first and last
+    events."""
     path = home / RUNS / run / EVENTS
     start, end = first_event(path), last_event(path)
-    return Turn(start["prompt"], end["outcome"], end["answer"], end["detail"])
+    return Turn(
+        start["prompt"],
+        end["outcome"],
+        end["answer"],
+        end["detail"],
+        start.get("namespace"),
+    )
 
 
 def turn_starts(home: Path, chat: str) -> list[dict[str, Any]]:
@@ -169,16 +182,24 @@ def end_unfinished(home: Path) -> list[str]:
     return ended
 
 
-def recap_of(turns: Sequence[Turn]) -> str | None:
-    """The chat so far as one user message for a fresh run: every earlier message and
-    its answer, whole. None before the first answer."""
-    return RECAP.render(turns=turns) if turns else None
+def recap_of(turns: Sequence[Turn], namespace: str | None) -> str | None:
+    """The chat so far as one user message for a fresh run in *namespace*: every earlier
+    message and its answer, whole, each marked when it ran in another namespace. None
+    before the first answer."""
+    return RECAP.render(turns=turns, namespace=namespace) if turns else None
 
 
 def new_run_id() -> str:
     """The start time in UTC, to the microsecond: run ids sort in the order the runs
     began, across a change of the local clock."""
     return datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+
+
+def worker_env(keys: dict[str, str]) -> dict[str, str]:
+    """The app's environment with the run's *keys* added, and never ANTHROPIC_API_KEY."""
+    return {
+        name: value for name, value in (os.environ | keys).items() if name != WITHHELD
+    }
 
 
 def kill_group(pid: int) -> None:
@@ -217,19 +238,23 @@ class Runs:
         prompt: str,
         config_for: Callable[[Path], dict[str, Any]],
         earlier: Sequence[Turn],
+        provider: str | None = None,
+        keys: dict[str, str] | None = None,
     ) -> str:
         """Start a run of *prompt* in *chat*, given the chat's *earlier* turns, and return
-        its id. *config_for* gives the engine config for the run's folder. Raises
-        RunInProgress while the chat has a run going."""
+        its id. *config_for* gives the engine config for the run's folder; *provider*
+        names who serves its model, and *keys* go into the worker's environment only.
+        Raises RunInProgress while the chat has a run going."""
         if self.live(chat) is not None:
             raise RunInProgress(chat)
         run = new_run_id()
         folder = self.home / RUNS / run
         folder.mkdir(parents=True)
         config = config_for(folder)
-        spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier)}
+        namespace = config.get("entry_namespace")
+        spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier, namespace)}
         (folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
-        live = _Live(chat)
+        live = _Live(chat, keys or {})
         # Recorded before the run is listed, so a start that fails holds up no chat.
         self._record(
             run,
@@ -239,8 +264,9 @@ class Runs:
                 "run": run,
                 "chat": chat,
                 "prompt": prompt,
-                "namespace": config.get("entry_namespace"),
+                "namespace": namespace,
                 "model": config.get("model"),
+                "provider": provider,
             },
         )
         self._live[run] = live
@@ -346,6 +372,7 @@ class Runs:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=worker_log,
                     cwd=folder,
+                    env=worker_env(live.keys),
                     start_new_session=True,
                     limit=LINE_LIMIT,
                 )

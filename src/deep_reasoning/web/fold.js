@@ -2,7 +2,7 @@
 
 export function newFold() {
   return {
-    turn: { prompt: "", steps: [], answer: null, outcome: null, detail: null, cost: null, seconds: null, started: null },
+    turn: { prompt: "", steps: [], answer: null, outcome: null, detail: null, cost: null, seconds: null, started: null, model: null, namespace: null },
     seq: 0,
     // node → its holder (the turn for the root, else its row) and its parent's node
     nodes: new Map(),
@@ -28,7 +28,7 @@ export function foldEvents(events) {
 }
 
 const FOLDS = {
-  "turn.start": (fold, event) => Object.assign(fold.turn, { prompt: event.prompt, started: event.t }),
+  "turn.start": (fold, { prompt, t, model, namespace }) => Object.assign(fold.turn, { prompt, started: t, model, namespace }),
   "agent.start": startAgent,
   think: (fold, event) => addStep(fold, event.node, { kind: "think", text: event.text }),
   "cell.start": startCell,

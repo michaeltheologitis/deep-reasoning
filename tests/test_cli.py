@@ -4,12 +4,14 @@ import urllib.parse
 import webbrowser
 
 import pytest
+import structlog
 import uvicorn
 from fastapi.testclient import TestClient
 
 from deep_reasoning import cli
 
 WAIT_SECONDS = 0.5
+KEY_IN_A_FRAME = "sk-held-in-a-frame"
 
 
 @pytest.fixture
@@ -56,6 +58,23 @@ def test_says_where_it_runs_and_which_library_it_serves(
     said = capsys.readouterr().out
     assert f"url=http://127.0.0.1:{free_port}/" in said
     assert str(home / ".deep-reasoning" / "library.sqlite") in said
+
+
+def test_a_traceback_the_server_logs_shows_no_frames_variables(
+    served, capsys, free_port
+):
+    cli.main(["--port", str(free_port), "--no-browser"])
+
+    def refused(key):
+        raise RuntimeError("the provider refused")
+
+    try:
+        refused(KEY_IN_A_FRAME)
+    except RuntimeError:
+        structlog.get_logger().exception("models.not_listed")
+    said = capsys.readouterr().out
+    assert "RuntimeError: the provider refused" in said
+    assert KEY_IN_A_FRAME not in said
 
 
 def test_opens_a_tab_at_the_port_it_listens_on(monkeypatch, opened):

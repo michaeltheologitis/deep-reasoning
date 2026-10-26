@@ -1,13 +1,23 @@
 import json
+import socket
+import stat
 import threading
 from contextlib import closing
 
 import httpx
 import pytest
-from fake_model import FakeOpenAI, repl, scripted, task_and_turn
+from fake_model import (
+    SERVER_KEY,
+    SERVER_NAME,
+    FakeOpenAI,
+    repl,
+    scripted,
+    task_and_turn,
+)
 from fastapi.testclient import TestClient
 
 from deep_reasoning.app import WEB, create_app
+from deep_reasoning.chats import CHATS_FILE, create_chat
 from deep_reasoning.library import (
     UPSERT_SETTING,
     dump,
@@ -15,8 +25,15 @@ from deep_reasoning.library import (
     open_library,
     writing,
 )
+from deep_reasoning.runs import append_event
+from deep_reasoning.settings import ENV_FILE, add_server, server_key_env
+
+pytestmark = pytest.mark.usefixtures("no_vendor_keys")
 
 LOCAL = "http://127.0.0.1"
+SAVED_KEY = "sk-saved-in-settings"
+SHELL_KEY = "sk-from-the-shell"
+VLLM = "http://127.0.0.1:8001/v1"
 VALID = """name: next course
 messages:
 - role: user
@@ -96,7 +113,9 @@ def test_root_serves_the_ui(client):
     assert "<title>Deep Reasoning</title>" in response.text
 
 
-@pytest.mark.parametrize("path", ["app.js", "fold.js", "style.css", "library.js"])
+@pytest.mark.parametrize(
+    "path", ["app.js", "fold.js", "style.css", "library.js", "settings.js"]
+)
 def test_static_assets_are_served(client, path):
     response = client.get(f"/{path}")
     assert response.status_code == 200
@@ -119,7 +138,7 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
         {"value": "llm", "source": "granted here", "here": True}
     ]
     assert field(by_name["router"], "Tools")[0]["source"] == "inherited from root"
-    assert settings["model"] == {"value": "gpt-6-luna", "source": "set in the Library"}
+    assert "model" not in settings and "client" not in settings
     assert settings["max_depth"] == {"value": "8", "source": "the engine's default"}
     assert [(tool["name"], tool["granted_in"]) for tool in library["tools"]] == [
         ("llm", ["root"])
@@ -473,3 +492,286 @@ async def test_chats_survive_a_restart(library_on, connect):
             read = (await restarted.get(f"/api/chats/{chat}")).json()
     assert listed == [renamed.json()]
     assert read == renamed.json() | {"turns": [{"run": run, "events": events}]}
+
+
+def by_name(rows, field="name"):
+    return {each[field]: each for each in rows}
+
+
+def closed_port():
+    with socket.create_server(("127.0.0.1", 0)) as probe:
+        return probe.getsockname()[1]
+
+
+def test_a_saved_key_comes_back_as_a_status_never_as_itself(client, home):
+    saved = client.put("/api/providers/OpenAI/key", json={"key": SAVED_KEY})
+    listed = client.get("/api/providers")
+    assert saved.status_code == listed.status_code == 200
+    assert by_name(listed.json())["OpenAI"] == {
+        "name": "OpenAI",
+        "base_url": "https://api.openai.com/v1",
+        "key_env": "OPENAI_API_KEY",
+        "custom": False,
+        "key": "set",
+    }
+    assert SAVED_KEY not in saved.text and SAVED_KEY not in listed.text
+    env = home / ENV_FILE
+    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    assert env.read_text() == f"OPENAI_API_KEY='{SAVED_KEY}'\n"
+
+
+def test_removing_a_saved_key_leaves_the_shells_in_use(client, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", SHELL_KEY)
+    shell = client.get("/api/providers")
+    client.put("/api/providers/OpenAI/key", json={"key": SAVED_KEY})
+    removed = client.delete("/api/providers/OpenAI/key")
+    assert by_name(shell.json())["OpenAI"]["key"] == "shell"
+    assert by_name(removed.json())["OpenAI"]["key"] == "shell"
+    assert SHELL_KEY not in shell.text and SHELL_KEY not in removed.text
+
+
+@pytest.mark.parametrize(
+    ("body", "sent", "status"),
+    [
+        ({"key": "sk two words"}, "sk two words", 400),
+        ({"key": ["sk-in-a-list"]}, "sk-in-a-list", 422),
+        ({"key": 31415926535}, "31415926535", 422),
+    ],
+)
+def test_a_malformed_key_is_refused_without_being_repeated(
+    client, home, body, sent, status
+):
+    response = client.put("/api/providers/OpenAI/key", json=body)
+    assert response.status_code == status
+    assert sent not in response.text
+    assert not (home / ENV_FILE).exists()
+
+
+def test_a_provider_or_server_that_is_not_there_is_refused(client):
+    assert (
+        client.put("/api/providers/Nobody/key", json={"key": "sk-x"}).status_code == 404
+    )
+    assert client.delete("/api/providers/Nobody/key").status_code == 404
+    # a vendor is not a custom server: its address is the app's
+    assert client.put("/api/servers/OpenAI", json={"base_url": VLLM}).status_code == 404
+    assert client.delete("/api/servers/OpenAI").status_code == 404
+
+
+def test_a_custom_server_is_added_changed_and_removed_with_its_key(client, home):
+    server = {"name": "vllm", "base_url": VLLM, "key": "sk-vllm"}
+    added = client.post("/api/servers", json=server)
+    again = client.post("/api/servers", json=server)
+    changed = client.put(
+        "/api/servers/vllm", json={"base_url": "http://127.0.0.1:9/v1"}
+    )
+    refused = client.put("/api/servers/vllm", json={"base_url": "ftp://127.0.0.1/v1"})
+    assert added.status_code == 201
+    assert by_name(added.json())["vllm"] == {
+        "name": "vllm",
+        "base_url": VLLM,
+        "key_env": "DEEP_REASONING_VLLM_KEY",
+        "custom": True,
+        "key": "set",
+    }
+    assert "sk-vllm" not in added.text
+    assert again.status_code == 400
+    assert again.json()["detail"] == "There is a provider named vllm already."
+    assert by_name(changed.json())["vllm"]["base_url"] == "http://127.0.0.1:9/v1"
+    assert by_name(changed.json())["vllm"]["key"] == "set"
+    assert refused.status_code == 400
+    removed = client.delete("/api/servers/vllm")
+    assert "vllm" not in by_name(removed.json())
+    assert "DEEP_REASONING_VLLM_KEY" not in (home / ENV_FILE).read_text()
+
+
+@pytest.mark.anyio
+async def test_models_are_listed_through_the_app_with_each_providers_key(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            response = await api.get("/api/models")
+    assert response.json() == [
+        {
+            "provider": SERVER_NAME,
+            "models": ["fake-large", "fake-small"],
+            "problem": None,
+        }
+    ]
+    assert fake.listed == [SERVER_KEY]
+    assert SERVER_KEY not in response.text
+
+
+def test_a_listing_that_fails_says_why_in_plain_words(client, home):
+    gone = f"http://127.0.0.1:{closed_port()}/v1"
+    with FakeOpenAI(scripted(PLAN), models=None) as fake:
+        add_server(home, "unlisted", fake.base_url, None)
+        add_server(home, "gone", gone, None)
+        listings = by_name(client.get("/api/models").json(), "provider")
+    assert listings["unlisted"] == {
+        "provider": "unlisted",
+        "models": [],
+        "problem": f"No list: {fake.base_url}/models answered 404 Not Found.",
+    }
+    assert listings["gone"]["models"] == []
+    assert listings["gone"]["problem"].startswith(
+        f"No list: {gone}/models didn't answer ("
+    )
+
+
+@pytest.mark.parametrize("key", ["sk-in\nhalves", "sk-in\rhalves", "sk-ünïcode"])
+def test_a_key_no_header_can_carry_is_never_repeated_in_a_listing(
+    client, home, monkeypatch, key
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        add_server(home, "vllm", fake.base_url, None)
+        monkeypatch.setenv(server_key_env("vllm"), key)
+        response = client.get("/api/models")
+    assert response.json() == [
+        {
+            "provider": "vllm",
+            "models": [],
+            "problem": "No list: the vllm key can't be sent; is it one line of "
+            "plain text?",
+        }
+    ]
+    assert "sk-" not in response.text
+
+
+def test_a_shell_key_ending_in_a_carriage_return_lists_without_it(
+    client, home, monkeypatch
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        add_server(home, "vllm", fake.base_url, None)
+        monkeypatch.setenv(server_key_env("vllm"), f"{SHELL_KEY}\r")
+        listing = client.get("/api/models").json()[0]
+    assert (listing["models"], fake.listed) == (
+        ["fake-large", "fake-small"],
+        [SHELL_KEY],
+    )
+
+
+def test_a_chat_from_before_namespaces_were_kept_stays_in_the_one_its_runs_used(
+    imported, home
+):
+    chat = create_chat(home / CHATS_FILE)["id"]
+    run = "20261025-120000-000000"
+    (home / "runs" / run).mkdir(parents=True)
+    start = {"kind": "turn.start", "run": run, "chat": chat, "prompt": "Hi."}
+    end = {"kind": "turn.end", "outcome": "answered", "answer": "hello", "detail": None}
+    append_event(home, run, {"seq": 1, "t": 1.0, "namespace": "course_advisor"} | start)
+    append_event(home, run, {"seq": 2, "t": 2.0, "cost": None, "seconds": 1.0} | end)
+    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
+        read = client.get(f"/api/chats/{chat}").json()
+    assert read["namespace"] == "course_advisor"
+
+
+@pytest.mark.anyio
+async def test_a_run_uses_the_chats_model_and_its_providers_key_kept_out_of_the_run(
+    library_on, connect, home, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-for-runs")
+    look = repl("import os", "print('ANTHROPIC_API_KEY' in os.environ)")
+    plan = {"Look.": [look, repl("FinalAnswer('looked')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            model = {"provider": SERVER_NAME, "name": "fake-large"}
+            picked = await api.patch(f"/api/chats/{chat}", json={"model": model})
+            run = await send(api, chat, "Look.")
+            events = await run_events(api, run)
+    assert picked.json()["model"] == model
+    assert {(call.model, call.key) for call in fake.calls} == {
+        ("fake-large", SERVER_KEY)
+    }
+    assert (events[0]["model"], events[0]["provider"]) == ("fake-large", SERVER_NAME)
+    cells = [event for event in events if event["kind"] == "cell.end"]
+    assert cells[0]["output"] == "False"
+    assert events[-1]["outcome"] == "answered"
+    for file in (home / "runs" / run).rglob("*"):
+        assert not file.is_file() or SERVER_KEY.encode() not in file.read_bytes(), file
+
+
+@pytest.mark.anyio
+async def test_switching_namespace_mid_chat_runs_the_next_message_there_and_says_so(
+    imported, library_on, connect
+):
+    plan = {"Hi.": [repl("FinalAnswer('hello')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            first = await run_events(api, await send(api, chat, "Hi."))
+            switched = await api.patch(
+                f"/api/chats/{chat}", json={"namespace": "course_advisor"}
+            )
+            again = await run_events(api, await send(api, chat, "Hi."))
+            read = (await api.get(f"/api/chats/{chat}")).json()
+    assert [first[0]["namespace"], again[0]["namespace"]] == [
+        "router",
+        "course_advisor",
+    ]
+    assert switched.json()["namespace"] == read["namespace"] == "course_advisor"
+    texts = [message["content"] for message in fake.calls[-1].messages]
+    assert any(
+        "Message 1 (in namespace router): Hi.\nAnswer 1: hello" in text
+        for text in texts
+    )
+
+
+def test_a_namespace_or_model_the_app_does_not_have_is_refused(client):
+    chat = client.post("/api/chats").json()["id"]
+    nowhere = client.patch(f"/api/chats/{chat}", json={"namespace": "nowhere"})
+    model = {"provider": "Nobody", "name": "x"}
+    nobody = client.patch(f"/api/chats/{chat}", json={"model": model})
+    blank = {"provider": "OpenAI", "name": " "}
+    unnamed = client.patch(f"/api/chats/{chat}", json={"model": blank})
+    assert (nowhere.status_code, nobody.status_code, unnamed.status_code) == (
+        400,
+        400,
+        422,
+    )
+    assert nowhere.json()["detail"].startswith('The Library has no namespace "nowhere"')
+    assert nobody.json()["detail"] == "There is no provider Nobody."
+    read = client.get(f"/api/chats/{chat}").json()
+    assert (read["namespace"], read["model"]) == ("router", None)
+
+
+def test_a_new_chat_starts_on_the_model_picked_last_in_any_chat(
+    client, home, monkeypatch
+):
+    first = client.post("/api/chats").json()
+    assert (first["namespace"], first["model"]) == ("router", None)
+    monkeypatch.setenv("OPENAI_API_KEY", SHELL_KEY)
+    luna = {"provider": "OpenAI", "name": "gpt-6-luna"}
+    assert client.post("/api/chats").json()["model"] == luna
+    add_server(home, "vllm", VLLM, None)
+    qwen = {"provider": "vllm", "name": "qwen3"}
+    client.patch(f"/api/chats/{first['id']}", json={"model": qwen})
+    later = client.post("/api/chats").json()
+    assert later["model"] == qwen
+    gpt = {"provider": "OpenAI", "name": "gpt-5.5"}
+    client.patch(f"/api/chats/{later['id']}", json={"model": gpt})
+    models = {chat["id"]: chat["model"] for chat in client.get("/api/chats").json()}
+    assert models[first["id"]] == qwen and models[later["id"]] == gpt
+
+
+def test_a_message_is_refused_until_the_chat_has_a_model_that_can_run(client):
+    chat = client.post("/api/chats").json()["id"]
+    unpicked = client.post(f"/api/chats/{chat}/runs", json={"prompt": "Hi."})
+    luna = {"provider": "OpenAI", "name": "gpt-6-luna"}
+    client.patch(f"/api/chats/{chat}", json={"model": luna})
+    keyless = client.post(f"/api/chats/{chat}/runs", json={"prompt": "Hi."})
+    assert (unpicked.status_code, keyless.status_code) == (400, 400)
+    assert (
+        unpicked.json()["detail"]
+        == "Pick a model for this chat, under the message box."
+    )
+    assert keyless.json()["detail"] == "OpenAI has no key: add one in settings."
+    assert client.get(f"/api/chats/{chat}").json()["turns"] == []
+
+
+def test_a_request_from_another_sites_page_is_refused(client):
+    refused = client.post("/api/chats", headers={"Origin": "https://evil.example"})
+    own = client.post("/api/chats", headers={"Origin": LOCAL})
+    assert (refused.status_code, own.status_code) == (403, 201)
+    assert len(client.get("/api/chats").json()) == 1

@@ -13,13 +13,17 @@ from deep_reasoner.v2 import DeepReasoner
 from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
 
 from deep_reasoning.library import (
+    UPSERT_SETTING,
     LibraryError,
     add_decomposition,
     default_namespace,
+    dump,
     engine_config,
     import_config,
     open_library,
+    panel,
     stored_config,
+    writing,
 )
 
 FAKE_KEY = "sk-test-not-a-real-key"
@@ -45,6 +49,14 @@ namespaces:
               </repl>
 """
 ADDED = "name: added\nmessages: [{role: user, content: hi}]\n"
+# What the app puts in for a chat on OpenAI's gpt-6-luna.
+CHATS_MODEL = {
+    "model": "gpt-6-luna",
+    "client": {
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+    },
+}
 
 
 @pytest.fixture
@@ -56,8 +68,9 @@ def no_network(monkeypatch):
 
 
 def run_config(library, tmp_path, namespace=ROOT):
+    """The config of a run on gpt-6-luna, as the app makes it."""
     return V2Config.model_validate(
-        engine_config(library, namespace, tmp_path / "tools")
+        engine_config(library, namespace, tmp_path / "tools") | CHATS_MODEL
     )
 
 
@@ -66,23 +79,40 @@ def import_into(library, config):
         return import_config(connection, config)
 
 
-def dump(library):
+def dumped(library):
     with closing(open_library(library)) as connection:
         return list(connection.iterdump())
 
 
-def test_a_fresh_library_has_root_and_runs_on_gpt_6_luna_with_the_openai_key(
+def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
     library, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
-    monkeypatch.delenv("NOVITA_API_KEY", raising=False)
-    config = run_config(library, tmp_path)
-    assert list(config.namespaces) == [ROOT]
+    config = engine_config(library, ROOT, tmp_path / "tools")
+    assert list(config["namespaces"]) == [ROOT]
     assert default_namespace(library) == ROOT
-    assert config.model == "gpt-6-luna"
-    assert config.client.api_key_env == "OPENAI_API_KEY"
-    assert resolve_api_key(config.client) == FAKE_KEY
+    assert "model" not in config and "client" not in config
+    assert resolve_api_key(run_config(library, tmp_path).client) == FAKE_KEY
     assert FAKE_KEY.encode() not in library.read_bytes()
+
+
+def test_a_library_that_still_holds_a_model_and_client_opens_and_they_go_unread(
+    library, tmp_path
+):
+    old = {"model": "gpt-4o", "client": {"base_url": "https://example.com/v1"}}
+    with closing(open_library(library)) as connection, writing(connection):
+        connection.executemany(
+            UPSERT_SETTING, [(key, dump(value)) for key, value in old.items()]
+        )
+    with closing(open_library(library)) as connection:
+        shown = panel(connection)
+    config = engine_config(library, ROOT, tmp_path / "tools")
+    assert "model" not in config and "client" not in config
+    assert [row["label"] for row in shown["run_settings"]][:2] == [
+        "max_iter",
+        "max_depth",
+    ]
+    assert not {"model", "client"} & {row["label"] for row in shown["run_settings"]}
 
 
 def test_a_fresh_library_carries_a_generic_repl_prompt(library, tmp_path):
@@ -127,14 +157,18 @@ def test_import_brings_the_configs_namespaces_decompositions_and_prompt(
     assert default_namespace(imported) == "router"
 
 
-def test_import_keeps_the_librarys_model_and_key(imported, tmp_path):
-    config = run_config(imported, tmp_path)
-    assert config.model == "gpt-6-luna"
-    assert config.client.api_key_env == "OPENAI_API_KEY"
-    assert config.llm_kwargs == {}
+def test_import_brings_no_model_or_client(library, tmp_path):
+    written = tmp_path / "own_model.yaml"
+    written.write_text(
+        "model: qwen/qwen3-30b\nclient: {base_url: 'https://api.novita.ai/v3/openai'}\n"
+    )
+    import_into(library, written)
+    config = engine_config(library, ROOT, tmp_path / "tools")
+    assert "model" not in config and "client" not in config
+    assert run_config(library, tmp_path).llm_kwargs == {}
 
 
-def test_an_imported_llm_tool_runs_on_the_librarys_model(library, tmp_path):
+def test_an_imported_llm_tool_runs_on_the_chats_model(library, tmp_path):
     written = tmp_path / "tiers.yaml"
     written.write_text(
         "models: {coder: {model: qwen/qwen3-coder-30b-a3b-instruct}}\n"
@@ -147,7 +181,7 @@ def test_an_imported_llm_tool_runs_on_the_librarys_model(library, tmp_path):
         "factory": "llm",
         "system_prompt": "Review it.",
     }
-    assert config.model == "gpt-6-luna"
+    assert "models" not in engine_config(library, ROOT, tmp_path / "tools")
 
 
 def test_an_import_reads_back_as_the_engine_loads_the_config(library, tmp_path):
@@ -205,10 +239,10 @@ def test_a_failed_import_leaves_the_library_unchanged(imported, tmp_path):
     broken.write_text(
         "max_iter: 1\nnamespaces:\n  router: {tools: [ghost]}\n  extra: {}\n"
     )
-    before = dump(imported)
+    before = dumped(imported)
     with pytest.raises(ValueError, match="grants unknown tool 'ghost'"):
         import_into(imported, broken)
-    assert dump(imported) == before
+    assert dumped(imported) == before
 
 
 @pytest.mark.parametrize(

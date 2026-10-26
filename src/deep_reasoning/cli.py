@@ -21,7 +21,7 @@ from deep_reasoning.library import LibraryError, import_config, open_library
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 MAX_PORT = 65535
-# The app's home: its chats and runs, and its Library by default.
+# The app's home: its chats and runs, its settings and keys, and its Library by default.
 HOME_DIR = ".deep-reasoning"
 LIBRARY_FILE = "library.sqlite"
 
@@ -90,6 +90,10 @@ def main(argv=None):
     # Importing deep_reasoner quiets structlog to warnings; this command's lines are info.
     structlog.configure(
         wrapper_class=structlog.make_filtering_bound_logger(logging.INFO)
+    )
+    # Tracebacks without each frame's variables: a frame may hold a key.
+    structlog.dev.ConsoleRenderer.get_active().exception_formatter = (
+        structlog.dev.plain_traceback
     )
     parser = argparse.ArgumentParser(
         description="Start Deep Reasoning and open it in a browser tab."

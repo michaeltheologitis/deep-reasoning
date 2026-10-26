@@ -13,6 +13,9 @@ const CONFLICT = 409;
 const NEW_TITLE = "New chat";
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
 const RECONNECTING = "Lost the connection to the run; reconnecting…";
+const PANEL_CLOSE = "panel-close";
+const PANEL_OPEN = "panel-open";
+const MENU_STEPS = { ArrowDown: 1, ArrowUp: -1 };
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
 const SPIN = ["·", "✢", "✳︎", "✶", "✻", "✽", "✻", "✶", "✳︎", "✢"];
 const STATUS = {
@@ -37,6 +40,23 @@ const shown = new WeakMap();
 const views = new WeakMap();
 const keys = new WeakMap();
 const counter = new Intl.NumberFormat();
+// The default folder, and each chat's folder, live in the page only until folders are wired: a reload resets them.
+const settings = { defaultFolder: null };
+const library = { namespaces: null, defaultNamespace: null };
+// The folder browser lists these this round, until the server lists folders; MISSING_FOLDER shows what a vanished folder looks like.
+const MOCK_FOLDERS = {
+  "~": ["code", "data", "Documents"],
+  "~/code": ["deep-reasoning", "thesis"],
+  "~/code/thesis": ["chapters", "figures", "results"],
+  "~/data": ["course-catalog", "survey-2026"],
+  "~/Documents": ["papers", "reviews"],
+};
+const MISSING_FOLDER = "/no/such/folder";
+const HOME_FOLDER = "~";
+const SCRATCH_FOLDERS = "~/.deep-reasoning/work";
+let popover = null;
+// Each provider's models, as the server lists them with its key: read once per page load, and again after settings change.
+let modelLists = null;
 let nextId = 1;
 let frame = 0;
 let drawing = 0;
@@ -298,17 +318,17 @@ function renderAnswer(text) {
   return el;
 }
 
-function summary(turn) {
+function summary(turn, switched) {
   const [word, tone] = OUTCOME[turn.outcome] ?? [];
   const seconds = formatSeconds(turn.seconds);
   const agents = countAgents(turn);
   const lead = word ? [element("span", { class: `word ${tone}` }, word), ` after ${seconds}`] : `Reasoned for ${seconds}`;
-  return join([lead, agents > 0 && plural(agents, "sub-agent"), formatCost(turn.cost)].filter(Boolean), " · ");
+  return join([lead, agents > 0 && plural(agents, "sub-agent"), formatCost(turn.cost), turn.model, switched].filter(Boolean), " · ");
 }
 
-function liveSummary(turn, followed) {
+function liveSummary(turn, followed, switched) {
   const running = countAgents(turn, (agent) => agent.status === "running");
-  const facts = [clock(turn.started), running > 0 && `${plural(running, "sub-agent")} running`, followed && "esc to interrupt"];
+  const facts = [clock(turn.started), running > 0 && `${plural(running, "sub-agent")} running`, turn.model, switched, followed && "esc to interrupt"];
   return [element("span", { class: "working" }, "Reasoning… "), "(", join(facts.filter(Boolean), " · "), ")"];
 }
 
@@ -318,12 +338,14 @@ function trailText({ tasks, step }) {
   return parts.join(" › ");
 }
 
-function renderTurn(turn) {
+// A turn names its namespace when it differs from the turn before's, so a chat that switched reads clearly.
+function renderTurn(turn, previous) {
   const live = state.live?.turn === turn;
   // no turn.end yet: still going, though this page may not follow it (a run started in another tab)
   const going = turn.outcome == null;
   const open = opened.has(turn);
   const latest = live && state.live.fold.latest;
+  const switched = previous && turn.namespace !== previous.namespace && turn.namespace;
   const el = element(
     "section",
     { class: "turn" },
@@ -331,14 +353,14 @@ function renderTurn(turn) {
     toggler(turn, { class: "summary" }, [
       caret(open),
       going ? spinner() : element("span", {}, "✻"),
-      element("span", { class: "text" }, going ? liveSummary(turn, live) : summary(turn)),
+      element("span", { class: "text" }, going ? liveSummary(turn, live, switched) : summary(turn, switched)),
     ]),
     live && !open && latest && out(trailText(latest), { full: true }),
     open && element("div", { class: "steps" }, turn.steps.map((step) => renderStep(step, true))),
     turn.answer != null && renderAnswer(turn.answer),
     turn.outcome === "failed" && turn.detail && out(turn.detail, { tone: "err", full: true }),
   );
-  return remember(turn, el, () => renderTurn(turn));
+  return remember(turn, el, () => renderTurn(turn, previous));
 }
 
 function renderWelcome() {
@@ -412,13 +434,14 @@ function keepScroll(scroll, draw) {
 
 function logOf(chat) {
   if (!chat.turns) return [];
-  return chat.turns.length ? chat.turns.map(renderTurn) : [renderWelcome()];
+  return chat.turns.length ? chat.turns.map((turn, i) => renderTurn(turn, chat.turns[i - 1])) : [renderWelcome()];
 }
 
 function renderLog(scroll) {
   const chat = state.current;
   const focused = document.activeElement?.dataset?.key;
   byId("title").textContent = chat.title;
+  renderFolder(chat);
   keepScroll(scroll, () => byId("log").replaceChildren(...logOf(chat)));
   refocus(focused);
 }
@@ -440,6 +463,320 @@ function renderComposer() {
   if (hint.textContent !== text) hint.textContent = text;
   const total = (state.current?.turns ?? []).reduce((sum, turn) => sum + (turn.cost ?? 0), 0);
   byId("total").textContent = total ? `${formatCost(total)} this chat` : "";
+  renderChoices(state.current);
+}
+
+// Updated in place, as the composer redraws with each frame of a live run. The server says what the chat's next message runs on.
+function renderChoices(chat) {
+  const ready = library.namespaces && chat?.turns;
+  byId("choices").hidden = !ready;
+  if (!ready) return;
+  byId("namespace-name").textContent = chat.namespace;
+  byId("model-name").textContent = chat.model?.name ?? "pick a model";
+}
+
+// A pick applies from the chat's next message; the server keeps it, so it survives a reload.
+async function choose(chat, change) {
+  let chosen;
+  try {
+    chosen = await request("PATCH", `api/chats/${chat.id}`, change);
+  } catch (error) {
+    report(`Not changed: ${error.message}`);
+    return;
+  }
+  Object.assign(chat, { namespace: chosen.namespace, model: chosen.model });
+  report(null);
+}
+
+// A chat with no folder of its own works in a scratch folder, which goes when the chat does.
+function renderFolder(chat) {
+  byId("folder-path").textContent = chat.folder ?? `${SCRATCH_FOLDERS}/${chat.id}/`;
+  byId("folder-note").textContent = chat.folder ? "" : "· deleted with the chat";
+}
+
+function pickFolder() {
+  const chat = state.current;
+  folderPicker(byId("folder"), byId("topbar"), {
+    label: "This chat's working folder",
+    current: chat.folder,
+    empty: "its own scratch folder, deleted with the chat",
+    note: "Its Python runs there and reads and writes files there, from the next message. A folder you choose is never deleted.",
+    pick: (folder) => {
+      chat.folder = folder;
+      renderFolder(chat);
+    },
+  });
+}
+
+function pickNamespace() {
+  const chat = state.current;
+  const star = element("span", { class: "lib-star" }, "★ new chats start here");
+  const options = library.namespaces.map((name) => ({ value: name, label: [name, name === library.defaultNamespace && star] }));
+  showMenu(byId("namespace"), byId("above"), {
+    label: "Namespaces",
+    groups: () => [{ options }],
+    isCurrent: (name) => name === chat.namespace,
+    pick: (name) => choose(chat, { namespace: name }),
+  });
+}
+
+function loadModels() {
+  modelLists ??= request("GET", "api/models").catch((error) => {
+    modelLists = null;
+    throw error;
+  });
+  return modelLists;
+}
+
+// The menu opens at once, saying the lists are loading while a provider is slow to answer.
+async function pickModel() {
+  const button = byId("model");
+  const host = byId("above");
+  if (isOpenFrom(button)) return closePopover(true);
+  const chat = state.current;
+  const loading = notePopover(button, host, "Loading the model lists…");
+  let lists;
+  try {
+    lists = await loadModels();
+  } catch (error) {
+    loading.textContent = `No model lists: ${error.message}`;
+    return;
+  }
+  if (!popover?.el.contains(loading)) return;
+  closePopover(false);
+  if (!lists.length) return noProviderMenu(button, host);
+  showMenu(button, host, {
+    label: "Models",
+    filter: "filter, or type a model name",
+    groups: (query) => modelGroups(lists, query),
+    isCurrent: (model) => model.provider === chat.model?.provider && model.name === chat.model?.name,
+    pick: (model) => choose(chat, { model }),
+  });
+}
+
+// A popover with a line of text, and the button for what to do about it, if any.
+function notePopover(button, host, text, action) {
+  const note = element("p", { class: "menu-note" }, text);
+  const el = element("div", { class: "menu-pop", role: "dialog", "aria-label": "Models", tabindex: "-1" }, note, action);
+  openPopover(button, host, el, action ?? el);
+  return note;
+}
+
+// With no key anywhere there is no model to list, so the menu points to settings.
+function noProviderMenu(button, host) {
+  const add = element("button", { type: "button", class: "lib-action lib-primary", onclick: openSettings }, "Add a key in settings");
+  notePopover(button, host, "No provider has a key yet.", add);
+}
+
+function openSettings() {
+  closePopover(false);
+  byId("settings").dispatchEvent(new Event(PANEL_OPEN));
+}
+
+// Each provider that can answer, with its listed models, a typed name, and why its list is missing if it is.
+function modelGroups(lists, query) {
+  const typed = query.trim();
+  return lists.map(({ provider, models, problem }) => {
+    const matches = models.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
+    const options = matches.map((name) => ({ value: { provider, name }, label: name }));
+    if (typed && !models.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });
+    if (!options.length) options.push({ value: null, label: "use model name…", hint: `type a model name for ${provider}` });
+    return { name: provider, note: problem, options };
+  });
+}
+
+// After a change in settings the lists are read again, and each chat's model too: one that never picked follows what new chats start on.
+async function settingsChanged() {
+  modelLists = null;
+  let listed;
+  try {
+    listed = await request("GET", "api/chats");
+  } catch {
+    return;
+  }
+  for (const { id, model } of listed) {
+    const chat = state.chats.find((each) => each.id === id);
+    if (chat) chat.model = model;
+  }
+  renderComposer();
+}
+
+// A popover opened by its button into host. Esc closes it and stops there, so it never also stops a run or closes a panel;
+// focus leaving it (a click elsewhere, Tab) closes it too. Its buttons keep focus in it on mousedown, so a click toggles it.
+function openPopover(button, host, el, focus) {
+  closePopover(false);
+  popover = { button, el };
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    closePopover(true);
+  });
+  // checked a frame later, as redrawing a popover's insides drops focus for a moment
+  el.addEventListener("focusout", () => requestAnimationFrame(() => closeIfLeft(el)));
+  host.append(el);
+  button.setAttribute("aria-expanded", "true");
+  focus.focus();
+}
+
+function closeIfLeft(el) {
+  if (popover?.el === el && !el.contains(document.activeElement)) closePopover(false);
+}
+
+function closePopover(refocus) {
+  const open = popover;
+  if (!open) return;
+  popover = null;
+  open.el.remove();
+  open.button.setAttribute("aria-expanded", "false");
+  if (refocus) open.button.focus();
+}
+
+const isOpenFrom = (button) => popover?.button === button;
+
+// A menu of grouped options, with a filter field when it has one: arrows move, Enter picks.
+function showMenu(button, host, spec) {
+  if (isOpenFrom(button)) return closePopover(true);
+  const list = element("div", { class: "menu-list", id: "menu-list", role: "listbox", "aria-label": spec.label, tabindex: spec.filter ? null : "-1", onmousedown: (e) => e.preventDefault() });
+  const field = spec.filter && element("input", { class: "menu-filter", role: "combobox", "aria-label": `Filter the ${spec.label.toLowerCase()}`, "aria-controls": list.id, "aria-expanded": "true", "aria-autocomplete": "list", placeholder: spec.filter, autocomplete: "off", spellcheck: "false" });
+  const el = element("div", { class: "menu-pop" }, field, list);
+  const open = { spec, list, field, options: [], active: 0 };
+  field?.addEventListener("input", () => fillMenu(open));
+  el.addEventListener("keydown", (e) => menuKey(open, e));
+  fillMenu(open);
+  openPopover(button, host, el, field || list);
+  markActive(open);
+}
+
+function fillMenu(open) {
+  const groups = open.spec.groups(open.field?.value ?? "");
+  open.options = groups.flatMap((group) => group.options);
+  const current = open.options.findIndex((option) => isCurrentOption(open, option));
+  open.active = open.field?.value ? 0 : Math.max(current, 0);
+  open.list.replaceChildren(...groups.map((group, i) => menuGroup(open, group, i)));
+  open.list.scrollTop = 0;
+  markActive(open);
+}
+
+const isCurrentOption = (open, option) => option.value != null && open.spec.isCurrent(option.value);
+
+function menuGroup(open, group, number) {
+  const head = group.name && element("div", { class: "menu-head", id: `menu-group-${number}`, role: "presentation" }, group.name);
+  const note = group.note && element("div", { class: "menu-note", id: `menu-note-${number}`, role: "presentation" }, group.note);
+  return element(
+    "div",
+    { role: "group", "aria-labelledby": head?.id, "aria-describedby": note?.id },
+    head,
+    note,
+    group.options.map((option) => {
+      const current = isCurrentOption(open, option);
+      const id = `menu-option-${open.options.indexOf(option)}`;
+      const mark = element("span", { class: "mark" }, current ? "✓" : "");
+      return element("div", { class: "menu-option", id, role: "option", "aria-selected": String(current), onclick: () => chooseOption(open, option) }, mark, option.label);
+    }),
+  );
+}
+
+function markActive(open) {
+  const id = open.options.length ? `menu-option-${open.active}` : null;
+  const owner = open.field || open.list;
+  for (const el of open.list.querySelectorAll(".active")) el.classList.remove("active");
+  if (!id) return owner.removeAttribute("aria-activedescendant");
+  owner.setAttribute("aria-activedescendant", id);
+  const el = open.list.querySelector(`[id="${id}"]`);
+  el.classList.add("active");
+  el.scrollIntoView({ block: "nearest" });
+}
+
+function menuKey(open, e) {
+  const step = MENU_STEPS[e.key];
+  if (step && open.options.length) {
+    e.preventDefault();
+    open.active = (open.active + step + open.options.length) % open.options.length;
+    markActive(open);
+  } else if (e.key === "Enter" || (e.key === " " && !open.field)) {
+    // also keeps Enter in the filter from sending the composer's message
+    e.preventDefault();
+    if (open.options.length) chooseOption(open, open.options[open.active]);
+  }
+}
+
+// "use model name…" picks nothing: the filter field takes the name.
+function chooseOption(open, option) {
+  if (option.value == null) {
+    open.field.placeholder = option.hint;
+    open.field.focus();
+    return;
+  }
+  closePopover(true);
+  open.spec.pick(option.value);
+}
+
+// A folder typed or pasted, or found in the browser under the field, which follows what the field holds; empty means the scratch folder.
+function folderPicker(button, host, spec) {
+  if (isOpenFrom(button)) return closePopover(true);
+  const field = element("input", { id: "folder-field", class: "menu-filter", value: spec.current ?? "", placeholder: `empty: ${spec.empty}`, autocomplete: "off", spellcheck: "false", "aria-describedby": "folder-problem folder-note" });
+  const problem = element("div", { id: "folder-problem", class: "folder-problem", "aria-live": "polite" });
+  const browser = element("div", { class: "folder-browser", role: "group", "aria-label": "Folders", onmousedown: (e) => e.preventDefault() });
+  const use = element("button", { type: "submit", class: "lib-action lib-primary" });
+  const picker = { spec, field, problem, browser, use };
+  const el = element(
+    "form",
+    { class: "menu-pop folder-pop", method: "dialog", role: "dialog", "aria-label": spec.label, onsubmit: (e) => useFolder(e, picker) },
+    element("label", { class: "menu-head", for: field.id }, spec.label),
+    field,
+    problem,
+    element("p", { class: "menu-note", id: "folder-note" }, spec.note),
+    browser,
+    element("div", { class: "lib-actions" }, use),
+  );
+  field.addEventListener("input", () => {
+    problem.textContent = "";
+    fillBrowser(picker);
+  });
+  fillBrowser(picker);
+  openPopover(button, host, el, field);
+}
+
+const cleanFolder = (path) => path.trim().replace(/(.)\/+$/, "$1");
+const parentFolder = (path) => path.slice(0, path.lastIndexOf("/")) || "/";
+// "~" and a bare name have no parent the page can name
+const hasParent = (path) => path.includes("/") && path !== "/";
+
+function fillBrowser(picker) {
+  const here = cleanFolder(picker.field.value) || HOME_FOLDER;
+  const folders = MOCK_FOLDERS[here];
+  const row = (label, path) => element("button", { type: "button", class: "row", onclick: () => goToFolder(picker, path) }, label);
+  const rows = folders ? folders.map((name) => row(`${name}/`, `${here}/${name}`)) : [element("p", { class: "menu-note" }, `would list the folders in ${here}`)];
+  picker.browser.replaceChildren(element("div", { class: "folder-here" }, here), ...(hasParent(here) ? [row("..", parentFolder(here))] : []), ...rows);
+  picker.use.textContent = picker.field.value.trim() ? "Use this folder" : "Use a scratch folder";
+}
+
+function goToFolder(picker, path) {
+  picker.field.value = path;
+  picker.problem.textContent = "";
+  const fromKeyboard = picker.browser.contains(document.activeElement);
+  fillBrowser(picker);
+  if (fromKeyboard) picker.browser.querySelector(".row")?.focus();
+}
+
+function useFolder(e, picker) {
+  e.preventDefault();
+  const path = cleanFolder(picker.field.value);
+  if (path === MISSING_FOLDER) {
+    picker.problem.textContent = "That folder no longer exists — pick another.";
+    picker.field.focus();
+    return;
+  }
+  closePopover(true);
+  picker.spec.pick(path || null);
+}
+
+// One side panel at a time: opening one asks the others to close.
+function closeOtherPanels(panel) {
+  for (const other of document.querySelectorAll(".library:not([hidden])")) {
+    if (other !== panel) other.dispatchEvent(new Event(PANEL_CLOSE));
+  }
 }
 
 function render(scroll = "keep") {
@@ -474,9 +811,9 @@ async function request(method, url, body) {
 
 // A run still going in a chat is followed from where its turns end, unless the page follows another or the chat is gone.
 async function readTurns(chat) {
-  const { title, live, turns } = await request("GET", `api/chats/${chat.id}`);
+  const { title, live, turns, namespace, model } = await request("GET", `api/chats/${chat.id}`);
   const folds = turns.map((turn) => foldEvents(turn.events));
-  Object.assign(chat, { title, live, turns: folds.map((fold) => fold.turn) });
+  Object.assign(chat, { title, live, namespace, model, turns: folds.map((fold) => fold.turn) });
   if (live && !state.live && state.chats.includes(chat)) follow(chat, live, folds.at(-1));
 }
 
@@ -509,7 +846,7 @@ async function newChat() {
     report(`No new chat: ${error.message}`);
     return;
   }
-  chat.turns = [];
+  Object.assign(chat, { turns: [], folder: settings.defaultFolder });
   state.chats.unshift(chat);
   select(chat);
 }
@@ -683,6 +1020,11 @@ function wire() {
   byId("theme").addEventListener("click", toggleTheme);
   byId("new-chat").addEventListener("click", newChat);
   byId("stop").addEventListener("click", stop);
+  byId("namespace").addEventListener("click", pickNamespace);
+  byId("model").addEventListener("click", pickModel);
+  byId("folder").addEventListener("click", pickFolder);
+  // a click on a popover's button leaves focus in the popover, so the click toggles it
+  for (const id of ["namespace", "model", "folder"]) byId(id).addEventListener("mousedown", (e) => e.preventDefault());
   byId("menu").addEventListener("click", () => byId("app").classList.toggle("list-open"));
   byId("app").addEventListener("click", (e) => {
     if (!e.target.closest(".sidebar, .menu")) byId("app").classList.remove("list-open");
@@ -714,6 +1056,20 @@ function wire() {
   }, SPIN_MS);
 }
 
+// The namespaces a chat can pick, and the default one new chats start in.
+async function loadLibrary() {
+  let found;
+  try {
+    found = await request("GET", "api/library");
+  } catch {
+    // the pickers stay hidden; the Library panel says what went wrong
+    return;
+  }
+  library.namespaces = found.namespaces.map(({ name }) => name);
+  library.defaultNamespace = found.default_namespace;
+  renderComposer();
+}
+
 // A run going in a chat is what the page was showing before a reload, so that chat opens first.
 async function start() {
   try {
@@ -727,7 +1083,10 @@ async function start() {
   else newChat();
 }
 
-export { caret, element, request };
+export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settings, settingsChanged };
 
 wire();
 start();
+loadLibrary();
+// read ahead, so the model menu opens on its lists; a failure shows when the menu opens
+loadModels().catch(() => {});

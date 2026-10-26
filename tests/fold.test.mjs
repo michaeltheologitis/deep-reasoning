@@ -29,6 +29,13 @@ test("a saved turn has the prompt, the answer and the run's own totals", () => {
   assert.equal(turn.started, events[0].t);
 });
 
+test("a turn keeps the model and namespace its run started on", () => {
+  const [start] = recorded("fanout");
+  const { turn } = foldEvents([start]);
+  assert.deepEqual([turn.model, turn.namespace], [start.model, start.namespace]);
+  assert.deepEqual([turn.model, turn.namespace], ["gpt-6-luna", "root"]);
+});
+
 test("a fan-out puts every sub-agent as a row under the cell that started it", () => {
   const events = recorded("fanout");
   const { turn } = foldEvents(events);

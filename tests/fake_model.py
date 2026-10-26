@@ -1,11 +1,11 @@
 """An OpenAI-compatible chat endpoint on 127.0.0.1 for scripted runs: real HTTP, so the
 worker runs unmodified. A plan scripts it: for an agent whose task contains a key, the
-reply at each turn of its drive."""
+reply at each turn of its drive. It lists its models too, as GET /v1/models."""
 
 import json
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +17,11 @@ log = structlog.get_logger()
 
 Messages = list[dict[str, Any]]
 Plan = Mapping[str, list[str]]
+MODELS = ("fake-large", "fake-small")
+BEARER = "Bearer "
+# What the tests call the fake, and the key they give it, as a custom server in settings.
+SERVER_NAME = "fake"
+SERVER_KEY = "sk-fake-server-key"
 
 
 @dataclass(frozen=True)
@@ -24,6 +29,14 @@ class FakeCall:
     started: float
     model: str
     messages: Messages
+    key: str | None
+
+
+def bearer_key(authorization: str | None) -> str | None:
+    """The key an Authorization header carries, if it is a bearer one."""
+    if authorization is None or not authorization.startswith(BEARER):
+        return None
+    return authorization.removeprefix(BEARER)
 
 
 def word_count_usage(messages: Messages, reply: str) -> dict[str, Any]:
@@ -74,10 +87,12 @@ class _Server(ThreadingHTTPServer):
 
 
 class FakeOpenAI:
-    """POST /v1/chat/completions on 127.0.0.1, as a context manager.
+    """POST /v1/chat/completions and GET /v1/models on 127.0.0.1, as a context manager.
 
     `responder(messages)` gives each reply; one that raises answers HTTP 500 with its
-    text. `.calls` records every request; `.base_url` is the endpoint.
+    text. `.calls` records every request; `.base_url` is the endpoint. `models` are what
+    it lists, or None to answer that listing with 404; `.listed` records the key each
+    listing was asked with.
     """
 
     def __init__(
@@ -85,20 +100,25 @@ class FakeOpenAI:
         responder: Callable[[Messages], str],
         *,
         usage: Callable[[Messages, str], dict[str, Any]] = word_count_usage,
+        models: Sequence[str] | None = MODELS,
     ) -> None:
         self.calls: list[FakeCall] = []
+        self.listed: list[str | None] = []
         self._responder = responder
         self._usage = usage
+        self._models = models
         self._server: ThreadingHTTPServer | None = None
 
     @property
     def base_url(self) -> str:
         return f"http://127.0.0.1:{self._server.server_address[1]}/v1"
 
-    def answer(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    def answer(
+        self, request: dict[str, Any], key: str | None
+    ) -> tuple[int, dict[str, Any]]:
         messages = request.get("messages", [])
         model = request.get("model", "")
-        self.calls.append(FakeCall(time.time(), model, messages))
+        self.calls.append(FakeCall(time.time(), model, messages, key))
         try:
             reply = self._responder(messages)
         except Exception as error:
@@ -119,13 +139,32 @@ class FakeOpenAI:
             "usage": self._usage(messages, reply),
         }
 
+    def listing(self, key: str | None) -> tuple[int, dict[str, Any]]:
+        self.listed.append(key)
+        if self._models is None:
+            return HTTPStatus.NOT_FOUND, {"error": {"message": "no model list here"}}
+        data = [{"id": name, "object": "model"} for name in self._models]
+        return HTTPStatus.OK, {"object": "list", "data": data}
+
     def __enter__(self) -> Self:
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:
                 length = int(self.headers.get("Content-Length", 0))
-                status, body = fake.answer(json.loads(self.rfile.read(length)))
+                request = json.loads(self.rfile.read(length))
+                self.reply(*fake.answer(request, self.key()))
+
+            def do_GET(self) -> None:
+                if not self.path.endswith("/models"):
+                    self.reply(HTTPStatus.NOT_FOUND, {})
+                    return
+                self.reply(*fake.listing(self.key()))
+
+            def key(self) -> str | None:
+                return bearer_key(self.headers.get("Authorization"))
+
+            def reply(self, status: int, body: dict[str, Any]) -> None:
                 data = json.dumps(body).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")

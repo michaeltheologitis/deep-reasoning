@@ -15,30 +15,45 @@
     <div class="label">Chats</div>
     <ul class="chats" id="chats"></ul>
     <button type="button" class="new-chat" id="new-chat">+ New chat</button>
+    <button type="button" class="settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings">settings</button>
   </aside>
   <main class="main">
-    <header class="topbar">
+    <header class="topbar" id="topbar">
       <button type="button" class="menu" id="menu" aria-label="Show chats">☰</button>
       <h1 class="title" id="title"></h1>
+      <button type="button" class="folder" id="folder" aria-haspopup="dialog" aria-expanded="false" title="This chat's working folder, from its next message (not wired yet)"><span class="folder-path" id="folder-path"></span><span class="folder-note" id="folder-note"></span></button>
       <button type="button" class="library-toggle" id="library-toggle" aria-expanded="false" aria-controls="library">decompositions</button>
       <button type="button" class="theme" id="theme"></button>
     </header>
     <div class="scroll" id="scroll"><div class="log" id="log"></div></div>
     <form class="composer" id="composer">
+      <div class="above" id="above"></div>
       <div class="box">
         <span class="prompt" aria-hidden="true">&gt;</span>
         <textarea id="input" rows="1" placeholder="Ask anything" aria-label="Message"></textarea>
         <button type="button" class="stop" id="stop" hidden>esc to interrupt</button>
       </div>
-      <div class="hints"><span id="hint" aria-live="polite"></span><span id="total"></span></div>
+      <div class="hints">
+        <span id="hint" aria-live="polite"></span>
+        <span class="state">
+          <span class="choices" id="choices" hidden>
+            <button type="button" class="choice" id="namespace" aria-haspopup="listbox" aria-expanded="false" title="This chat's namespace, from its next message"><span id="namespace-name"></span><span aria-hidden="true"> ▾</span></button>
+            <span aria-hidden="true">·</span>
+            <button type="button" class="choice" id="model" aria-haspopup="listbox" aria-expanded="false" title="This chat's model, from its next message"><span id="model-name"></span><span aria-hidden="true"> ▾</span></button>
+          </span>
+          <span id="total"></span>
+        </span>
+      </div>
     </form>
   </main>
   <aside class="library" id="library" aria-label="Library" hidden></aside>
+  <aside class="library" id="settings" aria-label="Settings" hidden></aside>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 <script type="module" src="app.js"></script>
 <script type="module" src="library.js"></script>
+<script type="module" src="settings.js"></script>
 </body>
 </html>

@@ -1,5 +1,7 @@
 import re
+import sqlite3
 import time
+from contextlib import closing
 
 import pytest
 
@@ -7,6 +9,7 @@ from deep_reasoning import chats as chats_module
 from deep_reasoning.app import CHAT_ID
 from deep_reasoning.chats import (
     NEW_TITLE,
+    choose,
     create_chat,
     delete_chat,
     find_chat,
@@ -86,3 +89,43 @@ def test_a_deleted_chat_is_gone_and_the_others_stay(chats):
     delete_chat(chats, gone["id"])
     assert find_chat(chats, gone["id"]) is None
     assert list_chats(chats) == [kept]
+
+
+def test_a_new_chat_has_picked_nothing_yet(chats):
+    chat = create_chat(chats)
+    assert (chat["namespace"], chat["provider"], chat["model"]) == (None, None, None)
+    assert find_chat(chats, chat["id"]) == chat
+
+
+def test_a_choice_changes_only_what_it_names_and_only_that_chat(chats):
+    chat, other = create_chat(chats), create_chat(chats)
+    choose(chats, chat["id"], "router", "OpenAI", "gpt-6-luna")
+    choose(chats, chat["id"], namespace="course_advisor")
+    choose(chats, chat["id"], provider="vllm", model="qwen3")
+    found = find_chat(chats, chat["id"])
+    assert (found["namespace"], found["provider"], found["model"]) == (
+        "course_advisor",
+        "vllm",
+        "qwen3",
+    )
+    assert find_chat(chats, other["id"]) == other
+
+
+def test_a_chats_file_from_before_choices_opens_with_its_chats_kept(chats):
+    chats.parent.mkdir(parents=True)
+    with closing(sqlite3.connect(chats)) as connection, connection:
+        connection.execute(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL)"
+        )
+        connection.execute("INSERT INTO chats VALUES ('old-chat', 'Old', 1.0)")
+    choose(chats, "old-chat", namespace="router")
+    assert list_chats(chats) == [
+        {
+            "id": "old-chat",
+            "title": "Old",
+            "created": 1.0,
+            "namespace": "router",
+            "provider": None,
+            "model": None,
+        }
+    ]
