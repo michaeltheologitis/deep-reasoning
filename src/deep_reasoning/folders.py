@@ -112,14 +112,18 @@ def working_folder(home: Path, chat: dict[str, Any]) -> Path:
     return scratch
 
 
-def remove_scratch(home: Path, chat: str, chosen: Iterable[str]) -> None:
-    """Delete the chat's scratch folder and nothing else: never a folder in *chosen*, the
-    folders chats and the settings chose, nor one holding such a folder; never through a
-    symlink."""
-    scratch = scratch_folder(home, chat)
+def holds_chosen(folder: Path, chosen: Iterable[str]) -> bool:
+    """*folder* is, or holds, a folder in *chosen*, symlinks resolved."""
     # realpath, as Path.resolve raises on a symlink loop
-    real = Path(os.path.realpath(scratch))
-    if any(Path(os.path.realpath(each)).is_relative_to(real) for each in chosen):
+    real = Path(os.path.realpath(folder))
+    return any(Path(os.path.realpath(each)).is_relative_to(real) for each in chosen)
+
+
+def remove_scratch(home: Path, chat: str, chosen: Iterable[str]) -> None:
+    """Delete the chat's scratch folder and nothing else: never one that is or holds a
+    folder in *chosen*, the folders chosen or in use; never through a symlink."""
+    scratch = scratch_folder(home, chat)
+    if holds_chosen(scratch, chosen):
         log.warning("folders.scratch_kept_as_chosen", chat=chat, folder=str(scratch))
         return
     try:

@@ -973,3 +973,58 @@ def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder
     deleted = client.delete(f"/api/chats/{chat}")
     assert deleted.status_code == 204
     assert (inside / "keep.txt").read_text() == "mine"
+
+
+def test_a_delete_with_settings_it_cannot_read_is_refused_before_anything_goes(
+    client, home
+):
+    chat = client.post("/api/chats").json()["id"]
+    scratch = home / "work" / chat
+    scratch.mkdir(parents=True)
+    (scratch / "keep.txt").write_text("mine")
+    (home / "settings.json").write_text("[1]")
+    refused = client.delete(f"/api/chats/{chat}")
+    (home / "settings.json").unlink()
+    assert refused.status_code == 400
+    assert [each["id"] for each in client.get("/api/chats").json()] == [chat]
+    assert (scratch / "keep.txt").read_text() == "mine"
+
+
+@pytest.mark.anyio
+async def test_a_folder_chosen_inside_a_deleted_chats_run_folder_is_kept(
+    library_on, connect, home
+):
+    with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
+        async with connect(library_on(fake)) as api:
+            gone, kept = await new_chat(api), await new_chat(api)
+            run = await send(api, gone, "Write a note.")
+            await run_events(api, run)
+            inside = home / "runs" / run / "mine"
+            inside.mkdir()
+            (inside / "keep.txt").write_text("mine")
+            await api.patch(f"/api/chats/{kept}", json={"folder": str(inside)})
+            deleted = await api.delete(f"/api/chats/{gone}")
+    assert deleted.status_code == 204
+    assert (inside / "keep.txt").read_text() == "mine"
+
+
+@pytest.mark.anyio
+async def test_a_folder_another_chats_run_works_in_is_kept_after_that_chat_moved_on(
+    library_on, connect, home
+):
+    held, release = held_on("Count to two.", PLAN)
+    with FakeOpenAI(held) as fake:
+        async with connect(library_on(fake)) as api:
+            gone, working = await new_chat(api), await new_chat(api)
+            scratch = home / "work" / gone
+            scratch.mkdir(parents=True)
+            (scratch / "keep.txt").write_text("mine")
+            await api.patch(f"/api/chats/{working}", json={"folder": str(scratch)})
+            run = await send(api, working, "Count to two.")
+            await api.patch(f"/api/chats/{working}", json={"folder": None})
+            deleted = await api.delete(f"/api/chats/{gone}")
+            release.set()
+            events = await run_events(api, run)
+    assert deleted.status_code == 204
+    assert events[0]["folder"] == str(scratch)
+    assert (scratch / "keep.txt").read_text() == "mine"

@@ -1,5 +1,6 @@
 """The web app: the Library's, the settings', the folders', the chats' and the runs' API, and the UI's static files at /."""
 
+import asyncio
 from contextlib import asynccontextmanager, closing
 from http import HTTPStatus
 from pathlib import Path
@@ -326,14 +327,18 @@ def create_app(library, home):
 
     @app.delete("/api/chats/{chat}", status_code=HTTPStatus.NO_CONTENT)
     async def remove_chat(chat: KnownChat):
+        # Every folder chosen or in use, read before anything goes, so settings that
+        # can't be read delete nothing.
+        chosen = [each["folder"] for each in list_chats(chats)]
+        chosen += [default_folder(home), *runs.folders_in_use(besides=chat["id"])]
+        keep = [each for each in chosen if each]
         # The chat goes first: a crash part way through leaves run folders that no chat
         # lists, never a chat missing some of its turns.
         delete_chat(chats, chat["id"])
-        await runs.remove(chat["id"])
-        # Once its workers have exited, as one works in it until then.
-        chosen = [each["folder"] for each in [chat, *list_chats(chats)]]
-        chosen.append(default_folder(home))
-        remove_scratch(home, chat["id"], [each for each in chosen if each])
+        await runs.remove(chat["id"], keep)
+        # Once its workers have exited, as one works in it until then; off the event
+        # loop, as an agent may have filled it.
+        await asyncio.to_thread(remove_scratch, home, chat["id"], keep)
 
     @app.post("/api/chats/{chat}/runs", status_code=HTTPStatus.CREATED)
     async def start_run(

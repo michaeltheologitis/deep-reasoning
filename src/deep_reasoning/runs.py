@@ -26,6 +26,8 @@ from typing import Any, Literal
 import jinja2
 import structlog
 
+from deep_reasoning.folders import holds_chosen
+
 log = structlog.get_logger()
 
 Outcome = Literal["answered", "exhausted", "failed", "stopped"]
@@ -310,9 +312,16 @@ class Runs:
         finally:
             live.watchers.discard(queue)
 
-    async def remove(self, chat: str) -> None:
+    def folders_in_use(self, besides: str) -> list[str]:
+        """The folders the runs of every chat but *besides* are working in."""
+        return [
+            str(live.folder) for live in self._live.values() if live.chat != besides
+        ]
+
+    async def remove(self, chat: str, keep: Sequence[str] = ()) -> None:
         """Delete the chat's runs, stopping the one going, once each of their workers has
-        exited: a worker writes into its run's folder until then, even after turn.end."""
+        exited: a worker writes into its run's folder until then, even after turn.end. A
+        run's folder that is or holds a folder in *keep* is kept."""
         workers = []
         for run, live in self._live.items():
             if live.chat == chat:
@@ -321,8 +330,12 @@ class Runs:
         if workers:
             await asyncio.wait(workers)
         for start in turn_starts(self.home, chat):
+            folder = self.home / RUNS / start["run"]
+            if holds_chosen(folder, keep):
+                log.warning("runs.folder_kept_as_chosen", run=start["run"])
+                continue
             try:
-                shutil.rmtree(self.home / RUNS / start["run"])
+                shutil.rmtree(folder)
             except OSError:
                 # The chat is gone already: a folder left behind is logged, not raised.
                 log.exception("runs.folder_not_removed", run=start["run"])
