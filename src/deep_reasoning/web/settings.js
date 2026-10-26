@@ -163,26 +163,30 @@ async function change(method, url, body, problem, focusName) {
     answer = await request(method, url, body);
   } catch (error) {
     problem.textContent = error.message;
-    return;
+    return false;
   }
   providers = answer;
   opened = null;
   render(rowKey(focusName));
   settingsChanged();
+  return true;
 }
 
-// The field is emptied as the key is sent, so a key stays in the page no longer than that.
-function takeKey(input) {
-  const typed = input.value.trim();
+// The field is emptied as the key is sent, so a key stays in the page no longer than that; a refused one comes back to be fixed.
+async function sendKey(input, send) {
+  const key = input.value.trim() || null;
   input.value = "";
-  return typed || null;
+  if (!(await send(key))) input.value = key ?? "";
 }
 
 function saveKey(e, vendor, input, problem) {
   e.preventDefault();
-  const key = takeKey(input);
-  problem.textContent = key ? "" : `Paste the ${vendor.name} key first.`;
-  if (key) change("PUT", providerUrl(vendor, "key"), { key }, problem, vendor.name);
+  if (!input.value.trim()) {
+    problem.textContent = `Paste the ${vendor.name} key first.`;
+    return;
+  }
+  problem.textContent = "";
+  sendKey(input, (key) => change("PUT", providerUrl(vendor, "key"), { key }, problem, vendor.name));
 }
 
 const forgetKey = (vendor, problem) => change("DELETE", providerUrl(vendor, "key"), undefined, problem, vendor.name);
@@ -191,10 +195,10 @@ const serverUrl = (server) => `api/servers/${encodeURIComponent(server.name)}`;
 
 function saveServer(e, server, { name, url, key, problem }) {
   e.preventDefault();
-  const fields = { base_url: url.value.trim(), key: takeKey(key) };
-  if (server) return change("PUT", serverUrl(server), fields, problem, server.name);
-  const typed = name.value.trim();
-  change("POST", "api/servers", { name: typed, ...fields }, problem, typed);
+  const base_url = url.value.trim();
+  if (server) return sendKey(key, (typed) => change("PUT", serverUrl(server), { base_url, key: typed }, problem, server.name));
+  const named = name.value.trim();
+  sendKey(key, (typed) => change("POST", "api/servers", { name: named, base_url, key: typed }, problem, named));
 }
 
 const removeServer = (server, problem) => change("DELETE", serverUrl(server), undefined, problem, null);
