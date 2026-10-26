@@ -91,6 +91,7 @@ ENTRY_NAMESPACE = "entry_namespace"
 # The run settings the panel always lists, with the engine's default when unset.
 SHOWN_SETTINGS = ("max_iter", "max_depth", ENTRY_NAMESPACE, "repl")
 LINE_WIDTH = 88
+NEL = "\x85"
 ROLES = "user, assistant or system"
 # make_tool builds `factory: llm` with v2's own builder, the rest from TOOL_BUILDERS.
 BUILDERS = {**TOOL_BUILDERS, "llm": build_llm_tool}
@@ -137,15 +138,16 @@ class LibraryError(ValueError):
 
 
 class BlockDumper(yaml.SafeDumper):
-    """Writes multi-line text as | blocks, so stored YAML reads like the engine's configs."""
+    """Writes multi-line text as | blocks (text holding a NEL double-quoted), so stored YAML reads like the engine's configs."""
 
 
-BlockDumper.add_representer(
-    str,
-    lambda dumper, text: dumper.represent_scalar(
-        "tag:yaml.org,2002:str", text, style="|" if "\n" in text else None
-    ),
-)
+def represent_text(dumper, text):
+    # PyYAML escapes a NEL only in double quotes, and reads a raw one as a line break.
+    style = '"' if NEL in text else "|" if "\n" in text else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", text, style=style)
+
+
+BlockDumper.add_representer(str, represent_text)
 
 
 def dump(value):

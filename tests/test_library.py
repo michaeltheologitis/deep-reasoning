@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import yaml
 from deep_reasoner.config import load_cli_config, resolve_api_key
 from deep_reasoner.namespaces import ROOT, build_registry
 from deep_reasoner.tools import load_tool_factory
@@ -275,6 +276,37 @@ def test_an_import_reads_back_as_the_engine_loads_the_config(library, tmp_path):
         config.namespaces[ROOT].decompositions
         == expected.namespaces[ROOT].decompositions
     )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a\x85b",
+        "line\n\x85next\n",
+        "a\u2028b",
+        "a\u2029b",
+        "ends in a newline\n",
+        "  padded  ",
+        "é中🚀",
+        "#",
+        ": ",
+        'it\'s "quoted"',
+    ],
+)
+def test_dumped_text_reads_back_exactly(text):
+    value = {"vars": {"note": text}}
+    assert yaml.safe_load(dump(value)) == value
+
+
+def test_dumped_non_ascii_text_stays_readable():
+    assert "é中🚀" in dump({"note": "é中🚀"})
+
+
+def test_an_imported_var_holding_a_nel_keeps_it(library, tmp_path):
+    written = tmp_path / "nel.yaml"
+    written.write_text('namespaces:\n  root:\n    vars: {note: "a\\Nb"}\n')
+    import_into(library, written)
+    assert run_config(library, tmp_path).namespaces[ROOT].vars["note"] == "a\x85b"
 
 
 def test_a_configs_run_level_openings_are_left_out(library, tmp_path):
