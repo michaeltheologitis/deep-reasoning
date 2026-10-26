@@ -195,6 +195,7 @@ textarea::placeholder { color: var(--dim); }
 .menu-note { margin: 0; padding: 0 6px 2px 3ch; color: var(--dim); overflow-wrap: anywhere; }
 .menu-option { display: flex; gap: 1ch; padding: 1px 6px; border-radius: 3px; cursor: pointer; overflow-wrap: anywhere; }
 .menu-option:hover, .menu-option.active { background: var(--hover); }
+.menu-option .gone { color: var(--err); }
 .folder-pop .menu-note, .menu-pop > .menu-note { padding-left: 0; }
 .menu-pop > .lib-action { align-self: flex-start; }
 .folder-problem { color: var(--err); }

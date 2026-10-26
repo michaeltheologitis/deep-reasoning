@@ -1,4 +1,5 @@
 import math
+import re
 import socket
 import sqlite3
 from contextlib import closing
@@ -24,7 +25,10 @@ from deep_reasoning.library import (
     UPSERT_SETTING,
     LibraryError,
     add_decomposition,
+    add_namespace,
+    change_namespace,
     default_namespace,
+    delete_namespace,
     dump,
     engine_config,
     import_config,
@@ -57,6 +61,7 @@ namespaces:
               </repl>
 """
 ADDED = "name: added\nmessages: [{role: user, content: hi}]\n"
+RESEARCH = "vars: {topic: ml}\nsystem_suffix: |\n  Cite each source.\n"
 # What the app puts in for a chat on OpenAI's gpt-6-luna.
 CHATS_MODEL = {
     "model": "gpt-6-luna",
@@ -389,3 +394,154 @@ def test_the_engine_config_builds_a_registry_and_a_reasoner_without_a_model_call
     assert isinstance(reasoner, DeepReasoner)
     assert config.entry_namespace == "course_advisor"
     close_run(reasoner)
+
+
+def change(library, act, *args):
+    with closing(open_library(library)) as connection:
+        return act(connection, *args)
+
+
+def registry_of(library, tmp_path):
+    return build_namespace_registry(run_config(library, tmp_path))
+
+
+def decomposition_rows(library):
+    with closing(open_library(library)) as connection:
+        rows = connection.execute("SELECT namespace FROM decompositions")
+        return [namespace for (namespace,) in rows]
+
+
+def test_a_namespace_is_added_at_the_top_and_its_child_inherits_from_it(
+    library, tmp_path
+):
+    change(library, add_namespace, "research", RESEARCH)
+    change(library, add_namespace, "research.papers", "vars: {year: 2026}\n")
+    registry = registry_of(library, tmp_path)
+    papers = registry.resolve("research.papers")
+    assert registry.chain("research.papers") == [ROOT, "research", "research.papers"]
+    assert papers.vars == {"topic": "ml", "year": 2026}
+    assert papers.sources.vars == {"topic": "research", "year": "research.papers"}
+    assert papers.system_suffix == "Cite each source.\n"
+
+
+def test_a_namespace_keeps_its_yaml_as_written(library):
+    change(library, add_namespace, "research", f"# why\n{RESEARCH}")
+    with closing(open_library(library)) as connection:
+        [shown] = [
+            each
+            for each in panel(connection)["namespaces"]
+            if each["name"] == "research"
+        ]
+    assert shown["yaml"] == f"# why\n{RESEARCH}"
+    assert shown["decompositions"] == []
+
+
+def test_a_namespace_whose_parent_is_missing_is_refused(library):
+    before = dumped(library)
+    with pytest.raises(LibraryError, match='Add namespace "research" first'):
+        change(library, add_namespace, "research.papers", RESEARCH)
+    assert dumped(library) == before
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "problem"),
+    [
+        ("", RESEARCH, "Name the namespace"),
+        ("research papers", RESEARCH, "A namespace name is words of letters"),
+        ("research.", RESEARCH, "A namespace name is words of letters"),
+        ("r" * 101, RESEARCH, "A namespace name is words of letters"),
+        ("router", RESEARCH, 'There is already a namespace "router"'),
+        ("research", "tools: [llm\n", "The YAML doesn't parse (line 2:"),
+        ("research", "- llm\n", "The YAML should be a mapping of fields"),
+        (
+            "research",
+            "name: research\n",
+            'Remove "name": a namespace is named in the name field',
+        ),
+        ("research", "decompositions: []\n", "added in the Decompositions tab"),
+        (
+            "research",
+            "tool: [llm]\n",
+            'Remove "tool": a namespace\'s YAML holds only repl,',
+        ),
+        ("research", "tools: llm\n", "tools should be a list of tool names"),
+        ("research", "system_suffix: 5\n", 'write "system_suffix: |"'),
+    ],
+)
+def test_a_namespace_the_panel_cannot_take_is_refused_with_a_plain_message(
+    imported, name, text, problem
+):
+    before = dumped(imported)
+    with pytest.raises(LibraryError, match=re.escape(problem)):
+        change(imported, add_namespace, name, text)
+    assert dumped(imported) == before
+
+
+@pytest.mark.parametrize(
+    ("text", "problem"),
+    [
+        (
+            "tools: [ghost]\n",
+            "The engine refuses it: namespace 'research' grants unknown tool 'ghost'",
+        ),
+        ("spawn: [nowhere]\n", 'spawn names "nowhere", which is not a namespace'),
+    ],
+)
+def test_a_namespace_granting_an_unknown_tool_or_spawning_nowhere_is_not_written(
+    imported, text, problem
+):
+    before = dumped(imported)
+    with pytest.raises(LibraryError, match=re.escape(problem)):
+        change(imported, add_namespace, "research", text)
+    with pytest.raises(
+        LibraryError, match=re.escape(problem.replace("research", "router"))
+    ):
+        change(imported, change_namespace, "router", text)
+    assert dumped(imported) == before
+
+
+def test_an_edit_replaces_the_fields_and_keeps_the_decompositions(imported, tmp_path):
+    change(imported, change_namespace, "router", "system_suffix: Be brief.\n")
+    router = run_config(imported, tmp_path).namespaces["router"]
+    assert router.spawn is None
+    assert router.system_suffix == "Be brief."
+    assert [each.name for each in router.decompositions] == ROUTER_DECOMPOSITIONS
+
+
+def test_root_can_be_edited(imported, tmp_path):
+    change(imported, change_namespace, ROOT, "tools: [llm]\nvars: {term: fall}\n")
+    registry = registry_of(imported, tmp_path)
+    assert registry.resolve("course_advisor").vars["term"] == "fall"
+
+
+def test_deleting_a_namespace_removes_it_and_its_decompositions(imported, tmp_path):
+    change(imported, add_namespace, "research", RESEARCH)
+    change(imported, add_decomposition, "research", ADDED)
+    change(imported, delete_namespace, "research")
+    assert set(run_config(imported, tmp_path).namespaces) == ADVISORS_NAMESPACES
+    assert "research" not in decomposition_rows(imported)
+    assert decomposition_rows(imported).count("router") == len(ROUTER_DECOMPOSITIONS)
+
+
+def test_deleting_the_default_namespace_starts_new_chats_in_root(imported):
+    change(imported, delete_namespace, "router")
+    assert default_namespace(imported) == ROOT
+    assert "router" not in decomposition_rows(imported)
+
+
+@pytest.mark.parametrize(
+    ("name", "problem"),
+    [
+        ("research", "Delete its namespaces first: research.papers."),
+        ("course_advisor", "First take course_advisor out of the spawn of router"),
+        (ROOT, "root can't be deleted"),
+        ("nowhere", 'The Library has no namespace "nowhere"'),
+    ],
+)
+def test_a_refused_delete_says_why_and_changes_nothing(imported, name, problem):
+    change(imported, add_namespace, "research", RESEARCH)
+    change(imported, add_namespace, "research.papers", "")
+    before = dumped(imported)
+    with pytest.raises(LibraryError, match=re.escape(problem)):
+        change(imported, delete_namespace, name)
+    assert dumped(imported) == before

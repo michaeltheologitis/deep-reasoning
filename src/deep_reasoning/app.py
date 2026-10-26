@@ -41,9 +41,13 @@ from deep_reasoning.folders import (
 from deep_reasoning.library import (
     LibraryError,
     add_decomposition,
+    add_namespace,
+    change_namespace,
     check_namespace,
     default_namespace,
+    delete_namespace,
     engine_config,
+    has_namespace,
     open_library,
     panel,
 )
@@ -170,10 +174,13 @@ def create_app(library, home):
         detail = f"Chat {error} has a run going."
         return JSONResponse({"detail": detail}, status_code=HTTPStatus.CONFLICT)
 
+    def library_panel(connection):
+        return {"file": library.name, **panel(connection)}
+
     @app.get("/api/library")
     def read_library():
         with closing(open_library(library)) as connection:
-            return {"file": library.name, **panel(connection)}
+            return library_panel(connection)
 
     @app.post("/api/decompositions", status_code=HTTPStatus.CREATED)
     def post_decomposition(
@@ -181,6 +188,25 @@ def create_app(library, home):
     ):
         with closing(open_library(library)) as connection:
             return add_decomposition(connection, namespace, yaml)
+
+    # Each answers with the whole Library: a namespace's fields reach every namespace under it.
+    @app.post("/api/namespaces", status_code=HTTPStatus.CREATED)
+    def post_namespace(name: Annotated[str, Body()], yaml: Annotated[str, Body()]):
+        with closing(open_library(library)) as connection:
+            add_namespace(connection, name, yaml)
+            return library_panel(connection)
+
+    @app.put("/api/namespaces/{name}")
+    def put_namespace(name: str, yaml: Annotated[str, Body(embed=True)]):
+        with closing(open_library(library)) as connection:
+            change_namespace(connection, name, yaml)
+            return library_panel(connection)
+
+    @app.delete("/api/namespaces/{name}")
+    def remove_namespace(name: str):
+        with closing(open_library(library)) as connection:
+            delete_namespace(connection, name)
+            return library_panel(connection)
 
     def known_provider(name: str):
         found = find_provider(home, name)
@@ -349,6 +375,11 @@ def create_app(library, home):
             raise RunInProgress(chat["id"])
         chosen = shown(chat, starting_points())
         namespace, model = chosen["namespace"], chosen["model"]
+        with closing(open_library(library)) as connection:
+            if not has_namespace(connection, namespace):
+                raise LibraryError(
+                    f"This chat's namespace {namespace} no longer exists — pick another."
+                )
         if model is None:
             raise SettingsError("Pick a model for this chat, under the message box.")
         provider = find_provider(home, model["provider"])
