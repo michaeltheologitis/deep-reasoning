@@ -138,12 +138,11 @@ class LibraryError(ValueError):
 
 
 class BlockDumper(yaml.SafeDumper):
-    """Writes multi-line text as | blocks, so stored YAML reads like the engine's configs."""
+    """Writes multi-line text as | blocks (text holding a NEL double-quoted), so stored YAML reads like the engine's configs."""
 
 
 def represent_text(dumper, text):
-    # With allow_unicode, PyYAML writes a NEL raw in every style but double quotes,
-    # and reads a raw one back as a line break.
+    # PyYAML escapes a NEL only in double quotes, and reads a raw one as a line break.
     style = '"' if NEL in text else "|" if "\n" in text else None
     return dumper.represent_scalar("tag:yaml.org,2002:str", text, style=style)
 
