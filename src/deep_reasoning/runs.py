@@ -370,8 +370,7 @@ class Runs:
         folder = self.home / RUNS / run
         try:
             with (folder / "worker.log").open("ab") as worker_log:
-                # -P: the cwd is the chat's folder, and a module there mustn't shadow
-                # one the worker imports; the worker puts the folder last on its path.
+                # -P: a module in the chat's folder mustn't shadow the worker's own
                 live.process = await asyncio.create_subprocess_exec(
                     sys.executable,
                     "-P",

@@ -247,8 +247,7 @@ def create_app(library, home):
     def read_folders(path: str = "~"):
         return list_folders(path)
 
-    # Coroutines, as every route that writes settings.json is: one at a time on the event
-    # loop, so no two rewrites of the file race and one is lost.
+    # Coroutines, as every writer of settings.json is, so no two rewrites race.
     @app.get("/api/default-folder")
     async def read_default_folder():
         return {"folder": shown_folder(default_folder(home))}
@@ -329,8 +328,7 @@ def create_app(library, home):
 
     @app.delete("/api/chats/{chat}", status_code=HTTPStatus.NO_CONTENT)
     async def remove_chat(chat: KnownChat):
-        # Every folder chosen or in use, read before anything goes, so settings that
-        # can't be read delete nothing.
+        # Read before anything goes, so settings that can't be read delete nothing.
         chosen = [each["folder"] for each in list_chats(chats)]
         chosen += [default_folder(home), *runs.folders_in_use(besides=chat["id"])]
         keep = [each for each in chosen if each]
@@ -338,8 +336,7 @@ def create_app(library, home):
         # lists, never a chat missing some of its turns.
         delete_chat(chats, chat["id"])
         await runs.remove(chat["id"], keep)
-        # Once its workers have exited, as one works in it until then; off the event
-        # loop, as an agent may have filled it.
+        # After its workers exit, as they work in it; off the loop, as it may be large.
         scratch = scratch_folder(home, chat["id"])
         await asyncio.to_thread(remove_unless_kept, scratch, keep)
 

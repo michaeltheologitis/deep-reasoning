@@ -42,11 +42,6 @@ QUOTED="two words"
 """
 
 
-@pytest.fixture
-def app_home(tmp_path):
-    return tmp_path / "home" / ".deep-reasoning"
-
-
 def mode(path):
     return stat.S_IMODE(path.stat().st_mode)
 

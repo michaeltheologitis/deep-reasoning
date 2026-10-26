@@ -20,9 +20,8 @@ SCHEMA = (
     "CREATE TABLE IF NOT EXISTS chats"
     " (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL)"
 )
-# Its namespace, and its model with the provider that serves it, null until picked or run;
-# and the working folder it chose, null for its scratch folder. A file made before they
-# were added gets them when next opened.
+# Null until picked or run, and a null folder is the scratch folder. A file made before
+# they were added gets them when next opened.
 CHOICES = ("namespace", "provider", "model", "folder")
 COLUMNS = "id, title, created, namespace, provider, model, folder"
 # Adds no row when the id is taken.

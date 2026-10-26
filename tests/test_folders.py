@@ -18,11 +18,6 @@ CHAT = "quiet-blue-heron"
 
 
 @pytest.fixture
-def app_home(home):
-    return home / ".deep-reasoning"
-
-
-@pytest.fixture
 def code(home):
     """~/code with two folders, a hidden one, and a file."""
     folder = home / "code"
