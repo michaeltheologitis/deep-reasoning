@@ -60,13 +60,23 @@ def chosen_folder(typed: str | None) -> Path | None:
     return existing_folder(typed)
 
 
+def listable(entry: os.DirEntry) -> bool:
+    """A folder the page can show and name back: not one whose name isn't UTF-8, nor
+    one the system can't look at (a symlink loop, a link into a folder you can't open)."""
+    try:
+        entry.name.encode()
+        return entry.is_dir()
+    except (UnicodeEncodeError, OSError):
+        return False
+
+
 def list_folders(typed: str) -> dict[str, Any]:
     """The folder at *typed* and its subfolders, hidden ones last; its parent for "..",
     None at the root."""
     folder = existing_folder(typed)
     try:
         with os.scandir(folder) as entries:
-            names = [entry.name for entry in entries if entry.is_dir()]
+            names = [entry.name for entry in entries if listable(entry)]
     except OSError as error:
         raise FolderError(
             f"Can't open {short_path(folder)}: {error.strerror or error}."
@@ -104,7 +114,8 @@ def working_folder(home: Path, chat: dict[str, Any]) -> Path:
 
 def remove_scratch(home: Path, chat: str, chosen: Iterable[str]) -> None:
     """Delete the chat's scratch folder and nothing else: never a folder in *chosen*, the
-    folders chats chose, nor one holding such a folder; never through a symlink."""
+    folders chats and the settings chose, nor one holding such a folder; never through a
+    symlink."""
     scratch = scratch_folder(home, chat)
     # realpath, as Path.resolve raises on a symlink loop
     real = Path(os.path.realpath(scratch))

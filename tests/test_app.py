@@ -960,3 +960,16 @@ def test_a_folder_in_a_tampered_chats_file_is_treated_as_chosen_and_kept(
     deleted = client.delete(f"/api/chats/{chat}")
     assert deleted.status_code == 204
     assert (folder / "keep.txt").read_text() == "mine"
+
+
+def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder(
+    client, home
+):
+    chat = client.post("/api/chats").json()["id"]
+    inside = home / "work" / chat / "data"
+    inside.mkdir(parents=True)
+    (inside / "keep.txt").write_text("mine")
+    client.put("/api/default-folder", json={"folder": str(inside)})
+    deleted = client.delete(f"/api/chats/{chat}")
+    assert deleted.status_code == 204
+    assert (inside / "keep.txt").read_text() == "mine"

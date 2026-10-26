@@ -332,6 +332,7 @@ def create_app(library, home):
         await runs.remove(chat["id"])
         # Once its workers have exited, as one works in it until then.
         chosen = [each["folder"] for each in [chat, *list_chats(chats)]]
+        chosen.append(default_folder(home))
         remove_scratch(home, chat["id"], [each for each in chosen if each])
 
     @app.post("/api/chats/{chat}/runs", status_code=HTTPStatus.CREATED)

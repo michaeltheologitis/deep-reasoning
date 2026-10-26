@@ -80,6 +80,24 @@ def test_a_path_that_is_not_a_folder_is_refused_in_plain_words(code, typed, prob
     assert str(listing.value) == str(choosing.value) == problem
 
 
+def test_an_entry_the_system_cannot_look_at_is_left_out_of_the_listing(code):
+    (code / "loop").symlink_to(code / "loop")
+    assert [each["name"] for each in list_folders("~/code")["folders"]] == [
+        "Notes",
+        "thesis",
+        ".git",
+    ]
+
+
+def test_a_folder_whose_name_is_not_utf8_is_left_out_as_the_page_cannot_name_it(code):
+    os.mkdir(os.fsencode(code / "caf") + b"\xe9")
+    assert [each["name"] for each in list_folders("~/code")["folders"]] == [
+        "Notes",
+        "thesis",
+        ".git",
+    ]
+
+
 def test_a_folder_that_cannot_be_read_is_refused_in_plain_words(code, monkeypatch):
     def refused(path):
         raise PermissionError(errno.EACCES, "Permission denied", str(path))
