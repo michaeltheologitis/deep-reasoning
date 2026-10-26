@@ -18,10 +18,9 @@
     <button type="button" class="settings-toggle" id="settings-toggle" aria-expanded="false" aria-controls="settings">settings</button>
   </aside>
   <main class="main">
-    <header class="topbar" id="topbar">
+    <header class="topbar">
       <button type="button" class="menu" id="menu" aria-label="Show chats">☰</button>
       <h1 class="title" id="title"></h1>
-      <button type="button" class="folder" id="folder" aria-haspopup="dialog" aria-expanded="false" title="This chat's working folder, from its next message"><span class="folder-path" id="folder-path"></span><span class="folder-note" id="folder-note"></span></button>
       <button type="button" class="library-toggle" id="library-toggle" aria-expanded="false" aria-controls="library">decompositions</button>
       <button type="button" class="theme" id="theme"></button>
     </header>
@@ -37,6 +36,8 @@
         <span id="hint" aria-live="polite"></span>
         <span class="state">
           <span class="choices" id="choices" hidden>
+            <button type="button" class="choice" id="folder" aria-haspopup="dialog" aria-expanded="false"><span id="folder-name"></span><span aria-hidden="true"> ▾</span></button>
+            <span aria-hidden="true">·</span>
             <button type="button" class="choice" id="namespace" aria-haspopup="listbox" aria-expanded="false" title="This chat's namespace, from its next message"><span id="namespace-name"></span><span aria-hidden="true"> ▾</span></button>
             <span aria-hidden="true">·</span>
             <button type="button" class="choice" id="model" aria-haspopup="listbox" aria-expanded="false" title="This chat's model, from its next message"><span id="model-name"></span><span aria-hidden="true"> ▾</span></button>

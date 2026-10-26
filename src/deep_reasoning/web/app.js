@@ -11,6 +11,8 @@ const SECONDS_PER_MINUTE = 60;
 const MS_PER_SECOND = 1000;
 const CONFLICT = 409;
 const NEW_TITLE = "New chat";
+const SCRATCH_NAME = "scratch";
+const FOLDER_NAME_CHARS = 24;
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
 const RECONNECTING = "Lost the connection to the run; reconnecting…";
 const PANEL_CLOSE = "panel-close";
@@ -429,7 +431,6 @@ function renderLog(scroll) {
   const chat = state.current;
   const focused = document.activeElement?.dataset?.key;
   byId("title").textContent = chat.title;
-  renderFolder(chat);
   keepScroll(scroll, () => byId("log").replaceChildren(...logOf(chat)));
   refocus(focused);
 }
@@ -461,6 +462,7 @@ function renderChoices(chat) {
   if (!ready) return;
   byId("namespace-name").textContent = chat.namespace;
   byId("model-name").textContent = chat.model?.name ?? "pick a model";
+  renderFolder(chat);
 }
 
 // A pick applies from the chat's next message; the server keeps it, so it survives a reload.
@@ -478,13 +480,18 @@ async function choose(chat, change) {
 
 // A chat with no folder of its own works in a scratch folder, which goes when the chat does.
 function renderFolder(chat) {
-  byId("folder-path").textContent = chat.folder ?? `${chat.scratch_folder}/`;
-  byId("folder-note").textContent = chat.folder ? "" : "· deleted with the chat";
+  const name = chat.folder ? chat.folder.split("/").at(-1) || "/" : SCRATCH_NAME;
+  const where = chat.folder ?? `scratch folder ${chat.scratch_folder}/, deleted with the chat`;
+  const full = `This chat's working folder, from its next message: ${where}`;
+  const button = byId("folder");
+  byId("folder-name").textContent = clip(name, FOLDER_NAME_CHARS);
+  button.title = full;
+  button.setAttribute("aria-label", full);
 }
 
 function pickFolder() {
   const chat = state.current;
-  folderPicker(byId("folder"), byId("topbar"), {
+  folderPicker(byId("folder"), byId("above"), {
     label: "This chat's working folder",
     current: chat.folder,
     empty: "its own scratch folder, deleted with the chat",

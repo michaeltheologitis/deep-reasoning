@@ -84,17 +84,10 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .topbar {
-  position: relative; display: flex; align-items: center; gap: 1ch; border-bottom: 1px solid var(--faint);
+  display: flex; align-items: center; gap: 1ch; border-bottom: 1px solid var(--faint);
   padding-block: 10px; padding-left: 16px; padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-.title { flex: none; max-width: 50%; margin: 0; font: inherit; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.folder { flex: 0 1 auto; display: flex; gap: 1ch; min-width: 0; overflow: hidden; margin-right: auto; color: var(--dim); white-space: nowrap; }
-.folder:hover, .folder[aria-expanded="true"] { color: var(--fg); }
-/* a long path loses its start, not its end: right-to-left boxes cut on the left, and the path inside keeps its own order */
-.folder-path { flex: 0 100 auto; min-width: min(12ch, 100%); overflow: hidden; text-overflow: ellipsis; direction: rtl; }
-.folder-path::before { content: "\2066"; }
-/* the note gives way only once the path has */
-.folder-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.title { flex: 1; min-width: 0; margin: 0; font: inherit; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .theme, .menu { color: var(--dim); padding: 2px 6px; }
 .theme:hover, .menu:hover { color: var(--fg); }
 .menu { display: none; }
@@ -188,13 +181,13 @@ textarea::placeholder { color: var(--dim); }
 .choice { color: var(--dim); }
 .choice:hover, .choice[aria-expanded="true"] { color: var(--fg); }
 
-/* popovers: the composer's menus open above its box, the folder picker under the top bar, the settings panel's in place */
+/* popovers: the composer's menus open above its box, the settings panel's in place */
 .menu-pop {
   box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--bg); border: 1px solid var(--faint); border-radius: 6px;
   box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 12%, transparent);
 }
 .above .menu-pop { position: absolute; right: 0; bottom: 6px; z-index: 4; width: min(46ch, 100%); }
-.topbar .menu-pop { position: absolute; top: calc(100% + 4px); left: 16px; z-index: 4; width: min(60ch, calc(100% - 32px)); font-weight: 400; }
+.above .folder-pop { width: min(60ch, 100%); }
 .menu-filter, .set-input { min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--faint); border-radius: 3px; padding: 2px 6px; }
 .menu-filter::placeholder, .set-input::placeholder { color: var(--dim); }
 .menu-list { max-height: min(22rem, 45vh); overflow-y: auto; }
@@ -217,10 +210,6 @@ textarea::placeholder { color: var(--dim); }
   :root { --indent: 1ch; }
   .app { grid-template-columns: minmax(0, 1fr); }
   .menu { display: block; }
-  /* the folder takes a line of its own under the title */
-  .topbar { flex-wrap: wrap; row-gap: 2px; }
-  .title { flex: 1 1 0; max-width: none; }
-  .folder { order: 1; flex-basis: 100%; margin-right: 0; }
   .sidebar {
     position: fixed; inset: 0 auto 0 0; z-index: 5; width: min(280px, 85vw); transform: translateX(-100%);
     transition: transform 0.15s; padding-top: max(14px, env(safe-area-inset-top, 0px));
