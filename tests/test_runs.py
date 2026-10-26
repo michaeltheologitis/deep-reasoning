@@ -1,4 +1,5 @@
 import errno
+import hashlib
 import json
 import os
 import shutil
@@ -33,6 +34,7 @@ from deep_reasoning.runs import (
     read_turn,
     recap_of,
 )
+from deep_reasoning.settings import VENDORS
 
 log = structlog.get_logger()
 
@@ -280,7 +282,7 @@ async def test_turns_survive_a_restart(home, fake_config):
         )
     restarted = Runs(home)
     assert read_turn(home, run) == Turn(
-        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None
+        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None, "root"
     )
     assert [event async for event in restarted.events(run)] == events
 
@@ -510,7 +512,7 @@ def test_the_recap_says_why_a_turn_has_no_answer():
         Turn("Three?", "stopped", None, None),
         Turn("Four?", "exhausted", "Agent failed to produce a final answer.", None),
     ]
-    blocks = recap_of(turns).split("\n\n")
+    blocks = recap_of(turns, "root").split("\n\n")
     assert blocks[0].startswith("This conversation began before this run.")
     assert blocks[1:] == [
         "Message 1: One?\nAnswer 1: 1",
@@ -519,7 +521,43 @@ def test_the_recap_says_why_a_turn_has_no_answer():
         "Message 4: Four?\nAnswer 4: (none: the run ended without a final answer)",
         "The user's next message follows.",
     ]
-    assert recap_of([]) is None
+    assert recap_of([], "root") is None
+
+
+def test_the_recap_marks_each_turn_that_ran_in_another_namespace():
+    turns = [
+        Turn("One?", "answered", "1", None, "router"),
+        Turn("Two?", "answered", "2", None, "course_advisor"),
+    ]
+    blocks = recap_of(turns, "course_advisor").split("\n\n")
+    assert blocks[1:3] == [
+        "Message 1 (in namespace router): One?\nAnswer 1: 1",
+        "Message 2: Two?\nAnswer 2: 2",
+    ]
+
+
+async def test_a_runs_keys_reach_its_worker_alone_and_anthropics_never(
+    home, fake_config, monkeypatch
+):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-for-runs")
+    key = "sk-the-runs-own-key"
+    # The cell compares digests, so the key is nowhere in what the run records.
+    digest = hashlib.sha256(key.encode()).hexdigest()
+    look = repl(
+        "import hashlib, os",
+        "seen = hashlib.sha256(os.environ.get('A_RUNS_KEY', '').encode()).hexdigest()",
+        f"print(seen == {digest!r}, 'ANTHROPIC_API_KEY' in os.environ)",
+    )
+    plan = {"Look around.": [look, repl("FinalAnswer('done')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(home)
+        keys = {"A_RUNS_KEY": key}
+        run = runs.start(CHAT, "Look around.", fake_config(fake), [], "fake", keys)
+        events = [event async for event in runs.events(run)]
+    assert of_kind(events, "cell.end")[0]["output"] == "True False"
+    assert events[0]["provider"] == "fake"
+    for file in (home / "runs" / run).rglob("*"):
+        assert not file.is_file() or key.encode() not in file.read_bytes(), file
 
 
 COURSES = {
@@ -542,7 +580,7 @@ FIRST_QUESTION = (
 
 @pytest.mark.live
 @pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="no OPENAI_API_KEY")
-async def test_gpt_6_luna_on_the_librarys_defaults_answers_and_remembers_the_chat(
+async def test_gpt_6_luna_on_openai_answers_and_remembers_the_chat(
     home, library, tmp_path
 ):
     """The app's part on a real model: a run that answers through sub-agents, every call
@@ -554,8 +592,15 @@ async def test_gpt_6_luna_on_the_librarys_defaults_answers_and_remembers_the_cha
     with closing(open_library(library)) as connection:
         import_config(connection, courses)
 
+    openai = VENDORS[0]
+    chats_model = {
+        "model": openai.first_model,
+        "client": {"base_url": openai.base_url, "api_key_env": openai.key_env},
+    }
+
     def config_for(folder):
-        return engine_config(library, default_namespace(library), folder / "tools")
+        config = engine_config(library, default_namespace(library), folder / "tools")
+        return config | chats_model
 
     runs = Runs(home)
     first, events = await run_to_the_end(runs, FIRST_QUESTION, config_for)

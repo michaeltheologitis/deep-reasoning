@@ -2,14 +2,10 @@ from contextlib import closing
 from pathlib import Path
 
 import pytest
+from fake_model import SERVER_KEY, SERVER_NAME
 
-from deep_reasoning.library import (
-    UPSERT_SETTING,
-    dump,
-    import_config,
-    open_library,
-    writing,
-)
+from deep_reasoning.library import import_config, open_library
+from deep_reasoning.settings import VENDORS, add_server, remember_pick
 
 # Copies of deep_reasoner 0.3.0's docs/configs, in their layout, so _compose paths still resolve.
 CONFIGS = Path(__file__).parent / "configs"
@@ -22,6 +18,14 @@ def home(tmp_path, monkeypatch):
     path.mkdir()
     monkeypatch.setenv("HOME", str(path))
     return path
+
+
+@pytest.fixture
+def no_vendor_keys(monkeypatch):
+    """No vendor's key from the shell, so nothing reaches a real vendor: a test sets the
+    ones it means."""
+    for vendor in VENDORS:
+        monkeypatch.delenv(vendor.key_env, raising=False)
 
 
 @pytest.fixture
@@ -80,14 +84,13 @@ def fake_config(monkeypatch):
 
 
 @pytest.fixture
-def library_on(library, monkeypatch):
-    """A new Library whose run settings reach the model at a FakeOpenAI: call it with
-    the fake."""
-    monkeypatch.setenv("OPENAI_API_KEY", "fake")
+def library_on(library, home):
+    """The Library, with a FakeOpenAI in the app's settings as a custom server, with a
+    key, that new chats start on: call it with the fake."""
 
     def on(fake):
-        with closing(open_library(library)) as connection, writing(connection):
-            connection.execute(UPSERT_SETTING, ("client", dump(fake_client(fake))))
+        add_server(home, SERVER_NAME, fake.base_url, SERVER_KEY)
+        remember_pick(home, SERVER_NAME, "gpt-6-luna")
         return library
 
     return on

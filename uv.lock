@@ -610,8 +610,10 @@ dependencies = [
     { name = "deep-reasoner" },
     { name = "fastapi" },
     { name = "genai-prices" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "pydantic" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "structlog" },
     { name = "uvicorn" },
@@ -619,7 +621,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -630,8 +631,10 @@ requires-dist = [
     { name = "deep-reasoner", git = "https://github.com/DeanLight/deep_reasoner_beta.git?rev=0.3.0" },
     { name = "fastapi", specifier = ">=0.162.0" },
     { name = "genai-prices", specifier = ">=0.1.13" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "pydantic", specifier = ">=2.14.1" },
+    { name = "python-dotenv", specifier = ">=1.2.4" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
@@ -639,7 +642,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.17.2" },
 ]

@@ -1,16 +1,20 @@
-// The settings panel: the providers, the default model and the default folder, as UI to agree before it's wired. What it holds lives in the page and resets on reload; a typed key is never kept or sent.
-import { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, modelMenu, renderComposer, settings } from "./app.js";
+// The settings panel: the providers, with each key's status, the custom servers, and the default folder. Keys go to the server, which keeps them in ~/.deep-reasoning/.env and never sends one back.
+import { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settings, settingsChanged } from "./app.js";
 
 const ENV_FILE = "~/.deep-reasoning/.env";
 const NEW_NAME = "vllm";
 const NEW_URL = "http://localhost:8000/v1";
-const WEB_PROTOCOLS = ["http:", "https:"];
-const ADDING = "adding";
+// not a name, so no server's name can be taken for it
+const ADDING = Symbol("adding");
 const NO_FOLDER = "each chat's own scratch folder";
+const STATUS = { set: "key ✓", shell: "key from your shell" };
 
 const panel = document.getElementById("settings");
 const toggleButton = document.getElementById("settings-toggle");
-// the vendor or custom server whose form shows, or ADDING for a new server's
+// what the server last said: each provider, and where its key is, never the key
+let providers = [];
+let loadProblem = null;
+// the name of the provider whose form shows, or ADDING for a new server's
 let opened = null;
 let cancelRemove = null;
 
@@ -21,9 +25,6 @@ const addToggle = element(
   "+ Custom server",
 );
 const addArea = element("div", { class: "lib-add" }, addToggle);
-const modelName = element("span", { id: "default-model-name" });
-const modelHost = element("div");
-const modelButton = pickerButton("default-model", "listbox", modelName, pickDefault);
 const folderName = element("span", { id: "default-folder-name" }, NO_FOLDER);
 const folderHost = element("div");
 const folderButton = pickerButton("default-folder", "dialog", folderName, pickDefaultFolder);
@@ -38,10 +39,8 @@ panel.append(
   element(
     "div",
     { class: "lib-body" },
-    element("p", { class: "lib-note" }, "Not saved yet: this is the UI to agree."),
     element("section", { class: "lib-group" }, element("h3", { class: "lib-label" }, "Providers"), providerRows, addArea),
-    element("p", { class: "lib-note" }, `Keys are kept in ${ENV_FILE}, readable only by you. Keys already set in your shell keep working.`),
-    pickerSection("default-model", "Default model", modelButton, modelHost, "New chats start on it; each chat picks its own under its input."),
+    element("p", { class: "lib-note" }, `Keys are kept in ${ENV_FILE}, readable only by you. Keys already set in your shell keep working; one saved here wins.`),
     pickerSection("default-folder", "Default folder", folderButton, folderHost, "New chats work in it; each chat can pick its own from the top bar."),
   ),
 );
@@ -63,13 +62,16 @@ function pickerSection(id, title, button, host, note) {
   );
 }
 
+const vendors = () => providers.filter((provider) => !provider.custom);
+const servers = () => providers.filter((provider) => provider.custom);
+
 function render(focusKey) {
   const focused = focusKey ?? document.activeElement?.dataset?.key;
   cancelRemove = null;
-  providerRows.replaceChildren(...settings.vendors.map(vendorRow), ...settings.servers.map(serverRow));
+  const rows = [...vendors().map(vendorRow), ...servers().map(serverRow)];
+  providerRows.replaceChildren(...(loadProblem ? [element("p", { class: "lib-problems" }, loadProblem)] : rows));
   addToggle.setAttribute("aria-expanded", String(opened === ADDING));
   addArea.replaceChildren(addToggle, opened === ADDING ? serverForm(null) : "");
-  modelName.textContent = settings.defaultModel?.name ?? "…";
   if (focused) panel.querySelector(`[data-key="${focused}"]`)?.focus();
 }
 
@@ -78,20 +80,16 @@ function flip(target, focusKey) {
   render(focusKey);
 }
 
-function keyStatus(provider) {
-  if (provider.saved) return "key ✓";
-  if (provider.shell) return "key from your shell";
-  return provider.keyName ? "add key" : "no key";
-}
+const keyStatus = (provider) => STATUS[provider.key] ?? (provider.custom ? "no key" : "add key");
 
 function providerRow(provider, key, detail, form) {
-  const open = opened === provider;
+  const open = opened === provider.name;
   return element(
     "div",
     { class: "lib-entry" },
     element(
       "button",
-      { type: "button", class: "row", "aria-expanded": String(open), "data-key": key, onclick: () => flip(provider, key) },
+      { type: "button", class: "row", "aria-expanded": String(open), "data-key": key, onclick: () => flip(provider.name, key) },
       caret(open),
       element("span", { class: "lib-name" }, provider.name, detail && [" ", element("span", { class: "lib-detail" }, detail)]),
       element("span", { class: "meta" }, keyStatus(provider)),
@@ -102,17 +100,23 @@ function providerRow(provider, key, detail, form) {
 
 // A known vendor's address is the app's to know: its row takes only a key.
 const vendorRow = (vendor, index) => providerRow(vendor, `v:${index}`, null, vendorForm);
-const serverRow = (server, index) => providerRow(server, `s:${index}`, server.url, serverForm);
+const serverRow = (server, index) => providerRow(server, `s:${index}`, server.base_url, serverForm);
+const rowKey = (name) => {
+  const index = vendors().findIndex((vendor) => vendor.name === name);
+  if (index >= 0) return `v:${index}`;
+  const server = servers().findIndex((each) => each.name === name);
+  return server >= 0 ? `s:${server}` : "add";
+};
 
 // Both forms use method="dialog", which never navigates, so a typed key can't end up in a URL even if this script failed.
 function vendorForm(vendor) {
   const key = keyInput("vendor-key", "vendor-key-where");
   const problem = element("div", { class: "lib-problems", "aria-live": "polite" });
-  const remove = element("button", { type: "button", class: "lib-action", disabled: !vendor.saved, onclick: () => confirmRemove(`Remove the ${vendor.name} key?`, () => forgetKey(vendor), remove.parentElement) }, "Remove key");
+  const remove = element("button", { type: "button", class: "lib-action", disabled: vendor.key !== "set", onclick: () => confirmRemove(`Remove the ${vendor.name} key?`, () => forgetKey(vendor, problem), remove.parentElement) }, "Remove key");
   return element(
     "form",
     { class: "children lib-open lib-form", method: "dialog", novalidate: "", onsubmit: (e) => saveKey(e, vendor, key, problem) },
-    element("div", { class: "set-fields" }, element("label", { for: key.id }, "API key"), key, element("span", { id: "vendor-key-where", class: "set-note" }, `${vendor.keyName} in `, element("span", { class: "set-path" }, ENV_FILE))),
+    element("div", { class: "set-fields" }, element("label", { for: key.id }, "API key"), key, element("span", { id: "vendor-key-where", class: "set-note" }, `${vendor.key_env} in `, element("span", { class: "set-path" }, ENV_FILE))),
     problem,
     element("div", { class: "lib-actions" }, element("button", { type: "submit", class: "lib-action lib-primary" }, "Save"), remove),
   );
@@ -120,22 +124,25 @@ function vendorForm(vendor) {
 
 const keyInput = (id, note) => element("input", { id, class: "set-input", type: "password", autocomplete: "off", spellcheck: "false", "aria-describedby": note, "data-key": "key" });
 
+// A server's name is fixed once added: chats name it as their model's provider, and its key is kept under it.
 function serverForm(server) {
   const id = server ? "server" : "server-new";
   const input = (field, props) => element("input", { id: `${id}-${field}`, class: "set-input", autocomplete: "off", spellcheck: "false", ...props });
   const label = (field, text) => element("label", { for: `${id}-${field}` }, text);
-  const name = input("name", { value: server?.name ?? "", placeholder: NEW_NAME, "data-key": "name" });
-  const url = input("url", { type: "url", value: server?.url ?? "", placeholder: NEW_URL });
+  const name = server ? null : input("name", { placeholder: NEW_NAME, "data-key": "name" });
+  const url = input("url", { type: "url", value: server?.base_url ?? "", placeholder: NEW_URL });
   const key = keyInput(`${id}-key`, `${id}-key-note`);
   const problem = element("div", { class: "lib-problems", "aria-live": "polite" });
+  const keyNote = server?.key === "set" ? `set, as ${server.key_env}; a new one replaces it` : "optional: most local servers need none";
   return element(
     "form",
     { id: `${id}-form`, class: "children lib-open lib-form", method: "dialog", novalidate: "", onsubmit: (e) => saveServer(e, server, { name, url, key, problem }) },
     element(
       "div",
       { class: "set-fields" },
-      [label("name", "name"), name, label("url", "base URL"), url, label("key", "API key"), key],
-      element("span", { id: `${id}-key-note`, class: "set-note" }, server?.saved ? "set" : "optional: most local servers need none"),
+      name ? [label("name", "name"), name] : [],
+      [label("url", "base URL"), url, label("key", "API key"), key],
+      element("span", { id: `${id}-key-note`, class: "set-note" }, keyNote),
     ),
     problem,
     element(
@@ -143,50 +150,54 @@ function serverForm(server) {
       { class: "lib-actions" },
       element("button", { type: "submit", class: "lib-action lib-primary" }, server ? "Save" : "Add"),
       server
-        ? element("button", { type: "button", class: "lib-action", onclick: (e) => confirmRemove(`Remove ${server.name}?`, () => removeServer(server), e.currentTarget.parentElement) }, "Remove")
+        ? element("button", { type: "button", class: "lib-action", onclick: (e) => confirmRemove(`Remove ${server.name}?`, () => removeServer(server, problem), e.currentTarget.parentElement) }, "Remove")
         : element("button", { type: "button", class: "lib-action", onclick: () => flip(ADDING, "add") }, "Cancel"),
     ),
   );
 }
 
-// Only that a key was given is kept: the key itself is dropped here, never stored or sent.
-function saveKey(e, vendor, key, problem) {
-  e.preventDefault();
-  problem.textContent = key.value ? "" : `Paste the ${vendor.name} key first.`;
-  if (!key.value) return;
-  key.value = "";
-  vendor.saved = true;
+// Each change goes to the server, which answers with every provider's status; the panel and the model menu follow that.
+async function change(method, url, body, problem, focusName) {
+  let answer;
+  try {
+    answer = await request(method, url, body);
+  } catch (error) {
+    problem.textContent = error.message;
+    return;
+  }
+  providers = answer;
   opened = null;
-  render(`v:${settings.vendors.indexOf(vendor)}`);
+  render(rowKey(focusName));
+  settingsChanged();
 }
 
-function forgetKey(vendor) {
-  vendor.saved = false;
-  opened = null;
-  render(`v:${settings.vendors.indexOf(vendor)}`);
+// The field is emptied as the key is sent, so a key stays in the page no longer than that.
+function takeKey(input) {
+  const typed = input.value.trim();
+  input.value = "";
+  return typed || null;
 }
+
+function saveKey(e, vendor, input, problem) {
+  e.preventDefault();
+  const key = takeKey(input);
+  problem.textContent = key ? "" : `Paste the ${vendor.name} key first.`;
+  if (key) change("PUT", providerUrl(vendor, "key"), { key }, problem, vendor.name);
+}
+
+const forgetKey = (vendor, problem) => change("DELETE", providerUrl(vendor, "key"), undefined, problem, vendor.name);
+const providerUrl = (provider, part) => `api/providers/${encodeURIComponent(provider.name)}/${part}`;
+const serverUrl = (server) => `api/servers/${encodeURIComponent(server.name)}`;
 
 function saveServer(e, server, { name, url, key, problem }) {
   e.preventDefault();
-  const typed = { name: name.value.trim(), url: url.value.trim() };
-  problem.textContent = serverProblem(typed, server) ?? "";
-  if (problem.textContent) return;
-  const saved = Boolean(key.value) || Boolean(server?.saved);
-  key.value = "";
-  if (server) Object.assign(server, typed, { saved });
-  else settings.servers.push({ ...typed, saved, models: null });
-  const index = server ? settings.servers.indexOf(server) : settings.servers.length - 1;
-  opened = null;
-  render(`s:${index}`);
+  const fields = { base_url: url.value.trim(), key: takeKey(key) };
+  if (server) return change("PUT", serverUrl(server), fields, problem, server.name);
+  const typed = name.value.trim();
+  change("POST", "api/servers", { name: typed, ...fields }, problem, typed);
 }
 
-function serverProblem({ name, url }, server) {
-  const names = [...settings.vendors, ...settings.servers].filter((other) => other !== server).map((other) => other.name.toLowerCase());
-  if (!name) return `Name the server, like ${NEW_NAME}.`;
-  if (names.includes(name.toLowerCase())) return `There is a provider named ${name} already.`;
-  if (!URL.canParse(url) || !WEB_PROTOCOLS.includes(new URL(url).protocol)) return `The base URL should be an http:// or https:// address, like ${NEW_URL}.`;
-  return null;
-}
+const removeServer = (server, problem) => change("DELETE", serverUrl(server), undefined, problem, null);
 
 // The confirm takes the buttons' place, as the chat list's does, leaving what was typed alone.
 function confirmRemove(question, action, buttons) {
@@ -202,21 +213,6 @@ function confirmRemove(question, action, buttons) {
   keep.focus();
 }
 
-function removeServer(server) {
-  const index = settings.servers.indexOf(server);
-  settings.servers.splice(index, 1);
-  opened = null;
-  render(index < settings.servers.length ? `s:${index}` : "add");
-}
-
-function pickDefault() {
-  modelMenu(modelButton, modelHost, settings.defaultModel, (model) => {
-    settings.defaultModel = model;
-    modelName.textContent = model.name;
-    renderComposer();
-  });
-}
-
 function pickDefaultFolder() {
   folderPicker(folderButton, folderHost, {
     label: "Default folder for new chats",
@@ -230,13 +226,24 @@ function pickDefaultFolder() {
   });
 }
 
-function setOpen(open) {
+async function loadProviders() {
+  try {
+    providers = await request("GET", "api/providers");
+    loadProblem = null;
+  } catch (error) {
+    loadProblem = `Could not read the settings: ${error.message}`;
+  }
+}
+
+async function setOpen(open) {
   if (!open && panel.contains(document.activeElement)) toggleButton.focus();
   panel.hidden = !open;
   toggleButton.setAttribute("aria-expanded", String(open));
   if (!open) return;
   closeOtherPanels(panel);
   render("v:0");
+  await loadProviders();
+  if (!panel.hidden) render(panel.contains(document.activeElement) ? undefined : "v:0");
 }
 
 toggleButton.addEventListener("click", () => setOpen(panel.hidden));

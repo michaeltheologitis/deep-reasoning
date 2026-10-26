@@ -1,4 +1,4 @@
-"""The web app: the Library's, the chats' and the runs' API, and the UI's static files at /."""
+"""The web app: the Library's, the settings', the chats' and the runs' API, and the UI's static files at /."""
 
 from contextlib import asynccontextmanager, closing
 from http import HTTPStatus
@@ -8,14 +8,17 @@ from typing import Annotated
 import structlog
 from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
 from fastapi import Path as InPath
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 from fastapi.staticfiles import StaticFiles
-from pydantic import StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from deep_reasoning.chats import (
     CHATS_FILE,
+    choose,
     create_chat,
     delete_chat,
     find_chat,
@@ -26,6 +29,7 @@ from deep_reasoning.chats import (
 from deep_reasoning.library import (
     LibraryError,
     add_decomposition,
+    check_namespace,
     default_namespace,
     engine_config,
     open_library,
@@ -40,22 +44,68 @@ from deep_reasoning.runs import (
     read_turn,
     turn_starts,
 )
+from deep_reasoning.settings import (
+    Provider,
+    SettingsError,
+    add_server,
+    drop_key,
+    find_provider,
+    model_lists,
+    provider_list,
+    remember_pick,
+    remove_server,
+    run_key,
+    save_key,
+    starting_model,
+    update_server,
+)
 
 WEB = Path(__file__).parent / "web"
 # Requests naming any other host are refused, so a web page can't reach the API by DNS rebinding.
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]
 # A chat id in a path: plain characters only, like the ids the app makes.
 CHAT_ID = r"^[A-Za-z0-9_-]{1,100}$"
+MODEL_NAME = r"^[^\x00-\x1f\x7f]{1,200}$"
 
 log = structlog.get_logger()
+
+Title = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class ModelPick(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str
+    name: Annotated[str, StringConstraints(strip_whitespace=True, pattern=MODEL_NAME)]
+
+
+class ChatChange(BaseModel):
+    """What a PATCH of a chat may change: its title, namespace or model, from its next message."""
+
+    model_config = ConfigDict(extra="forbid")
+    title: Title | None = None
+    namespace: str | None = None
+    model: ModelPick | None = None
+
+
+def same_origin(
+    host: Annotated[str, Header()] = "",
+    origin: Annotated[str | None, Header()] = None,
+):
+    """Refuse a request another site's page sent: a browser names the page's origin, and
+    the app's own pages are served from the host they ask."""
+    if origin is not None and origin != f"http://{host}":
+        raise HTTPException(
+            HTTPStatus.FORBIDDEN, "Requests from other sites are refused."
+        )
 
 
 def create_app(library, home):
     """The app over the Library file at *library*, which each request opens afresh,
     keeping its chats and runs under *home*."""
     library = Path(library)
-    chats = Path(home) / CHATS_FILE
-    runs = Runs(Path(home))
+    home = Path(home)
+    chats = home / CHATS_FILE
+    runs = Runs(home)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -64,13 +114,26 @@ def create_app(library, home):
         yield
         await runs.close()
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, dependencies=[Depends(same_origin)])
     app.state.runs = runs
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=LOCAL_HOSTS)
 
     @app.exception_handler(LibraryError)
+    @app.exception_handler(SettingsError)
     async def refused(request, error):
         return JSONResponse({"detail": str(error)}, status_code=HTTPStatus.BAD_REQUEST)
+
+    @app.exception_handler(RequestValidationError)
+    async def malformed(request, error):
+        # FastAPI's own answer repeats what was sent; a key sent in the wrong shape mustn't come back.
+        errors = [
+            {name: value for name, value in each.items() if name != "input"}
+            for each in error.errors()
+        ]
+        return JSONResponse(
+            {"detail": jsonable_encoder(errors)},
+            status_code=HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
 
     @app.exception_handler(RunInProgress)
     async def busy(request, error):
@@ -89,9 +152,86 @@ def create_app(library, home):
         with closing(open_library(library)) as connection:
             return add_decomposition(connection, namespace, yaml)
 
-    def shown(chat):
-        """A chat as the API gives it: with the id of its run that is going, if one is."""
-        return chat | {"live": runs.live(chat["id"])}
+    def known_provider(name: str):
+        found = find_provider(home, name)
+        if found is None:
+            raise HTTPException(HTTPStatus.NOT_FOUND, f"There is no provider {name}.")
+        return found
+
+    def known_server(name: str):
+        found = known_provider(name)
+        if not found.custom:
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"There is no custom server {name}."
+            )
+        return found
+
+    KnownProvider = Annotated[Provider, Depends(known_provider)]
+    KnownServer = Annotated[Provider, Depends(known_server)]
+
+    @app.get("/api/providers")
+    async def read_providers():
+        return provider_list(home)
+
+    @app.put("/api/providers/{name}/key")
+    async def put_key(
+        provider: KnownProvider,
+        key: Annotated[str, Body(embed=True)],
+    ):
+        save_key(home, provider, key)
+        return provider_list(home)
+
+    @app.delete("/api/providers/{name}/key")
+    async def delete_key(provider: KnownProvider):
+        drop_key(home, provider.key_env)
+        return provider_list(home)
+
+    @app.post("/api/servers", status_code=HTTPStatus.CREATED)
+    async def post_server(
+        name: Annotated[str, Body()],
+        base_url: Annotated[str, Body()],
+        key: Annotated[str | None, Body()] = None,
+    ):
+        add_server(home, name, base_url, key)
+        return provider_list(home)
+
+    @app.put("/api/servers/{name}")
+    async def put_server(
+        server: KnownServer,
+        base_url: Annotated[str, Body()],
+        key: Annotated[str | None, Body()] = None,
+    ):
+        update_server(home, server, base_url, key)
+        return provider_list(home)
+
+    @app.delete("/api/servers/{name}")
+    async def delete_server(server: KnownServer):
+        remove_server(home, server)
+        return provider_list(home)
+
+    @app.get("/api/models")
+    async def read_models():
+        return await model_lists(home)
+
+    def starting_points():
+        """Where a chat that hasn't picked starts: the Library's default namespace, and the
+        model new chats start on."""
+        return default_namespace(library), starting_model(home)
+
+    def shown(chat, starts):
+        """A chat as the API gives it: with the id of its run that is going, if one is, and
+        the namespace and model its next message runs on."""
+        namespace, model = starts
+        if chat["model"] is not None:
+            model = {"provider": chat["provider"], "name": chat["model"]}
+        return {
+            "id": chat["id"],
+            "title": chat["title"],
+            "created": chat["created"],
+            "live": runs.live(chat["id"]),
+            "namespace": chat["namespace"] or namespace,
+            "model": model,
+        }
 
     # The chat routes are coroutines, so they run on the event loop with the runs: what
     # they read of a run is whole, and no chat is deleted between this check and a route.
@@ -105,11 +245,12 @@ def create_app(library, home):
 
     @app.get("/api/chats")
     async def read_chats():
-        return [shown(chat) for chat in list_chats(chats)]
+        starts = starting_points()
+        return [shown(chat, starts) for chat in list_chats(chats)]
 
     @app.post("/api/chats", status_code=HTTPStatus.CREATED)
     async def post_chat():
-        return shown(create_chat(chats))
+        return shown(create_chat(chats), starting_points())
 
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
@@ -117,19 +258,23 @@ def create_app(library, home):
             {"run": start["run"], "events": list(read_events(runs.home, start["run"]))}
             for start in turn_starts(runs.home, chat["id"])
         ]
-        return shown(chat) | {"turns": turns}
+        return shown(chat, starting_points()) | {"turns": turns}
 
     @app.patch("/api/chats/{chat}")
-    async def patch_chat(
-        chat: KnownChat,
-        title: Annotated[
-            str,
-            StringConstraints(strip_whitespace=True, min_length=1),
-            Body(embed=True),
-        ],
-    ):
-        rename_chat(chats, chat["id"], title)
-        return shown(chat | {"title": title})
+    async def patch_chat(chat: KnownChat, change: ChatChange):
+        if change.namespace is not None:
+            with closing(open_library(library)) as connection:
+                check_namespace(connection, change.namespace)
+        model = change.model
+        if model is not None and find_provider(home, model.provider) is None:
+            raise SettingsError(f"There is no provider {model.provider}.")
+        if change.title is not None:
+            rename_chat(chats, chat["id"], change.title)
+        provider, name = (model.provider, model.name) if model else (None, None)
+        choose(chats, chat["id"], change.namespace, provider, name)
+        if model is not None:
+            remember_pick(home, provider, name)
+        return shown(find_chat(chats, chat["id"]), starting_points())
 
     @app.delete("/api/chats/{chat}", status_code=HTTPStatus.NO_CONTENT)
     async def remove_chat(chat: KnownChat):
@@ -145,16 +290,28 @@ def create_app(library, home):
         # Before the chat's turns are read: a run that is going has no turn.end yet.
         if runs.live(chat["id"]) is not None:
             raise RunInProgress(chat["id"])
+        chosen = shown(chat, starting_points())
+        namespace, model = chosen["namespace"], chosen["model"]
+        if model is None:
+            raise SettingsError("Pick a model for this chat, under the message box.")
+        provider = find_provider(home, model["provider"])
+        if provider is None:
+            raise SettingsError(
+                f"There is no provider {model['provider']} any more; pick another model."
+            )
+        key = run_key(home, provider)
         starts = turn_starts(runs.home, chat["id"])
-        # A chat stays in the namespace it started in.
-        namespace = starts[0]["namespace"] if starts else default_namespace(library)
         earlier = [read_turn(runs.home, start["run"]) for start in starts]
+        client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
 
         def config_for(folder):
-            # The run gets the Library's tools as they are now, in a folder of its own.
-            return engine_config(library, namespace, folder / "tools")
+            # The Library's tools as they are now, in a folder of its own; the chat's model.
+            config = engine_config(library, namespace, folder / "tools")
+            return config | {"model": model["name"], "client": client}
 
-        run = runs.start(chat["id"], prompt, config_for, earlier)
+        keys = {provider.key_env: key}
+        run = runs.start(chat["id"], prompt, config_for, earlier, provider.name, keys)
+        choose(chats, chat["id"], namespace, provider.name, model["name"])
         if not starts:
             title_new_chat(chats, chat["id"], prompt)
         return {"run": run}

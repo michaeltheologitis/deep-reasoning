@@ -1,6 +1,5 @@
 // The Deep Reasoning chat: chats and their runs from the app's API, each run's events folded into its tree, live as they stream.
 import { foldEvent, foldEvents, newFold } from "./fold.js";
-import { OPENAI_MODELS } from "./mock_models.js";
 
 const SPIN_MS = 120;
 const STICK_PX = 80;
@@ -41,21 +40,8 @@ const shown = new WeakMap();
 const views = new WeakMap();
 const keys = new WeakMap();
 const counter = new Intl.NumberFormat();
-// Known vendors: the app knows their addresses, each from the vendor's own docs, so settings ask them only for a key, kept as keyName.
-const VENDORS = [
-  { name: "OpenAI", url: "https://api.openai.com/v1", keyName: "OPENAI_API_KEY" },
-  { name: "OpenRouter", url: "https://openrouter.ai/api/v1", keyName: "OPENROUTER_API_KEY" },
-  // never ANTHROPIC_API_KEY: with it set, Claude Code bills that key instead of the subscription
-  { name: "Anthropic", url: "https://api.anthropic.com/v1/", keyName: "DEEP_REASONING_ANTHROPIC_KEY" },
-  { name: "Google Gemini", url: "https://generativelanguage.googleapis.com/v1beta/openai/", keyName: "GEMINI_API_KEY" },
-];
-// The page can't see your shell until this is wired, so the mock takes these keys as set there.
-const MOCK_SHELL_KEYS = ["OPENAI_API_KEY"];
-const MOCK_MODELS = { OpenAI: OPENAI_MODELS };
-// This round's settings, and each chat's model, namespace and folder, live in the page only: nothing is saved or sent, and a reload resets them.
-const vendors = VENDORS.map((vendor) => ({ ...vendor, saved: false, shell: MOCK_SHELL_KEYS.includes(vendor.keyName), models: MOCK_MODELS[vendor.name] ?? null }));
-const OPENAI = vendors.find(({ name }) => name === "OpenAI");
-const settings = { vendors, servers: [], defaultModel: null, defaultFolder: null };
+// The default folder, and each chat's folder, live in the page only until folders are wired: a reload resets them.
+const settings = { defaultFolder: null };
 const library = { namespaces: null, defaultNamespace: null };
 // The folder browser lists these this round, until the server lists folders; MISSING_FOLDER shows what a vanished folder looks like.
 const MOCK_FOLDERS = {
@@ -69,6 +55,8 @@ const MISSING_FOLDER = "/no/such/folder";
 const HOME_FOLDER = "~";
 const SCRATCH_FOLDERS = "~/.deep-reasoning/work";
 let popover = null;
+// Each provider's models, as the server lists them with its key: read once per page load, and again after settings change.
+let modelLists = null;
 let nextId = 1;
 let frame = 0;
 let drawing = 0;
@@ -478,23 +466,26 @@ function renderComposer() {
   renderChoices(state.current);
 }
 
-// A chat's own pick, else what its last run used, else what new chats start with.
-function namespaceOf(chat) {
-  return chat.namespace ?? chat.turns.findLast((turn) => turn.namespace)?.namespace ?? library.defaultNamespace;
-}
-
-function modelOf(chat) {
-  const used = chat.turns.findLast((turn) => turn.model)?.model;
-  return chat.model ?? (used ? { provider: OPENAI, name: used } : settings.defaultModel);
-}
-
-// Updated in place, as the composer redraws with each frame of a live run.
+// Updated in place, as the composer redraws with each frame of a live run. The server says what the chat's next message runs on.
 function renderChoices(chat) {
   const ready = library.namespaces && chat?.turns;
   byId("choices").hidden = !ready;
   if (!ready) return;
-  byId("namespace-name").textContent = namespaceOf(chat);
-  byId("model-name").textContent = modelOf(chat).name;
+  byId("namespace-name").textContent = chat.namespace;
+  byId("model-name").textContent = chat.model?.name ?? "pick a model";
+}
+
+// A pick applies from the chat's next message; the server keeps it, so it survives a reload.
+async function choose(chat, change) {
+  let chosen;
+  try {
+    chosen = await request("PATCH", `api/chats/${chat.id}`, change);
+  } catch (error) {
+    report(`Not changed: ${error.message}`);
+    return;
+  }
+  Object.assign(chat, { namespace: chosen.namespace, model: chosen.model });
+  report(null);
 }
 
 // A chat with no folder of its own works in a scratch folder, which goes when the chat does.
@@ -524,38 +515,57 @@ function pickNamespace() {
   showMenu(byId("namespace"), byId("above"), {
     label: "Namespaces",
     groups: () => [{ options }],
-    isCurrent: (name) => name === namespaceOf(chat),
-    pick: (name) => {
-      chat.namespace = name;
-      renderComposer();
-    },
+    isCurrent: (name) => name === chat.namespace,
+    pick: (name) => choose(chat, { namespace: name }),
   });
 }
 
-function pickModel() {
+function loadModels() {
+  modelLists ??= request("GET", "api/models").catch((error) => {
+    modelLists = null;
+    throw error;
+  });
+  return modelLists;
+}
+
+// The menu opens at once, saying the lists are loading while a provider is slow to answer.
+async function pickModel() {
+  const button = byId("model");
+  const host = byId("above");
+  if (isOpenFrom(button)) return closePopover(true);
   const chat = state.current;
-  modelMenu(byId("model"), byId("above"), modelOf(chat), (model) => {
-    chat.model = model;
-    renderComposer();
-  });
-}
-
-function modelMenu(button, host, current, pick) {
-  if (!usableProviders().length) return noProviderMenu(button, host);
+  const loading = notePopover(button, host, "Loading the model lists…");
+  let lists;
+  try {
+    lists = await loadModels();
+  } catch (error) {
+    loading.textContent = `No model lists: ${error.message}`;
+    return;
+  }
+  if (!popover?.el.contains(loading)) return;
+  closePopover(false);
+  if (!lists.length) return noProviderMenu(button, host);
   showMenu(button, host, {
     label: "Models",
     filter: "filter, or type a model name",
-    groups: modelGroups,
-    isCurrent: (model) => model.provider === current?.provider && model.name === current?.name,
-    pick,
+    groups: (query) => modelGroups(lists, query),
+    isCurrent: (model) => model.provider === chat.model?.provider && model.name === chat.model?.name,
+    pick: (model) => choose(chat, { model }),
   });
+}
+
+// A popover with a line of text, and the button for what to do about it, if any.
+function notePopover(button, host, text, action) {
+  const note = element("p", { class: "menu-note" }, text);
+  const el = element("div", { class: "menu-pop", role: "dialog", "aria-label": "Models", tabindex: "-1" }, note, action);
+  openPopover(button, host, el, action ?? el);
+  return note;
 }
 
 // With no key anywhere there is no model to list, so the menu points to settings.
 function noProviderMenu(button, host) {
-  if (isOpenFrom(button)) return closePopover(true);
   const add = element("button", { type: "button", class: "lib-action lib-primary", onclick: openSettings }, "Add a key in settings");
-  openPopover(button, host, element("div", { class: "menu-pop", role: "dialog", "aria-label": "Models" }, element("p", { class: "menu-note" }, "No provider has a key yet."), add), add);
+  notePopover(button, host, "No provider has a key yet.", add);
 }
 
 function openSettings() {
@@ -563,26 +573,32 @@ function openSettings() {
   byId("settings").dispatchEvent(new Event(PANEL_OPEN));
 }
 
-// Only providers that can answer: vendors with a key, and custom servers, which may need none.
-const hasKey = (vendor) => vendor.saved || vendor.shell;
-const usableProviders = () => [...settings.vendors.filter(hasKey), ...settings.servers];
-
-// Mock lists this round: OpenAI's names come from genai-prices' data; another provider's would come from its GET /models.
-function modelGroups(query) {
+// Each provider that can answer, with its listed models, a typed name, and why its list is missing if it is.
+function modelGroups(lists, query) {
   const typed = query.trim();
-  return usableProviders().map((provider) => {
-    if (!provider.models) return typedModelGroup(provider, typed);
-    const names = provider.models.filter((name) => name.includes(typed.toLowerCase()));
-    const options = names.map((name) => ({ value: { provider, name }, label: name }));
-    return { name: provider.name, note: options.length ? null : `no model matches “${typed}”`, options };
+  return lists.map(({ provider, models, problem }) => {
+    const matches = models.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
+    const options = matches.map((name) => ({ value: { provider, name }, label: name }));
+    if (typed && !models.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });
+    if (!options.length) options.push({ value: null, label: "use model name…", hint: `type a model name for ${provider}` });
+    return { name: provider, note: problem, options };
   });
 }
 
-function typedModelGroup(provider, typed) {
-  const option = typed
-    ? { value: { provider, name: typed }, label: `use “${typed}”` }
-    : { value: null, label: "use model name…", hint: `type a model name for ${provider.name}` };
-  return { name: provider.name, note: `would list the models from ${provider.url.replace(/\/+$/, "")}/models`, options: [option] };
+// After a change in settings the lists are read again, and each chat's model too: one that never picked follows what new chats start on.
+async function settingsChanged() {
+  modelLists = null;
+  let listed;
+  try {
+    listed = await request("GET", "api/chats");
+  } catch {
+    return;
+  }
+  for (const { id, model } of listed) {
+    const chat = state.chats.find((each) => each.id === id);
+    if (chat) chat.model = model;
+  }
+  renderComposer();
 }
 
 // A popover opened by its button into host. Esc closes it and stops there, so it never also stops a run or closes a panel;
@@ -795,9 +811,9 @@ async function request(method, url, body) {
 
 // A run still going in a chat is followed from where its turns end, unless the page follows another or the chat is gone.
 async function readTurns(chat) {
-  const { title, live, turns } = await request("GET", `api/chats/${chat.id}`);
+  const { title, live, turns, namespace, model } = await request("GET", `api/chats/${chat.id}`);
   const folds = turns.map((turn) => foldEvents(turn.events));
-  Object.assign(chat, { title, live, turns: folds.map((fold) => fold.turn) });
+  Object.assign(chat, { title, live, namespace, model, turns: folds.map((fold) => fold.turn) });
   if (live && !state.live && state.chats.includes(chat)) follow(chat, live, folds.at(-1));
 }
 
@@ -1040,7 +1056,7 @@ function wire() {
   }, SPIN_MS);
 }
 
-// The namespaces a chat can pick, and the Library's model: the one runs use today, and new chats start on.
+// The namespaces a chat can pick, and the default one new chats start in.
 async function loadLibrary() {
   let found;
   try {
@@ -1051,7 +1067,6 @@ async function loadLibrary() {
   }
   library.namespaces = found.namespaces.map(({ name }) => name);
   library.defaultNamespace = found.default_namespace;
-  settings.defaultModel = { provider: OPENAI, name: found.run_settings.find(({ label }) => label === "model").items[0].value };
   renderComposer();
 }
 
@@ -1068,8 +1083,10 @@ async function start() {
   else newChat();
 }
 
-export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, modelMenu, renderComposer, request, settings };
+export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settings, settingsChanged };
 
 wire();
 start();
 loadLibrary();
+// read ahead, so the model menu opens on its lists; a failure shows when the menu opens
+loadModels().catch(() => {});
