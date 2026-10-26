@@ -17,6 +17,7 @@ from deep_reasoner.v2.cli import (
     close_run,
     declared_tool_names,
 )
+from structlog.testing import capture_logs
 
 from deep_reasoning.library import (
     UPSERT_NAMESPACE,
@@ -130,8 +131,9 @@ def test_a_read_only_library_with_an_empty_root_still_opens_as_it_is(
         return connect(f"{Path(path).as_uri()}?mode=ro", uri=True, **options)
 
     monkeypatch.setattr(sqlite3, "connect", read_only)
-    with closing(open_library(library)) as connection:
+    with capture_logs() as logs, closing(open_library(library)) as connection:
         assert stored_config(connection)["namespaces"][ROOT] == {"decompositions": []}
+    assert [entry["event"] for entry in logs] == ["library.root_not_upgraded"]
 
 
 @pytest.mark.parametrize(
@@ -146,6 +148,19 @@ def test_a_root_that_was_imported_or_edited_keeps_what_it_has(library, tmp_path,
     written = tmp_path / "root.yaml"
     written.write_text(f"namespaces:\n  root: {root}\n")
     import_into(library, written)
+    assert run_config(library, tmp_path).namespaces[ROOT].tools == []
+
+
+@pytest.mark.parametrize("root", ["{}", "{decompositions: []}"])
+def test_an_imported_root_that_sets_nothing_leaves_the_librarys_as_it_is(
+    library, tmp_path, root
+):
+    denied = tmp_path / "denied.yaml"
+    denied.write_text("namespaces:\n  root: {tools: []}\n")
+    nothing = tmp_path / "nothing.yaml"
+    nothing.write_text(f"namespaces:\n  root: {root}\n  helper: {{}}\n")
+    import_into(library, denied)
+    import_into(library, nothing)
     assert run_config(library, tmp_path).namespaces[ROOT].tools == []
 
 

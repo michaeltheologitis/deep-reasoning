@@ -53,8 +53,7 @@ UPSERT_TOOL = (
     "INSERT INTO tools VALUES (?, ?, ?)"
     " ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml, source = excluded.source"
 )
-# A new root grants the llm tool, so every namespace inherits it, as in the engine's example
-# configs. A Library made before started with root empty; one still untouched gets this on open.
+# Root grants llm to every namespace below it, as in the engine's example configs.
 FRESH_ROOT = {"tools": ["llm"]}
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
@@ -321,11 +320,13 @@ def import_config(connection, path):
     tools = [
         tool_row(name, block, config.config_dir) for name, block in config.tools.items()
     ]
-    # The engine adds a bare root when a config writes none; it must not blank the Library's.
+    # A root that sets nothing, like the bare one the engine adds, must not blank the Library's.
     namespaces = [
         namespace
         for namespace in map(registry.config, registry.names)
-        if namespace.name != ROOT or namespace.model_fields_set != {"name"}
+        if namespace.name != ROOT
+        or namespace.decompositions
+        or namespace.model_fields_set - {"name", "decompositions"}
     ]
     with writing(connection):
         connection.executemany(
