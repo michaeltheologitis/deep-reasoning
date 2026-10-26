@@ -190,22 +190,23 @@ def create_app(library, home):
             return add_decomposition(connection, namespace, yaml)
 
     # Each answers with the whole Library: a namespace's fields reach every namespace under it.
+    # An imported namespace's name may hold a /, hence :path.
     @app.post("/api/namespaces", status_code=HTTPStatus.CREATED)
     def post_namespace(name: Annotated[str, Body()], yaml: Annotated[str, Body()]):
         with closing(open_library(library)) as connection:
             add_namespace(connection, name, yaml)
             return library_panel(connection)
 
-    @app.put("/api/namespaces/{name}")
+    @app.put("/api/namespaces/{name:path}")
     def put_namespace(name: str, yaml: Annotated[str, Body(embed=True)]):
         with closing(open_library(library)) as connection:
             change_namespace(connection, name, yaml)
             return library_panel(connection)
 
-    @app.delete("/api/namespaces/{name}")
-    def remove_namespace(name: str):
+    @app.delete("/api/namespaces/{name:path}")
+    def remove_namespace(name: str, decompositions: Annotated[int, Query(ge=0)]):
         with closing(open_library(library)) as connection:
-            delete_namespace(connection, name)
+            delete_namespace(connection, name, decompositions)
             return library_panel(connection)
 
     def known_provider(name: str):

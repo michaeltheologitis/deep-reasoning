@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from deep_reasoning.app import WEB, create_app
 from deep_reasoning.chats import CHATS_FILE, create_chat
 from deep_reasoning.library import (
+    UPSERT_NAMESPACE,
     UPSERT_SETTING,
     dump,
     import_config,
@@ -235,13 +236,13 @@ def test_a_namespace_is_added_edited_and_deleted_through_the_api(client):
         {"value": "topic (ml)", "source": "inherited from research", "here": False},
         {"value": "year (2026)", "source": "set here", "here": True},
     ]
-    refused = client.delete("/api/namespaces/research")
+    refused = client.delete("/api/namespaces/research?decompositions=0")
     assert (refused.status_code, refused.json()) == (
         400,
         {"detail": "Delete its namespaces first: research.papers."},
     )
-    client.delete("/api/namespaces/research.papers")
-    deleted = client.delete("/api/namespaces/research")
+    client.delete("/api/namespaces/research.papers?decompositions=0")
+    deleted = client.delete("/api/namespaces/research?decompositions=0")
     assert deleted.status_code == 200
     assert "research" not in by_name(deleted.json()["namespaces"])
     assert set(namespaces(client)) == {
@@ -267,7 +268,18 @@ def test_a_namespace_is_added_edited_and_deleted_through_the_api(client):
             {"yaml": "tools: [ghost]\n"},
             "The engine refuses it: namespace 'root' grants unknown tool 'ghost'",
         ),
-        ("DELETE", "/api/namespaces/root", None, "root can't be deleted"),
+        (
+            "DELETE",
+            "/api/namespaces/root?decompositions=0",
+            None,
+            "root can't be deleted",
+        ),
+        (
+            "DELETE",
+            "/api/namespaces/router?decompositions=0",
+            None,
+            "router has 3 decompositions now, not 0",
+        ),
     ],
 )
 def test_a_refused_namespace_change_says_why_and_changes_nothing(
@@ -290,7 +302,7 @@ async def test_a_chat_whose_namespace_was_deleted_is_refused_on_its_next_run(
             steps = [
                 await api.post("/api/namespaces", json={"name": "drafts", "yaml": ""}),
                 await api.patch(f"/api/chats/{chat}", json={"namespace": "drafts"}),
-                await api.delete("/api/namespaces/drafts"),
+                await api.delete("/api/namespaces/drafts?decompositions=0"),
             ]
             refused = await api.post(
                 f"/api/chats/{chat}/runs", json={"prompt": "Count to two."}
@@ -303,6 +315,18 @@ async def test_a_chat_whose_namespace_was_deleted_is_refused_on_its_next_run(
     }
     assert (read["namespace"], read["turns"]) == ("drafts", [])
     assert fake.calls == []
+
+
+def test_a_namespace_whose_name_holds_a_slash_can_be_edited_and_deleted(
+    client, imported
+):
+    with closing(open_library(imported)) as connection, writing(connection):
+        connection.execute(UPSERT_NAMESPACE, ("team/a", ""))
+    edited = client.put("/api/namespaces/team%2Fa", json={"yaml": "vars: {x: 1}\n"})
+    assert by_name(edited.json()["namespaces"])["team/a"]["yaml"] == "vars: {x: 1}\n"
+    deleted = client.delete("/api/namespaces/team%2Fa?decompositions=0")
+    assert deleted.status_code == 200
+    assert "team/a" not in namespaces(client)
 
 
 def test_a_request_naming_another_host_is_refused(client):

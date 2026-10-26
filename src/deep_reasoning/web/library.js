@@ -12,7 +12,6 @@ const MESSAGE_KEYS = ["role", "content"];
 const NAMESPACE_KEYS = ["repl", "reasoner", "tools", "vars", "spawn", "system_suffix"];
 // a new namespace's name: plain words, joined by dots for a child
 const NAMESPACE_NAME = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
-const MAX_NAME_LENGTH = 100;
 const INDENT = "  ";
 const CHECK_DELAY_MS = 300;
 const MAX_FILE_BYTES = 1_000_000;
@@ -92,7 +91,7 @@ panel.append(
   body,
 );
 
-// A YAML editor in a form its toggle opens: it grows with what it holds and is checked as you type. The server checks again and has the last word; its refusal shows where the form's own problems do.
+// A YAML editor its toggle opens, checked as you type; the server's refusal shows where the form's own problems do.
 function yamlForm({ id, label, action, text, problems, save, before = [], beside = null, after = [], first = null }) {
   const form = { problems, save, first, saving: false, timer: null };
   form.toggle = element("button", { type: "button", class: "lib-action", "aria-expanded": "false", "aria-controls": id, "data-key": id, onclick: () => (form.el.hidden ? openForm(form) : closeForm(form)) }, label);
@@ -260,23 +259,25 @@ async function addNamespace(text) {
 }
 
 function editForm(name) {
+  const stored = namespaceNamed(name).yaml;
   if (!editForms.has(name)) {
     const form = yamlForm({
       id: `lib-edit-${++editFormCount}`,
       label: "Edit YAML",
       action: "Save",
-      text: namespaceNamed(name).yaml,
+      text: stored,
       problems: (text) => namespaceProblems(text, name),
       save: async (text) => {
         await changeLibrary("PUT", namespaceUrl(name), { yaml: text });
-        // Cancel, and the next Edit, start from what is stored now
-        form.editor.defaultValue = namespaceNamed(name).yaml;
         return { said: `Saved namespace "${name}"` };
       },
     });
     editForms.set(name, form);
   }
-  return editForms.get(name);
+  const form = editForms.get(name);
+  // a closed form holds no draft, so it follows what is stored
+  if (form.el.hidden) form.editor.defaultValue = stored;
+  return form;
 }
 
 // A namespace with namespaces under it is refused at once; anything else the server may refuse is said after the confirm.
@@ -293,13 +294,16 @@ function keepNamespace(name) {
   reveal(`delete:${name}`);
 }
 
-// The button is disabled while the server answers, so a second click sends nothing.
+// It sends the count the confirm said, so the server deletes no more than that.
 async function deleteNamespace(name, button) {
   button.disabled = true;
+  const said = namespaceNamed(name).decompositions.length;
   try {
-    await changeLibrary("DELETE", namespaceUrl(name));
+    await changeLibrary("DELETE", `${namespaceUrl(name)}?decompositions=${said}`);
   } catch (error) {
     deleting = { name, refusal: error.message };
+    // a refusal may come from a change made elsewhere, so the next confirm asks about what is there now
+    await changeLibrary("GET", LIBRARY_URL).catch(() => {});
     render();
     reveal(`delete:${name}`);
     return;
@@ -327,8 +331,8 @@ function namespaceActions(namespace) {
   if (asking && !deleting.refusal) {
     return element(
       "div",
-      { class: "lib-actions confirm" },
-      deleteQuestion(namespace),
+      { class: "lib-actions confirm", role: "group", "aria-labelledby": "lib-delete-question" },
+      element("span", { id: "lib-delete-question" }, deleteQuestion(namespace)),
       element("button", { type: "button", class: "yes", onclick: (e) => deleteNamespace(name, e.currentTarget) }, "Delete"),
       element("button", { type: "button", class: "no", "data-key": `keep:${name}`, onclick: () => keepNamespace(name) }, "Keep"),
     );
@@ -404,7 +408,7 @@ function turnProblems(message, label) {
 
 function newNamespaceProblem(name) {
   if (!name) return 'Name the namespace, like "research"; "research.papers" goes under research.';
-  if (name.length > MAX_NAME_LENGTH || !NAMESPACE_NAME.test(name)) return 'A namespace name is words of letters, digits, _ and -, joined by dots, like "research.papers".';
+  if (!NAMESPACE_NAME.test(name)) return 'A namespace name is words of letters, digits, _ and -, joined by dots, like "research.papers".';
   if (namespaceNamed(name)) return `There is already a namespace "${name}"; open it and use Edit YAML.`;
   const parent = parentOf(name);
   if (!namespaceNamed(parent)) return `Add namespace "${parent}" first: "${name}" goes under it.`;
@@ -500,7 +504,7 @@ function renderNamespaces() {
     const content = () => [namespaceFields([...namespace.fields, decompositionsField(namespace.name)]), namespaceActions(namespace)];
     return element("div", { style: `--depth: ${namespace.depth}` }, disclosure(namespaceKey(namespace.name), head, content));
   });
-  const run = disclosure("n:run", element("span", { class: "lib-name" }, "Run settings"), () => namespaceFields(library.run_settings));
+  const run = disclosure("run-settings", element("span", { class: "lib-name" }, "Run settings"), () => namespaceFields(library.run_settings));
   return [addSection(namespaceForm), element("div", { class: "lib-rows lib-tree" }, run, tree)];
 }
 
@@ -559,6 +563,7 @@ function flip(key) {
 }
 
 function selectTab(name) {
+  deleting = null;
   tab = name;
   render();
   body.scrollTop = 0;
@@ -572,6 +577,7 @@ function arrowTabs(e) {
 }
 
 function setOpen(open) {
+  deleting = null;
   if (!open && panel.contains(document.activeElement)) toggleButton.focus();
   panel.hidden = !open;
   toggleButton.setAttribute("aria-expanded", String(open));
@@ -581,7 +587,7 @@ function setOpen(open) {
   tabButtons[TABS.indexOf(tab)].focus();
 }
 
-// What the server last said the Library holds; the decomposition form's namespace picker follows it, keeping its pick while that namespace is there.
+// The decomposition form's picker keeps its pick while that namespace is there.
 function useLibrary(found) {
   library = found;
   fileName.textContent = ` · ${library.file}`;
