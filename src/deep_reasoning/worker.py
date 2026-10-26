@@ -1,8 +1,7 @@
 """One run of deep_reasoner, as `python -P -m deep_reasoning.worker <run folder>`, in the
 chat's folder.
 
-It runs the run folder's spec.json with its config.yaml and writes the run's events to
-stdout, one JSON line each.
+It runs the run folder's spec.yaml and writes the run's events to stdout, one JSON line each.
 It takes one command on stdin, `stop`. Anything else the run prints lands on stderr,
 which the server sends to the folder's worker.log.
 """
@@ -28,7 +27,7 @@ from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
 from deep_reasoner.v2.messages import NoCodeBlock, code, user
 from genai_prices import Usage, calc_price
 
-from deep_reasoning.runs import CONFIG, SPEC
+from deep_reasoning.runs import SPEC
 
 log = structlog.get_logger()
 
@@ -38,6 +37,7 @@ CLOSE_RUN_WATCHDOG_S = 2.0
 REPL_BLOCK = re.compile(r"<repl>.*?(?:</repl>|$)", re.DOTALL)
 THINK_TAG = re.compile(r"</?think>")
 OBSERVATION = re.compile(r"\A<observation>\n?(.*?)\n?</observation>\Z", re.DOTALL)
+YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
 def source_of(reply: str) -> str | None:
@@ -349,8 +349,7 @@ def main() -> None:
     # The events keep the real stdout; anything else printed goes to stderr.
     out = os.fdopen(os.dup(1), "w", buffering=1)
     os.dup2(2, 1)
-    spec = json.loads((folder / SPEC).read_text())
-    spec["config"] = yaml.safe_load((folder / CONFIG).read_text(encoding="utf-8"))
+    spec = yaml.load((folder / SPEC).read_text(), Loader=YAML_LOADER)
     asyncio.run(run(spec, folder, out))
 
 
