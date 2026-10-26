@@ -99,6 +99,15 @@ def same_origin(
         )
 
 
+def keep_namespaces(chats, home):
+    """Give each chat from before chats.sqlite kept namespaces the one its runs used, so
+    it doesn't move to the Library's default."""
+    for chat in list_chats(chats):
+        starts = [] if chat["namespace"] else turn_starts(home, chat["id"])
+        if starts:
+            choose(chats, chat["id"], namespace=starts[-1]["namespace"])
+
+
 def create_app(library, home):
     """The app over the Library file at *library*, which each request opens afresh,
     keeping its chats and runs under *home*."""
@@ -111,6 +120,7 @@ def create_app(library, home):
     async def lifespan(app):
         for run in end_unfinished(runs.home):
             log.warning("Ended a run the app stopped under", run=run)
+        keep_namespaces(chats, runs.home)
         yield
         await runs.close()
 

@@ -17,6 +17,7 @@ from fake_model import (
 from fastapi.testclient import TestClient
 
 from deep_reasoning.app import WEB, create_app
+from deep_reasoning.chats import CHATS_FILE, create_chat
 from deep_reasoning.library import (
     UPSERT_SETTING,
     dump,
@@ -24,7 +25,8 @@ from deep_reasoning.library import (
     open_library,
     writing,
 )
-from deep_reasoning.settings import ENV_FILE, add_server
+from deep_reasoning.runs import append_event
+from deep_reasoning.settings import ENV_FILE, add_server, server_key_env
 
 pytestmark = pytest.mark.usefixtures("no_vendor_keys")
 
@@ -492,8 +494,8 @@ async def test_chats_survive_a_restart(library_on, connect):
     assert read == renamed.json() | {"turns": [{"run": run, "events": events}]}
 
 
-def by_name(providers):
-    return {each["name"]: each for each in providers}
+def by_name(rows, field="name"):
+    return {each[field]: each for each in rows}
 
 
 def closed_port():
@@ -605,7 +607,7 @@ def test_a_listing_that_fails_says_why_in_plain_words(client, home):
     with FakeOpenAI(scripted(PLAN), models=None) as fake:
         add_server(home, "unlisted", fake.base_url, None)
         add_server(home, "gone", gone, None)
-        listings = by_name_of(client.get("/api/models").json())
+        listings = by_name(client.get("/api/models").json(), "provider")
     assert listings["unlisted"] == {
         "provider": "unlisted",
         "models": [],
@@ -617,8 +619,51 @@ def test_a_listing_that_fails_says_why_in_plain_words(client, home):
     )
 
 
-def by_name_of(listings):
-    return {each["provider"]: each for each in listings}
+@pytest.mark.parametrize("key", ["sk-in\nhalves", "sk-in\rhalves", "sk-ünïcode"])
+def test_a_key_no_header_can_carry_is_never_repeated_in_a_listing(
+    client, home, monkeypatch, key
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        add_server(home, "vllm", fake.base_url, None)
+        monkeypatch.setenv(server_key_env("vllm"), key)
+        response = client.get("/api/models")
+    assert response.json() == [
+        {
+            "provider": "vllm",
+            "models": [],
+            "problem": "No list: the vllm key can't be sent; is it one line of "
+            "plain text?",
+        }
+    ]
+    assert "sk-" not in response.text
+
+
+def test_a_shell_key_ending_in_a_carriage_return_lists_without_it(
+    client, home, monkeypatch
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        add_server(home, "vllm", fake.base_url, None)
+        monkeypatch.setenv(server_key_env("vllm"), f"{SHELL_KEY}\r")
+        listing = client.get("/api/models").json()[0]
+    assert (listing["models"], fake.listed) == (
+        ["fake-large", "fake-small"],
+        [SHELL_KEY],
+    )
+
+
+def test_a_chat_from_before_namespaces_were_kept_stays_in_the_one_its_runs_used(
+    imported, home
+):
+    chat = create_chat(home / CHATS_FILE)["id"]
+    run = "20261025-120000-000000"
+    (home / "runs" / run).mkdir(parents=True)
+    start = {"kind": "turn.start", "run": run, "chat": chat, "prompt": "Hi."}
+    end = {"kind": "turn.end", "outcome": "answered", "answer": "hello", "detail": None}
+    append_event(home, run, {"seq": 1, "t": 1.0, "namespace": "course_advisor"} | start)
+    append_event(home, run, {"seq": 2, "t": 2.0, "cost": None, "seconds": 1.0} | end)
+    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
+        read = client.get(f"/api/chats/{chat}").json()
+    assert read["namespace"] == "course_advisor"
 
 
 @pytest.mark.anyio

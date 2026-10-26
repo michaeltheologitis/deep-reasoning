@@ -78,6 +78,26 @@ def test_a_saved_key_beats_the_shells(app_home, monkeypatch):
     assert key_of(OPENAI, saved) == KEY == run_key(app_home, OPENAI)
 
 
+def test_a_shell_key_with_a_stray_line_ending_runs_without_it(app_home, monkeypatch):
+    monkeypatch.setenv(OPENAI.key_env, f"{SHELL_KEY}\r\n")
+    assert run_key(app_home, OPENAI) == SHELL_KEY
+
+
+def test_saving_a_key_through_a_symlinked_env_file_leaves_its_target_alone(
+    app_home, tmp_path
+):
+    app_home.mkdir(parents=True)
+    target = tmp_path / "dotfiles.env"
+    target.write_text(THEIRS)
+    target.chmod(0o644)
+    (app_home / ENV_FILE).symlink_to(target)
+    save_key(app_home, OPENAI, KEY)
+    env = app_home / ENV_FILE
+    assert not env.is_symlink() and mode(env) == 0o600
+    assert env.read_text() == THEIRS.replace("sk-older", KEY)
+    assert target.read_text() == THEIRS and mode(target) == 0o644
+
+
 def test_dropping_a_key_keeps_the_other_lines_and_lets_the_shells_show_again(
     app_home, monkeypatch
 ):

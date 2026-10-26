@@ -90,7 +90,9 @@ def key_status(provider: Provider, saved: dict[str, str]) -> str:
 
 def key_of(provider: Provider, saved: dict[str, str]) -> str | None:
     """The provider's key: the one saved in settings, else the shell's."""
-    return saved.get(provider.key_env) or os.environ.get(provider.key_env) or None
+    key = saved.get(provider.key_env) or os.environ.get(provider.key_env) or ""
+    # A shell or hand-edited key may end in a stray newline or carriage return.
+    return key.strip() or None
 
 
 def checked_key(key: str, provider: Provider) -> str:
@@ -112,10 +114,11 @@ def write_key(home: Path, name: str, key: str) -> None:
     """Set *name* in .env, leaving its other lines as they are; the file is the user's alone."""
     path = home / ENV_FILE
     home.mkdir(parents=True, exist_ok=True)
-    if path.exists():
+    if path.is_file() and not path.is_symlink():
         # The rewrite keeps the file's mode, so it is narrowed before the key goes in.
         path.chmod(OWNER_ONLY)
-    # A new file is made from a temporary one, which starts readable by its owner only.
+    # A new file, or one replacing a symlink, is made from a temporary one, which
+    # starts readable by its owner only.
     set_key(path, name, key)
 
 
@@ -322,6 +325,12 @@ async def list_models(provider: Provider, key: str | None) -> dict[str, Any]:
     except httpx.HTTPStatusError as error:
         status = f"{error.response.status_code} {error.response.reason_phrase}".strip()
         listing["problem"] = f"No list: {url} answered {status}."
+    except (httpx.LocalProtocolError, UnicodeEncodeError):
+        # Raised for a key no header can carry; httpx's words would repeat the key.
+        listing["problem"] = (
+            f"No list: the {provider.name} key can't be sent; is it one line of "
+            "plain text?"
+        )
     except httpx.HTTPError as error:
         listing["problem"] = (
             f"No list: {url} didn't answer ({error or type(error).__name__})."
