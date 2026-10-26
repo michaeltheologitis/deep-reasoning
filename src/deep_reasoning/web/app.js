@@ -763,6 +763,8 @@ async function useFolder(e, picker) {
   try {
     await picker.spec.pick(path || null);
   } catch (error) {
+    // the browser's note on this path says the same: the refusal takes its place, so it reads once
+    picker.browser.querySelector(".menu-note")?.remove();
     picker.problem.textContent = error.message;
     picker.field.focus();
     return;
