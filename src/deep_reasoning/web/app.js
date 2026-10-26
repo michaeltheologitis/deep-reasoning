@@ -705,7 +705,7 @@ function chooseOption(open, option) {
 // The server lists the folders and checks the one picked: spec.pick throws its refusal, which the picker shows.
 function folderPicker(button, host, spec) {
   if (isOpenFrom(button)) return closePopover(true);
-  const field = element("input", { id: "folder-field", class: "menu-filter", value: spec.current ?? "", placeholder: `empty: ${spec.empty}`, autocomplete: "off", spellcheck: "false", "aria-describedby": "folder-problem folder-note" });
+  const field = element("input", { id: "folder-field", class: "menu-filter", value: spec.current ?? "", placeholder: `empty: ${spec.empty}`, autocomplete: "off", spellcheck: "false", "aria-describedby": "folder-problem folder-pop-note" });
   const problem = element("div", { id: "folder-problem", class: "folder-problem", "aria-live": "polite" });
   const browser = element("div", { class: "folder-browser", role: "group", "aria-label": "Folders", onmousedown: (e) => e.preventDefault() });
   const use = element("button", { type: "submit", class: "lib-action lib-primary" });
@@ -716,7 +716,7 @@ function folderPicker(button, host, spec) {
     element("label", { class: "menu-head", for: field.id }, spec.label),
     field,
     problem,
-    element("p", { class: "menu-note", id: "folder-note" }, spec.note),
+    element("p", { class: "menu-note", id: "folder-pop-note" }, spec.note),
     browser,
     element("div", { class: "lib-actions" }, use),
   );
@@ -754,7 +754,8 @@ async function goToFolder(picker, path) {
   picker.problem.textContent = "";
   const fromKeyboard = picker.browser.contains(document.activeElement);
   await fillBrowser(picker);
-  if (fromKeyboard) picker.browser.querySelector(".row")?.focus();
+  // a folder that can't be listed leaves no row, and focus mustn't fall out of the picker
+  if (fromKeyboard) (picker.browser.querySelector(".row") ?? picker.field).focus();
 }
 
 async function useFolder(e, picker) {
@@ -763,8 +764,9 @@ async function useFolder(e, picker) {
   try {
     await picker.spec.pick(path || null);
   } catch (error) {
-    // the browser's note on this path says the same: the refusal takes its place, so it reads once
-    picker.browser.querySelector(".menu-note")?.remove();
+    // a browser note saying the same gives way to the refusal, so it reads once
+    const note = picker.browser.querySelector(".menu-note");
+    if (note?.textContent === error.message) note.remove();
     picker.problem.textContent = error.message;
     picker.field.focus();
     return;
