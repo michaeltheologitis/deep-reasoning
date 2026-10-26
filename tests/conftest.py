@@ -21,6 +21,12 @@ def home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def app_home(home):
+    """The app's home in the test's home, where the command keeps it."""
+    return home / ".deep-reasoning"
+
+
+@pytest.fixture
 def no_vendor_keys(monkeypatch):
     """No vendor's key from the shell, so nothing reaches a real vendor: a test sets the
     ones it means."""

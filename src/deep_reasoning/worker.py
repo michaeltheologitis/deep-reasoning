@@ -1,6 +1,7 @@
-"""One run of deep_reasoner, as `python -m deep_reasoning.worker <run folder>`.
+"""One run of deep_reasoner, as `python -P -m deep_reasoning.worker <run folder>`, in the
+chat's folder.
 
-It runs the folder's spec.json and writes the run's events to stdout, one JSON line each.
+It runs the run folder's spec.json and writes the run's events to stdout, one JSON line each.
 It takes one command on stdin, `stop`. Anything else the run prints lands on stderr,
 which the server sends to the folder's worker.log.
 """
@@ -339,6 +340,8 @@ async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:
 
 def main() -> None:
     folder = Path(sys.argv[1])
+    # The cwd is the chat's folder: its own modules import, after every installed one.
+    sys.path.append(os.getcwd())
     # The events keep the real stdout; anything else printed goes to stderr.
     out = os.fdopen(os.dup(1), "w", buffering=1)
     os.dup2(2, 1)

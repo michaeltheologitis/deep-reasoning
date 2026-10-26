@@ -3,7 +3,8 @@
 A run lives in runs/<run>/ under the app's home: spec.json, what the worker runs;
 events.jsonl, every event as one JSON line, appended as it happens; and worker.log, the
 worker's stderr. The server numbers each event (seq, from 1) and stamps its time (t). The
-model's key reaches the worker in its environment only, never in the run's folder.
+model's key reaches the worker in its environment only, never in the run's folder. The
+worker works in the chat's folder: its cwd, where the agent's Python reads and writes.
 """
 
 import asyncio
@@ -11,7 +12,6 @@ import json
 import math
 import mmap
 import os
-import shutil
 import signal
 import sys
 import time
@@ -24,6 +24,8 @@ from typing import Any, Literal
 
 import jinja2
 import structlog
+
+from deep_reasoning.folders import remove_unless_kept
 
 log = structlog.get_logger()
 
@@ -75,6 +77,7 @@ class Turn:
 @dataclass
 class _Live:
     chat: str
+    cwd: Path
     # for the worker's environment only, and in no repr a traceback might show
     keys: dict[str, str] = field(default_factory=dict, repr=False)
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -240,21 +243,23 @@ class Runs:
         earlier: Sequence[Turn],
         provider: str | None = None,
         keys: dict[str, str] | None = None,
+        folder: Path | None = None,
     ) -> str:
         """Start a run of *prompt* in *chat*, given the chat's *earlier* turns, and return
         its id. *config_for* gives the engine config for the run's folder; *provider*
         names who serves its model, and *keys* go into the worker's environment only.
+        The worker works in *folder*, the run's own folder unless given.
         Raises RunInProgress while the chat has a run going."""
         if self.live(chat) is not None:
             raise RunInProgress(chat)
         run = new_run_id()
-        folder = self.home / RUNS / run
-        folder.mkdir(parents=True)
-        config = config_for(folder)
+        run_folder = self.home / RUNS / run
+        run_folder.mkdir(parents=True)
+        config = config_for(run_folder)
         namespace = config.get("entry_namespace")
         spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier, namespace)}
-        (folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
-        live = _Live(chat, keys or {})
+        (run_folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
+        live = _Live(chat, folder or run_folder, keys or {})
         # Recorded before the run is listed, so a start that fails holds up no chat.
         self._record(
             run,
@@ -267,6 +272,7 @@ class Runs:
                 "namespace": namespace,
                 "model": config.get("model"),
                 "provider": provider,
+                "folder": str(live.cwd),
             },
         )
         self._live[run] = live
@@ -305,9 +311,14 @@ class Runs:
         finally:
             live.watchers.discard(queue)
 
-    async def remove(self, chat: str) -> None:
+    def folders_in_use(self, besides: str) -> list[str]:
+        """The folders the runs of every chat but *besides* are working in."""
+        return [str(live.cwd) for live in self._live.values() if live.chat != besides]
+
+    async def remove(self, chat: str, keep: Sequence[str] = ()) -> None:
         """Delete the chat's runs, stopping the one going, once each of their workers has
-        exited: a worker writes into its run's folder until then, even after turn.end."""
+        exited: a worker writes into its run's folder until then, even after turn.end. A
+        run's folder that is or holds a folder in *keep* is kept."""
         workers = []
         for run, live in self._live.items():
             if live.chat == chat:
@@ -316,11 +327,7 @@ class Runs:
         if workers:
             await asyncio.wait(workers)
         for start in turn_starts(self.home, chat):
-            try:
-                shutil.rmtree(self.home / RUNS / start["run"])
-            except OSError:
-                # The chat is gone already: a folder left behind is logged, not raised.
-                log.exception("runs.folder_not_removed", run=start["run"])
+            remove_unless_kept(self.home / RUNS / start["run"], keep)
 
     async def close(self) -> None:
         """End every run that is going: the app is shutting down."""
@@ -363,15 +370,17 @@ class Runs:
         folder = self.home / RUNS / run
         try:
             with (folder / "worker.log").open("ab") as worker_log:
+                # -P: a module in the chat's folder mustn't shadow the worker's own
                 live.process = await asyncio.create_subprocess_exec(
                     sys.executable,
+                    "-P",
                     "-m",
                     "deep_reasoning.worker",
                     str(folder),
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=worker_log,
-                    cwd=folder,
+                    cwd=live.cwd,
                     env=worker_env(live.keys),
                     start_new_session=True,
                     limit=LINE_LIMIT,

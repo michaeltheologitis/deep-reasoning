@@ -6,10 +6,11 @@ from contextlib import closing
 import pytest
 
 from deep_reasoning import chats as chats_module
-from deep_reasoning.app import CHAT_ID
 from deep_reasoning.chats import (
+    CHAT_ID,
     NEW_TITLE,
     choose,
+    choose_folder,
     create_chat,
     delete_chat,
     find_chat,
@@ -93,8 +94,26 @@ def test_a_deleted_chat_is_gone_and_the_others_stay(chats):
 
 def test_a_new_chat_has_picked_nothing_yet(chats):
     chat = create_chat(chats)
-    assert (chat["namespace"], chat["provider"], chat["model"]) == (None, None, None)
+    picks = (chat["namespace"], chat["provider"], chat["model"], chat["folder"])
+    assert picks == (None, None, None, None)
     assert find_chat(chats, chat["id"]) == chat
+
+
+def test_a_new_chat_starts_in_the_folder_it_is_given(chats):
+    chat = create_chat(chats, "/home/me/code/thesis")
+    assert chat["folder"] == find_chat(chats, chat["id"])["folder"]
+    assert chat["folder"] == "/home/me/code/thesis"
+
+
+def test_a_folder_choice_changes_only_that_chat_and_can_go_back_to_scratch(chats):
+    chat, other = create_chat(chats), create_chat(chats)
+    choose_folder(chats, chat["id"], "/home/me/code/thesis")
+    choose(chats, chat["id"], namespace="router")
+    chosen = find_chat(chats, chat["id"])["folder"]
+    choose_folder(chats, chat["id"], None)
+    assert chosen == "/home/me/code/thesis"
+    assert find_chat(chats, chat["id"])["folder"] is None
+    assert find_chat(chats, other["id"]) == other
 
 
 def test_a_choice_changes_only_what_it_names_and_only_that_chat(chats):
@@ -127,5 +146,6 @@ def test_a_chats_file_from_before_choices_opens_with_its_chats_kept(chats):
             "namespace": "router",
             "provider": None,
             "model": None,
+            "folder": None,
         }
     ]

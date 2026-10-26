@@ -1,5 +1,5 @@
 // The settings panel: the providers, with each key's status, the custom servers, and the default folder. Keys go to the server, which keeps them in ~/.deep-reasoning/.env and never sends one back.
-import { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settings, settingsChanged } from "./app.js";
+import { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settingsChanged } from "./app.js";
 
 const ENV_FILE = "~/.deep-reasoning/.env";
 const NEW_NAME = "vllm";
@@ -14,6 +14,8 @@ const toggleButton = document.getElementById("settings-toggle");
 // what the server last said: each provider, and where its key is, never the key
 let providers = [];
 let loadProblem = null;
+// the folder new chats start in, as the server keeps it in settings.json; null: each chat's own scratch folder
+let defaultFolder = null;
 // the name of the provider whose form shows, or ADDING for a new server's
 let opened = null;
 let cancelRemove = null;
@@ -220,14 +222,24 @@ function confirmRemove(question, action, buttons) {
 function pickDefaultFolder() {
   folderPicker(folderButton, folderHost, {
     label: "Default folder for new chats",
-    current: settings.defaultFolder,
+    current: defaultFolder,
     empty: "each chat gets its own scratch folder",
     note: "New chats start in it. A folder you choose is never deleted.",
-    pick: (folder) => {
-      settings.defaultFolder = folder;
-      folderName.textContent = folder ?? NO_FOLDER;
-    },
+    pick: async (folder) => showDefaultFolder(await request("PUT", "api/default-folder", { folder })),
   });
+}
+
+function showDefaultFolder({ folder }) {
+  defaultFolder = folder;
+  folderName.textContent = folder ?? NO_FOLDER;
+}
+
+async function loadDefaultFolder() {
+  try {
+    showDefaultFolder(await request("GET", "api/default-folder"));
+  } catch {
+    // the providers' row says the settings can't be read
+  }
 }
 
 async function loadProviders() {
@@ -246,7 +258,7 @@ async function setOpen(open) {
   if (!open) return;
   closeOtherPanels(panel);
   render("v:0");
-  await loadProviders();
+  await Promise.all([loadProviders(), loadDefaultFolder()]);
   if (!panel.hidden) render(panel.contains(document.activeElement) ? undefined : "v:0");
 }
 
