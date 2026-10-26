@@ -13,6 +13,7 @@ const CONFLICT = 409;
 const NEW_TITLE = "New chat";
 const SCRATCH_NAME = "scratch";
 const FOLDER_NAME_CHARS = 24;
+const POPOVER_MARGIN_PX = 8;
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
 const RECONNECTING = "Lost the connection to the run; reconnecting…";
 const PANEL_CLOSE = "panel-close";
@@ -611,6 +612,8 @@ function openPopover(button, host, el, focus) {
   // checked a frame later, as redrawing a popover's insides drops focus for a moment
   el.addEventListener("focusout", () => requestAnimationFrame(() => closeIfLeft(el)));
   host.append(el);
+  // the composer's popovers open upward: one taller than the room above it scrolls inside, so its top stays on the screen
+  if (host === byId("above")) el.style.maxHeight = `${el.getBoundingClientRect().bottom - POPOVER_MARGIN_PX}px`;
   button.setAttribute("aria-expanded", "true");
   focus.focus();
 }

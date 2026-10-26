@@ -186,7 +186,7 @@ textarea::placeholder { color: var(--dim); }
   box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--bg); border: 1px solid var(--faint); border-radius: 6px;
   box-shadow: 0 8px 24px color-mix(in srgb, var(--fg) 12%, transparent);
 }
-.above .menu-pop { position: absolute; right: 0; bottom: 6px; z-index: 4; width: min(46ch, 100%); }
+.above .menu-pop { position: absolute; right: 0; bottom: 6px; z-index: 4; width: min(46ch, 100%); overflow-y: auto; }
 .above .folder-pop { width: min(60ch, 100%); }
 .menu-filter, .set-input { min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--faint); border-radius: 3px; padding: 2px 6px; }
 .menu-filter::placeholder, .set-input::placeholder { color: var(--dim); }
