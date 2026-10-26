@@ -469,11 +469,6 @@ def test_a_namespace_whose_parent_is_missing_is_refused(library):
         ),
         ("research", "tools: llm\n", "tools should be a list of tool names"),
         ("research", "system_suffix: 5\n", 'write "system_suffix: |"'),
-        (
-            "research",
-            "vars: {deadline: 2026-11-01}\n",
-            "vars.deadline reads as a date, which a run can't carry; quote it",
-        ),
     ],
 )
 def test_a_namespace_the_panel_cannot_take_is_refused_with_a_plain_message(
@@ -514,6 +509,12 @@ def test_an_edit_replaces_the_fields_and_keeps_the_decompositions(imported, tmp_
     assert router.spawn is None
     assert router.system_suffix == "Be brief."
     assert [each.name for each in router.decompositions] == ROUTER_DECOMPOSITIONS
+
+
+def test_a_namespace_may_hold_a_date_in_its_vars(imported, tmp_path):
+    change(imported, add_namespace, "research", "vars: {deadline: 2026-11-01}\n")
+    research = run_config(imported, tmp_path).namespaces["research"]
+    assert research.vars["deadline"] == date(2026, 11, 1)
 
 
 def test_root_can_be_edited(imported, tmp_path):

@@ -1,7 +1,8 @@
 """One run of deep_reasoner, as `python -P -m deep_reasoning.worker <run folder>`, in the
 chat's folder.
 
-It runs the run folder's spec.json and writes the run's events to stdout, one JSON line each.
+It runs the run folder's spec.json with its config.yaml and writes the run's events to
+stdout, one JSON line each.
 It takes one command on stdin, `stop`. Anything else the run prints lands on stderr,
 which the server sends to the folder's worker.log.
 """
@@ -21,10 +22,13 @@ from pathlib import Path
 from typing import Any, NoReturn, TextIO
 
 import structlog
+import yaml
 from deep_reasoner.core import configure_structlog_fixture
 from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
 from deep_reasoner.v2.messages import NoCodeBlock, code, user
 from genai_prices import Usage, calc_price
+
+from deep_reasoning.runs import CONFIG, SPEC
 
 log = structlog.get_logger()
 
@@ -345,7 +349,8 @@ def main() -> None:
     # The events keep the real stdout; anything else printed goes to stderr.
     out = os.fdopen(os.dup(1), "w", buffering=1)
     os.dup2(2, 1)
-    spec = json.loads((folder / "spec.json").read_text())
+    spec = json.loads((folder / SPEC).read_text())
+    spec["config"] = yaml.safe_load((folder / CONFIG).read_text(encoding="utf-8"))
     asyncio.run(run(spec, folder, out))
 
 

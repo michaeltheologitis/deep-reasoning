@@ -1,10 +1,11 @@
 """Runs: each message is one run of deep_reasoner in a worker subprocess, streamed as events.
 
 A run lives in runs/<run>/ under the app's home: spec.json, what the worker runs;
-events.jsonl, every event as one JSON line, appended as it happens; and worker.log, the
-worker's stderr. The server numbers each event (seq, from 1) and stamps its time (t). The
-model's key reaches the worker in its environment only, never in the run's folder. The
-worker works in the chat's folder: its cwd, where the agent's Python reads and writes.
+config.yaml, the engine config it runs with; events.jsonl, every event as one JSON line,
+appended as it happens; and worker.log, the worker's stderr. The server numbers each
+event (seq, from 1) and stamps its time (t). The model's key reaches the worker in its
+environment only, never in the run's folder. The worker works in the chat's folder: its
+cwd, where the agent's Python reads and writes.
 """
 
 import asyncio
@@ -24,6 +25,7 @@ from typing import Any, Literal
 
 import jinja2
 import structlog
+import yaml
 
 from deep_reasoning.folders import remove_unless_kept
 
@@ -32,6 +34,8 @@ log = structlog.get_logger()
 Outcome = Literal["answered", "exhausted", "failed", "stopped"]
 RUNS = "runs"
 EVENTS = "events.jsonl"
+SPEC = "spec.json"
+CONFIG = "config.yaml"
 RUN_ID = r"^\d{8}-\d{6}-\d{6}$"
 STOP_GRACE_S = 5.0
 MIB = 1024 * 1024
@@ -258,7 +262,10 @@ class Runs:
         config = config_for(run_folder)
         namespace = config.get("entry_namespace")
         spec = {"chat": chat, "prompt": prompt, "recap": recap_of(earlier, namespace)}
-        (run_folder / "spec.json").write_text(json.dumps(spec | {"config": config}))
+        (run_folder / SPEC).write_text(json.dumps(spec))
+        # YAML, as the engine reads it: JSON would lose its dates, sets and integer keys.
+        config_yaml = yaml.safe_dump(config, sort_keys=False, allow_unicode=True)
+        (run_folder / CONFIG).write_text(config_yaml, encoding="utf-8")
         live = _Live(chat, folder or run_folder, keys or {})
         # Recorded before the run is listed, so a start that fails holds up no chat.
         self._record(
