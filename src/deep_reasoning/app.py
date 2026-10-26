@@ -247,14 +247,16 @@ def create_app(library, home):
     def read_folders(path: str = "~"):
         return list_folders(path)
 
+    # Coroutines, as every route that writes settings.json is: one at a time on the event
+    # loop, so no two rewrites of the file race and one is lost.
     @app.get("/api/default-folder")
-    def read_default_folder():
+    async def read_default_folder():
         return {"folder": shown_folder(default_folder(home))}
 
     @app.put("/api/default-folder")
-    def put_default_folder(folder: Annotated[str | None, Body(embed=True)]):
+    async def put_default_folder(folder: Annotated[str | None, Body(embed=True)]):
         save_default_folder(home, chosen_folder(folder))
-        return read_default_folder()
+        return await read_default_folder()
 
     def starting_points():
         """Where a chat that hasn't picked starts: the Library's default namespace, and the
