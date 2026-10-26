@@ -12,7 +12,6 @@ import json
 import math
 import mmap
 import os
-import shutil
 import signal
 import sys
 import time
@@ -26,7 +25,7 @@ from typing import Any, Literal
 import jinja2
 import structlog
 
-from deep_reasoning.folders import holds_chosen
+from deep_reasoning.folders import remove_unless_kept
 
 log = structlog.get_logger()
 
@@ -78,7 +77,7 @@ class Turn:
 @dataclass
 class _Live:
     chat: str
-    folder: Path  # the worker's cwd
+    cwd: Path
     # for the worker's environment only, and in no repr a traceback might show
     keys: dict[str, str] = field(default_factory=dict, repr=False)
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -273,7 +272,7 @@ class Runs:
                 "namespace": namespace,
                 "model": config.get("model"),
                 "provider": provider,
-                "folder": str(live.folder),
+                "folder": str(live.cwd),
             },
         )
         self._live[run] = live
@@ -314,9 +313,7 @@ class Runs:
 
     def folders_in_use(self, besides: str) -> list[str]:
         """The folders the runs of every chat but *besides* are working in."""
-        return [
-            str(live.folder) for live in self._live.values() if live.chat != besides
-        ]
+        return [str(live.cwd) for live in self._live.values() if live.chat != besides]
 
     async def remove(self, chat: str, keep: Sequence[str] = ()) -> None:
         """Delete the chat's runs, stopping the one going, once each of their workers has
@@ -330,15 +327,7 @@ class Runs:
         if workers:
             await asyncio.wait(workers)
         for start in turn_starts(self.home, chat):
-            folder = self.home / RUNS / start["run"]
-            if holds_chosen(folder, keep):
-                log.warning("runs.folder_kept_as_chosen", run=start["run"])
-                continue
-            try:
-                shutil.rmtree(folder)
-            except OSError:
-                # The chat is gone already: a folder left behind is logged, not raised.
-                log.exception("runs.folder_not_removed", run=start["run"])
+            remove_unless_kept(self.home / RUNS / start["run"], keep)
 
     async def close(self) -> None:
         """End every run that is going: the app is shutting down."""
@@ -392,7 +381,7 @@ class Runs:
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=worker_log,
-                    cwd=live.folder,
+                    cwd=live.cwd,
                     env=worker_env(live.keys),
                     start_new_session=True,
                     limit=LINE_LIMIT,

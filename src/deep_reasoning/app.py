@@ -33,7 +33,7 @@ from deep_reasoning.folders import (
     FolderError,
     chosen_folder,
     list_folders,
-    remove_scratch,
+    remove_unless_kept,
     scratch_folder,
     short_path,
     working_folder,
@@ -322,7 +322,7 @@ def create_app(library, home):
         provider, name = (model.provider, model.name) if model else (None, None)
         choose(chats, chat["id"], change.namespace, provider, name)
         if moved:
-            choose_folder(chats, chat["id"], None if folder is None else str(folder))
+            choose_folder(chats, chat["id"], folder)
         if model is not None:
             remember_pick(home, provider, name)
         return shown(find_chat(chats, chat["id"]), starting_points())
@@ -340,7 +340,8 @@ def create_app(library, home):
         await runs.remove(chat["id"], keep)
         # Once its workers have exited, as one works in it until then; off the event
         # loop, as an agent may have filled it.
-        await asyncio.to_thread(remove_scratch, home, chat["id"], keep)
+        scratch = scratch_folder(home, chat["id"])
+        await asyncio.to_thread(remove_unless_kept, scratch, keep)
 
     @app.post("/api/chats/{chat}/runs", status_code=HTTPStatus.CREATED)
     async def start_run(
@@ -364,9 +365,9 @@ def create_app(library, home):
         earlier = [read_turn(runs.home, start["run"]) for start in starts]
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
 
-        def config_for(folder):
+        def config_for(run_folder):
             # The Library's tools as they are now, in a folder of its own; the chat's model.
-            config = engine_config(library, namespace, folder / "tools")
+            config = engine_config(library, namespace, run_folder / "tools")
             return config | {"model": model["name"], "client": client}
 
         keys = {provider.key_env: key}

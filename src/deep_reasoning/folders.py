@@ -53,11 +53,12 @@ def existing_folder(typed: str) -> Path:
     raise FolderError(f"There is no folder {short_path(folder)}.")
 
 
-def chosen_folder(typed: str | None) -> Path | None:
-    """The folder a chat or the settings chose; None, for a scratch folder, when blank."""
+def chosen_folder(typed: str | None) -> str | None:
+    """The folder a chat or the settings chose, as kept; None, for a scratch folder, when
+    blank."""
     if typed is None or not typed.strip():
         return None
-    return existing_folder(typed)
+    return str(existing_folder(typed))
 
 
 def listable(entry: os.DirEntry) -> bool:
@@ -112,24 +113,18 @@ def working_folder(home: Path, chat: dict[str, Any]) -> Path:
     return scratch
 
 
-def holds_chosen(folder: Path, chosen: Iterable[str]) -> bool:
-    """*folder* is, or holds, a folder in *chosen*, symlinks resolved."""
+def remove_unless_kept(folder: Path, keep: Iterable[str]) -> None:
+    """Delete *folder*, one of a deleted chat's, unless it is or holds a folder in *keep*,
+    the folders chosen or in use; never through a symlink. The chat is gone already, so a
+    folder left behind is logged, not raised."""
     # realpath, as Path.resolve raises on a symlink loop
     real = Path(os.path.realpath(folder))
-    return any(Path(os.path.realpath(each)).is_relative_to(real) for each in chosen)
-
-
-def remove_scratch(home: Path, chat: str, chosen: Iterable[str]) -> None:
-    """Delete the chat's scratch folder and nothing else: never one that is or holds a
-    folder in *chosen*, the folders chosen or in use; never through a symlink."""
-    scratch = scratch_folder(home, chat)
-    if holds_chosen(scratch, chosen):
-        log.warning("folders.scratch_kept_as_chosen", chat=chat, folder=str(scratch))
+    if any(Path(os.path.realpath(each)).is_relative_to(real) for each in keep):
+        log.warning("folders.kept_as_chosen", folder=str(folder))
         return
     try:
-        shutil.rmtree(scratch)
+        shutil.rmtree(folder)
     except FileNotFoundError:
         return
     except OSError:
-        # The chat is gone already: a folder left behind is logged, not raised.
-        log.exception("folders.scratch_not_removed", chat=chat, folder=str(scratch))
+        log.exception("folders.not_removed", folder=str(folder))

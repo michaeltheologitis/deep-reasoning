@@ -41,7 +41,6 @@ const views = new WeakMap();
 const keys = new WeakMap();
 const counter = new Intl.NumberFormat();
 const library = { namespaces: null, defaultNamespace: null };
-// where the folder browser starts when the field is empty
 const HOME_FOLDER = "~";
 let popover = null;
 // Each provider's models, as the server lists them with its key: read once per page load, and again after settings change.

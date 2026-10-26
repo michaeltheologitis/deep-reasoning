@@ -477,8 +477,8 @@ async def test_remove_logs_a_folder_it_cannot_delete_and_deletes_the_rest(
         await runs.remove(CHAT)
     assert (home / "runs" / stuck).exists()
     assert not (home / "runs" / removed).exists()
-    not_removed = [each for each in logs if each["event"] == "runs.folder_not_removed"]
-    assert [each["run"] for each in not_removed] == [stuck]
+    not_removed = [each for each in logs if each["event"] == "folders.not_removed"]
+    assert [Path(each["folder"]).name for each in not_removed] == [stuck]
 
 
 async def test_an_event_too_long_to_read_ends_the_turn_failed(

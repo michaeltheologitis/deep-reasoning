@@ -9,7 +9,7 @@ from deep_reasoning.folders import (
     FolderError,
     chosen_folder,
     list_folders,
-    remove_scratch,
+    remove_unless_kept,
     scratch_folder,
     working_folder,
 )
@@ -54,7 +54,7 @@ def test_a_listing_has_the_subfolders_hidden_last_and_no_files(code):
 )
 def test_a_typed_path_is_expanded_made_absolute_and_tidied(code, home, typed):
     assert list_folders(typed.format(home=home))["path"] == "~/code"
-    assert chosen_folder(typed.format(home=home)) == code
+    assert chosen_folder(typed.format(home=home)) == str(code)
 
 
 def test_the_root_has_no_parent_and_outside_home_paths_stay_whole():
@@ -80,22 +80,11 @@ def test_a_path_that_is_not_a_folder_is_refused_in_plain_words(code, typed, prob
     assert str(listing.value) == str(choosing.value) == problem
 
 
-def test_an_entry_the_system_cannot_look_at_is_left_out_of_the_listing(code):
+def test_a_listing_leaves_out_what_the_page_could_not_show_or_open(code):
     (code / "loop").symlink_to(code / "loop")
-    assert [each["name"] for each in list_folders("~/code")["folders"]] == [
-        "Notes",
-        "thesis",
-        ".git",
-    ]
-
-
-def test_a_folder_whose_name_is_not_utf8_is_left_out_as_the_page_cannot_name_it(code):
-    os.mkdir(os.fsencode(code / "caf") + b"\xe9")
-    assert [each["name"] for each in list_folders("~/code")["folders"]] == [
-        "Notes",
-        "thesis",
-        ".git",
-    ]
+    os.mkdir(os.fsencode(code / "caf") + b"\xe9")  # a name that isn't UTF-8
+    names = [each["name"] for each in list_folders("~/code")["folders"]]
+    assert names == ["Notes", "thesis", ".git"]
 
 
 def test_a_folder_that_cannot_be_read_is_refused_in_plain_words(code, monkeypatch):
@@ -135,37 +124,35 @@ def test_only_a_plain_chat_id_names_a_scratch_folder(app_home, chat):
 def test_removing_a_chats_scratch_folder_takes_its_files_and_nothing_else(app_home):
     with_sentinel(app_home / "work" / CHAT / "deep")
     other = with_sentinel(app_home / "work" / "another-chat")
-    remove_scratch(app_home, CHAT, [])
-    remove_scratch(app_home, "never-ran", [])
+    remove_unless_kept(scratch_folder(app_home, CHAT), [])
+    remove_unless_kept(scratch_folder(app_home, "never-ran"), [])
     assert not (app_home / "work" / CHAT).exists()
     assert other.read_text() == "mine"
 
 
 @pytest.mark.parametrize("chosen", ["", "deep"])
-def test_a_scratch_folder_some_chat_chose_is_kept(app_home, chosen):
+def test_a_folder_that_is_or_holds_a_kept_one_is_kept(app_home, chosen):
     scratch = app_home / "work" / CHAT
     sentinel = with_sentinel(scratch / chosen)
     with capture_logs() as logs:
-        remove_scratch(app_home, CHAT, ["/elsewhere", str(scratch / chosen)])
+        remove_unless_kept(scratch, ["/elsewhere", str(scratch / chosen)])
     assert sentinel.read_text() == "mine"
-    assert [each["event"] for each in logs] == ["folders.scratch_kept_as_chosen"]
+    assert [each["event"] for each in logs] == ["folders.kept_as_chosen"]
 
 
-def test_a_scratch_folder_that_is_a_symlink_is_never_followed(app_home, home):
+def test_a_folder_that_is_a_symlink_is_never_followed(app_home, home):
     precious = with_sentinel(home / "precious")
     (app_home / "work").mkdir(parents=True)
     (app_home / "work" / CHAT).symlink_to(precious.parent)
     with capture_logs() as logs:
-        remove_scratch(app_home, CHAT, [])
+        remove_unless_kept(scratch_folder(app_home, CHAT), [])
     assert precious.read_text() == "mine"
-    assert [each["event"] for each in logs] == ["folders.scratch_not_removed"]
+    assert [each["event"] for each in logs] == ["folders.not_removed"]
 
 
-def test_a_chosen_folder_that_is_a_symlink_loop_does_not_stop_the_delete(
-    app_home, home
-):
+def test_a_kept_folder_that_is_a_symlink_loop_does_not_stop_the_delete(app_home, home):
     loop = home / "loop"
     loop.symlink_to(loop)
     with_sentinel(app_home / "work" / CHAT)
-    remove_scratch(app_home, CHAT, [str(loop)])
+    remove_unless_kept(scratch_folder(app_home, CHAT), [str(loop)])
     assert not (app_home / "work" / CHAT).exists()

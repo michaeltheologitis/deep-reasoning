@@ -268,7 +268,7 @@ def test_new_chats_start_on_the_model_picked_last_while_its_provider_can_answer(
 def test_the_default_folder_is_kept_beside_the_other_settings(app_home, tmp_path):
     assert default_folder(app_home) is None
     add_server(app_home, "vllm", LOCAL_URL, None)
-    save_default_folder(app_home, tmp_path / "code")
+    save_default_folder(app_home, str(tmp_path / "code"))
     assert default_folder(app_home) == str(tmp_path / "code")
     save_default_folder(app_home, None)
     assert default_folder(app_home) is None

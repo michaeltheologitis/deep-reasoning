@@ -308,8 +308,7 @@ def default_folder(home: Path) -> str | None:
     return read_settings(home).get("default_folder")
 
 
-def save_default_folder(home: Path, folder: Path | None) -> None:
-    folder = None if folder is None else str(folder)
+def save_default_folder(home: Path, folder: str | None) -> None:
     write_settings(home, read_settings(home) | {"default_folder": folder})
 
 
