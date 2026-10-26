@@ -258,21 +258,16 @@ async function addNamespace(text) {
   return { said: `Added namespace "${name}"`, row: namespaceKey(name) };
 }
 
+const saveNamespace = (name) => async (text) => {
+  await changeLibrary("PUT", namespaceUrl(name), { yaml: text });
+  return { said: `Saved namespace "${name}"` };
+};
+
 function editForm(name) {
   const stored = namespaceNamed(name).yaml;
   if (!editForms.has(name)) {
-    const form = yamlForm({
-      id: `lib-edit-${++editFormCount}`,
-      label: "Edit YAML",
-      action: "Save",
-      text: stored,
-      problems: (text) => namespaceProblems(text, name),
-      save: async (text) => {
-        await changeLibrary("PUT", namespaceUrl(name), { yaml: text });
-        return { said: `Saved namespace "${name}"` };
-      },
-    });
-    editForms.set(name, form);
+    const problems = (text) => namespaceProblems(text, name);
+    editForms.set(name, yamlForm({ id: `lib-edit-${++editFormCount}`, label: "Edit YAML", action: "Save", text: stored, problems, save: saveNamespace(name) }));
   }
   const form = editForms.get(name);
   // a closed form holds no draft, so it follows what is stored
