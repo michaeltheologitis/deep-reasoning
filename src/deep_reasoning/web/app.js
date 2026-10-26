@@ -505,15 +505,17 @@ function pickFolder() {
   });
 }
 
+// A chat whose namespace was deleted still shows it, marked, so its next pick moves it on.
 function pickNamespace() {
   const chat = state.current;
   const star = element("span", { class: "lib-star" }, "★ new chats start here");
   const options = library.namespaces.map((name) => ({ value: name, label: [name, name === library.defaultNamespace && star] }));
+  if (!library.namespaces.includes(chat.namespace)) options.unshift({ value: chat.namespace, label: [chat.namespace, element("span", { class: "gone" }, "no longer exists")] });
   showMenu(byId("namespace"), byId("above"), {
     label: "Namespaces",
     groups: () => [{ options }],
     isCurrent: (name) => name === chat.namespace,
-    pick: (name) => choose(chat, { namespace: name }),
+    pick: (name) => library.namespaces.includes(name) && choose(chat, { namespace: name }),
   });
 }
 
@@ -585,15 +587,25 @@ function modelGroups(lists, query) {
 // After a change in settings the lists are read again, and each chat's model too: one that never picked follows what new chats start on.
 async function settingsChanged() {
   modelLists = null;
+  await readChoices();
+}
+
+// After the Library panel changed the Library: its namespaces, and each chat's, as one that never picked follows the default.
+async function libraryChanged(found) {
+  useLibrary(found);
+  await readChoices();
+}
+
+async function readChoices() {
   let listed;
   try {
     listed = await request("GET", "api/chats");
   } catch {
     return;
   }
-  for (const { id, model } of listed) {
+  for (const { id, namespace, model } of listed) {
     const chat = state.chats.find((each) => each.id === id);
-    if (chat) chat.model = model;
+    if (chat) Object.assign(chat, { namespace, model });
   }
   renderComposer();
 }
@@ -1077,9 +1089,13 @@ async function loadLibrary() {
     // the pickers stay hidden; the Library panel says what went wrong
     return;
   }
+  useLibrary(found);
+  renderComposer();
+}
+
+function useLibrary(found) {
   library.namespaces = found.namespaces.map(({ name }) => name);
   library.defaultNamespace = found.default_namespace;
-  renderComposer();
 }
 
 // A run going in a chat is what the page was showing before a reload, so that chat opens first.
@@ -1095,7 +1111,7 @@ async function start() {
   else newChat();
 }
 
-export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, request, settingsChanged };
+export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, libraryChanged, request, settingsChanged };
 
 wire();
 start();

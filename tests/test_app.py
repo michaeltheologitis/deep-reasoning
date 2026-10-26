@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 from deep_reasoning.app import WEB, create_app
 from deep_reasoning.chats import CHATS_FILE, create_chat
 from deep_reasoning.library import (
+    UPSERT_NAMESPACE,
     UPSERT_SETTING,
     dump,
     import_config,
@@ -218,6 +219,114 @@ def test_an_invalid_decomposition_is_refused_with_a_plain_message(
     assert response.status_code == 400
     assert problem in response.json()["detail"]
     assert namespaces(client) == before
+
+
+def test_a_namespace_is_added_edited_and_deleted_through_the_api(client):
+    added = client.post(
+        "/api/namespaces", json={"name": "research", "yaml": "vars: {topic: ml}\n"}
+    )
+    child = client.post("/api/namespaces", json={"name": "research.papers", "yaml": ""})
+    edited = client.put(
+        "/api/namespaces/research.papers", json={"yaml": "vars: {year: 2026}\n"}
+    )
+    assert (added.status_code, child.status_code, edited.status_code) == (201, 201, 200)
+    papers = by_name(edited.json()["namespaces"])["research.papers"]
+    assert (papers["depth"], papers["yaml"]) == (2, "vars: {year: 2026}\n")
+    assert field(papers, "Variables") == [
+        {"value": "topic (ml)", "source": "inherited from research", "here": False},
+        {"value": "year (2026)", "source": "set here", "here": True},
+    ]
+    refused = client.delete("/api/namespaces/research?decompositions=0")
+    assert (refused.status_code, refused.json()) == (
+        400,
+        {"detail": "Delete its namespaces first: research.papers."},
+    )
+    client.delete("/api/namespaces/research.papers?decompositions=0")
+    deleted = client.delete("/api/namespaces/research?decompositions=0")
+    assert deleted.status_code == 200
+    assert "research" not in by_name(deleted.json()["namespaces"])
+    assert set(namespaces(client)) == {
+        "root",
+        "router",
+        "course_advisor",
+        "health_advisor",
+    }
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "body", "problem"),
+    [
+        (
+            "POST",
+            "/api/namespaces",
+            {"name": "research", "yaml": "name: research\n"},
+            'Remove "name": a namespace is named in the name field, not in its YAML.',
+        ),
+        (
+            "PUT",
+            "/api/namespaces/root",
+            {"yaml": "tools: [ghost]\n"},
+            "The engine refuses it: namespace 'root' grants unknown tool 'ghost'",
+        ),
+        (
+            "DELETE",
+            "/api/namespaces/root?decompositions=0",
+            None,
+            "root can't be deleted",
+        ),
+        (
+            "DELETE",
+            "/api/namespaces/router?decompositions=0",
+            None,
+            "router has 3 decompositions now, not 0",
+        ),
+    ],
+)
+def test_a_refused_namespace_change_says_why_and_changes_nothing(
+    client, method, url, body, problem
+):
+    before = client.get("/api/library").json()
+    response = client.request(method, url, json=body)
+    assert response.status_code == 400
+    assert response.json()["detail"].startswith(problem)
+    assert client.get("/api/library").json() == before
+
+
+@pytest.mark.anyio
+async def test_a_chat_whose_namespace_was_deleted_is_refused_on_its_next_run(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            steps = [
+                await api.post("/api/namespaces", json={"name": "drafts", "yaml": ""}),
+                await api.patch(f"/api/chats/{chat}", json={"namespace": "drafts"}),
+                await api.delete("/api/namespaces/drafts?decompositions=0"),
+            ]
+            refused = await api.post(
+                f"/api/chats/{chat}/runs", json={"prompt": "Count to two."}
+            )
+            read = (await api.get(f"/api/chats/{chat}")).json()
+    assert [step.status_code for step in steps] == [201, 200, 200]
+    assert refused.status_code == 400
+    assert refused.json() == {
+        "detail": "This chat's namespace drafts no longer exists — pick another."
+    }
+    assert (read["namespace"], read["turns"]) == ("drafts", [])
+    assert fake.calls == []
+
+
+def test_a_namespace_whose_name_holds_a_slash_can_be_edited_and_deleted(
+    client, imported
+):
+    with closing(open_library(imported)) as connection, writing(connection):
+        connection.execute(UPSERT_NAMESPACE, ("team/a", ""))
+    edited = client.put("/api/namespaces/team%2Fa", json={"yaml": "vars: {x: 1}\n"})
+    assert by_name(edited.json()["namespaces"])["team/a"]["yaml"] == "vars: {x: 1}\n"
+    deleted = client.delete("/api/namespaces/team%2Fa?decompositions=0")
+    assert deleted.status_code == 200
+    assert "team/a" not in namespaces(client)
 
 
 def test_a_request_naming_another_host_is_refused(client):

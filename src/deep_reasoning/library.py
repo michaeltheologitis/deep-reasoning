@@ -6,6 +6,7 @@ Each row holds the engine's own YAML, so the file turns back into a deep_reasone
 import ast
 import inspect
 import json
+import re
 import sqlite3
 import sys
 from collections import defaultdict
@@ -15,7 +16,7 @@ from pathlib import Path
 import structlog
 import yaml
 from deep_reasoner.config import load_cli_config
-from deep_reasoner.namespaces import CONFIG_SOURCE, ROOT
+from deep_reasoner.namespaces import CONFIG_SOURCE, ROOT, NamespaceConfig
 from deep_reasoner.prompt_config import Decomposition
 from deep_reasoner.tools import TOOL_BUILDERS
 from deep_reasoner.tools.base import DEFAULT_CLAUDE_DESCRIPTION, DEFAULT_RAG_DESCRIPTION
@@ -86,8 +87,9 @@ NOT_IMPORTED = {
     "client",
     "reasoner",
 }
+ENTRY_NAMESPACE = "entry_namespace"
 # The run settings the panel always lists, with the engine's default when unset.
-SHOWN_SETTINGS = ("max_iter", "max_depth", "entry_namespace", "repl")
+SHOWN_SETTINGS = ("max_iter", "max_depth", ENTRY_NAMESPACE, "repl")
 LINE_WIDTH = 88
 ROLES = "user, assistant or system"
 # make_tool builds `factory: llm` with v2's own builder, the rest from TOOL_BUILDERS.
@@ -99,6 +101,37 @@ BUILTIN_DESCRIPTIONS = {
     "safe_url": DEFAULT_SAFE_URL_DESCRIPTION,
     "claude_code": DEFAULT_CLAUDE_DESCRIPTION,
 }
+# A new namespace's name, from the page: plain words, joined by dots for a child.
+NAMESPACE_NAME = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
+NAME_IT = 'Name the namespace, like "research"; "research.papers" goes under research.'
+NAME_SHAPE = (
+    "A namespace name is words of letters, digits, _ and -, joined by dots,"
+    ' like "research.papers".'
+)
+# What a namespace's YAML leaves to the panel: its name field, and the Decompositions tab.
+NAMED_ELSEWHERE = {
+    "name": 'Remove "name": a namespace is named in the name field, not in its YAML.',
+    "decompositions": (
+        'Remove "decompositions": a namespace\'s decompositions are added'
+        " in the Decompositions tab."
+    ),
+}
+NAMESPACE_KEYS = [
+    key for key in NamespaceConfig.model_fields if key not in NAMED_ELSEWHERE
+]
+NAMESPACE_HOLDS = f"{', '.join(NAMESPACE_KEYS[:-1])} and {NAMESPACE_KEYS[-1]}"
+SHAPES = {
+    "tools": 'tools should be a list of tool names, like "tools: [llm]".',
+    "spawn": 'spawn should be a list of namespace names, like "spawn: [research]", or [] for none.',
+    "vars": 'vars should be a mapping of names to values, like "vars: {year: 2026}".',
+    "system_suffix": 'system_suffix should be text; write "system_suffix: |" with the text indented below.',
+    "reasoner": 'reasoner should be a mapping, like "reasoner: {type: claude_code}".',
+}
+# How a namespace that sets nothing is kept by an import, or a Library made before
+# FRESH_ROOT; the panel saves one as blank text, so a root saved blank is never upgraded.
+EMPTY_NAMESPACE = "{}\n"
+# What a run's spec.json carries to the worker; YAML's dates, times, binary and sets aren't.
+JSON_TYPES = str | int | float | bool | None
 
 
 class LibraryError(ValueError):
@@ -224,7 +257,7 @@ def stored_config(connection):
         decompositions[namespace].append(yaml.safe_load(text))
     rows = connection.execute("SELECT name, yaml FROM namespaces ORDER BY rowid")
     namespaces = {
-        name: {**yaml.safe_load(text), "decompositions": decompositions[name]}
+        name: {**(yaml.safe_load(text) or {}), "decompositions": decompositions[name]}
         for name, text in rows
     }
     return {**stored_settings(connection), "tools": tools, "namespaces": namespaces}
@@ -254,13 +287,17 @@ def engine_config(library_path, namespace, tools_dir):
 def default_namespace(library_path):
     """Where a new chat starts: the run settings' entry_namespace, root unless one is set."""
     with closing(open_library(library_path)) as connection:
-        return stored_settings(connection).get("entry_namespace", ROOT)
+        return stored_settings(connection).get(ENTRY_NAMESPACE, ROOT)
+
+
+def has_namespace(connection, name):
+    found = connection.execute("SELECT 1 FROM namespaces WHERE name = ?", (name,))
+    return found.fetchone() is not None
 
 
 def check_namespace(connection, name):
     """Raise unless the Library has a namespace *name*."""
-    found = connection.execute("SELECT 1 FROM namespaces WHERE name = ?", (name,))
-    if not found.fetchone():
+    if not has_namespace(connection, name):
         raise LibraryError(
             f'The Library has no namespace "{name}"; pick one from the list.'
         )
@@ -376,10 +413,10 @@ def problem(error):
     return f"{'.'.join(map(str, error['loc']))}: {error['msg']}."
 
 
-def parsed(text):
-    """The decomposition the YAML *text* describes, checked by the engine's own model."""
+def loaded(text):
+    """The YAML *text* as data, or a LibraryError saying where it doesn't parse."""
     try:
-        data = yaml.safe_load(text)
+        return yaml.safe_load(text)
     except yaml.YAMLError as error:
         mark = getattr(error, "problem_mark", None)
         where = f"line {mark.line + 1}: " if mark else ""
@@ -387,6 +424,11 @@ def parsed(text):
         raise LibraryError(
             f"The YAML doesn't parse ({where}{reason}). Check the indentation and quoting on that line."
         ) from error
+
+
+def parsed(text):
+    """The decomposition the YAML *text* describes, checked by the engine's own model."""
+    data = loaded(text)
     if not isinstance(data, dict):
         raise LibraryError(
             "The YAML should be a mapping: a name: line, then messages:, as in the template."
@@ -405,10 +447,11 @@ def parsed(text):
 def add_decomposition(connection, namespace, text):
     """Store the decomposition written as YAML *text* under *namespace*, or raise LibraryError saying why not."""
     name = parsed(text).name
-    check_namespace(connection, namespace)
     stored = {"namespace": namespace, "name": name, "yaml": text}
     try:
         with writing(connection):
+            # Under the lock, so a namespace deleted meanwhile leaves no decomposition behind.
+            check_namespace(connection, namespace)
             connection.execute(
                 "INSERT INTO decompositions VALUES (?, ?, ?)", tuple(stored.values())
             )
@@ -417,6 +460,151 @@ def add_decomposition(connection, namespace, text):
             f'{namespace} already has "{name}"; rename it, or pick another namespace.'
         ) from error
     return stored
+
+
+def namespace_problem(error):
+    """One of the NamespaceConfig model's validation errors, as the panel words it."""
+    match error["loc"], error["type"]:
+        case (key,), "extra_forbidden":
+            return f'Remove "{key}": a namespace\'s YAML holds only {NAMESPACE_HOLDS}.'
+        case (str(key), *_), _ if key in SHAPES:
+            return SHAPES[key]
+    return f"{'.'.join(map(str, error['loc']))}: {error['msg']}."
+
+
+def uncarried(value, place):
+    """Each place in *value*, and what it holds there, that a run can't carry."""
+    if isinstance(value, dict):
+        for key, each in value.items():
+            yield from uncarried(each, f"{place}.{key}")
+    elif isinstance(value, list):
+        for index, each in enumerate(value):
+            yield from uncarried(each, f"{place}.{index}")
+    elif not isinstance(value, JSON_TYPES):
+        yield place, value
+
+
+def authored(name, text):
+    """Namespace *name* as its YAML *text* describes it, checked by the engine's own model,
+    and the YAML to store for it."""
+    data = loaded(text)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        raise LibraryError(
+            'The YAML should be a mapping of fields, like "tools: [llm]".'
+        )
+    problems = [NAMED_ELSEWHERE[key] for key in NAMED_ELSEWHERE if key in data]
+    fields = {key: value for key, value in data.items() if key not in NAMED_ELSEWHERE}
+    problems += [
+        f"{place} reads as a {type(value).__name__}, which a run can't carry;"
+        " quote it to keep it as text."
+        for key, field in fields.items()
+        for place, value in uncarried(field, key)
+    ]
+    try:
+        namespace = NamespaceConfig.model_validate(fields | {"name": name})
+    except ValidationError as error:
+        problems += map(namespace_problem, error.errors())
+        raise LibraryError("\n".join(problems)) from error
+    if problems:
+        raise LibraryError("\n".join(problems))
+    # As typed, comments and all, but for the one text an untouched root is kept as.
+    return namespace, "" if text == EMPTY_NAMESPACE else text
+
+
+def accepted(connection):
+    """Raise unless the engine accepts the Library, in words for the panel."""
+    try:
+        check(connection)
+    except ValueError as error:
+        raise LibraryError(f"The engine refuses it: {error}") from error
+
+
+def write_namespace(connection, namespace, text):
+    """Store *namespace* as its YAML *text*, inside a transaction that keeps it only if
+    every namespace it may spawn into is there and the engine accepts the Library."""
+    connection.execute(UPSERT_NAMESPACE, (namespace.name, text))
+    # The engine lets a spawn name no namespace, and fails only when the agent spawns there.
+    missing = [
+        each for each in namespace.spawn or [] if not has_namespace(connection, each)
+    ]
+    if missing:
+        raise LibraryError(
+            "\n".join(
+                f'spawn names "{each}", which is not a namespace in the Library.'
+                for each in missing
+            )
+        )
+    accepted(connection)
+
+
+def add_namespace(connection, name, text):
+    """Store a new namespace *name* with the fields its YAML *text* gives, or raise
+    LibraryError saying why not. Its decompositions are added afterwards."""
+    if not name:
+        raise LibraryError(NAME_IT)
+    if not NAMESPACE_NAME.fullmatch(name):
+        raise LibraryError(NAME_SHAPE)
+    namespace, stored = authored(name, text)
+    parent = name.rpartition(".")[0]
+    with writing(connection):
+        if has_namespace(connection, name):
+            raise LibraryError(
+                f'There is already a namespace "{name}"; open it and use Edit YAML.'
+            )
+        if parent and not has_namespace(connection, parent):
+            raise LibraryError(
+                f'Add namespace "{parent}" first: "{name}" goes under it.'
+            )
+        write_namespace(connection, namespace, stored)
+
+
+def change_namespace(connection, name, text):
+    """Give namespace *name* the fields its YAML *text* gives in place of its own, keeping
+    its decompositions, or raise LibraryError saying why not."""
+    namespace, stored = authored(name, text)
+    with writing(connection):
+        check_namespace(connection, name)
+        write_namespace(connection, namespace, stored)
+
+
+def delete_namespace(connection, name, decompositions):
+    """Delete namespace *name* and its decompositions, as many as the caller was told it
+    has, or raise LibraryError saying why not; if new chats started there, they start in root."""
+    if name == ROOT:
+        raise LibraryError("root can't be deleted: every namespace inherits from it.")
+    with writing(connection):
+        check_namespace(connection, name)
+        rows = connection.execute("SELECT name, yaml FROM namespaces")
+        namespaces = {each: yaml.safe_load(text) or {} for each, text in rows}
+        children = [each for each in namespaces if each.startswith(f"{name}.")]
+        if children:
+            raise LibraryError(f"Delete its namespaces first: {', '.join(children)}.")
+        # Else their spawn would name no namespace, which write_namespace refuses.
+        spawners = [
+            each
+            for each, fields in namespaces.items()
+            if each != name and name in (fields.get("spawn") or [])
+        ]
+        if spawners:
+            raise LibraryError(
+                f"First take {name} out of the spawn of {', '.join(spawners)}:"
+                " they may spawn into it."
+            )
+        held = connection.execute(
+            "SELECT count(*) FROM decompositions WHERE namespace = ?", (name,)
+        ).fetchone()[0]
+        if held != decompositions:
+            raise LibraryError(
+                f"{name} has {count(held, 'decomposition')} now, not {decompositions};"
+                " look again before deleting it."
+            )
+        connection.execute("DELETE FROM decompositions WHERE namespace = ?", (name,))
+        connection.execute("DELETE FROM namespaces WHERE name = ?", (name,))
+        if stored_settings(connection).get(ENTRY_NAMESPACE) == name:
+            connection.execute("DELETE FROM settings WHERE key = ?", (ENTRY_NAMESPACE,))
+        accepted(connection)
 
 
 def shown(value):
@@ -597,12 +785,16 @@ def panel(connection):
     )
     for namespace, name, text in rows:
         decompositions[namespace].append({"name": name, "yaml": text})
+    # What each one's Edit YAML opens on: blank for a namespace that sets nothing.
+    rows = connection.execute("SELECT name, yaml FROM namespaces")
+    own = {name: "" if text == EMPTY_NAMESPACE else text for name, text in rows}
     namespaces = [
         {
             "name": name,
             "depth": len(registry.chain(name)) - 1,
             "fields": namespace_fields(registry, name, config),
             "decompositions": decompositions[name],
+            "yaml": own.get(name, ""),
         }
         for name in names
     ]

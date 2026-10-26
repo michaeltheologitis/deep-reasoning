@@ -43,7 +43,7 @@
 .lib-detail { color: var(--dim); }
 .lib-star { flex: none; color: var(--accent); }
 .lib-tree .row { padding-left: calc(4px + var(--depth, 0) * 2ch); }
-.lib-tree .lib-open { margin-left: calc(0.5ch + var(--depth, 0) * 2ch); }
+.lib-tree .lib-entry > .lib-open { margin-left: calc(0.5ch + var(--depth, 0) * 2ch); }
 .lib-open { gap: 8px; padding-block: 4px 6px; }
 
 .lib-fields { display: grid; grid-template-columns: var(--label-width) minmax(0, 1fr); gap: 3px 1ch; margin: 0; }
