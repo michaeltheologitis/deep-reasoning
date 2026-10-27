@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from deep_reasoning import settings as settings_module
 from deep_reasoning.app import WEB, create_app
+from deep_reasoning.chats import create_chat
 from deep_reasoning.folders import data_folder
 from deep_reasoning.library import (
     UPSERT_NAMESPACE,
@@ -31,6 +32,7 @@ from deep_reasoning.library import (
     open_library,
     writing,
 )
+from deep_reasoning.runs import LOST, save_event
 from deep_reasoning.settings import (
     DEFAULT_FOLDER,
     ENV_FILE,
@@ -115,6 +117,12 @@ async def run_events(api, run):
     """Every event of the run, once it has ended."""
     response = await api.get(f"/api/runs/{run}/events")
     return [event for _, event in server_sent(response.text)]
+
+
+def saved_runs(library):
+    """The runs whose events the app file holds."""
+    with closing(open_library(library)) as connection:
+        return {run for (run,) in connection.execute("SELECT DISTINCT run FROM events")}
 
 
 def namespaces(client):
@@ -593,6 +601,25 @@ async def test_a_chat_reads_back_with_its_turns_in_order(library_on, connect):
 
 
 @pytest.mark.anyio
+async def test_a_reload_mid_run_reads_the_turn_so_far_and_streams_the_rest(
+    library_on, connect
+):
+    held, release = held_on("Count to two.", PLAN)
+    with FakeOpenAI(held) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            run = await send(api, chat, "Count to two.")
+            read = (await api.get(f"/api/chats/{chat}")).json()
+            so_far = read["turns"][0]["events"]
+            release.set()
+            url = f"/api/runs/{run}/events"
+            rest = await api.get(url, params={"after": so_far[-1]["seq"]})
+            whole = await run_events(api, run)
+    assert read["live"] == run and whole[-1]["kind"] == "turn.end"
+    assert so_far + [event for _, event in server_sent(rest.text)] == whole
+
+
+@pytest.mark.anyio
 async def test_a_run_that_is_going_shows_in_the_list_and_in_its_chat(
     library_on, connect
 ):
@@ -613,12 +640,13 @@ async def test_a_run_that_is_going_shows_in_the_list_and_in_its_chat(
 
 
 @pytest.mark.anyio
-async def test_deleting_a_chat_stops_its_run_and_removes_its_run_folders(
+async def test_deleting_a_chat_stops_its_run_and_removes_its_runs_events_and_folders(
     library_on, home, data
 ):
     held, release = held_on("What did I ask?", PLAN)
     with FakeOpenAI(held) as fake:
-        app = create_app(library_on(fake), home)
+        library = library_on(fake)
+        app = create_app(library, home)
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url=LOCAL) as api:
             chat, kept = await new_chat(api), await new_chat(api)
@@ -631,13 +659,32 @@ async def test_deleting_a_chat_stops_its_run_and_removes_its_run_folders(
             release.set()
             listed = (await api.get("/api/chats")).json()
             read = await api.get(f"/api/chats/{chat}")
+            kept_read = (await api.get(f"/api/chats/{kept}")).json()
     assert deleted.status_code == 204
     assert app.state.runs.live(chat) is None
     assert [each["id"] for each in listed] == [kept]
     assert read.status_code == 404
+    assert saved_runs(library) == {other}
+    assert [turn["run"] for turn in kept_read["turns"]] == [other]
     runs = data / "runs"
     assert not (runs / ended).exists() and not (runs / going).exists()
-    assert (runs / other / "events.jsonl").is_file()
+    assert (runs / other).is_dir()
+
+
+@pytest.mark.anyio
+async def test_a_deleted_chats_messages_leave_nothing_in_the_app_file(
+    library_on, connect
+):
+    secret = "Remember the passphrase heliotrope-quokka."
+    with FakeOpenAI(scripted({secret: [repl("FinalAnswer('remembered')")]})) as fake:
+        library = library_on(fake)
+        async with connect(library) as api:
+            chat = await new_chat(api)
+            await run_events(api, await send(api, chat, secret))
+            held = b"heliotrope-quokka" in library.read_bytes()
+            deleted = await api.delete(f"/api/chats/{chat}")
+    assert held and deleted.status_code == 204
+    assert b"heliotrope-quokka" not in library.read_bytes()
 
 
 @pytest.mark.anyio
@@ -692,6 +739,46 @@ def test_a_copy_of_the_app_file_under_another_home_has_its_chats_and_settings(
 
 
 @pytest.mark.anyio
+async def test_a_copy_of_the_app_file_under_another_home_shows_the_chats_past_turns(
+    library_on, connect, tmp_path
+):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        library = library_on(fake)
+        async with connect(library) as api:
+            chat = await new_chat(api)
+            runs = [await send(api, chat, "Count to two.")]
+            await run_events(api, runs[0])
+            runs.append(await send(api, chat, "What did I ask?"))
+            await run_events(api, runs[1])
+            here = (await api.get(f"/api/chats/{chat}")).json()
+    # With no run going, the app keeps nothing of the file's beside it.
+    assert [each.name for each in library.parent.glob(f"{library.name}-*")] == []
+    copy = tmp_path / "elsewhere.sqlite"
+    shutil.copy(library, copy)
+    elsewhere = httpx.ASGITransport(app=create_app(copy, tmp_path / "elsewhere"))
+    async with httpx.AsyncClient(transport=elsewhere, base_url=LOCAL) as api:
+        there = (await api.get(f"/api/chats/{chat}")).json()
+    assert [turn["run"] for turn in there["turns"]] == runs
+    assert there["turns"] == here["turns"]
+    assert there["turns"][1]["events"][-1]["answer"] == "to count"
+
+
+def test_a_run_the_app_stopped_under_ends_failed_when_the_app_next_opens_the_file(
+    imported, home
+):
+    chat = create_chat(imported)["id"]
+    run = "20261025-120000-000000"
+    started = {"kind": "turn.start", "run": run, "chat": chat, "prompt": "Hi."}
+    with closing(open_library(imported)) as connection:
+        save_event(connection, run, {"seq": 1, "t": 100.0} | started)
+    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
+        turns = client.get(f"/api/chats/{chat}").json()["turns"]
+    events = turns[0]["events"]
+    assert [event["kind"] for event in events] == ["turn.start", "turn.end"]
+    assert (events[-1]["outcome"], events[-1]["detail"]) == ("failed", LOST)
+
+
+@pytest.mark.anyio
 async def test_deleting_a_chat_in_a_copy_of_the_file_leaves_the_originals_runs_and_scratch(
     library_on, connect, data, tmp_path
 ):
@@ -708,9 +795,10 @@ async def test_deleting_a_chat_in_a_copy_of_the_file_leaves_the_originals_runs_a
             deleted = await api.delete(f"/api/chats/{chat}")
         async with connect(library) as api:
             original = (await api.get(f"/api/chats/{chat}")).json()
-    assert copied["turns"] == [] and deleted.status_code == 204
+    assert [turn["run"] for turn in copied["turns"]] == [run]
+    assert deleted.status_code == 204
     assert [turn["run"] for turn in original["turns"]] == [run]
-    assert (data / "runs" / run / "events.jsonl").is_file()
+    assert (data / "runs" / run / "spec.yaml").is_file()
     assert (data / "work" / chat / "note.txt").read_text() == "from message 1"
 
 
@@ -1301,6 +1389,25 @@ def test_a_folder_in_a_tampered_app_file_is_treated_as_chosen_and_kept(
     deleted = client.delete(f"/api/chats/{chat}")
     assert deleted.status_code == 204
     assert (folder / "keep.txt").read_text() == "mine"
+
+
+def test_a_run_in_a_tampered_app_file_never_names_a_folder_to_delete(
+    client, home, library, data
+):
+    chat = client.post("/api/chats").json()["id"]
+    outside = home / "thesis"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("mine")
+    tampered = str(Path("..", "..", "..", "thesis"))
+    started = {"seq": 1, "t": 100.0, "kind": "turn.start", "chat": chat}
+    with closing(open_library(library)) as connection:
+        save_event(connection, tampered, started)
+    assert (data / "runs" / tampered).resolve() == outside
+    read = client.get(f"/api/chats/{chat}").json()
+    deleted = client.delete(f"/api/chats/{chat}")
+    assert read["turns"] == [] and deleted.status_code == 204
+    assert (outside / "keep.txt").read_text() == "mine"
+    assert saved_runs(library) == set()
 
 
 def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder(

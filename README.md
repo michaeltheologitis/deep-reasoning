@@ -20,7 +20,8 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 ## What it supports
 
 **Chats**
-- Chats on the left: new, rename, delete. Saved in the Library file (below), they come back after a restart.
+- Chats on the left: new, rename, delete. Saved in the Library file (below) with every message's run, they come back
+  after a restart. Deleting a chat wipes its messages from the file.
 - Each message is a run, shown live as a tree of sub-agents you open level by level. Esc stops it.
 - Each run shows its time, sub-agent count, cost (when the price is known) and model.
 - Follow-ups see the chat's earlier messages and answers.
@@ -48,10 +49,12 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - Settings has a default folder for new chats; one that isn't on this computer gives them a scratch folder.
 
 **The Library**
-- One SQLite file of namespaces, decompositions, custom tools and run settings, and your chats and settings:
-  `~/.deep-reasoning/library.sqlite`, or another with `--library PATH`. Sharing the file shares all of it but your
-  keys, which stay in `.env`, and, for now, the chats' past messages: each file keeps its runs and scratch folders in
-  a folder of its own in `~/.deep-reasoning`, so a copy starts without them.
+- One SQLite file of namespaces, decompositions, custom tools and run settings, and your chats, with their past
+  messages and runs, and settings: `~/.deep-reasoning/library.sqlite`, or another with `--library PATH`. Sharing the
+  file shares all of it but your keys, which stay in `.env`, and the runs' working files and scratch folders, which
+  each file keeps in a folder of its own in `~/.deep-reasoning`.
+- Copy the file while the app is stopped: while a run is going, the newest changes may still be in
+  `library.sqlite-wal` beside it.
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
 

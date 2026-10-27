@@ -1,25 +1,28 @@
 """Runs: each message is one run of deep_reasoner in a worker subprocess, streamed as events.
 
-A run lives in runs/<run>/ in the app file's data folder: spec.yaml, what the worker
-runs, with the engine config; events.jsonl, every event as one JSON line, appended as it
-happens; and worker.log, the worker's stderr. The server numbers each event (seq, from
-1) and stamps its time (t). The model's key reaches the worker in its environment only,
-never in the run's folder. The worker works in the chat's folder: its cwd, where the
-agent's Python reads and writes.
+A run's events are in the app file, saved as they happen, so a copy of the file carries
+every chat's past turns: the runs table names each run's chat, and the events table holds
+each event as the JSON the page folds. The server numbers each event (seq, from 1) and
+stamps its time (t). runs/<run>/ in the file's data folder holds the run's working files:
+spec.yaml, what the worker runs, with the engine config; worker.log, the worker's stderr;
+and what the engine writes. The model's key reaches the worker in its environment only,
+never the run's folder or the file. The worker works in the chat's folder: its cwd, where
+the agent's Python reads and writes.
 """
 
 import asyncio
 import json
 import math
-import mmap
 import os
+import re
 import signal
+import sqlite3
 import sys
 import time
-from collections.abc import AsyncIterator, Callable, Iterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from itertools import islice
 from pathlib import Path
 from typing import Any, Literal
 
@@ -28,13 +31,23 @@ import structlog
 import yaml
 
 from deep_reasoning.folders import remove_unless_kept
+from deep_reasoning.library import open_library, writing
 
 log = structlog.get_logger()
 
 Outcome = Literal["answered", "exhausted", "failed", "stopped"]
 RUNS = "runs"
-EVENTS = "events.jsonl"
 SPEC = "spec.yaml"
+ADD_RUN = "INSERT INTO runs VALUES (?, ?)"
+ADD_EVENT = "INSERT INTO events VALUES (?, ?, ?)"
+FIRST_AND_LAST = (
+    "SELECT data FROM events WHERE run = :run"
+    " AND seq IN (1, (SELECT max(seq) FROM events WHERE run = :run)) ORDER BY seq"
+)
+LAST_EVENTS = (
+    "SELECT id, (SELECT data FROM events WHERE run = id ORDER BY seq DESC LIMIT 1)"
+    " FROM runs ORDER BY id"
+)
 # libyaml's where PyYAML has it: the pure-Python one takes ~0.6 s a MiB, on the loop.
 YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
 RUN_ID = r"^\d{8}-\d{6}-\d{6}$"
@@ -49,6 +62,8 @@ TOO_LONG = (
 WITHHELD = "ANTHROPIC_API_KEY"
 SHUT_DOWN = "Deep Reasoning shut down while the run was going."
 LOST = "Deep Reasoning stopped while the run was going, so the run was lost."
+LOST_END = {"kind": "turn.end", "outcome": "failed", "answer": None, "detail": LOST}
+NOT_SAVED = "The app couldn't save the run in the Library file, so it ended the run"
 RECAP = jinja2.Template(
     """\
 This conversation began before this run. Its earlier runs have ended, so their \
@@ -83,6 +98,7 @@ class Turn:
 class _Live:
     chat: str
     cwd: Path
+    db: sqlite3.Connection  # the app file, which its events are saved in
     # for the worker's environment only, and in no repr a traceback might show
     keys: dict[str, str] = field(default_factory=dict, repr=False)
     events: list[dict[str, Any]] = field(default_factory=list)
@@ -99,46 +115,36 @@ class _Live:
         return self.events[-1]["kind"] == "turn.end"
 
 
-def read_events(home: Path, run: str) -> Iterator[dict[str, Any]]:
-    """The run's events, read from its file a line at a time."""
-    with (home / RUNS / run / EVENTS).open(encoding="utf-8") as events:
-        for line in events:
-            yield json.loads(line)
+def open_events(library: Path) -> sqlite3.Connection:
+    """The app file at *library*, to save a run's events in as they happen, one commit
+    each, on the event loop: in WAL mode with synchronous NORMAL, a commit waits on no
+    fsync, and a power cut may lose the last few, never the file."""
+    connection = open_library(library)
+    try:
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+    except BaseException:
+        connection.close()
+        raise
+    return connection
 
 
-def first_event(path: Path) -> dict[str, Any]:
-    with path.open(encoding="utf-8") as events:
-        return json.loads(events.readline())
+def save_event(connection: sqlite3.Connection, run: str, event: dict[str, Any]) -> None:
+    """Add *event* to the run's in the app file; a turn.start adds the run to its chat."""
+    with writing(connection):
+        if event["kind"] == "turn.start":
+            connection.execute(ADD_RUN, (run, event["chat"]))
+        connection.execute(ADD_EVENT, (run, event["seq"], json.dumps(event)))
 
 
-def last_event(path: Path) -> dict[str, Any]:
-    """The last event of a non-empty events file, found from the end without reading
-    the rest."""
-    with (
-        path.open("rb") as file,
-        mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data,
-    ):
-        return json.loads(data[data.rfind(b"\n", 0, len(data) - 1) + 1 :])
-
-
-def cut_torn_line(path: Path) -> int:
-    """Cut off a last line the app was killed while writing; the size left."""
-    size = path.stat().st_size
-    if size == 0:
-        return 0
-    with (
-        path.open("rb") as file,
-        mmap.mmap(file.fileno(), 0, access=mmap.ACCESS_READ) as data,
-    ):
-        whole = data.rfind(b"\n") + 1
-    if whole < size:
-        os.truncate(path, whole)
-    return whole
-
-
-def append_event(home: Path, run: str, event: dict[str, Any]) -> None:
-    with (home / RUNS / run / EVENTS).open("a", encoding="utf-8") as events:
-        events.write(json.dumps(event) + "\n")
+def read_events(
+    connection: sqlite3.Connection, run: str, after: int = 0
+) -> list[dict[str, Any]]:
+    """The run's events after seq *after*, in order."""
+    rows = connection.execute(
+        "SELECT data FROM events WHERE run = ? AND seq > ? ORDER BY seq", (run, after)
+    )
+    return [json.loads(data) for (data,) in rows]
 
 
 def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
@@ -148,11 +154,12 @@ def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
     return {"cost": cost, "seconds": until - events[0]["t"]}
 
 
-def read_turn(home: Path, run: str) -> Turn:
+def read_turn(connection: sqlite3.Connection, run: str) -> Turn:
     """An ended run's message, how it ended and its namespace, from its first and last
-    events."""
-    path = home / RUNS / run / EVENTS
-    start, end = first_event(path), last_event(path)
+    events; a run the app couldn't save the end of ended failed."""
+    rows = connection.execute(FIRST_AND_LAST, {"run": run})
+    start, *rest = [json.loads(data) for (data,) in rows]
+    end = rest[0] if rest and rest[0]["kind"] == "turn.end" else LOST_END
     return Turn(
         start["prompt"],
         end["outcome"],
@@ -162,32 +169,40 @@ def read_turn(home: Path, run: str) -> Turn:
     )
 
 
-def turn_starts(home: Path, chat: str) -> list[dict[str, Any]]:
-    """The turn.start of each of the chat's runs, oldest first."""
-    starts = [first_event(path) for path in sorted((home / RUNS).glob(f"*/{EVENTS}"))]
-    return [start for start in starts if start["chat"] == chat]
+def chat_runs(connection: sqlite3.Connection, chat: str) -> list[str]:
+    """The chat's runs, oldest first. A run's id names its folder, so one the app could
+    not have made, as a file from someone else may hold, is left out."""
+    rows = connection.execute("SELECT id FROM runs WHERE chat = ? ORDER BY id", (chat,))
+    runs = []
+    for (run,) in rows:
+        if isinstance(run, str) and re.fullmatch(RUN_ID, run):
+            runs.append(run)
+        else:
+            log.warning("runs.left_out", run=repr(run))
+    return runs
 
 
-def end_unfinished(home: Path) -> list[str]:
-    """End, as failed, every run the app stopped under without a turn.end; their ids.
+def delete_runs(connection: sqlite3.Connection, chat: str) -> list[str]:
+    """Delete the chat's runs and their events from the app file; their ids."""
+    with writing(connection):
+        runs = chat_runs(connection, chat)
+        connection.execute(
+            "DELETE FROM events WHERE run IN (SELECT id FROM runs WHERE chat = ?)",
+            (chat,),
+        )
+        connection.execute("DELETE FROM runs WHERE chat = ?", (chat,))
+    return runs
 
-    A last line the app was killed while writing is cut off first. A run left with no
-    whole event loses its events file: as far as the app can tell, it never started.
-    """
-    ended = []
-    for path in sorted((home / RUNS).glob(f"*/{EVENTS}")):
-        if not cut_torn_line(path):
-            path.unlink()
-            continue
-        if last_event(path)["kind"] == "turn.end":
-            continue
-        run = path.parent.name
-        events = list(read_events(home, run))
-        end = {"kind": "turn.end", "outcome": "failed", "answer": None, "detail": LOST}
+
+def end_unfinished(connection: sqlite3.Connection) -> list[str]:
+    """End, as failed, every run the app stopped under without a turn.end; their ids."""
+    rows = connection.execute(LAST_EVENTS).fetchall()
+    unfinished = [run for run, last in rows if json.loads(last)["kind"] != "turn.end"]
+    for run in unfinished:
+        events = read_events(connection, run)
         stamp = {"seq": len(events) + 1, "t": time.time()}
-        append_event(home, run, stamp | end | totals(events, events[-1]["t"]))
-        ended.append(run)
-    return ended
+        save_event(connection, run, stamp | LOST_END | totals(events, events[-1]["t"]))
+    return unfinished
 
 
 def recap_of(turns: Sequence[Turn], namespace: str | None) -> str | None:
@@ -219,9 +234,14 @@ def kill_group(pid: int) -> None:
 
 
 class Runs:
-    """The live runs: each one's worker, its events so far, and the streams watching it."""
+    """The runs of the app file at *library*, with their folders in *home*, its data
+    folder; and the live ones: each one's worker, its events so far, and the streams
+    watching it."""
 
-    def __init__(self, home: Path, *, stop_grace_s: float = STOP_GRACE_S) -> None:
+    def __init__(
+        self, library: Path, home: Path, *, stop_grace_s: float = STOP_GRACE_S
+    ) -> None:
+        self.library = library
         self.home = home
         self._stop_grace_s = stop_grace_s
         self._live: dict[str, _Live] = {}
@@ -238,7 +258,9 @@ class Runs:
         )
 
     def exists(self, run: str) -> bool:
-        return (self.home / RUNS / run / EVENTS).is_file()
+        with closing(open_library(self.library)) as connection:
+            found = connection.execute("SELECT 1 FROM runs WHERE id = ?", (run,))
+            return found.fetchone() is not None
 
     def start(
         self,
@@ -267,22 +289,23 @@ class Runs:
         # YAML keeps dates and int keys; ASCII, as a raw NEL would read back as a space.
         spec_yaml = yaml.dump(spec, Dumper=YAML_DUMPER, sort_keys=False)
         (run_folder / SPEC).write_text(spec_yaml)
-        live = _Live(chat, folder or run_folder, keys or {})
+        live = _Live(chat, folder or run_folder, open_events(self.library), keys or {})
+        start = {
+            "kind": "turn.start",
+            "run": run,
+            "chat": chat,
+            "prompt": prompt,
+            "namespace": namespace,
+            "model": config.get("model"),
+            "provider": provider,
+            "folder": str(live.cwd),
+        }
         # Recorded before the run is listed, so a start that fails holds up no chat.
-        self._record(
-            run,
-            live,
-            {
-                "kind": "turn.start",
-                "run": run,
-                "chat": chat,
-                "prompt": prompt,
-                "namespace": namespace,
-                "model": config.get("model"),
-                "provider": provider,
-                "folder": str(live.cwd),
-            },
-        )
+        try:
+            self._record(run, live, start)
+        except BaseException:
+            live.db.close()
+            raise
         self._live[run] = live
         live.pump = asyncio.create_task(self._pump(run, live))
         return run
@@ -303,7 +326,9 @@ class Runs:
         as it happens, until the run is over."""
         live = self._live.get(run)
         if live is None:
-            for event in islice(read_events(self.home, run), after, None):
+            with closing(open_library(self.library)) as connection:
+                events = read_events(connection, run, after)
+            for event in events:
                 yield event
             return
         # The backlog and the subscription are taken in one step on the event loop, so
@@ -324,9 +349,10 @@ class Runs:
         return [str(live.cwd) for live in self._live.values() if live.chat != besides]
 
     async def remove(self, chat: str, keep: Sequence[str] = ()) -> None:
-        """Delete the chat's runs, stopping the one going, once each of their workers has
-        exited: a worker writes into its run's folder until then, even after turn.end. A
-        run's folder that is or holds a folder in *keep* is kept."""
+        """Delete the chat's runs, their events and their folders, stopping the one going,
+        once each of their workers has exited: a worker writes into its run's folder until
+        then, even after turn.end. A run's folder that is or holds a folder in *keep* is
+        kept."""
         workers = []
         for run, live in self._live.items():
             if live.chat == chat:
@@ -334,8 +360,10 @@ class Runs:
                 workers.append(live.pump)
         if workers:
             await asyncio.wait(workers)
-        for start in turn_starts(self.home, chat):
-            remove_unless_kept(self.home / RUNS / start["run"], keep)
+        with closing(open_library(self.library)) as connection:
+            runs = delete_runs(connection, chat)
+        for run in runs:
+            remove_unless_kept(self.home / RUNS / run, keep)
 
     async def close(self) -> None:
         """End every run that is going: the app is shutting down."""
@@ -365,13 +393,15 @@ class Runs:
         )
 
     def _record(self, run: str, live: _Live, event: dict[str, Any]) -> None:
+        """Number and stamp *event*, send it to the run's streams, and save it. Sent
+        first: a run whose event can't be saved ends, and its streams still see it end."""
         event = {"seq": len(live.events) + 1, "t": time.time()} | event
         if event["kind"] == "turn.end":
             event |= totals(live.events, event["t"])
-        append_event(self.home, run, event)
         live.events.append(event)
         for queue in live.watchers:
             queue.put_nowait(event)
+        save_event(live.db, run, event)
 
     async def _pump(self, run: str, live: _Live) -> None:
         """Start the worker and record its events until it exits; then end the run."""
@@ -396,6 +426,9 @@ class Runs:
             if live.stop_asked:
                 self._ask_to_stop(live)
             await self._read(run, live)
+        except sqlite3.Error as error:
+            log.exception("runs.not_saved", run=run)
+            live.detail = f"{NOT_SAVED}: {error}."
         except Exception as error:
             log.exception("runs.lost_the_worker", run=run)
             live.detail = f"The app lost the run's worker: {error}"
@@ -428,7 +461,11 @@ class Runs:
                 live.kill_timer.cancel()
             if not live.ended:
                 self._record(run, live, self._turn_end(run, live))
+        except sqlite3.Error:
+            # Its streams saw the turn.end; the file gets one when the app next starts.
+            log.exception("runs.end_not_saved", run=run)
         finally:
+            live.db.close()
             del self._live[run]
             for queue in live.watchers:
                 queue.put_nowait(None)

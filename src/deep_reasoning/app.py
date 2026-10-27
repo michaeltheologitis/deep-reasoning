@@ -57,10 +57,10 @@ from deep_reasoning.runs import (
     RUN_ID,
     RunInProgress,
     Runs,
+    chat_runs,
     end_unfinished,
     read_events,
     read_turn,
-    turn_starts,
 )
 from deep_reasoning.settings import (
     Provider,
@@ -128,18 +128,19 @@ def same_origin(
 
 
 def create_app(library, home):
-    """The app over the app file at *library*: the Library, the chats and the app's
-    settings, which each request opens afresh. The keys are in *home*, and the file's runs
-    and scratch folders in its data folder there."""
+    """The app over the app file at *library*: the Library, the chats, their runs' events
+    and the app's settings, which each request opens afresh. The keys are in *home*, and
+    the file's run and scratch folders in its data folder there."""
     library = Path(library)
     home = Path(home)
     data = data_folder(home, library)
-    runs = Runs(data)
+    runs = Runs(library, data)
 
     @asynccontextmanager
     async def lifespan(app):
-        for run in end_unfinished(runs.home):
-            log.warning("Ended a run the app stopped under", run=run)
+        with closing(open_library(library)) as connection:
+            for run in end_unfinished(connection):
+                log.warning("Ended a run the app stopped under", run=run)
         yield
         await runs.close()
 
@@ -336,10 +337,11 @@ def create_app(library, home):
 
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
-        turns = [
-            {"run": start["run"], "events": list(read_events(runs.home, start["run"]))}
-            for start in turn_starts(runs.home, chat["id"])
-        ]
+        with closing(open_library(library)) as connection:
+            turns = [
+                {"run": run, "events": read_events(connection, run)}
+                for run in chat_runs(connection, chat["id"])
+            ]
         return shown(chat, starting_points()) | {"turns": turns}
 
     @app.patch("/api/chats/{chat}")
@@ -368,8 +370,8 @@ def create_app(library, home):
         chosen = [each["folder"] for each in list_chats(library)]
         chosen += [default_folder(library), *runs.folders_in_use(besides=chat["id"])]
         keep = [each for each in chosen if each]
-        # The chat goes first: a crash part way through leaves run folders that no chat
-        # lists, never a chat missing some of its turns.
+        # The chat goes first: a crash part way through leaves runs that no chat lists,
+        # never a chat missing some of its turns.
         delete_chat(library, chat["id"])
         await runs.remove(chat["id"], keep)
         # After its workers exit, as they work in it; off the loop, as it may be large.
@@ -399,8 +401,10 @@ def create_app(library, home):
             )
         key = run_key(home, provider)
         folder = working_folder(data, chat)
-        starts = turn_starts(runs.home, chat["id"])
-        earlier = [read_turn(runs.home, start["run"]) for start in starts]
+        with closing(open_library(library)) as connection:
+            earlier = [
+                read_turn(connection, run) for run in chat_runs(connection, chat["id"])
+            ]
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
 
         def config_for(run_folder):
@@ -413,7 +417,7 @@ def create_app(library, home):
             chat["id"], prompt, config_for, earlier, provider.name, keys, folder
         )
         choose(library, chat["id"], namespace, provider.name, model["name"])
-        if not starts:
+        if not earlier:
             title_new_chat(library, chat["id"], prompt)
         return {"run": run}
 
