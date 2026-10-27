@@ -170,9 +170,10 @@ place of its parent's there; show() lists only each namespace's own. Locked, so 
 read them but not write them: root; a namespace's repl and reasoner; which namespaces \
 grant the app's own tools (library, history); granting a tool that runs Claude Code (its \
 factory is claude_code), which bills the user's subscription; a new namespace under one \
-that grants library or runs Claude Code (as its reasoner or a tool); a tool named as a \
-built-in (llm, rag, kg, safe_url, claude_code) or one of the app's; the system prompt and \
-the run settings.
+that grants library or runs Claude Code (as its reasoner or a tool); a tool root grants, \
+or one the engine builds from its block alone (no Python of its own); a tool named as a \
+built-in (llm, rag, kg, safe_url, claude_code), one of the app's, a Python keyword or a \
+name the REPL binds itself; the system prompt and the run settings.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \
@@ -194,8 +195,12 @@ run's model client and params = `settings` (a dict of plain values), and it retu
 deep_reasoner.primitives.Func(value, description=...): value is what agents call by the \
 tool's name (a function, or an object whose methods they call), and description is what \
 they are told it does (value's docstring when not given; name the methods). It is built \
-once here to check it. Agents see it only in a namespace that grants it: add its name to \
-a namespace's tools with change_namespace, from the next message.
+once here to check it, and only in a chat whose namespace runs the local REPL. Agents see \
+it only in a namespace that grants it (add its name to a namespace's tools with \
+change_namespace, from the next message), but once any namespace grants it, its module \
+and factory run at the start of every run of every chat, so a tool that stops building \
+stops every chat until the user takes it out of the namespaces' tools in the Library \
+panel.
 Each write returns what it did: {done: "added", "replaced" or "changed", what, name, \
 and the namespace for a decomposition or namespace}. A refusal raises ValueError saying \
 why."""
@@ -378,6 +383,24 @@ def tool_file(name):
     return f"{name}.py"
 
 
+def parsed_python(source, what="The source"):
+    """The Python *source* parsed, or a LibraryError saying why it doesn't parse."""
+    try:
+        return ast.parse(source)
+    except SyntaxError as error:
+        raise LibraryError(
+            f"{what} is not valid Python (line {error.lineno}: {error.msg})."
+        ) from error
+    except (RecursionError, MemoryError) as error:
+        raise LibraryError(f"{what} is nested too deeply to parse.") from error
+
+
+def tool_text(name, text, source):
+    """Tool *name*'s row as a change shows it: its block's YAML *text*, then the Python
+    of the file it names."""
+    return f"{text}# {tool_file(name)}\n{source}"
+
+
 def stored_settings(connection):
     rows = connection.execute("SELECT key, yaml FROM settings ORDER BY rowid")
     return {key: yaml.safe_load(text) for key, text in rows if key not in CHATS_DECIDE}
@@ -429,8 +452,10 @@ def engine_config(library_path, namespace, tools_dir, chat, run, key_names=()):
     enters *namespace*; the run's model and client are the chat's to put in.
 
     Only the Library's tools some namespace grants are in it: a run builds each tool it
-    declares, so one that no namespace grants never runs, and one that fails to build can
-    be taken out of the namespaces that grant it. Each one's source is written into
+    declares, whichever namespace it enters, so a tool any namespace grants runs its module
+    and factory at the start of every run of every chat, one no namespace grants never
+    runs, and one that fails to build stops every run until no namespace grants it. Each
+    one's source is written into
     *tools_dir*, and its factory_from points at that file. Each of the app's tools is told
     the app file, the chat, the run, *tools_dir*, the namespace it enters, and *key_names*,
     the variables of the worker's environment that hold keys.
@@ -524,12 +549,7 @@ def tool_row(name, block, config_dir):
     stored_file = tool_file(name)
     file = config_dir / factory_from
     source = file.read_text(encoding="utf-8")
-    try:
-        ast.parse(source, filename=str(file))
-    except SyntaxError as error:
-        raise LibraryError(
-            f"{file} is not valid Python (line {error.lineno}: {error.msg})."
-        ) from error
+    parsed_python(source, str(file))
     return name, dump({**block, "factory_from": stored_file}), source
 
 
@@ -765,9 +785,8 @@ def change_namespace(connection, name, text, allowed=None):
 def store_tool(connection, name, block, source, allowed=None):
     """Store tool *name* as its config *block* and Python *source*, in place of one of its
     name, inside a transaction that keeps it only if the engine accepts the Library;
-    *allowed*, given the connection under the write lock first, raises to refuse. What it
-    replaced: the old source, or the old block's YAML for a tool the engine builds; None
-    when it is new."""
+    *allowed*, given the connection under the write lock first, raises to refuse. The row
+    it replaced, as its block's YAML and its source; None when it is new."""
     with writing(connection):
         if allowed is not None:
             allowed(connection)
@@ -776,10 +795,7 @@ def store_tool(connection, name, block, source, allowed=None):
         ).fetchone()
         connection.execute(UPSERT_TOOL, (name, dump(block), source))
         accepted(connection)
-    if found is None:
-        return None
-    text, before = found
-    return text if before is None else before
+    return found
 
 
 def delete_namespace(connection, name, decompositions):
@@ -938,8 +954,8 @@ def class_docstring(source):
     """The first class's docstring: what the agent is told when a factory returns one and gives no description.
     Empty for source that doesn't parse, as a shared file may hold, so the panel still lists the tool."""
     try:
-        body = ast.parse(source).body
-    except SyntaxError:
+        body = parsed_python(source).body
+    except LibraryError:
         return ""
     classes = [node for node in body if isinstance(node, ast.ClassDef)]
     return (ast.get_docstring(classes[0]) if classes else None) or ""

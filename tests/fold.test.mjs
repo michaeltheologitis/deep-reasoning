@@ -270,12 +270,12 @@ test("a change reads as what it did: a decomposition added or replaced in its na
   assert.deepEqual(worded("tools"), ["added tool word_count", "added namespace counting", "replaced tool word_count"]);
 });
 
-test("a tool's change opens onto its Python source before and after", () => {
+test("a tool's change opens onto its block's YAML and its Python, before and after", () => {
   const [added, , replaced] = foldEvents(recorded("tools")).turn.changes.map(({ step }) => step);
   assert.equal(added.before, null);
-  assert.match(added.after, /^from deep_reasoner\.primitives import Func\n/);
+  assert.match(added.after, /^factory: build\nfactory_from: word_count\.py\n# word_count\.py\nfrom deep_reasoner\.primitives import Func\n/);
   assert.equal(replaced.before, added.after);
-  assert.match(replaced.after, /text\.split\(params\["sep"\]\)/);
+  assert.match(replaced.after, /\nsep: ','\n[^]*text\.split\(params\["sep"\]\)/);
 });
 
 test("a change with odd fields, as a crafted file may hold, folds as it came, and one of no known agent is left out", () => {

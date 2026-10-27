@@ -19,20 +19,22 @@ Each change is logged as library.change, which the worker records as a run event
 
 import ast
 import copy
+import keyword
 import os
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from functools import cache
-from itertools import count
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import structlog
 from deep_reasoner.namespaces import ROOT, NamespaceConfig, NamespaceRegistry
-from deep_reasoner.primitives import Func
+from deep_reasoner.primitives import RESERVED_NAMES, Func
 from deep_reasoner.tools import ToolBuildError
 from deep_reasoner.v2.cli import V2Config, make_tool
 
@@ -51,8 +53,10 @@ from deep_reasoning.library import (
     dump,
     loaded,
     namespace_rows,
+    parsed_python,
     store_tool,
     tool_file,
+    tool_text,
 )
 from deep_reasoning.runs import CHANGE_FIELDS, chat_turns, secrets_of, total_cost
 
@@ -96,13 +100,18 @@ MAX_NESTING = 20
 # A run hands the factory every key of the tool's block but these.
 OWN_KEYS = ("factory", "factory_from")
 SETS_OWN_KEYS = "settings may not hold factory or factory_from: write_tool sets them."
-RESERVED_TOOLS = (*BUILDERS, *APP_TOOLS)
+TAKEN_NAMES = (*BUILDERS, *APP_TOOLS, *sorted(RESERVED_NAMES))
 TOOL_TOO_LONG = (
     f"The source, and the settings as YAML, may each be at most {MAX_YAML_CHARS:,}"
     " characters."
 )
-# Where a tool is built to check it, in the run's tools folder.
 CHECKS = "checks"
+# Any other REPL is a sandbox, and building a tool runs its code in the worker, outside it.
+LOCAL_REPL = "local"
+NOT_LOCAL = (
+    "write_tool works only in a chat whose namespace runs the local REPL: building the"
+    " tool to check it runs its code outside any sandbox."
+)
 
 
 @dataclass
@@ -396,27 +405,39 @@ def check_tool(
     if settings and any(key in settings for key in OWN_KEYS):
         raise LibraryError(SETS_OWN_KEYS)
     tool_file(name)
-    if name in RESERVED_TOOLS:
+    if keyword.iskeyword(name) or name in TAKEN_NAMES:
         raise LibraryError(
-            f'"{name}" is the name of a built-in or app tool ({", ".join(RESERVED_TOOLS)});'
-            " pick another."
+            f'"{name}" is taken: it is a Python keyword, a built-in or app tool, or a name'
+            f" the REPL binds itself ({', '.join(TAKEN_NAMES)}). Pick another."
         )
     if max(len(source), len(dump(settings))) > MAX_YAML_CHARS:
         raise LibraryError(TOOL_TOO_LONG)
-    check_no_key([*texts, *texts_in(settings)], key_names)
-    try:
-        module = ast.parse(source)
-    except SyntaxError as error:
-        raise LibraryError(
-            f"The source is not valid Python (line {error.lineno}: {error.msg})."
-        ) from error
-    # Its string literals too, as an escape can spell a key the raw text doesn't hold.
+    module = parsed_python(source)
+    # Its literals too, as an escape can spell a key the raw text doesn't hold.
     literals = [
-        node.value
+        node.value if type(node.value) is str else node.value.decode("latin-1")
         for node in ast.walk(module)
-        if isinstance(node, ast.Constant) and type(node.value) is str
+        if isinstance(node, ast.Constant) and type(node.value) in (str, bytes)
     ]
-    check_no_key(literals, key_names)
+    check_no_key([*texts, *texts_in(settings), *literals], key_names)
+
+
+def check_tool_locks(
+    config: V2Config, registry: NamespaceRegistry, chat_namespace: str, name: str
+) -> None:
+    """Raise if the tool may not write tool *name* in a chat in *chat_namespace*: the
+    chat's REPL is a sandbox, root grants the tool, or the engine builds it from its
+    block alone, which the tool couldn't write back."""
+    if registry.resolve(chat_namespace).repl.type != LOCAL_REPL:
+        raise LibraryError(NOT_LOCAL)
+    if name in registry.config(ROOT).tools:
+        raise LibraryError(f"root grants {name}: replacing it is {USERS_CHOICE}")
+    block = config.tools.get(name)
+    if block is not None and "factory_from" not in block:
+        raise LibraryError(
+            f"{name} is built by the engine's own {block.get('factory', name)} factory,"
+            f" which write_tool can't write back: replacing it is {USERS_CHOICE}"
+        )
 
 
 def claude_code_tools(config: V2Config, tools: Iterable[str]) -> list[str]:
@@ -500,7 +521,6 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
     a tool it writes with the run's *client*, in the run's *tools_dir*."""
     library, chat_namespace = params["library"], params["namespace"]
     key_names, tools_dir = params["key_names"], Path(params["tools_dir"])
-    checks = count(1)
 
     def show() -> list[dict[str, Any]]:
         """Every namespace, as the Library panel shows it."""
@@ -523,6 +543,11 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         config, registry = config_and_registry(connection)
         check_grant(registry)
         check_locks(config, registry, namespace)
+
+    def may_write_tool(connection: sqlite3.Connection, name: str) -> None:
+        config, registry = config_and_registry(connection)
+        check_grant(registry)
+        check_tool_locks(config, registry, chat_namespace, name)
 
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
@@ -563,9 +588,11 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
 
     def check_builds(name: str, block: dict[str, Any], source: str) -> None:
         """Raise unless the engine builds tool *name* from *source*, as a run would."""
+        checks = tools_dir / CHECKS
+        checks.mkdir(parents=True, exist_ok=True)
         # A folder of its own each time: the engine keeps each file it imported, by path.
-        file = tools_dir / CHECKS / str(next(checks)) / tool_file(name)
-        file.parent.mkdir(parents=True, exist_ok=True)
+        folder = Path(tempfile.mkdtemp(dir=checks))
+        file = folder / tool_file(name)
         file.write_text(source, encoding="utf-8")
         try:
             make_tool(
@@ -578,6 +605,8 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
             raise LibraryError(
                 f"Tool {name} doesn't build, so it wasn't written: {error.detail}"
             ) from error
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
 
     def write_tool(
         name: str, source: str, factory: str, settings: dict[str, Any] | None = None
@@ -585,9 +614,10 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         """Add tool *name*, built by the function *factory* in the Python *source* with
         *settings* as its params, or replace the one of its name."""
         check_tool(name, source, factory, settings, key_names)
-        # The grant first, before the tool's code runs; the build holds no write lock.
+        # The grant and the locks first, before the tool's code runs; the build holds no
+        # write lock, so they are checked again under it.
         with app_file(library, "ro") as connection:
-            may_write(connection)
+            may_write_tool(connection, name)
         block = {
             "factory": factory,
             "factory_from": tool_file(name),
@@ -595,9 +625,17 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         }
         check_builds(name, block, source)
         with app_file(library, "rw") as connection:
-            before = store_tool(connection, name, block, source, allowed=may_write)
-        done = "added" if before is None else "replaced"
-        return logged(done, before, source, what="tool", name=name)
+            found = store_tool(
+                connection,
+                name,
+                block,
+                source,
+                allowed=lambda locked: may_write_tool(locked, name),
+            )
+        before = None if found is None else tool_text(name, *found)
+        after = tool_text(name, dump(block), source)
+        done = "added" if found is None else "replaced"
+        return logged(done, before, after, what="tool", name=name)
 
     tool = SimpleNamespace(
         show=show,

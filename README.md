@@ -64,19 +64,22 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   a namespace you name, add a namespace or change one's own fields (its system suffix, vars, tools and spawn), and
   write a new tool of its own in Python (or replace one) that it then grants to a namespace, with the app's own
   `library` tool; a chat in a namespace without it can't, even through a sub-agent. A tool it writes is built once
-  to check it, and can't take a built-in's or the app's name. The tool never
+  to check it, only in a chat whose namespace runs the local REPL, and can't take a built-in's or the app's name or
+  replace a tool root grants or one built into the engine. The tool never
   changes root, a namespace's REPL or backbone (`repl`, `reasoner`), which namespaces grant `library` or `history`,
   the system prompt or the run settings; never grants a tool that runs Claude Code, which would bill your
   subscription; adds no namespace under one that grants `library` or runs Claude Code; never deletes, and never
   writes a key. A change applies from your next message. These limits guard the tool, not the file: the agent's Python isn't sandboxed, and could open the file
   itself. A new Library has `librarian`; in an older one, add a namespace with `tools: [library]`.
 - Each Library change the agent makes shows in the chat, under its answer and where it was made in the tree, and opens
-  onto its YAML (or a tool's Python) before and after; ask the agent to write the before back to undo it. The decompositions panel and the
+  onto its YAML (or a tool's block and Python) before and after; ask the agent to write the before back to undo it. The decompositions panel and the
   namespace menu under the message box show the change at once.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
 - The Tools tab lists the app's own tools beside the built-in ones, and every tool in the Library; a tool of yours can't
   be named `history` or `library`.
-- A run builds only the tools some namespace grants, so a tool no namespace grants never runs, and one that stops
-  building can be taken out of a namespace's tools in the panel.
+- Every run builds every tool some namespace grants, whatever namespace its chat is in (only which agents can call a
+  tool is per namespace): once any namespace grants a tool, its code runs at the start of every message in every
+  chat, and a granted tool that stops building stops every chat until you take it out of the namespaces' tools in
+  the panel. A tool no namespace grants never runs.
 
 The previous app, built on OpenHands, is in history at `a80bb2e`; its design docs are on the `design-docs` branch.

@@ -458,21 +458,23 @@ def test_a_runs_config_holds_only_the_tools_a_namespace_grants_and_the_panel_lis
     assert listed == ["llm", "waitlist", "unused", "history", "library"]
 
 
-def test_a_tool_stored_over_another_gives_back_its_source_or_the_block_the_engine_built(
-    library,
-):
+def test_a_tool_stored_over_another_gives_back_the_row_it_replaced(library):
     block = {"factory": "build", "factory_from": "mine.py"}
     first, second = "def build(client, params): 1\n", "def build(client, params): 2\n"
     with closing(open_library(library)) as connection:
-        connection.execute(
-            UPSERT_TOOL, ("mine", dump({"factory": "claude_code"}), None)
-        )
-        replaced = [
-            store_tool(connection, "mine", block, source) for source in (first, second)
-        ]
-        added = store_tool(connection, "other", block, first)
-    assert replaced == ["factory: claude_code\n", first]
+        added = store_tool(connection, "mine", block, first)
+        replaced = store_tool(connection, "mine", block | {"sep": ","}, second)
     assert added is None
+    assert tuple(replaced) == (dump(block), first)
+
+
+def test_the_panel_lists_a_tool_whose_source_is_too_deep_to_parse(library):
+    deep = f"x = {'1+' * 300_000}1\n"
+    block = dump({"factory": "build", "factory_from": "deep.py"})
+    with closing(open_library(library)) as connection:
+        connection.execute(UPSERT_TOOL, ("deep", block, deep))
+        tools = {tool["name"]: tool for tool in panel(connection)["tools"]}
+    assert tools["deep"]["description"] == ""
 
 
 @pytest.mark.parametrize(

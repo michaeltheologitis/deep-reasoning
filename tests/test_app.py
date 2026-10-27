@@ -906,10 +906,16 @@ async def test_a_tool_the_library_tool_writes_and_grants_is_called_from_the_next
         "namespace": None,
         "name": "word_count",
         "before": None,
-        "after": WORD_COUNT,
+        "after": f"factory: build\nfactory_from: word_count.py\n# word_count.py\n{WORD_COUNT}",
     }
+    split_row = (
+        "factory: build\nfactory_from: word_count.py\nsep: ','\n# word_count.py\n"
+    )
     assert (granted["what"], granted["after"]) == ("namespace", "tools: [word_count]\n")
-    assert (replaced["before"], replaced["after"]) == (WORD_COUNT, SPLIT_COUNT)
+    assert (replaced["before"], replaced["after"]) == (
+        added["after"],
+        split_row + SPLIT_COUNT,
+    )
     assert "'done': 'added'" in kinds(made, "cell.end")[0]["output"]
     assert "'done': 'replaced'" in kinds(split, "cell.end")[0]["output"]
     outputs = [kinds(events, "cell.end")[0]["output"] for events in (counted, again)]
@@ -928,8 +934,8 @@ TOOL_REFUSALS = [
     (
         library_cell("write_tool", "counter", WORD_COUNT, "make"),
         "Tool counter doesn't build, so it wasn't written: ",
+        "defines no 'make'",
     ),
-    (library_cell("write_tool", "counter", WORD_COUNT, "make"), "defines no 'make'"),
     (
         library_cell("write_tool", "counter", RAISES, "build"),
         "raised RuntimeError: no index",
@@ -942,12 +948,14 @@ TOOL_REFUSALS = [
     ),
     (
         library_cell("write_tool", "llm", WORD_COUNT, "build"),
-        '"llm" is the name of a built-in or app tool',
+        '"llm" is taken: it is a Python keyword, a built-in or app tool, or a name',
     ),
+    (library_cell("write_tool", "history", WORD_COUNT, "build"), '"history" is taken'),
     (
-        library_cell("write_tool", "history", WORD_COUNT, "build"),
-        '"history" is the name of a built-in or app tool',
+        library_cell("write_tool", "subagent", WORD_COUNT, "build"),
+        '"subagent" is taken',
     ),
+    (library_cell("write_tool", "lambda", WORD_COUNT, "build"), '"lambda" is taken'),
     (
         library_cell("write_tool", "word count", WORD_COUNT, "build"),
         'Tool "word count" needs a Python name',
@@ -975,7 +983,7 @@ TOOL_REFUSALS = [
 async def test_a_refused_tool_fails_its_cell_in_plain_words_and_stores_nothing(
     library_on, connect
 ):
-    cells = [cell for cell, _ in TOOL_REFUSALS]
+    cells = [cell for cell, *_ in TOOL_REFUSALS]
     plan = {"Try these.": [*cells, repl("FinalAnswer('refused')")]}
     with FakeOpenAI(scripted(plan)) as fake:
         async with connect(library_on(fake)) as api:
@@ -985,8 +993,8 @@ async def test_a_refused_tool_fails_its_cell_in_plain_words_and_stores_nothing(
             after = (await api.get("/api/library")).json()
     ended = kinds(events, "cell.end")[: len(TOOL_REFUSALS)]
     assert [cell["status"] for cell in ended] == ["failed"] * len(TOOL_REFUSALS)
-    for cell, (_, wording) in zip(ended, TOOL_REFUSALS, strict=True):
-        assert wording in cell["output"], cell["output"]
+    for cell, (_, *wordings) in zip(ended, TOOL_REFUSALS, strict=True):
+        assert all(each in cell["output"] for each in wordings), cell["output"]
     assert changes(events) == []
     assert after == before
     assert events[-1]["outcome"] == "answered", events[-1]
