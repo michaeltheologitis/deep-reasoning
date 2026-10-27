@@ -190,9 +190,8 @@ of turns, each a role and content (content: | for several lines): the user's tas
 assistant turns, each <think>…</think> then one <repl>…</repl> block of Python that \
 prints what it needs, each followed by a user turn holding the \
 <observation>…</observation> that code printed; the last assistant turn's <repl> calls \
-FinalAnswer(...). The last <repl> block in your reply is the one that runs, so never \
-write those two tags in your cell: write [repl] and [/repl] in the YAML, then pass \
-yaml.replace("[repl]", "<" + "repl>").replace("[/repl]", "</" + "repl>").
+FinalAnswer(...). The last <repl> block in your reply is the one that runs, so in your \
+cell write the repl tags as [repl] and [/repl]; the tool writes the real ones.
   library.add_namespace(name, yaml): adds namespace `name` ("research", or \
 "research.papers" under an existing research) with the fields its YAML sets, written as \
 show() gives a namespace's yaml: system_suffix (text added to its agents' system \

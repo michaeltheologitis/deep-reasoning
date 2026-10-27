@@ -369,6 +369,23 @@ def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(fresh)
     ]
 
 
+def test_a_decomposition_written_with_repl_placeholders_is_stored_with_the_real_tags(
+    fresh,
+):
+    answer = (
+        "- role: assistant\n  content: |\n    [repl]\n    FinalAnswer(3)\n    [/repl]\n"
+    )
+    tool = library_tool(fresh)
+    tool.write_decomposition("drafts", EXAMPLE + answer)
+    by_name = {each["name"]: each for each in tool.show()}
+    stored_answer = (
+        "- role: assistant\n  content: |\n    <repl>\n    FinalAnswer(3)\n    </repl>\n"
+    )
+    assert by_name["drafts"]["decompositions"] == [
+        {"name": "count the tickets", "yaml": EXAMPLE + stored_answer}
+    ]
+
+
 class NeverEqual(str):
     """Text that compares unequal to everything, itself included."""
 
