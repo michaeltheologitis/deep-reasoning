@@ -55,10 +55,13 @@ A local or self-hosted server that speaks the OpenAI API (vLLM, SGLang, Ollama, 
 in settings, **+ Custom server** takes a name, its base URL (like `http://localhost:8000/v1`) and an optional key,
 kept in `.env` as `DEEP_REASONING_<NAME>_KEY`. The servers themselves are listed in `~/.deep-reasoning/settings.json`.
 
-The model menu under the message box lists each keyed vendor's and custom server's own models, and takes any model
-name you type. A choice applies from the chat's next message, and the chat keeps it; a new chat starts on the model
-picked last, or on OpenAI's `gpt-6-luna` when OpenAI has a key and nothing was picked yet. The namespace menu beside
-it works the same way: a new chat starts in the Library's default namespace (★), and you can switch mid-chat.
+The model menu under the message box shows only each keyed vendor's current models, strongest first: three or four
+each, and the same models on OpenRouter under its own ids, plus the chat's own model when it is another. Typing searches
+each vendor's whole list from its own `GET /models`, older and other models too, and the menu takes any model name you
+type. A custom server shows its whole list. A choice applies from the chat's next message, and the chat keeps it; a new
+chat starts on the model picked last, or on OpenAI's `gpt-6-luna` when OpenAI has a key and nothing was picked yet. The
+namespace menu beside it works the same way: a new chat starts in the Library's default namespace (★), and you can
+switch mid-chat.
 
 ## Working folders
 

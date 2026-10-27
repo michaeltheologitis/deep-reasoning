@@ -547,7 +547,7 @@ async function pickModel() {
   showMenu(button, host, {
     label: "Models",
     filter: "filter, or type a model name",
-    groups: (query) => modelGroups(lists, query),
+    groups: (query) => modelGroups(lists, query, chat.model),
     isCurrent: (model) => model.provider === chat.model?.provider && model.name === chat.model?.name,
     pick: (model) => choose(chat, { model }),
   });
@@ -572,13 +572,16 @@ function openSettings() {
   byId("settings").dispatchEvent(new Event(PANEL_OPEN));
 }
 
-// Each provider that can answer, with its listed models, a typed name, and why its list is missing if it is.
-function modelGroups(lists, query) {
+// Each provider that can answer, with why its list is missing if it is: its featured models and the chat's own if it isn't one,
+// or, once something is typed, every model it knows that matches (those first) and the typed name.
+function modelGroups(lists, query, current) {
   const typed = query.trim();
-  return lists.map(({ provider, models, problem }) => {
-    const matches = models.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
+  return lists.map(({ provider, featured, models, problem }) => {
+    const own = current?.provider === provider ? [current.name] : [];
+    const known = [...new Set([...featured, ...own, ...(typed ? models : [])])];
+    const matches = known.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
     const options = matches.map((name) => ({ value: { provider, name }, label: name }));
-    if (typed && !models.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });
+    if (typed && !known.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });
     if (!options.length) options.push({ value: null, label: "use model name…", hint: `type a model name for ${provider}` });
     return { name: provider, note: problem, options };
   });
