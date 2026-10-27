@@ -577,8 +577,8 @@ function openSettings() {
 function modelGroups(lists, query, current) {
   const typed = query.trim();
   return lists.map(({ provider, featured, models, problem }) => {
-    const shown = current?.provider === provider && !featured.includes(current.name) ? [...featured, current.name] : featured;
-    const known = typed ? [...new Set([...shown, ...models])] : shown;
+    const own = current?.provider === provider ? [current.name] : [];
+    const known = [...new Set([...featured, ...own, ...(typed ? models : [])])];
     const matches = known.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
     const options = matches.map((name) => ({ value: { provider, name }, label: name }));
     if (typed && !known.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });

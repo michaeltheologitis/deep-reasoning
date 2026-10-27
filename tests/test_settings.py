@@ -7,9 +7,12 @@ from fake_model import FakeOpenAI, scripted
 
 from deep_reasoning import settings as settings_module
 from deep_reasoning.settings import (
+    ANTHROPIC_MODELS,
     ENV_FILE,
+    GEMINI_MODELS,
     NO_KEY,
     OPENAI_MODELS,
+    OPENROUTER_MODELS,
     SETTINGS_FILE,
     VENDORS,
     Provider,
@@ -276,9 +279,17 @@ def test_the_default_folder_is_kept_beside_the_other_settings(app_home, tmp_path
     assert find_provider(app_home, "vllm") is not None
 
 
-def test_each_vendor_features_the_model_new_chats_start_on():
-    for vendor in VENDORS:
-        assert vendor.first_model is None or vendor.first_model in vendor.featured
+@pytest.mark.parametrize("vendor", VENDORS, ids=lambda vendor: vendor.name)
+def test_each_vendor_features_the_model_new_chats_start_on(vendor):
+    assert vendor.first_model is None or vendor.first_model in vendor.featured
+
+
+def test_openrouter_features_the_vendors_models_under_its_own_ids():
+    vendors = OPENAI_MODELS + ANTHROPIC_MODELS + GEMINI_MODELS
+    theirs = {name.split("/", 1)[1] for name in OPENROUTER_MODELS}
+    assert {name.replace(".", "-") for name in vendors} == {
+        name.replace(".", "-") for name in theirs
+    }
 
 
 @pytest.mark.anyio
