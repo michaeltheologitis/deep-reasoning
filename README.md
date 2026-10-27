@@ -6,15 +6,16 @@ A minimal browser chat for Dean's `deep_reasoner` engine, in the look of Claude 
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and GitHub access to Dean's private
 `DeanLight/deep_reasoner_beta` (if `git ls-remote https://github.com/DeanLight/deep_reasoner_beta.git` asks for a
-password, run `gh auth login`). Then, from a checkout:
+password, run `gh auth login` and let it set up git's credentials). Then:
 
 ```
-git checkout main && git pull
+git clone https://github.com/michaeltheologitis/deep-reasoning.git
+cd deep-reasoning
 uv run deep-reasoning
 ```
 
 The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8001` for another port,
-`--no-browser` for no tab); Ctrl+C stops it.
+`--no-browser` for no tab); Ctrl+C stops it, and `git pull` updates it. Then add a key in **settings** (bottom left).
 
 ## What it supports
 
@@ -23,21 +24,25 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - Each message is a run, shown live as a tree of sub-agents you open level by level. Esc stops it.
 - Each run shows its time, sub-agent count, cost (when the price is known) and model.
 - Follow-ups see the chat's earlier messages and answers.
-- Each chat has its own model, namespace and working folder, picked under the message box and switchable mid-chat.
+- Each chat has its own model, namespace and working folder, picked under the message box; a change applies from
+  the next message.
 - Light and dark themes; works at phone width.
 
 **Models and keys**, in **settings** (bottom left)
 - Vendors and their key variables: OpenAI `OPENAI_API_KEY`, OpenRouter `OPENROUTER_API_KEY`, Anthropic
   `DEEP_REASONING_ANTHROPIC_KEY`, Google Gemini `GEMINI_API_KEY`.
 - Custom servers: any OpenAI-compatible URL (vLLM, Ollama, …), with an optional key.
-- The model menu lists each vendor's current models; typing searches its full list and accepts any name.
+- The model menu shows the current models of each vendor you have a key for, and all of a custom server's; typing
+  searches the vendor's full list, and any model name is accepted.
 - Keys come from settings or your shell. Settings keeps them in `~/.deep-reasoning/.env`, readable only by you, and
   never shows them again. A saved key wins over the shell's.
-- Anthropic's key is never read from `ANTHROPIC_API_KEY`: Claude Code would bill that key instead of your subscription.
+- Runs never read or receive `ANTHROPIC_API_KEY`: Claude Code, as a namespace's backbone or tool, would bill that key
+  instead of your Claude subscription.
 
 **Working folders**
-- A chat's Python reads and writes files in its folder, so they carry over between messages.
-- A scratch folder by default, deleted with the chat. A folder you pick is never deleted.
+- The agent's Python runs in the chat's folder, so files it writes are there for the next message.
+- A scratch folder by default (`~/.deep-reasoning/work/<chat>/`; hover the folder's name for its path), deleted with
+  the chat. A folder you pick is never deleted.
 - Settings has a default folder for new chats.
 
 **The Library**
