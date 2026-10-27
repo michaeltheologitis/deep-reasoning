@@ -181,7 +181,13 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
     settings = {row["label"]: row["items"][0] for row in library["run_settings"]}
     assert library["file"] == "library.sqlite"
     assert library["default_namespace"] == "router"
-    assert list(by_name) == ["root", "course_advisor", "health_advisor", "router"]
+    assert list(by_name) == [
+        "root",
+        "course_advisor",
+        "health_advisor",
+        "librarian",
+        "router",
+    ]
     assert [each["name"] for each in by_name["router"]["decompositions"]] == [
         "route a course question",
         "route a wellbeing question",
@@ -196,6 +202,7 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
     assert [(tool["name"], tool["granted_in"]) for tool in library["tools"]] == [
         ("llm", ["root"]),
         ("history", []),
+        ("library", ["librarian"]),
     ]
     [catalog] = library["variables"]
     assert (catalog["name"], catalog["where"], len(catalog["rows"])) == (
@@ -205,7 +212,7 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
     )
 
 
-def test_a_fresh_library_shows_llm_and_the_apps_history_granted_at_root_and_inherited_below(
+def test_a_fresh_library_shows_llm_and_history_granted_at_root_and_library_in_the_librarian(
     library, home, tmp_path
 ):
     child = tmp_path / "child.yaml"
@@ -223,12 +230,19 @@ def test_a_fresh_library_shows_llm_and_the_apps_history_granted_at_root_and_inhe
         {"value": "llm", "source": "inherited from root", "here": False},
         {"value": "history", "source": "inherited from root", "here": False},
     ]
+    assert field(by_name["librarian"], "Tools")[-1] == {
+        "value": "library",
+        "source": "granted here",
+        "here": True,
+    }
     assert [(tool["name"], tool["granted_in"]) for tool in tools] == [
         ("llm", ["root"]),
         ("history", ["root"]),
+        ("library", ["librarian"]),
     ]
     assert [(tool["defined_in"], tool["badge"]) for tool in tools] == [
         (None, "built-in"),
+        ("Deep Reasoning", "the app's"),
         ("Deep Reasoning", "the app's"),
     ]
 
@@ -311,6 +325,7 @@ def test_a_namespace_is_added_edited_and_deleted_through_the_api(client):
         "router",
         "course_advisor",
         "health_advisor",
+        "librarian",
     }
 
 
@@ -518,6 +533,138 @@ async def test_a_follow_up_reads_how_an_earlier_message_was_worked_out_with_hist
     assert "ValueError: There is no message 9" in refused["output"]
     assert events[-1]["outcome"] == "answered", events[-1]
     assert "The `history` tool" in fake.calls[-1].messages[0]["content"]
+
+
+EXAMPLE = """name: count the tickets
+messages:
+- role: user
+  content: How many tickets are open?
+- role: assistant
+  content: Count them with len(open_tickets).
+"""
+ASKED = "How many tickets are open?"
+REWORDED_ASK = "How many open tickets are left?"
+REWORDED = EXAMPLE.replace(ASKED, REWORDED_ASK)
+CHANGE_FIELDS = ("node", "what", "namespace", "name", "before", "after")
+
+
+def write(namespace, text):
+    """A cell that writes the decomposition *text* into *namespace* with the library tool."""
+    return repl(f"print(library.write_decomposition({namespace!r}, {text!r}))")
+
+
+LIBRARY_PLAN = {
+    "Save the example.": [write("librarian", EXAMPLE), repl("FinalAnswer('saved')")],
+    "Reword it.": [write("librarian", REWORDED), repl("FinalAnswer('reworded')")],
+    "Thanks.": [repl("FinalAnswer('welcome')")],
+}
+REFUSALS = [
+    (write("librarian", "name: [unclosed"), "The YAML doesn't parse ("),
+    (write("librarian", "name: count\n"), "Add messages: a list of turns"),
+    (write("nowhere", EXAMPLE), 'The Library has no namespace "nowhere"'),
+    (write("root", EXAMPLE), "root is locked"),
+]
+
+
+async def librarian_chat(api):
+    """A new chat in the librarian namespace, where the library tool is granted."""
+    chat = await new_chat(api)
+    response = await api.patch(f"/api/chats/{chat}", json={"namespace": "librarian"})
+    assert response.status_code == 200, response.text
+    return chat
+
+
+def kinds(events, kind):
+    return [event for event in events if event["kind"] == kind]
+
+
+def changes(events):
+    return kinds(events, "library.change")
+
+
+@pytest.mark.anyio
+async def test_the_library_tool_adds_a_decomposition_then_replaces_it_each_change_a_run_event(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(LIBRARY_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await librarian_chat(api)
+            added = await run_events(api, await send(api, chat, "Save the example."))
+            replaced = await run_events(api, await send(api, chat, "Reword it."))
+            turns = (await api.get(f"/api/chats/{chat}")).json()["turns"]
+            namespaces = (await api.get("/api/library")).json()["namespaces"]
+    [root] = kinds(added, "agent.start")
+    [first], [second] = changes(added), changes(replaced)
+    assert {key: first[key] for key in CHANGE_FIELDS} == {
+        "node": root["node"],
+        "what": "decomposition",
+        "namespace": "librarian",
+        "name": "count the tickets",
+        "before": None,
+        "after": EXAMPLE,
+    }
+    assert (second["name"], second["before"], second["after"]) == (
+        "count the tickets",
+        EXAMPLE,
+        REWORDED,
+    )
+    assert "'done': 'added'" in kinds(added, "cell.end")[0]["output"]
+    assert "'done': 'replaced'" in kinds(replaced, "cell.end")[0]["output"]
+    assert [changes(turn["events"]) for turn in turns] == [[first], [second]]
+    librarian = next(each for each in namespaces if each["name"] == "librarian")
+    assert librarian["decompositions"] == [
+        {"name": "count the tickets", "yaml": REWORDED}
+    ]
+    assert [events[-1]["outcome"] for events in (added, replaced)] == ["answered"] * 2
+    assert "The `library` tool" in fake.calls[-1].messages[0]["content"]
+
+
+def showing(calls, turn):
+    """Whether each of *calls* showed the model *turn* as a message of its own, as an
+    example's turn is shown."""
+    return [
+        any(str(message.get("content")).strip() == turn for message in call.messages)
+        for call in calls
+    ]
+
+
+@pytest.mark.anyio
+async def test_a_change_to_the_library_applies_from_the_next_message(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(LIBRARY_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await librarian_chat(api)
+            calls = []
+            for prompt in ("Save the example.", "Reword it.", "Thanks."):
+                await run_events(api, await send(api, chat, prompt))
+                calls.append(fake.calls[sum(map(len, calls)) :])
+    saving, rewording, thanking = calls
+    assert showing(saving, ASKED) == [False, False]
+    assert showing(rewording, ASKED) == [True, True]
+    assert showing(rewording, REWORDED_ASK) == [False, False]
+    assert showing(thanking, REWORDED_ASK) == [True]
+    assert showing(thanking, ASKED) == [False]
+
+
+@pytest.mark.anyio
+async def test_a_refused_write_fails_its_cell_in_the_panels_words_and_stores_nothing(
+    library_on, connect
+):
+    cells = [cell for cell, _ in REFUSALS]
+    plan = {"Try these.": [*cells, repl("FinalAnswer('refused')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await librarian_chat(api)
+            events = await run_events(api, await send(api, chat, "Try these."))
+            namespaces = (await api.get("/api/library")).json()["namespaces"]
+    ended = kinds(events, "cell.end")[: len(REFUSALS)]
+    assert [cell["status"] for cell in ended] == ["failed"] * len(REFUSALS)
+    for cell, (_, wording) in zip(ended, REFUSALS, strict=True):
+        assert wording in cell["output"], cell["output"]
+    assert changes(events) == []
+    assert [each["decompositions"] for each in namespaces] == [[], []]
+    assert events[-1]["outcome"] == "answered", events[-1]
 
 
 def held_on(prompt, plan):

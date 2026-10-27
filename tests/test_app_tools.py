@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from structlog.testing import capture_logs
 
-from deep_reasoning.app_tools import build_history, open_read_only
+from deep_reasoning.app_tools import build_history, build_library, open_read_only
 from deep_reasoning.library import open_library, writing
 from deep_reasoning.runs import LOST, chat_runs, read_turn, save_event
 
@@ -265,3 +265,30 @@ def test_the_tool_reads_the_app_file_without_writing_it_or_running_its_own_sql(
             connection.execute("SELECT * FROM planted")
     assert history_of(library).turns()[0]["message"] == "Plan the term."
     assert library.read_bytes() == before
+
+
+EXAMPLE = """name: count the tickets
+messages:
+- role: user
+  content: How many tickets are open?
+"""
+
+
+def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(library):
+    told = {"library": str(library), "chat": CHAT, "run": CURRENT}
+    tool = build_library(None, told).value
+    done = tool.write_decomposition("librarian", EXAMPLE)
+    shown = tool.show()
+    by_name = {each["name"]: each for each in shown}
+    assert done == {
+        "done": "added",
+        "what": "decomposition",
+        "namespace": "librarian",
+        "name": "count the tickets",
+    }
+    assert json.loads(json.dumps(shown)) == shown
+    assert list(by_name) == ["root", "librarian"]
+    assert by_name["librarian"]["yaml"] == "tools:\n- library\n"
+    assert by_name["librarian"]["decompositions"] == [
+        {"name": "count the tickets", "yaml": EXAMPLE}
+    ]

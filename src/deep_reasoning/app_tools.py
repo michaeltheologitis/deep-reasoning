@@ -5,6 +5,10 @@ what its block in the run's config holds: the app file's path, the chat and the 
 
 history reads the chat's earlier runs from the app file, read-only, as the page reads them:
 runs.py checks each row, and folded() folds a run's events into its tree as fold.js does.
+
+library reads and writes the Library through library.py, with the panel's checks and
+transactions; the lock is here, as the panel may still edit root. Each change is logged as
+library.change, which the worker records as a run event.
 """
 
 import copy
@@ -17,9 +21,18 @@ from types import SimpleNamespace
 from typing import Any
 
 import structlog
+from deep_reasoner.namespaces import ROOT
 from deep_reasoner.primitives import Func
 
-from deep_reasoning.library import HISTORY_DESCRIPTION, distrust
+from deep_reasoning.library import (
+    HISTORY_DESCRIPTION,
+    LIBRARY_DESCRIPTION,
+    LibraryError,
+    distrust,
+    open_library,
+    panel,
+    save_decomposition,
+)
 from deep_reasoning.runs import chat_turns, total_cost
 
 log = structlog.get_logger()
@@ -30,6 +43,9 @@ STARTED_WITH = ("node", "parent", "drive", "task", "namespace")
 AGENT_FIELDS = (*STARTED_WITH, "status", "result")
 ENDED_WITH = ("outcome", "answer", "detail", "cost", "seconds")
 LOOKUP_FIELDS = ("node", "parent", "cell")
+ROOT_LOCKED = (
+    "root is locked: the library tool never writes it. Write into another namespace."
+)
 
 
 @dataclass
@@ -230,3 +246,28 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
 
     history = SimpleNamespace(turns=turns, agents=agents, steps=steps)
     return Func(history, description=HISTORY_DESCRIPTION)
+
+
+def build_library(client: Any, params: dict[str, Any]) -> Func:
+    """The library tool, over the app file *library* its block in the run's config names."""
+    library = params["library"]
+
+    def show() -> list[dict[str, Any]]:
+        """Every namespace, as the Library panel shows it."""
+        with closing(open_library(library)) as connection:
+            return panel(connection)["namespaces"]
+
+    def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
+        """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
+        if not isinstance(namespace, str) or not isinstance(yaml, str):
+            raise LibraryError("namespace and yaml should be text.")
+        if namespace == ROOT:
+            raise LibraryError(ROOT_LOCKED)
+        with closing(open_library(library)) as connection:
+            name, before = save_decomposition(connection, namespace, yaml)
+        change = {"what": "decomposition", "namespace": namespace, "name": name}
+        log.info("library.change", **change, before=before, after=yaml)
+        return {"done": "added" if before is None else "replaced", **change}
+
+    tool = SimpleNamespace(show=show, write_decomposition=write_decomposition)
+    return Func(tool, description=LIBRARY_DESCRIPTION)

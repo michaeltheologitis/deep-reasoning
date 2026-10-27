@@ -60,7 +60,10 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - What a run prints travels with the file. The app withholds any provider's key from it, but can't know other
   secrets a cell reads from your shell.
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
+- In a chat in the `librarian` namespace, the agent can add or edit a decomposition in a namespace you name, with
+  the app's own `library` tool; it never changes root, and a change applies from your next message. A new Library
+  has `librarian`; in an older one, add a namespace with `tools: [library]`.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
-- The Tools tab lists the app's own tools beside the built-in ones; a tool of yours can't be named `history`.
+- The Tools tab lists the app's own tools beside the built-in ones; a tool of yours can't be named `history` or `library`.
 
 The previous app, built on OpenHands, is in history at `a80bb2e`; its design docs are on the `design-docs` branch.

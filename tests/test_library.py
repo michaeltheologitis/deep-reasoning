@@ -27,6 +27,8 @@ from deep_reasoning.library import (
     APP_TOOLS_FILE,
     BEFORE_EVENTS,
     HISTORY_DESCRIPTION,
+    LIBRARIAN,
+    LIBRARY_DESCRIPTION,
     LIBRARY_ONLY,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
@@ -48,7 +50,8 @@ from deep_reasoning.library import (
 FAKE_KEY = "sk-test-not-a-real-key"
 CHAT = "a-chat"
 RUN = "20261027-120000-000000"
-ADVISORS_NAMESPACES = {"root", "router", "course_advisor", "health_advisor"}
+# advisors.yaml's namespaces, imported into a fresh Library beside its librarian.
+IMPORTED_NAMESPACES = {"root", "router", "course_advisor", "health_advisor", LIBRARIAN}
 ROUTER_DECOMPOSITIONS = [
     "route a course question",
     "route a wellbeing question",
@@ -112,19 +115,20 @@ def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
 ):
     monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
     config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
-    assert list(config["namespaces"]) == [ROOT]
+    assert list(config["namespaces"]) == [ROOT, LIBRARIAN]
     assert default_namespace(library) == ROOT
     assert "model" not in config and "client" not in config
     assert resolve_api_key(run_config(library, tmp_path).client) == FAKE_KEY
     assert FAKE_KEY.encode() not in library.read_bytes()
 
 
-def test_a_fresh_library_grants_llm_and_history_at_root_and_the_engine_accepts_it(
+def test_a_fresh_library_grants_llm_and_history_at_root_and_library_to_the_librarian(
     library, tmp_path
 ):
     config = run_config(library, tmp_path)
     build_namespace_registry(config).check(declared_tool_names(config))
     assert config.namespaces[ROOT].tools == ["llm", "history"]
+    assert config.namespaces[LIBRARIAN].tools == ["library"]
 
 
 def test_a_library_made_with_an_empty_root_is_given_a_fresh_root_once(
@@ -247,7 +251,7 @@ def test_import_brings_the_configs_namespaces_decompositions_and_prompt(
 ):
     config = run_config(imported, tmp_path)
     router = config.namespaces["router"]
-    assert set(config.namespaces) == ADVISORS_NAMESPACES
+    assert set(config.namespaces) == IMPORTED_NAMESPACES
     assert [each.name for each in router.decompositions] == ROUTER_DECOMPOSITIONS
     assert router.spawn == ["course_advisor", "health_advisor"]
     assert config.namespaces["course_advisor"].vars["catalog"]["CS201"]["prereqs"] == [
@@ -362,7 +366,7 @@ def test_import_replaces_same_named_items_and_keeps_the_rest(imported, tmp_path)
     assert router.decompositions[-1].messages[0].content == "Only courses, please."
     assert config.max_iter == 3
     assert config.namespaces[ROOT].tools == ["llm"]
-    assert set(config.namespaces) == ADVISORS_NAMESPACES
+    assert set(config.namespaces) == IMPORTED_NAMESPACES
 
 
 def test_a_failed_import_leaves_the_library_unchanged(imported, tmp_path):
@@ -436,14 +440,17 @@ def test_a_shared_librarys_tool_cannot_be_written_outside_the_tools_folder(
     assert not (tmp_path / "escaped.py").exists()
 
 
-def test_a_runs_config_tells_the_history_tool_the_app_file_the_chat_and_the_run(
-    library, tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    ("tool", "factory"), [("history", "build_history"), ("library", "build_library")]
+)
+def test_a_runs_config_tells_each_app_tool_the_app_file_the_chat_and_the_run(
+    library, tmp_path, monkeypatch, tool, factory
 ):
     monkeypatch.chdir(library.parent)
     config = engine_config(Path(library.name), ROOT, tmp_path / "tools", CHAT, RUN)
-    assert config["tools"]["history"] == {
+    assert config["tools"][tool] == {
         "factory_from": str(APP_TOOLS_FILE),
-        "factory": "build_history",
+        "factory": factory,
         "library": str(library.resolve()),
         "chat": CHAT,
         "run": RUN,
@@ -452,33 +459,36 @@ def test_a_runs_config_tells_the_history_tool_the_app_file_the_chat_and_the_run(
         assert connection.execute("SELECT count(*) FROM tools").fetchone() == (0,)
 
 
-def test_an_import_may_not_give_a_tool_an_app_tools_name(library, tmp_path):
+@pytest.mark.parametrize("tool", ["history", "library"])
+def test_an_import_may_not_give_a_tool_an_app_tools_name(library, tmp_path, tool):
     config = tmp_path / "tool.yaml"
-    config.write_text("tools:\n  history: {factory: llm}\n")
+    config.write_text(f"tools:\n  {tool}: {{factory: llm}}\n")
     with pytest.raises(LibraryError, match="one of the app's own tools"):
         import_into(library, config)
     with closing(open_library(library)) as connection:
         assert connection.execute("SELECT count(*) FROM tools").fetchone() == (0,)
 
 
-def test_a_shared_files_tool_named_history_is_shadowed_by_the_apps(library, tmp_path):
+@pytest.mark.parametrize(
+    ("tool", "description"),
+    [("history", HISTORY_DESCRIPTION), ("library", LIBRARY_DESCRIPTION)],
+)
+def test_a_shared_files_tool_named_as_an_app_tool_is_shadowed_by_the_apps(
+    library, tmp_path, tool, description
+):
     with closing(open_library(library)) as connection:
         connection.execute(
             "INSERT INTO tools VALUES (?, ?, ?)",
-            (
-                "history",
-                "factory: build\nfactory_from: history.py\n",
-                "def build(): 1\n",
-            ),
+            (tool, f"factory: build\nfactory_from: {tool}.py\n", "def build(): 1\n"),
         )
     with capture_logs() as logs:
         config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
         with closing(open_library(library)) as connection:
             tools = {each["name"]: each for each in panel(connection)["tools"]}
-    assert config["tools"]["history"]["factory_from"] == str(APP_TOOLS_FILE)
-    assert not (tmp_path / "tools" / "history.py").exists()
-    assert tools["history"]["file"] == "deep_reasoning.app_tools"
-    assert tools["history"]["description"] == HISTORY_DESCRIPTION
+    assert config["tools"][tool]["factory_from"] == str(APP_TOOLS_FILE)
+    assert not (tmp_path / "tools" / f"{tool}.py").exists()
+    assert tools[tool]["file"] == "deep_reasoning.app_tools"
+    assert tools[tool]["description"] == description
     assert "library.tool_shadowed" in {entry["event"] for entry in logs}
 
 
@@ -638,7 +648,7 @@ def test_deleting_a_namespace_removes_it_and_its_decompositions(imported, tmp_pa
     change(imported, add_namespace, "research", RESEARCH)
     change(imported, add_decomposition, "research", ADDED)
     change(imported, delete_namespace, "research", 1)
-    assert set(run_config(imported, tmp_path).namespaces) == ADVISORS_NAMESPACES
+    assert set(run_config(imported, tmp_path).namespaces) == IMPORTED_NAMESPACES
     assert "research" not in decomposition_rows(imported)
     assert decomposition_rows(imported).count("router") == len(ROUTER_DECOMPOSITIONS)
 

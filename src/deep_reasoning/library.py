@@ -92,6 +92,10 @@ UPSERT_TOOL = (
 )
 # Granted at root, so every namespace below has them, as in the engine's example configs.
 FRESH_ROOT = {"tools": ["llm", "history"]}
+# library writes the Library, so it is granted in a namespace of its own, which a chat
+# picks when it wants edits, and which no namespace inherits from.
+LIBRARIAN = "librarian"
+FRESH_LIBRARIAN = {"tools": ["library"]}
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
     " AND NOT EXISTS (SELECT 1 FROM decompositions WHERE namespace = :root)"
@@ -152,12 +156,26 @@ drive, task, namespace, status, result, cost (its own sub-agents' included) and 
 top agent, or of the sub-agent whose node is `node`: {kind: "think", text} or \
 {kind: "cell", code, output, status, agents: the nodes of the sub-agents it started}, \
 each with its drive."""
+LIBRARY_DESCRIPTION = """\
+The `library` tool reads and writes the app's Library: its namespaces and the \
+decompositions (worked examples) each one's agents are shown. A change applies from the \
+user's next message, not in this run. root is locked: you may read it, not write it.
+  library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
+(the fields it sets itself), fields (each as the engine resolves it, with where it comes \
+from) and decompositions (each with its name and yaml). Slice it in Python and print \
+only what you need.
+  library.write_decomposition(namespace, yaml): adds the decomposition written as YAML \
+(a name: line, then messages:, a list of turns, each with a role and content) to \
+namespace `namespace`, or replaces the one of that name there. Returns what it did: \
+{done: "added" or "replaced", what, name, namespace}. A refusal raises ValueError saying \
+why."""
 # Added in code, never stored: a shared file mustn't choose the code they run.
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
 APP_TOOLS = {
     "history": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_history"},
+    "library": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_library"},
 }
-APP_TOOL_DESCRIPTIONS = {"history": HISTORY_DESCRIPTION}
+APP_TOOL_DESCRIPTIONS = {"history": HISTORY_DESCRIPTION, "library": LIBRARY_DESCRIPTION}
 APP_TOOLS_MODULE = f"{__package__}.{APP_TOOLS_FILE.stem}"
 APP = "Deep Reasoning"
 # A new namespace's name, from the page: plain words, joined by dots for a child.
@@ -299,6 +317,7 @@ def written_by_an_earlier_version(found, names):
 
 def seed_new_library(connection):
     connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
+    connection.execute(UPSERT_NAMESPACE, (LIBRARIAN, dump(FRESH_LIBRARIAN)))
     settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
     connection.executemany(UPSERT_SETTING, settings)
 
@@ -569,6 +588,21 @@ def add_decomposition(connection, namespace, text):
             f'{namespace} already has "{name}"; rename it, or pick another namespace.'
         ) from error
     return stored
+
+
+def save_decomposition(connection, namespace, text):
+    """Store the decomposition written as YAML *text* under *namespace*, replacing the one
+    of its name there; its name, and the YAML it replaced (None when it is new). Raise
+    LibraryError saying why not."""
+    name = parsed(text).name
+    with writing(connection):
+        check_namespace(connection, namespace)
+        found = connection.execute(
+            "SELECT yaml FROM decompositions WHERE namespace = ? AND name = ?",
+            (namespace, name),
+        ).fetchone()
+        connection.execute(UPSERT_DECOMPOSITION, (namespace, name, text))
+    return name, None if found is None else found[0]
 
 
 def namespace_problem(error):

@@ -136,6 +136,29 @@ def test_a_tools_model_call_is_priced_for_its_agent_but_is_not_a_thought():
     assert events[-1]["node"] == ROOT
 
 
+def test_a_library_change_is_recorded_for_the_agent_whose_cell_made_it():
+    change = {
+        "event": "library.change",
+        "node_id": CHILD,
+        "agent_id": CHILD,
+        "what": "decomposition",
+        "namespace": "librarian",
+        "name": "count",
+        "before": None,
+        "after": "name: count\n",
+    }
+    events = recorded(agent_start(ROOT, None), agent_start(CHILD, ROOT), change)
+    assert events[-1] == {
+        "kind": "library.change",
+        "node": CHILD,
+        "what": "decomposition",
+        "namespace": "librarian",
+        "name": "count",
+        "before": None,
+        "after": "name: count\n",
+    }
+
+
 def test_nothing_is_written_after_the_turn_ends():
     out = io.StringIO()
     recorder = Recorder(out, on_root_start=lambda: None)
