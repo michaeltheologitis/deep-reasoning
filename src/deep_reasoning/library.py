@@ -156,25 +156,34 @@ drive, task, namespace, status, result, cost (its own sub-agents' included) and 
   history.steps(turn, node=None): the thoughts, cells and Library changes, in order, of \
 message `turn`'s top agent, or of the sub-agent whose node is `node`: {kind: "think", \
 text}, {kind: "cell", code, output, status, agents: the nodes of the sub-agents it \
-started} or {kind: "change", what, namespace, name, before (None when added), after}, \
-each with its drive."""
+started} or {kind: "change", what ("decomposition" or "namespace"), namespace, name, \
+before (None when added), after}, each with its drive."""
 LIBRARY_DESCRIPTION = """\
-The `library` tool reads and writes the app's Library: its namespaces and the \
-decompositions (worked examples) each one's agents are shown. A change applies from the \
-user's next message, not in this run, and only a chat whose namespace grants this tool may \
-make one. root is locked: you may read it, not write it. A namespace's agents are shown its \
-own decompositions and those of the namespaces above it (root, then research, then \
-research.papers), and one of the same name lower down takes the place of its parent's \
-there; show() lists only each namespace's own.
+The `library` tool reads and writes the app's Library: its namespaces, each with its own \
+fields, and the decompositions (worked examples) each one's agents are shown. A change \
+applies from the user's next message, not in this run, and only a chat whose namespace \
+grants this tool may make one. A namespace's agents get what it sets and what the \
+namespaces above it set (root, then research, then research.papers): their tools, vars \
+and system_suffix texts add up, and a decomposition of the same name lower down takes the \
+place of its parent's there; show() lists only each namespace's own. Locked: root, a \
+namespace's repl and reasoner, which namespaces grant the app's own tools (library, \
+history), the system prompt and the run settings; you may read them, not write them.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \
 only what you need.
   library.write_decomposition(namespace, yaml): adds the decomposition written as YAML \
 (a name: line, then messages:, a list of turns, each with a role and content) to \
-namespace `namespace`, or replaces the one of that name there. Returns what it did: \
-{done: "added" or "replaced", what, name, namespace}. A refusal raises ValueError saying \
-why."""
+namespace `namespace`, or replaces the one of that name there.
+  library.add_namespace(name, yaml): adds namespace `name` ("research", or \
+"research.papers" under an existing research) with the fields its YAML sets, written as \
+show() gives a namespace's yaml: system_suffix (text added to its agents' system \
+prompt), vars (names and values its agents' Python has), tools (tool names it grants) \
+and spawn (the namespaces its agents may hand work to).
+  library.change_namespace(name, yaml): gives namespace `name` the fields its YAML sets \
+in place of its own, keeping its decompositions.
+Each write returns what it did: {done: "added", "replaced" or "changed", what, name, \
+namespace}. A refusal raises ValueError saying why."""
 # Added in code, never stored: a shared file mustn't choose the code they run. Each one's
 # factory in app_tools.py, and what the agent is told it does.
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
@@ -683,9 +692,10 @@ def write_namespace(connection, namespace, text):
     accepted(connection)
 
 
-def add_namespace(connection, name, text):
+def add_namespace(connection, name, text, allowed=None):
     """Store a new namespace *name* with the fields its YAML *text* gives, or raise
-    LibraryError saying why not. Its decompositions are added afterwards."""
+    LibraryError saying why not. Its decompositions are added afterwards. *allowed*, given
+    the connection under the write lock and the namespace, raises to refuse."""
     if not name:
         raise LibraryError(NAME_IT)
     if not NAMESPACE_NAME.fullmatch(name):
@@ -701,16 +711,25 @@ def add_namespace(connection, name, text):
             raise LibraryError(
                 f'Add namespace "{parent}" first: "{name}" goes under it.'
             )
+        if allowed is not None:
+            allowed(connection, namespace)
         write_namespace(connection, namespace, stored)
 
 
-def change_namespace(connection, name, text):
+def change_namespace(connection, name, text, allowed=None):
     """Give namespace *name* the fields its YAML *text* gives in place of its own, keeping
-    its decompositions, or raise LibraryError saying why not."""
+    its decompositions, or raise LibraryError saying why not; *allowed* as add_namespace
+    takes it. The YAML it replaced."""
     namespace, stored = authored(name, text)
     with writing(connection):
         check_namespace(connection, name)
+        if allowed is not None:
+            allowed(connection, namespace)
+        (before,) = connection.execute(
+            "SELECT yaml FROM namespaces WHERE name = ?", (name,)
+        ).fetchone()
         write_namespace(connection, namespace, stored)
+    return before
 
 
 def delete_namespace(connection, name, decompositions):

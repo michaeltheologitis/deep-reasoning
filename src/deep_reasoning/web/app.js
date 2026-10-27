@@ -1,5 +1,5 @@
 // The Deep Reasoning chat: chats and their runs from the app's API, each run's events folded into its tree, live as they stream.
-import { foldEvent, foldEvents, newFold } from "./fold.js";
+import { asText, changeText, clip, field, foldEvent, foldEvents, newFold } from "./fold.js";
 
 const SPIN_MS = 120;
 const STICK_PX = 80;
@@ -13,7 +13,6 @@ const CONFLICT = 409;
 const NEW_TITLE = "New chat";
 const SCRATCH_NAME = "scratch";
 const FOLDER_NAME_CHARS = 24;
-const FIELD_CHARS = 60;
 const POPOVER_MARGIN_PX = 8;
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
 const RECONNECTING = "Lost the connection to the run; reconnecting…";
@@ -72,12 +71,6 @@ const since = (start) => Date.now() / MS_PER_SECOND - start;
 const isFinal = (cell) => cell.code.startsWith("FinalAnswer(");
 const formatCount = (count) => counter.format(count);
 const plural = (count, noun) => `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
-// a cut never keeps half of an emoji, or of another character past U+FFFF: alone, it shows as �
-const clip = (text, chars) => (text.length > chars ? `${text.slice(0, chars - 1).replace(/[\uD800-\uDBFF]$/, "")}…` : text);
-// A change event is untrusted, as any cell can log one and a shared file can hold any: each field shows as text, whatever it holds.
-const asText = (value) => (typeof value === "string" ? value : (JSON.stringify(value) ?? "?"));
-const field = (value) => clip(asText(value), FIELD_CHARS);
-const changeText = ({ what, namespace, name, before }) => `${before == null ? "added" : "replaced"} ${field(what)} "${field(name)}" in ${field(namespace)}`;
 const keyOf = (node) => {
   if (!keys.has(node)) keys.set(node, String(nextId++));
   return keys.get(node);

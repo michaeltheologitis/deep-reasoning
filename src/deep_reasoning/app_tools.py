@@ -9,10 +9,11 @@ history reads the chat's earlier runs from the app file, read-only, as the page 
 runs.py checks each row, and folded() folds a run's events into its tree as fold.js does.
 
 library reads and writes the Library through library.py, with the panel's checks and
-transactions; the lock is here, as the panel may still edit root. It writes only in a run
-whose chat's namespace grants it, so a sub-agent spawned into such a namespace from another
-chat can't, and never a key. It guards the tool, not the file: a cell can open the file
-itself. Each change is logged as library.change, which the worker records as a run event.
+transactions; the locks are here, as the panel may still edit root, a namespace's repl and
+reasoner, and which namespaces grant the app's own tools. It writes only in a run whose
+chat's namespace grants it, so a sub-agent spawned into such a namespace from another chat
+can't, and never a key. It guards the tool, not the file: a cell can open the file itself.
+Each change is logged as library.change, which the worker records as a run event.
 """
 
 import copy
@@ -27,15 +28,18 @@ from types import SimpleNamespace
 from typing import Any
 
 import structlog
-from deep_reasoner.namespaces import ROOT
+from deep_reasoner.namespaces import ROOT, NamespaceConfig
 from deep_reasoner.primitives import Func
 
 from deep_reasoning.library import (
+    APP_TOOLS,
     HISTORY_DESCRIPTION,
     LIBRARY_DESCRIPTION,
     LIBRARY_TOOL,
     LibraryError,
     add_decomposition,
+    add_namespace,
+    change_namespace,
     config_and_registry,
     distrust,
     granted_tools,
@@ -59,13 +63,25 @@ NOT_THIS_CHAT = (
     "The Library can be changed only in a chat whose namespace grants the library tool;"
     " pick librarian under the message box."
 )
+NOT_TEXT = "The namespace's name and the YAML should be text."
 # As the panel's limit on a decomposition's file; past 64 MiB, its change event would end
 # the run after the write.
 MAX_YAML_CHARS = 1_000_000
-TOO_LONG = f"A decomposition's YAML may be at most {MAX_YAML_CHARS:,} characters."
+TOO_LONG = f"The YAML may be at most {MAX_YAML_CHARS:,} characters."
 HOLDS_A_KEY = (
-    "The YAML holds a provider's key, and the Library file is shared, so keys never go in"
-    " it. Take the key out."
+    "What you wrote holds a provider's key, and the Library file is shared, so keys never"
+    " go in it. Take the key out."
+)
+# The backbone and REPL a namespace's agents run on are the user's: reasoner: claude_code
+# would bill their subscription.
+LOCKED_FIELDS = ("repl", "reasoner")
+FIELD_LOCKED = (
+    "{key} may not be set or changed: a namespace's repl and reasoner are the user's"
+    " choice, in the Library panel."
+)
+GRANT_LOCKED = (
+    "tools may not add or take out {tools}: which namespaces grant the app's own tools is"
+    " the user's choice, in the Library panel."
 )
 
 
@@ -294,6 +310,45 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
     return Func(history, description=HISTORY_DESCRIPTION)
 
 
+def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
+    """Raise unless the tool may write *yaml* for the namespace named *namespace*."""
+    # Exactly str: a subclass could compare unequal to "root" and still name it.
+    if type(namespace) is not str or type(yaml) is not str:
+        raise LibraryError(NOT_TEXT)
+    if namespace == ROOT:
+        raise LibraryError(ROOT_LOCKED)
+    if len(yaml) > MAX_YAML_CHARS:
+        raise LibraryError(TOO_LONG)
+    secrets = secrets_of(os.environ, key_names)
+    if any(secret in text for secret in secrets for text in (namespace, yaml)):
+        raise LibraryError(HOLDS_A_KEY)
+
+
+def own_fields(connection: sqlite3.Connection, name: str) -> NamespaceConfig:
+    """Namespace *name*'s own fields as the engine reads them; none for a new one."""
+    if not has_namespace(connection, name):
+        return NamespaceConfig(name=name)
+    return config_and_registry(connection)[1].config(name)
+
+
+def check_locks(connection: sqlite3.Connection, namespace: NamespaceConfig) -> None:
+    """Raise if *namespace* sets or changes what only the user may: its repl or reasoner,
+    or which of the app's own tools it grants."""
+    stored = own_fields(connection, namespace.name)
+    for key in LOCKED_FIELDS:
+        if getattr(namespace, key) != getattr(stored, key):
+            raise LibraryError(FIELD_LOCKED.format(key=key))
+    changed = (set(namespace.tools) ^ set(stored.tools)) & APP_TOOLS.keys()
+    if changed:
+        raise LibraryError(GRANT_LOCKED.format(tools=" and ".join(sorted(changed))))
+
+
+def logged(done: str, before: str | None, after: str, **change: str) -> Event:
+    """Log a change the tool made as library.change; what it did, for the model."""
+    log.info("library.change", **change, before=before, after=after)
+    return {"done": done, **change}
+
+
 def build_library(client: Any, params: dict[str, Any]) -> Func:
     """The library tool, over the app file *library* its block in the run's config names,
     for a run of a chat in *namespace*, whose worker holds keys in *key_names*."""
@@ -314,28 +369,47 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         if not granted:
             raise LibraryError(NOT_THIS_CHAT)
 
+    def may_change(connection: sqlite3.Connection, namespace: NamespaceConfig) -> None:
+        may_write(connection)
+        check_locks(connection, namespace)
+
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
-        # Exactly str: a subclass could compare unequal to "root" and still name it.
-        if type(namespace) is not str or type(yaml) is not str:
-            raise LibraryError("namespace and yaml should be text.")
-        if namespace == ROOT:
-            raise LibraryError(ROOT_LOCKED)
-        if len(yaml) > MAX_YAML_CHARS:
-            raise LibraryError(TOO_LONG)
-        if any(secret in yaml for secret in secrets_of(os.environ, key_names)):
-            raise LibraryError(HOLDS_A_KEY)
+        check_writable(namespace, yaml, key_names)
         with app_file(library, "rw") as connection:
             stored, before = add_decomposition(
                 connection, namespace, yaml, replace=True, allowed=may_write
             )
-        change = {
-            "what": "decomposition",
-            "namespace": namespace,
-            "name": stored["name"],
-        }
-        log.info("library.change", **change, before=before, after=yaml)
-        return {"done": "added" if before is None else "replaced", **change}
+        done = "added" if before is None else "replaced"
+        return logged(
+            done,
+            before,
+            yaml,
+            what="decomposition",
+            namespace=namespace,
+            name=stored["name"],
+        )
 
-    tool = SimpleNamespace(show=show, write_decomposition=write_decomposition)
+    def add(name: str, yaml: str) -> dict[str, Any]:
+        """Add namespace *name* with the fields *yaml* sets."""
+        check_writable(name, yaml, key_names)
+        with app_file(library, "rw") as connection:
+            add_namespace(connection, name, yaml, allowed=may_change)
+        return logged("added", None, yaml, what="namespace", namespace=name, name=name)
+
+    def change(name: str, yaml: str) -> dict[str, Any]:
+        """Give namespace *name* the fields *yaml* sets in place of its own."""
+        check_writable(name, yaml, key_names)
+        with app_file(library, "rw") as connection:
+            before = change_namespace(connection, name, yaml, allowed=may_change)
+        return logged(
+            "changed", before, yaml, what="namespace", namespace=name, name=name
+        )
+
+    tool = SimpleNamespace(
+        show=show,
+        write_decomposition=write_decomposition,
+        add_namespace=add,
+        change_namespace=change,
+    )
     return Func(tool, description=LIBRARY_DESCRIPTION)

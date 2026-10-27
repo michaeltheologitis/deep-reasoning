@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { Worker } from "node:worker_threads";
-import { foldEvent, foldEvents } from "../src/deep_reasoning/web/fold.js";
+import { changeText, foldEvent, foldEvents } from "../src/deep_reasoning/web/fold.js";
 
 const FOLD_URL = new URL("../src/deep_reasoning/web/fold.js", import.meta.url).href;
 const FOLD_TIMEOUT_MS = 5000;
@@ -261,6 +261,12 @@ test("the turn lists every Library change, a sub-agent's with the tasks above it
   );
   assert.equal(turn.changes[0].step, changes(turn)[0]);
   assert.equal(turn.changes[1].step, changes(reworder)[0]);
+});
+
+test("a change reads as what it did: a decomposition added or replaced in its namespace, a namespace added or changed", () => {
+  const worded = (name) => foldEvents(recorded(name)).turn.changes.map(({ step }) => changeText(step));
+  assert.deepEqual(worded("librarian"), ['added decomposition "count the tickets" in librarian', 'replaced decomposition "count the tickets" in librarian']);
+  assert.deepEqual(worded("namespaces"), ["added namespace research", "changed namespace research"]);
 });
 
 test("a change with odd fields, as a crafted file may hold, folds as it came, and one of no known agent is left out", () => {

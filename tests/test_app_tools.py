@@ -10,6 +10,7 @@ from structlog.testing import capture_logs
 
 from deep_reasoning.app_tools import (
     MAX_YAML_CHARS,
+    NOT_TEXT,
     build_history,
     build_library,
     open_existing,
@@ -371,8 +372,8 @@ class NeverEqual(str):
 @pytest.mark.parametrize(
     ("namespace", "text", "refusal"),
     [
-        (NeverEqual("root"), EXAMPLE, "namespace and yaml should be text."),
-        ("drafts", NeverEqual(EXAMPLE), "namespace and yaml should be text."),
+        (NeverEqual("root"), EXAMPLE, NOT_TEXT),
+        ("drafts", NeverEqual(EXAMPLE), NOT_TEXT),
         ("root", EXAMPLE, "root is locked"),
         ("drafts", "#" * (MAX_YAML_CHARS + 1), "may be at most 1,000,000 characters"),
         ("drafts", EXAMPLE + f"# {SHELL_KEY}\n", "holds a provider's key"),
@@ -417,3 +418,49 @@ def test_a_moved_app_file_is_never_made_afresh(fresh, tmp_path):
         with pytest.raises(LibraryError, match="can't be used now"):
             call()
     assert not fresh.exists()
+
+
+def stored_namespaces(library):
+    """Each namespace in the app file, as (name, yaml)."""
+    with closing(open_library(library)) as connection:
+        return connection.execute("SELECT name, yaml FROM namespaces").fetchall()
+
+
+@pytest.mark.parametrize("method", ["add_namespace", "change_namespace"])
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [(NeverEqual("root"), ""), ("drafts", NeverEqual("tools: [history]\n"))],
+    ids=["name-unequal-to-root", "yaml-not-plain-text"],
+)
+def test_a_namespace_write_takes_only_plain_text(fresh, method, name, text):
+    before = stored_namespaces(fresh)
+    with pytest.raises(LibraryError, match=re.escape(NOT_TEXT)):
+        getattr(library_tool(fresh), method)(name, text)
+    assert stored_namespaces(fresh) == before
+
+
+@pytest.mark.parametrize(
+    ("method", "name"), [("add_namespace", "research"), ("change_namespace", "drafts")]
+)
+def test_a_chat_whose_namespace_doesnt_grant_the_tool_may_not_write_a_namespace(
+    fresh, method, name
+):
+    before = stored_namespaces(fresh)
+    with pytest.raises(LibraryError, match=NOT_THIS_CHAT):
+        getattr(library_tool(fresh, "drafts"), method)(name, "system_suffix: Hi.\n")
+    assert stored_namespaces(fresh) == before
+
+
+def test_a_change_keeping_the_repl_and_app_tools_the_user_set_is_written(fresh):
+    set_by_the_user = "tools: [history]\nrepl: {type: local}\n"
+    changed = "repl: {type: local}\ntools: [llm, history]\nsystem_suffix: Draft.\n"
+    with closing(open_library(fresh)) as connection:
+        change_namespace(connection, "drafts", set_by_the_user)
+    done = library_tool(fresh).change_namespace("drafts", changed)
+    assert done == {
+        "done": "changed",
+        "what": "namespace",
+        "namespace": "drafts",
+        "name": "drafts",
+    }
+    assert ("drafts", changed) in stored_namespaces(fresh)

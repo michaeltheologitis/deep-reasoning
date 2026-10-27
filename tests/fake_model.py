@@ -33,6 +33,15 @@ messages:
   content: Count them with len(open_tickets).
 """
 REWORDED = EXAMPLE.replace(ASKED, REWORDED_ASK)
+# A namespace for the library tool to add, and the same with its suffix changed.
+SUFFIX = "Cite a source for every claim."
+CHANGED_SUFFIX = "Cite two sources for every claim."
+RESEARCH = f"""system_suffix: |
+  {SUFFIX}
+vars:
+  year: 2026
+"""
+RESEARCH_CHANGED = RESEARCH.replace(SUFFIX, CHANGED_SUFFIX)
 
 
 @dataclass(frozen=True)
@@ -67,10 +76,16 @@ def repl(*lines: str, think: str = "") -> str:
     return head + "<repl>\n" + "\n".join(lines) + "\n</repl>"
 
 
+def library_cell(method: str, *args: Any) -> str:
+    """A turn whose cell calls the library tool's *method* with *args* and prints what it
+    returns."""
+    return repl(f"print(library.{method}({', '.join(map(repr, args))}))")
+
+
 def write(namespace: str, text: str) -> str:
     """A turn whose cell writes the decomposition *text* into *namespace* with the
     library tool."""
-    return repl(f"print(library.write_decomposition({namespace!r}, {text!r}))")
+    return library_cell("write_decomposition", namespace, text)
 
 
 def task_and_turn(messages: Messages) -> tuple[str, int]:
