@@ -51,13 +51,19 @@ function startAgent(fold, event) {
   fold.nodes.set(event.node, { holder: row, parent: event.parent });
 }
 
+// The node's entry and each one above it, once each: a file from someone else may name a node its own ancestor.
+function lineage(fold, node) {
+  const entries = new Set();
+  for (let entry = fold.nodes.get(node); entry && !entries.has(entry); entry = fold.nodes.get(entry.parent)) entries.add(entry);
+  return entries;
+}
+
 function addStep(fold, node, step) {
   const holder = fold.nodes.get(node)?.holder;
   if (!holder) return;
   holder.steps.push(step);
-  const tasks = [];
-  for (let entry = fold.nodes.get(node); entry?.parent != null; entry = fold.nodes.get(entry.parent)) tasks.unshift(entry.holder.task);
-  fold.latest = { tasks, step };
+  const tasks = [...lineage(fold, node)].filter((entry) => entry.parent != null).map((entry) => entry.holder.task);
+  fold.latest = { tasks: tasks.reverse(), step };
 }
 
 function startCell(fold, event) {
@@ -73,8 +79,7 @@ function endCell(fold, event) {
 
 // A call's cost counts for its agent, every agent above it and the turn; once one call is unpriced, so is each of their totals.
 function addUsage(fold, event) {
-  for (let entry = fold.nodes.get(event.node); entry; entry = fold.nodes.get(entry.parent)) {
-    const { holder } = entry;
+  for (const { holder } of lineage(fold, event.node)) {
     if (event.cost == null) fold.unpriced.add(holder);
     holder.cost = fold.unpriced.has(holder) ? null : (holder.cost ?? 0) + event.cost;
   }
