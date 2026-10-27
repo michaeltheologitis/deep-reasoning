@@ -20,12 +20,13 @@ import signal
 import sqlite3
 import sys
 import time
-from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
-from typing import Any, Literal, NoReturn
+from typing import Any, Literal
 
 import jinja2
 import structlog
@@ -41,13 +42,12 @@ RUNS = "runs"
 SPEC = "spec.yaml"
 ADD_RUN = "INSERT INTO runs VALUES (?, ?)"
 ADD_EVENT = "INSERT INTO events VALUES (?, ?, ?)"
-FIRST_AND_LAST = (
-    "SELECT seq, data FROM events WHERE run = :run"
-    " AND seq IN (1, (SELECT max(seq) FROM events WHERE run = :run)) ORDER BY seq"
-)
-LAST_EVENTS = (
-    "SELECT id, (SELECT data FROM events WHERE run = id ORDER BY seq DESC LIMIT 1)"
-    " FROM runs ORDER BY id"
+FORWARD = "SELECT seq, data FROM events WHERE run = ? ORDER BY seq"
+BACKWARD = "SELECT seq, data FROM events WHERE run = ? ORDER BY seq DESC"
+# Runs of no chat in the file; NOT IN would match none were a chat's id NULL.
+ORPHANS = (
+    "SELECT id FROM runs"
+    " WHERE NOT EXISTS (SELECT 1 FROM chats WHERE chats.id = runs.chat)"
 )
 # libyaml's where PyYAML has it: the pure-Python one takes ~0.6 s a MiB, on the loop.
 YAML_DUMPER = getattr(yaml, "CSafeDumper", yaml.SafeDumper)
@@ -68,8 +68,11 @@ NOT_SAVED = "The app couldn't save the run in the Library file, so it ended the 
 KEY_WITHHELD = "[key withheld]"
 # A shorter key is no secret (a local server's "x"), and withholding it would garble the run's text.
 SHORTEST_SECRET = 8
+# The largest number the page's JavaScript holds exactly: a shared file's events stay
+# within it, so no sum or seq they make leaves what JSON and SQLite carry.
+LARGEST_NUMBER = 2**53
 # What an event row from a file someone else wrote may fail with.
-UNREADABLE = (TypeError, ValueError, RecursionError)
+UNREADABLE = (TypeError, ValueError, RecursionError, OverflowError)
 NOT_ENDED = (*UNREADABLE, KeyError, IndexError, sqlite3.Error)
 RECAP = jinja2.Template(
     """\
@@ -108,6 +111,8 @@ class _Live:
     db: sqlite3.Connection  # the app file, which its events are saved in
     # for the worker's environment only, and in no repr a traceback might show
     keys: dict[str, str] = field(default_factory=dict, repr=False)
+    # more variables of the worker's environment whose values are withheld as keys
+    key_names: Sequence[str] = ()
     events: list[dict[str, Any]] = field(default_factory=list)
     watchers: set[asyncio.Queue] = field(default_factory=set)
     process: asyncio.subprocess.Process | None = None
@@ -144,9 +149,20 @@ def save_event(connection: sqlite3.Connection, run: str, event: dict[str, Any]) 
         connection.execute(ADD_EVENT, (run, event["seq"], json.dumps(event)))
 
 
-def refuse_constant(name: str) -> NoReturn:
-    """Refuse NaN and Infinity: Python reads them, but no JSON response can carry them."""
-    raise ValueError(f"{name} is not JSON")
+def in_range(parse: Callable[[str], int | float], text: str) -> int | float:
+    """*text* as a number, by *parse*; refused past LARGEST_NUMBER, as NaN and infinity
+    are, which no JSON response carries."""
+    number = parse(text)
+    if not abs(number) <= LARGEST_NUMBER:
+        raise ValueError(f"{text[:20]} is out of range")
+    return number
+
+
+NUMBERS = {
+    "parse_constant": partial(in_range, float),
+    "parse_float": partial(in_range, float),
+    "parse_int": partial(in_range, int),
+}
 
 
 def well_formed(event: Any, seq: Any) -> bool:
@@ -161,31 +177,48 @@ def well_formed(event: Any, seq: Any) -> bool:
     )
 
 
-def loaded_events(run: str, rows: Iterable[tuple[Any, Any]]) -> list[dict[str, Any]]:
-    """The events in the run's (seq, data) rows; one the app could not have written, as a
-    file from someone else may hold, is left out."""
-    events = []
-    for seq, data in rows:
-        try:
-            event = json.loads(data, parse_constant=refuse_constant)
-        except UNREADABLE:
-            event = None
-        if well_formed(event, seq):
-            events.append(event)
-        else:
-            log.warning("runs.event_left_out", run=run, seq=repr(seq))
-    return events
+def loaded_event(run: str, seq: Any, data: Any) -> dict[str, Any] | None:
+    """The event in the run's row *seq*, or None for one the app could not have
+    written, as a file from someone else may hold."""
+    try:
+        event = json.loads(data, **NUMBERS)
+    except UNREADABLE:
+        event = None
+    if well_formed(event, seq):
+        return event
+    log.warning("runs.event_left_out", run=run, seq=repr(seq))
+    return None
 
 
-def read_events(
-    connection: sqlite3.Connection, run: str, after: int = 0
-) -> list[dict[str, Any]]:
-    """The run's events after seq *after*, in order."""
-    rows = connection.execute(
-        "SELECT seq, data FROM events WHERE run = ? AND seq > ? ORDER BY seq",
-        (run, after),
+def read_events(connection: sqlite3.Connection, run: str) -> list[dict[str, Any]]:
+    """The run's events that load, in order."""
+    rows = connection.execute(FORWARD, (run,))
+    events = (loaded_event(run, seq, data) for seq, data in rows)
+    return [event for event in events if event is not None]
+
+
+def first_loaded(
+    connection: sqlite3.Connection, run: str, query: str
+) -> dict[str, Any] | None:
+    """The run's first event that loads, in the order of *query*: FORWARD or BACKWARD."""
+    with closing(connection.execute(query, (run,))) as rows:
+        events = (loaded_event(run, seq, data) for seq, data in rows)
+        return next((event for event in events if event is not None), None)
+
+
+def started(event: dict[str, Any] | None) -> bool:
+    """Whether a run's first event that loads is its turn.start, with its message: else,
+    as in a file from someone else, the run is left out of the page and the recap."""
+    return (
+        event is not None
+        and event["kind"] == "turn.start"
+        and isinstance(event.get("prompt"), str)
     )
-    return loaded_events(run, rows)
+
+
+def has_ended(event: dict[str, Any] | None) -> bool:
+    """Whether a run's last event that loads is its turn.end."""
+    return event is not None and event["kind"] == "turn.end"
 
 
 def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
@@ -198,24 +231,32 @@ def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
     }
 
 
-def lost_end(events: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    """The turn.end of a run that has none, as the app stopped under it, after its last
-    event."""
-    last = events[-1]
-    stamp = {"seq": last["seq"] + 1, "t": last["t"]}
-    return stamp | LOST_END | totals(events, last["t"])
+def lost_end(events: Sequence[dict[str, Any]], seq: int) -> dict[str, Any]:
+    """The turn.end, numbered *seq*, of a run that has none, as the app stopped under it:
+    failed, as of its last event."""
+    until = events[-1]["t"]
+    return {"seq": seq, "t": until} | LOST_END | totals(events, until)
+
+
+def ended(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A run's events, ending with a turn.end: one with none, as one the app stopped
+    under or couldn't save the end of, ends failed, though not in the file."""
+    if not events or has_ended(events[-1]):
+        return events
+    return [*events, lost_end(events, events[-1]["seq"] + 1)]
 
 
 def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
     """An ended run's message, how it ended and its namespace, from its first and last
-    events; a run the app couldn't save the end of ended failed. None for a run with no
-    turn.start, as a file from someone else may hold."""
-    events = loaded_events(run, connection.execute(FIRST_AND_LAST, {"run": run}))
-    start = events[0] if events else {}
-    if start.get("kind") != "turn.start" or not isinstance(start.get("prompt"), str):
+    events that load; None for a run that didn't start, as one in a file from someone
+    else may not have."""
+    start = first_loaded(connection, run, FORWARD)
+    if not started(start):
         log.warning("runs.turn_left_out", run=run)
         return None
-    end = events[-1] if events[-1]["kind"] == "turn.end" else LOST_END
+    end = first_loaded(connection, run, BACKWARD)
+    if not has_ended(end):
+        end = LOST_END
     return Turn(
         start["prompt"],
         end.get("outcome"),
@@ -247,12 +288,10 @@ def chat_turns(
     turns = []
     for run in chat_runs(connection, chat):
         events = read_events(connection, run)
-        if not events or events[0]["kind"] != "turn.start":
+        if not started(events[0] if events else None):
             log.warning("runs.turn_left_out", run=run)
             continue
-        if run != going and events[-1]["kind"] != "turn.end":
-            events.append(lost_end(events))
-        turns.append({"run": run, "events": events})
+        turns.append({"run": run, "events": events if run == going else ended(events)})
     return turns
 
 
@@ -273,35 +312,41 @@ def delete_orphans(connection: sqlite3.Connection) -> None:
     stopped between deleting a chat and its runs; a file it can't write keeps them."""
     try:
         with writing(connection):
-            connection.execute(
-                "DELETE FROM events WHERE run IN (SELECT id FROM runs"
-                " WHERE chat NOT IN (SELECT id FROM chats))"
-            )
-            connection.execute(
-                "DELETE FROM runs WHERE chat NOT IN (SELECT id FROM chats)"
-            )
+            connection.execute(f"DELETE FROM events WHERE run IN ({ORPHANS})")
+            connection.execute(f"DELETE FROM runs WHERE id IN ({ORPHANS})")
     except sqlite3.Error as error:
         log.warning("runs.orphans_kept", error=str(error))
 
 
 def end_unfinished(connection: sqlite3.Connection) -> list[str]:
     """End, as failed, every run the app stopped under without a turn.end; their ids."""
-    rows = connection.execute(LAST_EVENTS).fetchall()
-    return [run for run, last in rows if ended_as_lost(connection, run, last)]
+    runs = [run for (run,) in connection.execute("SELECT id FROM runs ORDER BY id")]
+    return [run for run in runs if ended_as_lost(connection, run)]
 
 
-def ended_as_lost(connection: sqlite3.Connection, run: str, last: Any) -> bool:
-    """End *run*, whose last event is the JSON *last*, as failed unless that is its
+def ended_as_lost(connection: sqlite3.Connection, run: str) -> bool:
+    """End *run* as failed, after its highest seq, unless its last event that loads is its
     turn.end; whether it did. One it can't end, as a file from someone else or one it
     can't write may hold, is left as it is."""
     try:
-        if json.loads(last)["kind"] == "turn.end":
+        if has_ended(first_loaded(connection, run, BACKWARD)):
             return False
-        save_event(connection, run, lost_end(read_events(connection, run)))
+        events = read_events(connection, run)
+        top = connection.execute(
+            "SELECT max(seq) FROM events WHERE run = ?", (run,)
+        ).fetchone()[0]
+        save_event(connection, run, lost_end(events, top + 1))
     except NOT_ENDED as error:
         log.warning("runs.not_ended", run=run, error=repr(error))
         return False
     return True
+
+
+def secrets_of(env: dict[str, str], names: Sequence[str]) -> list[str]:
+    """The values of *names* in the worker's *env* long enough to be secrets, longest
+    first, so a key that holds another is withheld whole."""
+    values = {env[name] for name in names if len(env.get(name, "")) >= SHORTEST_SECRET}
+    return sorted(values, key=len, reverse=True)
 
 
 def withheld(value: Any, secrets: Sequence[str]) -> Any:
@@ -383,40 +428,46 @@ class Runs:
         provider: str | None = None,
         keys: dict[str, str] | None = None,
         folder: Path | None = None,
+        key_names: Sequence[str] = (),
     ) -> str:
         """Start a run of *prompt* in *chat*, given the chat's *earlier* turns, and return
         its id. *config_for* gives the engine config for the run's folder; *provider*
         names who serves its model, and *keys* go into the worker's environment only.
-        The worker works in *folder*, the run's own folder unless given.
-        Raises RunInProgress while the chat has a run going."""
+        The values of *keys* and of *key_names* in that environment are withheld from
+        the run's events. The worker works in *folder*, the run's own folder unless
+        given. Raises RunInProgress while the chat has a run going."""
         if self.live(chat) is not None:
             raise RunInProgress(chat)
         run = new_run_id()
         run_folder = self.home / RUNS / run
         run_folder.mkdir(parents=True)
-        config = config_for(run_folder)
-        namespace = config.get("entry_namespace")
-        recap = recap_of(earlier, namespace)
-        spec = {"chat": chat, "prompt": prompt, "recap": recap, "config": config}
-        # YAML keeps dates and int keys; ASCII, as a raw NEL would read back as a space.
-        spec_yaml = yaml.dump(spec, Dumper=YAML_DUMPER, sort_keys=False)
-        (run_folder / SPEC).write_text(spec_yaml)
-        live = _Live(chat, folder or run_folder, open_events(self.library), keys or {})
-        start = {
-            "kind": "turn.start",
-            "run": run,
-            "chat": chat,
-            "prompt": prompt,
-            "namespace": namespace,
-            "model": config.get("model"),
-            "provider": provider,
-            "folder": str(live.cwd),
-        }
-        # Recorded before the run is listed, so a start that fails holds up no chat.
+        db = None
+        # A start that fails leaves nothing behind, and as the run is listed only once its
+        # turn.start is saved, holds up no chat.
         try:
+            config = config_for(run_folder)
+            namespace = config.get("entry_namespace")
+            recap = recap_of(earlier, namespace)
+            spec = {"chat": chat, "prompt": prompt, "recap": recap, "config": config}
+            # YAML keeps dates and int keys; ASCII, as a raw NEL would read back as a space.
+            spec_yaml = yaml.dump(spec, Dumper=YAML_DUMPER, sort_keys=False)
+            (run_folder / SPEC).write_text(spec_yaml)
+            db = open_events(self.library)
+            live = _Live(chat, folder or run_folder, db, keys or {}, key_names)
+            start = {
+                "kind": "turn.start",
+                "run": run,
+                "chat": chat,
+                "prompt": prompt,
+                "namespace": namespace,
+                "model": config.get("model"),
+                "provider": provider,
+                "folder": str(live.cwd),
+            }
             self._record(run, live, start)
         except BaseException:
-            live.db.close()
+            if db is not None:
+                db.close()
             shutil.rmtree(run_folder, ignore_errors=True)
             raise
         self._live[run] = live
@@ -440,9 +491,10 @@ class Runs:
         live = self._live.get(run)
         if live is None:
             with closing(open_library(self.library)) as connection:
-                events = read_events(connection, run, after)
+                events = ended(read_events(connection, run))
             for event in events:
-                yield event
+                if event["seq"] > after:
+                    yield event
             return
         # The backlog and the subscription are taken in one step on the event loop, so
         # no event is missed or repeated between them.
@@ -549,9 +601,10 @@ class Runs:
             await self._end(run, live)
 
     async def _read(self, run: str, live: _Live) -> None:
-        """Record each event the worker writes, with the run's keys withheld: what a cell
-        prints goes into the file, which is shared."""
-        secrets = [key for key in live.keys.values() if len(key) >= SHORTEST_SECRET]
+        """Record each event the worker writes, with the keys in its environment withheld:
+        what a cell prints goes into the file, which is shared."""
+        names = [*live.keys, *live.key_names]
+        secrets = secrets_of(worker_env(live.keys), names)
         while True:
             try:
                 line = await live.process.stdout.readline()

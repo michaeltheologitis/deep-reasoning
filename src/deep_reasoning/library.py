@@ -224,6 +224,9 @@ def open_library(path):
     try:
         # Deleted rows are wiped, not left in free pages that a copy would carry.
         connection.execute("PRAGMA secure_delete = ON")
+        # A shared file's triggers and views never run: one could keep what is deleted.
+        connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)
+        connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_VIEW, False)
         if schema_version(connection) != SCHEMA_VERSION:
             lay_out(connection, path)
         grant_llm_at_an_untouched_root(connection)

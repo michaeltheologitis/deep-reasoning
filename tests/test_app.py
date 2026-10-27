@@ -816,11 +816,29 @@ USED = row(2, "usage", node=1, cost=0.25)
         pytest.param(
             [STARTED, row(3, "usage", cost=0.5)], True, id="a gap in its seqs"
         ),
-        pytest.param([STARTED, (2, "[1, 2]")], False, id="a last event no object"),
+        pytest.param([STARTED, (2, "[1, 2]")], True, id="a last event no object"),
         pytest.param(
             [(1, json.dumps({"seq": 1, "kind": "turn.start", "prompt": "Hi."})), USED],
             True,
             id="a first event with no time",
+        ),
+        pytest.param(
+            [STARTED, (2, '{"seq": 2, "t": 1e999, "kind": "usage", "cost": 0.5}')],
+            True,
+            id="a time past range",
+        ),
+        pytest.param(
+            [
+                STARTED,
+                (2, '{"seq": 2, "t": 102, "kind": "usage", "cost": 9%s}' % ("9" * 400)),
+            ],
+            True,
+            id="a cost of 400 digits",
+        ),
+        pytest.param(
+            [STARTED, row(2**63 - 1, "usage", cost=0.5)],
+            False,
+            id="a seq at SQLite's largest",
         ),
     ],
 )
@@ -860,12 +878,25 @@ def test_the_app_starts_on_a_file_it_cannot_write_and_shows_a_lost_run_failed(
     assert ends_saved(imported, GOOD) == 0
 
 
+def test_a_lost_run_is_ended_once_however_often_the_app_starts(imported, home):
+    chat = create_chat(imported)["id"]
+    plant(imported, chat, GOOD, [STARTED, (5, '{"seq": 5, "kind": "usage"}')])
+    for _ in range(2):
+        with TestClient(create_app(imported, home), base_url=LOCAL):
+            pass
+    with closing(open_library(imported)) as connection:
+        seqs = [seq for (seq,) in connection.execute("SELECT seq FROM events")]
+    assert (ends_saved(imported, GOOD), seqs) == (1, [1, 5, 6])
+
+
 def test_a_run_with_no_turn_end_reads_back_failed_without_one_being_saved(client):
     chat = client.post("/api/chats").json()["id"]
     plant(client.app.state.runs.library, chat, GOOD, [STARTED, USED])
     events = client.get(f"/api/chats/{chat}").json()["turns"][0]["events"]
+    streamed = client.get(f"/api/runs/{GOOD}/events", params={"after": 1})
     assert [event["kind"] for event in events] == ["turn.start", "usage", "turn.end"]
     assert (events[-1]["seq"], events[-1]["outcome"]) == (3, "failed")
+    assert [event for _, event in server_sent(streamed.text)] == events[1:]
     assert ends_saved(client.app.state.runs.library, GOOD) == 0
 
 
@@ -888,30 +919,52 @@ def test_an_event_row_the_app_could_not_have_written_is_left_out(client):
     assert [event for _, event in server_sent(streamed.text)] == events
 
 
+def answered(seq, answer):
+    return row(seq, "turn.end", outcome="answered", answer=answer, detail=None)
+
+
 @pytest.mark.anyio
-async def test_a_follow_up_leaves_out_earlier_runs_with_no_message(library_on, connect):
+async def test_the_page_and_a_follow_ups_recap_agree_on_how_each_run_started_and_ended(
+    library_on, connect
+):
+    junk_after_its_end = "20261025-120005-000000"
     with FakeOpenAI(scripted(PLAN)) as fake:
         library = library_on(fake)
         async with connect(library) as api:
             chat = await new_chat(api)
-            answered = row(2, "turn.end", outcome="answered", answer="2", detail=None)
             plant(
                 library,
                 chat,
                 GOOD,
-                [row(1, "turn.start", prompt="Count to two."), answered],
+                [row(1, "turn.start", prompt="Count to two."), answered(2, "2")],
             )
             plant(library, chat, "20261025-120001-000000", [])
             plant(library, chat, "20261025-120002-000000", [USED])
             plant(library, chat, "20261025-120003-000000", [row(1, "turn.start")])
+            plant(
+                library,
+                chat,
+                "20261025-120004-000000",
+                [row(1, "turn.start", prompt=5)],
+            )
+            ended_then_junk = [
+                row(1, "turn.start", prompt="Again."),
+                answered(2, "3"),
+                (3, "{oops"),
+            ]
+            plant(library, chat, junk_after_its_end, ended_then_junk)
+            page = (await api.get(f"/api/chats/{chat}")).json()["turns"]
             sent = await api.post(
                 f"/api/chats/{chat}/runs", json={"prompt": "What did I ask?"}
             )
             events = await run_events(api, sent.json()["run"])
     assert sent.status_code == 201 and events[-1]["outcome"] == "answered"
+    assert [turn["run"] for turn in page] == [GOOD, junk_after_its_end]
+    assert [turn["events"][-1]["answer"] for turn in page] == ["2", "3"]
     recap = fake.calls[-1].messages[-2]["content"]
     assert "Message 1: Count to two.\nAnswer 1: 2\n" in recap
-    assert "Message 2" not in recap
+    assert "Message 2: Again.\nAnswer 2: 3\n" in recap
+    assert "Message 3" not in recap
 
 
 def test_runs_of_chats_deleted_before_their_runs_are_deleted_when_the_app_starts(
@@ -920,9 +973,57 @@ def test_runs_of_chats_deleted_before_their_runs_are_deleted_when_the_app_starts
     chat = create_chat(imported)["id"]
     plant(imported, chat, GOOD, [STARTED, row(2, "turn.end")])
     plant(imported, "a-deleted-chat", BROKEN, [STARTED, row(2, "turn.end")])
+    with closing(open_library(imported)) as connection:
+        connection.execute(
+            "INSERT INTO chats (id, title, created) VALUES (NULL, '', 0)"
+        )
     with TestClient(create_app(imported, home), base_url=LOCAL):
         pass
     assert saved_runs(imported) == {GOOD}
+
+
+def test_a_shared_files_own_trigger_never_keeps_what_deleting_a_chat_removes(client):
+    library = client.app.state.runs.library
+    chat = client.post("/api/chats").json()["id"]
+    plant(library, chat, GOOD, [STARTED, row(2, "turn.end")])
+    keeping = """
+        CREATE TABLE keep (data TEXT);
+        CREATE TRIGGER keeping BEFORE DELETE ON events
+        BEGIN INSERT INTO keep VALUES (old.data); END;
+    """
+    with closing(sqlite3.connect(library)) as connection:
+        connection.executescript(keeping)
+    deleted = client.delete(f"/api/chats/{chat}")
+    with closing(sqlite3.connect(library)) as connection:
+        kept = connection.execute("SELECT count(*) FROM keep").fetchone()[0]
+    assert deleted.status_code == 204
+    assert (kept, saved_runs(library)) == (0, set())
+
+
+@pytest.mark.anyio
+async def test_a_providers_key_from_the_shell_that_a_cell_prints_never_reaches_the_file(
+    library_on, connect, monkeypatch
+):
+    shell_key = "sk-or-from-the-shell-0123456789"
+    monkeypatch.setenv("OPENROUTER_API_KEY", shell_key)
+    names = (
+        f"os.environ['OPENROUTER_API_KEY'], os.environ['{server_key_env(SERVER_NAME)}']"
+    )
+    plan = {
+        "Show the keys.": [
+            repl("import os", f"print({names})"),
+            repl("FinalAnswer('shown')"),
+        ]
+    }
+    with FakeOpenAI(scripted(plan)) as fake:
+        library = library_on(fake)
+        async with connect(library) as api:
+            events = await run_events(
+                api, await send(api, await new_chat(api), "Show the keys.")
+            )
+    assert cell_outputs(events)[0] == "[key withheld] [key withheld]"
+    held = library.read_bytes()
+    assert shell_key.encode() not in held and SERVER_KEY.encode() not in held
 
 
 @pytest.mark.anyio

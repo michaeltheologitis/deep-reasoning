@@ -7,6 +7,7 @@ import threading
 import time
 from contextlib import aclosing, closing
 from datetime import UTC, date, datetime
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -82,6 +83,22 @@ class Ledger:
 def build_ledger(client, tool_cfg):
     return Func(Ledger(tool_cfg["persist"], tool_cfg["seconds"]))
 """
+
+
+CONNECT = sqlite3.connect
+FULL = "database or disk is full"
+
+
+def full_disk(room):
+    """A SQLite connection whose disk has room for each run's first *room* events."""
+
+    class FullDisk(sqlite3.Connection):
+        def execute(self, sql, parameters=()):
+            if sql.startswith("INSERT INTO events") and parameters[1] > room:
+                raise sqlite3.OperationalError(FULL)
+            return super().execute(sql, parameters)
+
+    return FullDisk
 
 
 def saved(library, run):
@@ -567,27 +584,21 @@ def test_a_run_the_app_stopped_under_is_ended_failed(library):
 
 
 async def test_an_event_the_app_file_refuses_ends_the_run_failed_and_frees_the_chat(
-    home, library, fake_config
+    home, library, fake_config, monkeypatch
 ):
-    refusing = (
-        "CREATE TRIGGER full BEFORE INSERT ON events WHEN NEW.seq > 2"
-        " BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END"
-    )
-    with closing(open_library(library)) as connection:
-        connection.execute(refusing)
     plan = {
         "Spin.": [repl("while True:", "    pass")],
         "Hi.": [repl("FinalAnswer('hello')")],
     }
     with FakeOpenAI(scripted(plan)) as fake:
         runs = Runs(library, home)
+        monkeypatch.setattr(sqlite3, "connect", partial(CONNECT, factory=full_disk(2)))
         run, events = await run_to_the_end(runs, "Spin.", fake_config(fake))
         assert runs.live(CHAT) is None
-        with closing(open_library(library)) as connection:
-            connection.execute("DROP TRIGGER full")
+        monkeypatch.setattr(sqlite3, "connect", CONNECT)
         _, again = await run_to_the_end(runs, "Hi.", fake_config(fake))
     assert events[-1]["kind"] == "turn.end" and events[-1]["outcome"] == "failed"
-    assert "database or disk is full" in events[-1]["detail"]
+    assert FULL in events[-1]["detail"]
     assert saved(library, run) == events[:2]
     assert turn_of(library, run) == Turn("Spin.", "failed", None, LOST, "root")
     assert again[-1]["outcome"] == "answered"
@@ -679,19 +690,26 @@ async def test_a_key_a_cell_prints_never_reaches_the_app_file(
 
 
 async def test_a_start_the_app_file_refuses_leaves_no_run_behind(
-    home, library, fake_config
+    home, library, fake_config, monkeypatch
 ):
-    refusing = (
-        "CREATE TRIGGER full BEFORE INSERT ON events"
-        " BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END"
-    )
-    with closing(open_library(library)) as connection:
-        connection.execute(refusing)
     runs = Runs(library, home)
-    refused = pytest.raises(sqlite3.IntegrityError, match="disk is full")
+    monkeypatch.setattr(sqlite3, "connect", partial(CONNECT, factory=full_disk(0)))
+    refused = pytest.raises(sqlite3.OperationalError, match=FULL)
     with FakeOpenAI(scripted(FAN_OUT)) as fake, refused:
         runs.start(CHAT, "Summarize two courses.", fake_config(fake), [])
     assert runs.live(CHAT) is None and fake.calls == []
+    assert list((home / "runs").iterdir()) == []
+
+
+def test_a_start_whose_config_fails_leaves_no_run_behind(home, library):
+    def config_for(folder):
+        (folder / "tools").mkdir()
+        raise ValueError("the engine refuses the config")
+
+    runs = Runs(library, home)
+    with pytest.raises(ValueError, match="refuses"):
+        runs.start(CHAT, "Hi.", config_for, [])
+    assert runs.live(CHAT) is None
     assert list((home / "runs").iterdir()) == []
 
 

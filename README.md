@@ -55,7 +55,7 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   each file keeps in a folder of its own in `~/.deep-reasoning`.
 - Copy the file while the app is stopped: while a run is going, the newest changes may still be in
   `library.sqlite-wal` beside it. The file stays in SQLite's WAL mode, so open a copy from a folder you can write to.
-- What a run prints travels with the file. The app withholds the run's own key from it, but can't know other
+- What a run prints travels with the file. The app withholds any provider's key from it, but can't know other
   secrets a cell reads from your shell.
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.

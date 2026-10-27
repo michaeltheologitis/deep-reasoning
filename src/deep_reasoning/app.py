@@ -72,6 +72,7 @@ from deep_reasoning.settings import (
     forget_key,
     model_lists,
     provider_list,
+    providers,
     remember_pick,
     remove_server,
     run_key,
@@ -413,8 +414,17 @@ def create_app(library, home):
             return config | {"model": model["name"], "client": client}
 
         keys = {provider.key_env: key}
+        # Any provider's key in the shell reaches the worker, so is withheld too.
+        key_names = [each.key_env for each in providers(library)]
         run = runs.start(
-            chat["id"], prompt, config_for, earlier, provider.name, keys, folder
+            chat["id"],
+            prompt,
+            config_for,
+            earlier,
+            provider.name,
+            keys,
+            folder,
+            key_names,
         )
         choose(library, chat["id"], namespace, provider.name, model["name"])
         if not earlier:
