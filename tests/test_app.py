@@ -1,9 +1,12 @@
 import json
 import shutil
 import socket
+import sqlite3
 import stat
 import threading
 from contextlib import closing
+from dataclasses import replace
+from pathlib import Path
 
 import httpx
 import pytest
@@ -17,7 +20,9 @@ from fake_model import (
 )
 from fastapi.testclient import TestClient
 
+from deep_reasoning import settings as settings_module
 from deep_reasoning.app import WEB, create_app
+from deep_reasoning.folders import data_folder
 from deep_reasoning.library import (
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
@@ -28,6 +33,8 @@ from deep_reasoning.library import (
 )
 from deep_reasoning.settings import (
     ENV_FILE,
+    SERVERS,
+    VENDORS,
     add_server,
     default_folder,
     server_key_env,
@@ -58,6 +65,12 @@ PLAN = {
 @pytest.fixture
 def client(imported, home):
     return TestClient(create_app(imported, home), base_url=LOCAL)
+
+
+@pytest.fixture
+def data(home, library):
+    """The Library file's data folder in the app's home: its runs and scratch folders."""
+    return data_folder(home, library)
 
 
 @pytest.fixture
@@ -404,7 +417,7 @@ async def test_a_chat_keeps_the_namespace_it_started_in(imported, library_on, co
 
 @pytest.mark.anyio
 async def test_a_run_gets_the_librarys_tools_in_a_folder_of_its_own(
-    waitlist, library, library_on, connect, home
+    waitlist, library, library_on, connect, data
 ):
     with closing(open_library(library)) as connection:
         import_config(connection, waitlist)
@@ -415,7 +428,7 @@ async def test_a_run_gets_the_librarys_tools_in_a_folder_of_its_own(
             events = await run_events(api, run)
     assert events[-1]["outcome"] == "answered", events[-1]
     assert events[-1]["answer"] == "enrolled"
-    assert (home / "runs" / run / "tools" / "waitlist.py").is_file()
+    assert (data / "runs" / run / "tools" / "waitlist.py").is_file()
 
 
 @pytest.mark.anyio
@@ -598,7 +611,7 @@ async def test_a_run_that_is_going_shows_in_the_list_and_in_its_chat(
 
 @pytest.mark.anyio
 async def test_deleting_a_chat_stops_its_run_and_removes_its_run_folders(
-    library_on, home
+    library_on, home, data
 ):
     held, release = held_on("What did I ask?", PLAN)
     with FakeOpenAI(held) as fake:
@@ -619,7 +632,7 @@ async def test_deleting_a_chat_stops_its_run_and_removes_its_run_folders(
     assert app.state.runs.live(chat) is None
     assert [each["id"] for each in listed] == [kept]
     assert read.status_code == 404
-    runs = home / "runs"
+    runs = data / "runs"
     assert not (runs / ended).exists() and not (runs / going).exists()
     assert (runs / other / "events.jsonl").is_file()
 
@@ -675,6 +688,48 @@ def test_a_copy_of_the_app_file_under_another_home_has_its_chats_and_settings(
     assert folder == {"folder": "~/code"}
 
 
+@pytest.mark.anyio
+async def test_deleting_a_chat_in_a_copy_of_the_file_leaves_the_originals_runs_and_scratch(
+    library_on, connect, data, tmp_path
+):
+    with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
+        library = library_on(fake)
+        async with connect(library) as api:
+            chat = await new_chat(api)
+            run = await send(api, chat, "Write a note.")
+            await run_events(api, run)
+        copy = tmp_path / "copy.sqlite"
+        shutil.copy(library, copy)
+        async with connect(copy) as api:
+            copied = (await api.get(f"/api/chats/{chat}")).json()
+            deleted = await api.delete(f"/api/chats/{chat}")
+        async with connect(library) as api:
+            original = (await api.get(f"/api/chats/{chat}")).json()
+    assert copied["turns"] == [] and deleted.status_code == 204
+    assert [turn["run"] for turn in original["turns"]] == [run]
+    assert (data / "runs" / run / "events.jsonl").is_file()
+    assert (data / "work" / chat / "note.txt").read_text() == "from message 1"
+
+
+def test_a_library_file_that_cannot_be_written_is_refused_in_plain_words(
+    client, monkeypatch
+):
+    chat = client.post("/api/chats").json()
+    connect = sqlite3.connect
+
+    def read_only(path, **options):
+        return connect(f"{Path(path).as_uri()}?mode=ro", uri=True, **options)
+
+    monkeypatch.setattr(sqlite3, "connect", read_only)
+    added = client.post("/api/chats")
+    folder = client.put("/api/default-folder", json={"folder": None})
+    assert (added.status_code, folder.status_code) == (400, 400)
+    assert added.json() == {
+        "detail": "The Library file can't be written: attempt to write a readonly database."
+    }
+    assert client.get("/api/chats").json() == [chat]
+
+
 def by_name(rows, field="name"):
     return {each[field]: each for each in rows}
 
@@ -711,6 +766,31 @@ def test_keys_saved_through_the_app_never_land_in_the_app_file(client, library):
     held = library.read_bytes()
     for key in (SAVED_KEY, "sk-vllm-first", "sk-vllm-second"):
         assert key.encode() not in held
+
+
+def test_a_server_planted_under_a_vendors_name_never_gets_its_key(
+    client, library, monkeypatch
+):
+    monkeypatch.setenv("DEEP_REASONING_ANTHROPIC_KEY", SHELL_KEY)
+    with FakeOpenAI(scripted(PLAN)) as anthropic, FakeOpenAI(scripted(PLAN)) as planted:
+        # Anthropic's own address, faked, so its listing stays on this computer.
+        vendors = [
+            replace(each, base_url=anthropic.base_url)
+            if each.name == "Anthropic"
+            else each
+            for each in VENDORS
+        ]
+        monkeypatch.setattr(settings_module, "VENDORS", tuple(vendors))
+        entry = {"name": "anthropic", "base_url": planted.base_url}
+        with closing(open_library(library)) as connection:
+            connection.execute(
+                "INSERT INTO app_settings VALUES (?, ?)", (SERVERS, json.dumps([entry]))
+            )
+        providers = client.get("/api/providers").json()
+        listings = client.get("/api/models").json()
+    assert planted.listed == [] and anthropic.listed == [SHELL_KEY]
+    assert [each["name"] for each in providers if each["custom"]] == []
+    assert [each["provider"] for each in listings] == ["Anthropic"]
 
 
 def test_removing_a_saved_key_leaves_the_shells_in_use(client, monkeypatch):
@@ -849,7 +929,7 @@ def test_a_shell_key_ending_in_a_carriage_return_lists_without_it(
 
 @pytest.mark.anyio
 async def test_a_run_uses_the_chats_model_and_its_providers_key_kept_out_of_the_run(
-    library_on, connect, home, monkeypatch
+    library_on, connect, data, monkeypatch
 ):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-for-runs")
     look = repl("import os", "print('ANTHROPIC_API_KEY' in os.environ)")
@@ -869,7 +949,7 @@ async def test_a_run_uses_the_chats_model_and_its_providers_key_kept_out_of_the_
     cells = [event for event in events if event["kind"] == "cell.end"]
     assert cells[0]["output"] == "False"
     assert events[-1]["outcome"] == "answered"
-    for file in (home / "runs" / run).rglob("*"):
+    for file in (data / "runs" / run).rglob("*"):
         assert not file.is_file() or SERVER_KEY.encode() not in file.read_bytes(), file
 
 
@@ -981,18 +1061,21 @@ def folder_of(read):
 
 @pytest.mark.anyio
 async def test_a_chat_without_a_folder_works_in_its_scratch_folder_across_messages(
-    library_on, connect, home
+    library_on, connect, data
 ):
     with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
         async with connect(library_on(fake)) as api:
             chat = await new_chat(api)
-            before = (home / "work" / chat).exists()
+            before = (data / "work" / chat).exists()
             first = await run_events(api, await send(api, chat, "Write a note."))
             second = await run_events(api, await send(api, chat, "Read the note."))
             read = (await api.get(f"/api/chats/{chat}")).json()
-    scratch = home / "work" / chat
+    scratch = data / "work" / chat
     assert not before
-    assert (read["folder"], read["scratch_folder"]) == (None, f"~/work/{chat}")
+    assert (read["folder"], read["scratch_folder"]) == (
+        None,
+        f"~/files/{data.name}/work/{chat}",
+    )
     assert first[0]["folder"] == second[0]["folder"] == str(scratch)
     assert (scratch / "note.txt").read_text() == "from message 1"
     assert cell_outputs(second)[0] == "from message 1"
@@ -1001,7 +1084,7 @@ async def test_a_chat_without_a_folder_works_in_its_scratch_folder_across_messag
 
 @pytest.mark.anyio
 async def test_a_folder_changed_mid_chat_applies_from_the_next_message(
-    library_on, connect, home
+    library_on, connect, home, data
 ):
     thesis, data = home / "code" / "thesis", home / "data"
     thesis.mkdir(parents=True)
@@ -1021,12 +1104,12 @@ async def test_a_folder_changed_mid_chat_applies_from_the_next_message(
     assert (first[0]["folder"], second[0]["folder"]) == (str(thesis), str(data))
     assert (thesis / "note.txt").read_text() == "from message 1"
     assert "FileNotFoundError" in cell_outputs(second)[0]
-    assert not (home / "work" / chat).exists()
+    assert not (data / "work" / chat).exists()
 
 
 @pytest.mark.anyio
 async def test_a_run_in_a_folder_that_is_gone_is_refused_and_nothing_starts(
-    library_on, connect, home
+    library_on, connect, home, data
 ):
     thesis = home / "thesis"
     thesis.mkdir()
@@ -1042,7 +1125,7 @@ async def test_a_run_in_a_folder_that_is_gone_is_refused_and_nothing_starts(
     assert refused.status_code == 400
     assert refused.json() == {"detail": "That folder no longer exists — pick another."}
     assert read["turns"] == [] and read["title"] == "New chat"
-    assert fake.calls == [] and not (home / "runs").exists()
+    assert fake.calls == [] and not (data / "runs").exists()
 
 
 @pytest.mark.parametrize(
@@ -1106,19 +1189,22 @@ def test_new_chats_start_in_the_default_folder_and_older_chats_keep_theirs(
 
 
 def test_a_default_folder_that_is_not_here_gives_new_chats_their_scratch_folder(
-    client, home
+    client, home, data
 ):
     (home / "code").mkdir()
     client.put("/api/default-folder", json={"folder": "~/code"})
     (home / "code").rmdir()
     chat = client.post("/api/chats").json()
-    assert (chat["folder"], chat["scratch_folder"]) == (None, f"~/work/{chat['id']}")
+    assert (chat["folder"], chat["scratch_folder"]) == (
+        None,
+        f"~/files/{data.name}/work/{chat['id']}",
+    )
     assert client.get("/api/default-folder").json() == {"folder": "~/code"}
 
 
 @pytest.mark.anyio
 async def test_deleting_a_chat_removes_its_scratch_folder_and_never_a_chosen_one(
-    library_on, connect, home
+    library_on, connect, home, data
 ):
     chosen = home / "thesis"
     chosen.mkdir()
@@ -1129,11 +1215,11 @@ async def test_deleting_a_chat_removes_its_scratch_folder_and_never_a_chosen_one
             await api.patch(f"/api/chats/{kept}", json={"folder": str(chosen)})
             await run_events(api, await send(api, scratch, "Write a note."))
             await run_events(api, await send(api, kept, "Write a note."))
-            written = (home / "work" / scratch / "note.txt").is_file()
+            written = (data / "work" / scratch / "note.txt").is_file()
             gone = await api.delete(f"/api/chats/{scratch}")
             also = await api.delete(f"/api/chats/{kept}")
     assert written and (gone.status_code, also.status_code) == (204, 204)
-    assert not (home / "work" / scratch).exists()
+    assert not (data / "work" / scratch).exists()
     assert (chosen / "keep.txt").read_text() == "mine"
     assert (chosen / "note.txt").read_text() == "from message 1"
 
@@ -1154,10 +1240,10 @@ def test_a_folder_in_a_tampered_app_file_is_treated_as_chosen_and_kept(
 
 
 def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder(
-    client, home
+    client, data
 ):
     chat = client.post("/api/chats").json()["id"]
-    inside = home / "work" / chat / "data"
+    inside = data / "work" / chat / "data"
     inside.mkdir(parents=True)
     (inside / "keep.txt").write_text("mine")
     client.put("/api/default-folder", json={"folder": str(inside)})
@@ -1167,10 +1253,10 @@ def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder
 
 
 def test_a_delete_with_settings_it_cannot_read_is_refused_before_anything_goes(
-    client, home, library
+    client, data, library
 ):
     chat = client.post("/api/chats").json()["id"]
-    scratch = home / "work" / chat
+    scratch = data / "work" / chat
     scratch.mkdir(parents=True)
     (scratch / "keep.txt").write_text("mine")
     with closing(open_library(library)) as connection:
@@ -1184,14 +1270,14 @@ def test_a_delete_with_settings_it_cannot_read_is_refused_before_anything_goes(
 
 @pytest.mark.anyio
 async def test_a_folder_chosen_inside_a_deleted_chats_run_folder_is_kept(
-    library_on, connect, home
+    library_on, connect, data
 ):
     with FakeOpenAI(scripted(WRITE_THEN_READ)) as fake:
         async with connect(library_on(fake)) as api:
             gone, kept = await new_chat(api), await new_chat(api)
             run = await send(api, gone, "Write a note.")
             await run_events(api, run)
-            inside = home / "runs" / run / "mine"
+            inside = data / "runs" / run / "mine"
             inside.mkdir()
             (inside / "keep.txt").write_text("mine")
             await api.patch(f"/api/chats/{kept}", json={"folder": str(inside)})
@@ -1202,13 +1288,13 @@ async def test_a_folder_chosen_inside_a_deleted_chats_run_folder_is_kept(
 
 @pytest.mark.anyio
 async def test_a_folder_another_chats_run_works_in_is_kept_after_that_chat_moved_on(
-    library_on, connect, home
+    library_on, connect, data
 ):
     held, release = held_on("Count to two.", PLAN)
     with FakeOpenAI(held) as fake:
         async with connect(library_on(fake)) as api:
             gone, working = await new_chat(api), await new_chat(api)
-            scratch = home / "work" / gone
+            scratch = data / "work" / gone
             scratch.mkdir(parents=True)
             (scratch / "keep.txt").write_text("mine")
             await api.patch(f"/api/chats/{working}", json={"folder": str(scratch)})

@@ -24,6 +24,7 @@ from deep_reasoner.v2.cli import (
 from structlog.testing import capture_logs
 
 from deep_reasoning.library import (
+    LIBRARY_ONLY,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
     LibraryError,
@@ -198,10 +199,12 @@ def test_a_fresh_library_carries_a_generic_repl_prompt(library, tmp_path):
     assert "FinalAnswer" in prompt
 
 
-def test_a_file_that_is_not_a_library_is_refused_and_left_alone(tmp_path):
+@pytest.mark.parametrize("version", [0, LIBRARY_ONLY])
+def test_a_file_that_is_not_a_library_is_refused_and_left_alone(tmp_path, version):
     other = tmp_path / "chats.sqlite"
     with closing(sqlite3.connect(other)) as connection:
         connection.execute("CREATE TABLE chats (id TEXT)")
+        connection.execute(f"PRAGMA user_version = {version}")
     before = other.read_bytes()
     with pytest.raises(LibraryError, match="is not a Library"):
         open_library(other)

@@ -12,22 +12,41 @@ import asyncio
 import json
 import os
 import re
-from contextlib import closing
+import sqlite3
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+import structlog
 from dotenv import dotenv_values, set_key, unset_key
 
-from deep_reasoning.library import open_library
+from deep_reasoning.library import open_library, writing
+
+log = structlog.get_logger()
 
 ENV_FILE = ".env"
 UPSERT_APP_SETTING = (
     "INSERT INTO app_settings VALUES (?, ?)"
     " ON CONFLICT (key) DO UPDATE SET json = excluded.json"
 )
+SERVERS, LAST_MODEL, DEFAULT_FOLDER = "servers", "last_model", "default_folder"
+MODEL_PARTS = ("provider", "name")
+SERVER_FIELDS = ("name", "base_url")
+# What this app writes under each setting; each server entry is checked as it is read.
+SHAPES = {
+    SERVERS: lambda value: isinstance(value, list),
+    LAST_MODEL: lambda value: (
+        isinstance(value, dict)
+        and all(isinstance(value.get(part), str) for part in MODEL_PARTS)
+    ),
+    DEFAULT_FOLDER: lambda value: (
+        value is None or (isinstance(value, str) and os.path.isabs(value))
+    ),
+}
 OWNER_ONLY = 0o600
 # One line of printable ASCII, no spaces: every key and base URL is, and nothing else
 # can then break a line of .env.
@@ -174,16 +193,25 @@ def save_key(home: Path, provider: Provider, key: str) -> None:
     write_key(home, provider.key_env, checked_key(key, provider))
 
 
-def read_settings(library: Path) -> dict[str, Any]:
-    """The app's settings in the file at *library*, which may have come from elsewhere."""
-    with closing(open_library(library)) as connection:
-        rows = connection.execute("SELECT key, json FROM app_settings").fetchall()
+def settings_in(connection: sqlite3.Connection, library: Path) -> dict[str, Any]:
+    """The app's settings in the open file at *library*, each as this app writes it: the
+    file may have come from someone else."""
+    rows = connection.execute("SELECT key, json FROM app_settings").fetchall()
+    unreadable = (
+        f"{library} holds settings this app didn't write, so it can't read them."
+    )
     try:
-        return {key: json.loads(text) for key, text in rows}
+        settings = {key: json.loads(text) for key, text in rows}
     except ValueError as error:
-        raise SettingsError(
-            f"{library} holds settings this app didn't write, so it can't read them."
-        ) from error
+        raise SettingsError(unreadable) from error
+    if any(key in SHAPES and not SHAPES[key](value) for key, value in settings.items()):
+        raise SettingsError(unreadable)
+    return settings
+
+
+def read_settings(library: Path) -> dict[str, Any]:
+    with closing(open_library(library)) as connection:
+        return settings_in(connection, library)
 
 
 def write_setting(library: Path, key: str, value: Any) -> None:
@@ -192,20 +220,60 @@ def write_setting(library: Path, key: str, value: Any) -> None:
         connection.execute(UPSERT_APP_SETTING, (key, json.dumps(value)))
 
 
+@contextmanager
+def changing_servers(library: Path) -> Iterator[list[Any]]:
+    """The stored server entries, to change in place: written back as the block ends, in
+    the transaction they were read in, so another process's change waits, never lost."""
+    with closing(open_library(library)) as connection, writing(connection):
+        entries = settings_in(connection, library).get(SERVERS, [])
+        yield entries
+        connection.execute(UPSERT_APP_SETTING, (SERVERS, json.dumps(entries)))
+
+
 def server_key_env(name: str) -> str:
     """The variable a custom server's key is kept under: DEEP_REASONING_<NAME>_KEY."""
     return f"DEEP_REASONING_{re.sub(r'[^A-Z0-9]+', '_', name.upper()).strip('_')}_KEY"
 
 
-def server_list(library: Path) -> list[dict[str, str]]:
-    return read_settings(library).get("servers", [])
+def refuse_taken(name: str, others: list[Provider]) -> None:
+    """Raise if another provider has the name, in any case, or the key variable it would
+    get: a server under it would be handed that provider's key."""
+    key_env = server_key_env(name)
+    for other in others:
+        if other.name.lower() == name.lower() or other.key_env == key_env:
+            raise SettingsError(f"There is a provider named {other.name} already.")
+
+
+def stored_server(entry: Any, others: list[Provider]) -> Provider:
+    """A server entry read from the app file, if add_server could have written it beside
+    *others*; else SettingsError saying why."""
+    if not isinstance(entry, dict) or not all(
+        isinstance(entry.get(field), str) for field in SERVER_FIELDS
+    ):
+        raise SettingsError("A server should be a name and a base URL.")
+    name, base_url = entry["name"], entry["base_url"]
+    if checked_name(name) != name or checked_url(base_url) != base_url:
+        raise SettingsError(
+            "A server's name and base URL should have no spaces around them."
+        )
+    refuse_taken(name, others)
+    return Provider(name, base_url, server_key_env(name), True)
+
+
+def trusted_servers(entries: list[Any]) -> list[Provider]:
+    """The server entries a server added here could be, as read from a file that may
+    have come from someone else; the others are left out, so none gets another's key."""
+    kept = []
+    for position, entry in enumerate(entries):
+        try:
+            kept.append(stored_server(entry, [*VENDORS, *kept]))
+        except SettingsError as error:
+            log.warning("settings.server_left_out", position=position, why=str(error))
+    return kept
 
 
 def servers(library: Path) -> list[Provider]:
-    return [
-        Provider(each["name"], each["base_url"], server_key_env(each["name"]), True)
-        for each in server_list(library)
-    ]
+    return trusted_servers(read_settings(library).get(SERVERS, []))
 
 
 def providers(library: Path) -> list[Provider]:
@@ -265,29 +333,30 @@ def checked_url(base_url: str) -> str:
     return base_url
 
 
-def checked_name(library: Path, name: str) -> str:
+def checked_name(name: str) -> str:
     name = name.strip()
     if not SERVER_NAME.fullmatch(name):
         raise SettingsError(
             "Name the server with letters, digits, spaces, dots, dashes or underscores, "
             f"up to 40, like {EXAMPLE_NAME}."
         )
-    key_env = server_key_env(name)
-    for other in providers(library):
-        if other.name.lower() == name.lower() or other.key_env == key_env:
-            raise SettingsError(f"There is a provider named {other.name} already.")
     return name
+
+
+def named(entry: Any, name: str) -> bool:
+    return isinstance(entry, dict) and entry.get("name") == name
 
 
 def add_server(
     home: Path, library: Path, name: str, base_url: str, key: str | None
 ) -> None:
     """Add a custom server to the app file, and its key, if it has one, to .env in *home*."""
-    name, base_url = checked_name(library, name), checked_url(base_url)
+    name, base_url = checked_name(name), checked_url(base_url)
     server = Provider(name, base_url, server_key_env(name), True)
     key = optional_key(key, server)
-    added = {"name": name, "base_url": base_url}
-    write_setting(library, "servers", [*server_list(library), added])
+    with changing_servers(library) as entries:
+        refuse_taken(name, [*VENDORS, *trusted_servers(entries)])
+        entries.append({"name": name, "base_url": base_url})
     if key:
         write_key(home, server.key_env, key)
 
@@ -298,31 +367,31 @@ def update_server(
     """Change a custom server's base URL, and its key when a new one is given."""
     base_url = checked_url(base_url)
     key = optional_key(key, server)
-    changed = [
-        each | {"base_url": base_url} if each["name"] == server.name else each
-        for each in server_list(library)
-    ]
-    write_setting(library, "servers", changed)
+    with changing_servers(library) as entries:
+        entries[:] = [
+            each | {"base_url": base_url} if named(each, server.name) else each
+            for each in entries
+        ]
     if key:
         write_key(home, server.key_env, key)
 
 
 def remove_server(home: Path, library: Path, server: Provider) -> None:
-    kept = [each for each in server_list(library) if each["name"] != server.name]
-    write_setting(library, "servers", kept)
+    with changing_servers(library) as entries:
+        entries[:] = [each for each in entries if not named(each, server.name)]
     drop_key(home, server.key_env)
 
 
 def remember_pick(library: Path, provider: str, model: str) -> None:
     """The model picked last, in any chat: where new chats start."""
-    write_setting(library, "last_model", {"provider": provider, "name": model})
+    write_setting(library, LAST_MODEL, {"provider": provider, "name": model})
 
 
 def starting_model(home: Path, library: Path) -> dict[str, str] | None:
     """What a new chat runs on: the model picked last, while its provider can still answer;
     else the first model of the first vendor with a key that the app knows one for."""
     can_answer = usable(library, saved_keys(home))
-    last = read_settings(library).get("last_model")
+    last = read_settings(library).get(LAST_MODEL)
     if last and any(each.name == last["provider"] for each in can_answer):
         return last
     first = next((each for each in can_answer if each.first_model), None)
@@ -333,11 +402,11 @@ def starting_model(home: Path, library: Path) -> dict[str, str] | None:
 
 def default_folder(library: Path) -> str | None:
     """The folder new chats work in; None: each in its own scratch folder."""
-    return read_settings(library).get("default_folder")
+    return read_settings(library).get(DEFAULT_FOLDER)
 
 
 def save_default_folder(library: Path, folder: str | None) -> None:
-    write_setting(library, "default_folder", folder)
+    write_setting(library, DEFAULT_FOLDER, folder)
 
 
 def run_key(home: Path, provider: Provider) -> str:

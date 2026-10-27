@@ -4,6 +4,7 @@ in the app file beside the Library, so a copy of the file carries them.
 A chat's turns are its runs, under runs/ in the app's home; the file holds none of their events.
 """
 
+import re
 import sqlite3
 import time
 from collections.abc import Iterator
@@ -11,9 +12,12 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
+import structlog
 from coolname import generate_slug
 
 from deep_reasoning.library import open_library
+
+log = structlog.get_logger()
 
 # A chat id: plain characters only, like the ids the app makes.
 CHAT_ID = r"^[A-Za-z0-9_-]{1,100}$"
@@ -40,13 +44,22 @@ def connect(path: Path) -> Iterator[sqlite3.Connection]:
         yield connection
 
 
+def has_plain_id(chat: sqlite3.Row) -> bool:
+    """Whether the chat's id is one the app could have made: the file may have come from
+    someone else, and an id names the chat's scratch folder."""
+    if isinstance(chat["id"], str) and re.fullmatch(CHAT_ID, chat["id"]):
+        return True
+    log.warning("chats.left_out", id=repr(chat["id"]))
+    return False
+
+
 def list_chats(path: Path) -> list[Chat]:
-    """Every chat, newest first."""
+    """Every chat with a plain id, newest first."""
     with connect(path) as connection:
         rows = connection.execute(
             f"SELECT {COLUMNS} FROM chats ORDER BY created DESC, rowid DESC"
         )
-        return [dict(row) for row in rows]
+        return [dict(row) for row in rows if has_plain_id(row)]
 
 
 def find_chat(path: Path, chat: str) -> Chat | None:

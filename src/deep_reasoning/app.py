@@ -1,6 +1,7 @@
 """The web app: the Library's, the settings', the folders', the chats' and the runs' API, and the UI's static files at /."""
 
 import asyncio
+import sqlite3
 from contextlib import asynccontextmanager, closing
 from http import HTTPStatus
 from pathlib import Path
@@ -31,6 +32,7 @@ from deep_reasoning.chats import (
 from deep_reasoning.folders import (
     FolderError,
     chosen_folder,
+    data_folder,
     list_folders,
     remove_unless_kept,
     scratch_folder,
@@ -124,11 +126,12 @@ def same_origin(
 
 def create_app(library, home):
     """The app over the app file at *library*: the Library, the chats and the app's
-    settings, which each request opens afresh; its runs, scratch folders and keys are
-    under *home*."""
+    settings, which each request opens afresh. The keys are in *home*, and the file's runs
+    and scratch folders in its data folder there."""
     library = Path(library)
     home = Path(home)
-    runs = Runs(home)
+    data = data_folder(home, library)
+    runs = Runs(data)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -146,6 +149,11 @@ def create_app(library, home):
     @app.exception_handler(FolderError)
     async def refused(request, error):
         return JSONResponse({"detail": str(error)}, status_code=HTTPStatus.BAD_REQUEST)
+
+    @app.exception_handler(sqlite3.OperationalError)
+    async def unwritable(request, error):
+        detail = f"The Library file can't be written: {error}."
+        return JSONResponse({"detail": detail}, status_code=HTTPStatus.BAD_REQUEST)
 
     @app.exception_handler(RequestValidationError)
     async def malformed(request, error):
@@ -233,7 +241,6 @@ def create_app(library, home):
         drop_key(home, provider.key_env)
         return provider_list(home, library)
 
-    # Coroutines, as each reads the server list and writes it back, so no two interleave.
     @app.post("/api/servers", status_code=HTTPStatus.CREATED)
     async def post_server(
         name: Annotated[str, Body()],
@@ -293,7 +300,7 @@ def create_app(library, home):
             "namespace": chat["namespace"] or namespace,
             "model": model,
             "folder": shown_folder(chat["folder"]),
-            "scratch_folder": short_path(scratch_folder(home, chat["id"])),
+            "scratch_folder": short_path(scratch_folder(data, chat["id"])),
         }
 
     # The chat routes are coroutines, so they run on the event loop with the runs: what
@@ -355,7 +362,7 @@ def create_app(library, home):
         delete_chat(library, chat["id"])
         await runs.remove(chat["id"], keep)
         # After its workers exit, as they work in it; off the loop, as it may be large.
-        scratch = scratch_folder(home, chat["id"])
+        scratch = scratch_folder(data, chat["id"])
         await asyncio.to_thread(remove_unless_kept, scratch, keep)
 
     @app.post("/api/chats/{chat}/runs", status_code=HTTPStatus.CREATED)
@@ -380,7 +387,7 @@ def create_app(library, home):
                 f"There is no provider {model['provider']} any more; pick another model."
             )
         key = run_key(home, provider)
-        folder = working_folder(home, chat)
+        folder = working_folder(data, chat)
         starts = turn_starts(runs.home, chat["id"])
         earlier = [read_turn(runs.home, start["run"]) for start in starts]
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}

@@ -5,16 +5,20 @@ from dataclasses import replace
 
 import pytest
 from fake_model import FakeOpenAI, scripted
+from structlog.testing import capture_logs
 
 from deep_reasoning import settings as settings_module
 from deep_reasoning.library import open_library
 from deep_reasoning.settings import (
     ANTHROPIC_MODELS,
+    DEFAULT_FOLDER,
     ENV_FILE,
     GEMINI_MODELS,
+    LAST_MODEL,
     NO_KEY,
     OPENAI_MODELS,
     OPENROUTER_MODELS,
+    SERVERS,
     VENDORS,
     Provider,
     SettingsError,
@@ -55,6 +59,12 @@ QUOTED="two words"
 
 def mode(path):
     return stat.S_IMODE(path.stat().st_mode)
+
+
+def plant(library, key, text):
+    """Write a setting's JSON straight into the file, as one from someone else may hold it."""
+    with closing(open_library(library)) as connection:
+        connection.execute("INSERT INTO app_settings VALUES (?, ?)", (key, text))
 
 
 def test_a_key_saved_in_a_new_env_file_is_readable_by_its_owner_alone(app_home):
@@ -232,11 +242,52 @@ def test_server_key_variables_are_derived_from_their_names():
     assert server_key_env("LM Studio 2.0") == "DEEP_REASONING_LM_STUDIO_2_0_KEY"
 
 
-def test_settings_this_app_did_not_write_are_refused_plainly(app_home, library):
-    with closing(open_library(library)) as connection:
-        connection.execute("INSERT INTO app_settings VALUES ('servers', '{not json')")
+@pytest.mark.parametrize(
+    ("key", "text"),
+    [
+        (SERVERS, "{not json"),
+        (SERVERS, '"x"'),
+        (LAST_MODEL, "1"),
+        (LAST_MODEL, '{"provider": "vllm"}'),
+        (DEFAULT_FOLDER, '["/home/me"]'),
+        (DEFAULT_FOLDER, '"relative/folder"'),
+    ],
+)
+def test_settings_this_app_did_not_write_are_refused_plainly(
+    app_home, library, key, text
+):
+    plant(library, key, text)
     with pytest.raises(SettingsError, match="holds settings this app didn't write"):
-        settings_module.servers(library)
+        provider_list(app_home, library)
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        pytest.param(1, id="not a mapping"),
+        pytest.param({"name": "lone"}, id="no base URL"),
+        pytest.param(
+            {"name": "a/b", "base_url": LOCAL_URL}, id="a name add_server refuses"
+        ),
+        pytest.param(
+            {"name": "lm ", "base_url": LOCAL_URL}, id="a space after its name"
+        ),
+        pytest.param({"name": "ftp", "base_url": "ftp://x.example/v1"}, id="a bad URL"),
+        pytest.param({"name": "OpenAI", "base_url": LOCAL_URL}, id="a vendor's name"),
+        pytest.param({"name": "anthropic", "base_url": LOCAL_URL}, id="a vendor's key"),
+        pytest.param(
+            {"name": "VLLM", "base_url": "http://x.example/v1"}, id="a server's name"
+        ),
+    ],
+)
+def test_a_server_entry_add_server_could_not_have_written_is_left_out(library, planted):
+    plant(
+        library, SERVERS, json.dumps([{"name": "vllm", "base_url": LOCAL_URL}, planted])
+    )
+    with capture_logs() as logs:
+        kept = settings_module.servers(library)
+    assert [(each.name, each.base_url) for each in kept] == [("vllm", LOCAL_URL)]
+    assert [entry["event"] for entry in logs] == ["settings.server_left_out"]
 
 
 def test_new_chats_start_on_gpt_6_luna_when_openai_has_a_key_and_nothing_was_picked(

@@ -49,6 +49,7 @@ LIBRARY_SCHEMA = (
     ),
     "CREATE TABLE tools (name TEXT PRIMARY KEY, yaml TEXT NOT NULL, source TEXT)",
 )
+LIBRARY_TABLES = {"settings", "namespaces", "decompositions", "tools"}
 # A chat's choices are null until picked or run, and a null folder is its scratch folder.
 # app_settings is the app's, as JSON: the Library's own settings table is the run settings.
 APP_SCHEMA = (
@@ -212,16 +213,18 @@ def open_library(path):
 
 def lay_out(connection, path):
     """Write the whole app file into an empty file, or add what a version-1 Library lacks,
-    keeping its Library; refuse a file that holds anything else."""
+    keeping its Library; refuse, untouched, a file that holds anything else."""
     with writing(connection):
         # Read again under the lock: another process may have just laid it out.
         found = schema_version(connection)
         if found == SCHEMA_VERSION:
             return
-        empty = not connection.execute("SELECT 1 FROM sqlite_master").fetchone()
-        if found == 0 and empty:
+        names = {
+            name for (name,) in connection.execute("SELECT name FROM sqlite_master")
+        }
+        if found == 0 and not names:
             write_new_library(connection)
-        elif found != LIBRARY_ONLY:
+        elif found != LIBRARY_ONLY or not LIBRARY_TABLES <= names:
             raise LibraryError(
                 f"{path} is not a Library this version of Deep Reasoning can open."
             )
