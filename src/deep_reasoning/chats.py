@@ -1,27 +1,22 @@
 """Chats: each one's id, title, when it was made, and what its next message runs on and in,
-in chats.sqlite in the app's home.
+in the app file beside the Library, so a copy of the file carries them.
 
-A chat's turns are its runs, under runs/ beside it; this file holds none of their events.
+A chat's turns are its runs, under runs/ in the app's home; the file holds none of their events.
 """
 
 import sqlite3
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
 from coolname import generate_slug
 
-CHATS_FILE = "chats.sqlite"
+from deep_reasoning.library import open_library
+
 # A chat id: plain characters only, like the ids the app makes.
 CHAT_ID = r"^[A-Za-z0-9_-]{1,100}$"
-SCHEMA = (
-    "CREATE TABLE IF NOT EXISTS chats"
-    " (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL)"
-)
-# Null until picked or run, and a null folder is the scratch folder. A file made before
-# they were added gets them when next opened.
 CHOICES = ("namespace", "provider", "model", "folder")
 COLUMNS = "id, title, created, namespace, provider, model, folder"
 # Adds no row when the id is taken.
@@ -38,23 +33,11 @@ Chat = dict[str, Any]
 
 @contextmanager
 def connect(path: Path) -> Iterator[sqlite3.Connection]:
-    """The chats file at *path*, made if new. Autocommit: every write here is one
+    """The app file at *path*, laid out if new. Autocommit: every write here is one
     statement, which SQLite runs as a transaction of its own."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path, isolation_level=None)
-    connection.row_factory = sqlite3.Row
-    try:
-        connection.execute(SCHEMA)
-        add_choices(connection)
+    with closing(open_library(path)) as connection:
+        connection.row_factory = sqlite3.Row
         yield connection
-    finally:
-        connection.close()
-
-
-def add_choices(connection: sqlite3.Connection) -> None:
-    present = {row["name"] for row in connection.execute("PRAGMA table_info(chats)")}
-    for column in [each for each in CHOICES if each not in present]:
-        connection.execute(f"ALTER TABLE chats ADD COLUMN {column} TEXT")
 
 
 def list_chats(path: Path) -> list[Chat]:

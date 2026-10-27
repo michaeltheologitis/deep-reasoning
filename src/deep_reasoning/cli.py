@@ -21,7 +21,7 @@ from deep_reasoning.library import LibraryError, import_config, open_library
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 MAX_PORT = 65535
-# The app's home: its chats and runs, its settings and keys, and its Library by default.
+# The app's home: its runs, scratch folders and keys, and its app file by default.
 HOME_DIR = ".deep-reasoning"
 LIBRARY_FILE = "library.sqlite"
 

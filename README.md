@@ -20,7 +20,7 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 ## What it supports
 
 **Chats**
-- Chats on the left: new, rename, delete. Saved in `~/.deep-reasoning`, they come back after a restart.
+- Chats on the left: new, rename, delete. Saved in the Library file (below), they come back after a restart.
 - Each message is a run, shown live as a tree of sub-agents you open level by level. Esc stops it.
 - Each run shows its time, sub-agent count, cost (when the price is known) and model.
 - Follow-ups see the chat's earlier messages and answers.
@@ -43,11 +43,12 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - The agent's Python runs in the chat's folder, so files it writes are there for the next message.
 - A scratch folder by default (`~/.deep-reasoning/work/<chat>/`; hover the folder's name for its path), deleted with
   the chat. A folder you pick is never deleted.
-- Settings has a default folder for new chats.
+- Settings has a default folder for new chats; one that isn't on this computer gives them a scratch folder.
 
 **The Library**
-- One SQLite file of namespaces, decompositions, custom tools and run settings: `~/.deep-reasoning/library.sqlite`,
-  or another with `--library PATH`. Share it by sharing the file.
+- One SQLite file of namespaces, decompositions, custom tools and run settings, and your chats and settings:
+  `~/.deep-reasoning/library.sqlite`, or another with `--library PATH`. Sharing the file shares all of it but your
+  keys, which stay in `.env` (and, for now, the chats' past messages, which stay in `~/.deep-reasoning`).
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
 

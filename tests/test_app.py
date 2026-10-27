@@ -1,6 +1,6 @@
 import json
+import shutil
 import socket
-import sqlite3
 import stat
 import threading
 from contextlib import closing
@@ -18,7 +18,6 @@ from fake_model import (
 from fastapi.testclient import TestClient
 
 from deep_reasoning.app import WEB, create_app
-from deep_reasoning.chats import CHATS_FILE, create_chat
 from deep_reasoning.library import (
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
@@ -27,8 +26,12 @@ from deep_reasoning.library import (
     open_library,
     writing,
 )
-from deep_reasoning.runs import append_event
-from deep_reasoning.settings import ENV_FILE, add_server, server_key_env
+from deep_reasoning.settings import (
+    ENV_FILE,
+    add_server,
+    default_folder,
+    server_key_env,
+)
 
 pytestmark = pytest.mark.usefixtures("no_vendor_keys")
 
@@ -637,6 +640,41 @@ async def test_chats_survive_a_restart(library_on, connect):
     assert read == renamed.json() | {"turns": [{"run": run, "events": events}]}
 
 
+def test_a_copy_of_the_app_file_under_another_home_has_its_chats_and_settings(
+    client, home, library, tmp_path
+):
+    (home / "code").mkdir()
+    client.post("/api/servers", json={"name": "vllm", "base_url": VLLM, "key": "sk-1"})
+    client.put("/api/default-folder", json={"folder": "~/code"})
+    chat, other = client.post("/api/chats").json(), client.post("/api/chats").json()
+    qwen = {"provider": "vllm", "name": "qwen3"}
+    picks = {"namespace": "course_advisor", "model": qwen}
+    client.patch(f"/api/chats/{chat['id']}", json=picks)
+    client.patch(f"/api/chats/{other['id']}", json={"title": "Plans"})
+    here = client.get("/api/chats").json()
+    copy = tmp_path / "elsewhere.sqlite"
+    shutil.copy(library, copy)
+    with TestClient(create_app(copy, tmp_path / "elsewhere"), base_url=LOCAL) as moved:
+        there = moved.get("/api/chats").json()
+        server = by_name(moved.get("/api/providers").json())["vllm"]
+        folder = moved.get("/api/default-folder").json()
+
+    def kept(chats):
+        fields = ("id", "title", "namespace", "model", "folder")
+        return [tuple(each[name] for name in fields) for each in chats]
+
+    assert (
+        kept(there)
+        == kept(here)
+        == [
+            (other["id"], "Plans", "router", qwen, "~/code"),
+            (chat["id"], "New chat", "course_advisor", qwen, "~/code"),
+        ]
+    )
+    assert (server["base_url"], server["key"]) == (VLLM, "none")
+    assert folder == {"folder": "~/code"}
+
+
 def by_name(rows, field="name"):
     return {each[field]: each for each in rows}
 
@@ -661,6 +699,18 @@ def test_a_saved_key_comes_back_as_a_status_never_as_itself(client, home):
     env = home / ENV_FILE
     assert stat.S_IMODE(env.stat().st_mode) == 0o600
     assert env.read_text() == f"OPENAI_API_KEY='{SAVED_KEY}'\n"
+
+
+def test_keys_saved_through_the_app_never_land_in_the_app_file(client, library):
+    client.put("/api/providers/OpenAI/key", json={"key": SAVED_KEY})
+    server = {"name": "vllm", "base_url": VLLM, "key": "sk-vllm-first"}
+    client.post("/api/servers", json=server)
+    client.put("/api/servers/vllm", json={"base_url": VLLM, "key": "sk-vllm-second"})
+    listed = by_name(client.get("/api/providers").json())
+    assert listed["OpenAI"]["key"] == listed["vllm"]["key"] == "set"
+    held = library.read_bytes()
+    for key in (SAVED_KEY, "sk-vllm-first", "sk-vllm-second"):
+        assert key.encode() not in held
 
 
 def test_removing_a_saved_key_leaves_the_shells_in_use(client, monkeypatch):
@@ -746,11 +796,11 @@ async def test_models_are_listed_through_the_app_with_each_providers_key(
     assert SERVER_KEY not in response.text
 
 
-def test_a_listing_that_fails_says_why_in_plain_words(client, home):
+def test_a_listing_that_fails_says_why_in_plain_words(client, home, library):
     gone = f"http://127.0.0.1:{closed_port()}/v1"
     with FakeOpenAI(scripted(PLAN), models=None) as fake:
-        add_server(home, "unlisted", fake.base_url, None)
-        add_server(home, "gone", gone, None)
+        add_server(home, library, "unlisted", fake.base_url, None)
+        add_server(home, library, "gone", gone, None)
         listings = by_name(client.get("/api/models").json(), "provider")
     assert listings["unlisted"] == {
         "provider": "unlisted",
@@ -766,10 +816,10 @@ def test_a_listing_that_fails_says_why_in_plain_words(client, home):
 
 @pytest.mark.parametrize("key", ["sk-in\nhalves", "sk-in\rhalves", "sk-ünïcode"])
 def test_a_key_no_header_can_carry_is_never_repeated_in_a_listing(
-    client, home, monkeypatch, key
+    client, home, library, monkeypatch, key
 ):
     with FakeOpenAI(scripted(PLAN)) as fake:
-        add_server(home, "vllm", fake.base_url, None)
+        add_server(home, library, "vllm", fake.base_url, None)
         monkeypatch.setenv(server_key_env("vllm"), key)
         response = client.get("/api/models")
     assert response.json() == [
@@ -785,31 +835,16 @@ def test_a_key_no_header_can_carry_is_never_repeated_in_a_listing(
 
 
 def test_a_shell_key_ending_in_a_carriage_return_lists_without_it(
-    client, home, monkeypatch
+    client, home, library, monkeypatch
 ):
     with FakeOpenAI(scripted(PLAN)) as fake:
-        add_server(home, "vllm", fake.base_url, None)
+        add_server(home, library, "vllm", fake.base_url, None)
         monkeypatch.setenv(server_key_env("vllm"), f"{SHELL_KEY}\r")
         listing = client.get("/api/models").json()[0]
     assert (listing["models"], fake.listed) == (
         ["fake-large", "fake-small"],
         [SHELL_KEY],
     )
-
-
-def test_a_chat_from_before_namespaces_were_kept_stays_in_the_one_its_runs_used(
-    imported, home
-):
-    chat = create_chat(home / CHATS_FILE)["id"]
-    run = "20261025-120000-000000"
-    (home / "runs" / run).mkdir(parents=True)
-    start = {"kind": "turn.start", "run": run, "chat": chat, "prompt": "Hi."}
-    end = {"kind": "turn.end", "outcome": "answered", "answer": "hello", "detail": None}
-    append_event(home, run, {"seq": 1, "t": 1.0, "namespace": "course_advisor"} | start)
-    append_event(home, run, {"seq": 2, "t": 2.0, "cost": None, "seconds": 1.0} | end)
-    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
-        read = client.get(f"/api/chats/{chat}").json()
-    assert read["namespace"] == "course_advisor"
 
 
 @pytest.mark.anyio
@@ -883,14 +918,14 @@ def test_a_namespace_or_model_the_app_does_not_have_is_refused(client):
 
 
 def test_a_new_chat_starts_on_the_model_picked_last_in_any_chat(
-    client, home, monkeypatch
+    client, home, library, monkeypatch
 ):
     first = client.post("/api/chats").json()
     assert (first["namespace"], first["model"]) == ("router", None)
     monkeypatch.setenv("OPENAI_API_KEY", SHELL_KEY)
     luna = {"provider": "OpenAI", "name": "gpt-6-luna"}
     assert client.post("/api/chats").json()["model"] == luna
-    add_server(home, "vllm", VLLM, None)
+    add_server(home, library, "vllm", VLLM, None)
     qwen = {"provider": "vllm", "name": "qwen3"}
     client.patch(f"/api/chats/{first['id']}", json={"model": qwen})
     later = client.post("/api/chats").json()
@@ -1051,7 +1086,7 @@ def test_folders_are_listed_for_the_picker_and_a_missing_one_is_refused(client, 
 
 
 def test_new_chats_start_in_the_default_folder_and_older_chats_keep_theirs(
-    client, home
+    client, home, library
 ):
     (home / "code").mkdir()
     before = client.post("/api/chats").json()
@@ -1063,11 +1098,22 @@ def test_new_chats_start_in_the_default_folder_and_older_chats_keep_theirs(
     last = client.post("/api/chats").json()
     assert unset == {"folder": None} and saved.json() == {"folder": "~/code"}
     assert refused.status_code == 400
-    assert json.loads((home / "settings.json").read_text())["default_folder"] is None
+    assert default_folder(library) is None
     assert cleared.json() == {"folder": None}
     assert [each["folder"] for each in (before, after, last)] == [None, "~/code", None]
     listed = {each["id"]: each["folder"] for each in client.get("/api/chats").json()}
     assert listed[before["id"]] is None and listed[after["id"]] == "~/code"
+
+
+def test_a_default_folder_that_is_not_here_gives_new_chats_their_scratch_folder(
+    client, home
+):
+    (home / "code").mkdir()
+    client.put("/api/default-folder", json={"folder": "~/code"})
+    (home / "code").rmdir()
+    chat = client.post("/api/chats").json()
+    assert (chat["folder"], chat["scratch_folder"]) == (None, f"~/work/{chat['id']}")
+    assert client.get("/api/default-folder").json() == {"folder": "~/code"}
 
 
 @pytest.mark.anyio
@@ -1093,14 +1139,14 @@ async def test_deleting_a_chat_removes_its_scratch_folder_and_never_a_chosen_one
 
 
 @pytest.mark.parametrize("tampered", ["precious", "work/{chat}"])
-def test_a_folder_in_a_tampered_chats_file_is_treated_as_chosen_and_kept(
-    client, home, tampered
+def test_a_folder_in_a_tampered_app_file_is_treated_as_chosen_and_kept(
+    client, home, library, tampered
 ):
     chat = client.post("/api/chats").json()["id"]
     folder = home / tampered.format(chat=chat)
     folder.mkdir(parents=True)
     (folder / "keep.txt").write_text("mine")
-    with closing(sqlite3.connect(home / "chats.sqlite")) as connection, connection:
+    with closing(open_library(library)) as connection:
         connection.execute("UPDATE chats SET folder = ?", (str(folder),))
     deleted = client.delete(f"/api/chats/{chat}")
     assert deleted.status_code == 204
@@ -1121,15 +1167,16 @@ def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder
 
 
 def test_a_delete_with_settings_it_cannot_read_is_refused_before_anything_goes(
-    client, home
+    client, home, library
 ):
     chat = client.post("/api/chats").json()["id"]
     scratch = home / "work" / chat
     scratch.mkdir(parents=True)
     (scratch / "keep.txt").write_text("mine")
-    (home / "settings.json").write_text("[1]")
-    refused = client.delete(f"/api/chats/{chat}")
-    (home / "settings.json").unlink()
+    with closing(open_library(library)) as connection:
+        connection.execute("INSERT INTO app_settings VALUES ('servers', '[1')")
+        refused = client.delete(f"/api/chats/{chat}")
+        connection.execute("DELETE FROM app_settings")
     assert refused.status_code == 400
     assert [each["id"] for each in client.get("/api/chats").json()] == [chat]
     assert (scratch / "keep.txt").read_text() == "mine"

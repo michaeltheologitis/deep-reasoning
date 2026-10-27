@@ -1,6 +1,10 @@
-"""The Library: every namespace, decomposition and custom tool, and the run settings, in one SQLite file.
+"""The app file: the Library (every namespace, decomposition and custom tool, and the run
+settings) in one SQLite file, which also holds the chats and the app's own settings, so a
+copy of it carries the whole app but for the keys and the runs.
 
-Each row holds the engine's own YAML, so the file turns back into a deep_reasoner config at run start.
+Each Library row holds the engine's own YAML, so the file turns back into a deep_reasoner
+config at run start. chats.py and settings.py keep the chats and the app's settings; this
+module lays the whole file out.
 """
 
 import ast
@@ -33,8 +37,10 @@ from pydantic import ValidationError
 
 log = structlog.get_logger()
 
-SCHEMA_VERSION = 1
-SCHEMA = (
+SCHEMA_VERSION = 2
+# Version 1 held the Library alone; it opens and gains APP_SCHEMA.
+LIBRARY_ONLY = 1
+LIBRARY_SCHEMA = (
     "CREATE TABLE settings (key TEXT PRIMARY KEY, yaml TEXT NOT NULL)",
     "CREATE TABLE namespaces (name TEXT PRIMARY KEY, yaml TEXT NOT NULL)",
     (
@@ -42,6 +48,15 @@ SCHEMA = (
         " yaml TEXT NOT NULL, PRIMARY KEY (namespace, name))"
     ),
     "CREATE TABLE tools (name TEXT PRIMARY KEY, yaml TEXT NOT NULL, source TEXT)",
+)
+# A chat's choices are null until picked or run, and a null folder is its scratch folder.
+# app_settings is the app's, as JSON: the Library's own settings table is the run settings.
+APP_SCHEMA = (
+    (
+        "CREATE TABLE chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL,"
+        " namespace TEXT, provider TEXT, model TEXT, folder TEXT)"
+    ),
+    "CREATE TABLE app_settings (key TEXT PRIMARY KEY, json TEXT NOT NULL)",
 )
 # Upserts keep a row's place, so decompositions stay in the order they were added.
 UPSERT_SETTING = "INSERT INTO settings VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET yaml = excluded.yaml"
@@ -196,22 +211,31 @@ def open_library(path):
 
 
 def lay_out(connection, path):
-    """Write a new Library into an empty file, or refuse a file that already holds something else."""
+    """Write the whole app file into an empty file, or add what a version-1 Library lacks,
+    keeping its Library; refuse a file that holds anything else."""
     with writing(connection):
         # Read again under the lock: another process may have just laid it out.
         found = schema_version(connection)
         if found == SCHEMA_VERSION:
             return
-        if found or connection.execute("SELECT 1 FROM sqlite_master").fetchone():
+        empty = not connection.execute("SELECT 1 FROM sqlite_master").fetchone()
+        if found == 0 and empty:
+            write_new_library(connection)
+        elif found != LIBRARY_ONLY:
             raise LibraryError(
                 f"{path} is not a Library this version of Deep Reasoning can open."
             )
-        for statement in SCHEMA:
+        for statement in APP_SCHEMA:
             connection.execute(statement)
-        connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
-        settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
-        connection.executemany(UPSERT_SETTING, settings)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+def write_new_library(connection):
+    for statement in LIBRARY_SCHEMA:
+        connection.execute(statement)
+    connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
+    settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
+    connection.executemany(UPSERT_SETTING, settings)
 
 
 def grant_llm_at_an_untouched_root(connection):

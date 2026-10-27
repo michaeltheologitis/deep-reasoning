@@ -1,17 +1,18 @@
 """Settings: the providers a chat's model runs on, their keys, the custom servers, and the
 folder new chats work in.
 
-Keys live in .env in the app's home, readable only by you: never in the Library, a chat, a
-run's folder, an event, a log or a response. A key saved there wins over the same variable
-in the shell. The custom servers, the model picked last and the default folder, none of it
-secret, live in settings.json beside it.
+Keys live in .env in the app's home, readable only by you: never in the app file, a chat,
+a run's folder, an event, a log or a response. A key saved there wins over the same
+variable in the shell. The custom servers, the model picked last and the default folder,
+none of it secret, live in the app file's app_settings table, so a copy of the file
+carries them.
 """
 
 import asyncio
 import json
 import os
 import re
-import tempfile
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,11 +21,16 @@ from urllib.parse import urlsplit
 import httpx
 from dotenv import dotenv_values, set_key, unset_key
 
+from deep_reasoning.library import open_library
+
 ENV_FILE = ".env"
-SETTINGS_FILE = "settings.json"
+UPSERT_APP_SETTING = (
+    "INSERT INTO app_settings VALUES (?, ?)"
+    " ON CONFLICT (key) DO UPDATE SET json = excluded.json"
+)
 OWNER_ONLY = 0o600
 # One line of printable ASCII, no spaces: every key and base URL is, and nothing else
-# can then break a line of .env or settings.json.
+# can then break a line of .env.
 PLAIN_TEXT = re.compile(r"[!-~]{1,4096}")
 SERVER_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}")
 EXAMPLE_NAME = "vllm"
@@ -168,32 +174,22 @@ def save_key(home: Path, provider: Provider, key: str) -> None:
     write_key(home, provider.key_env, checked_key(key, provider))
 
 
-def read_settings(home: Path) -> dict[str, Any]:
-    path = home / SETTINGS_FILE
+def read_settings(library: Path) -> dict[str, Any]:
+    """The app's settings in the file at *library*, which may have come from elsewhere."""
+    with closing(open_library(library)) as connection:
+        rows = connection.execute("SELECT key, json FROM app_settings").fetchall()
     try:
-        settings = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except ValueError:
-        settings = None
-    if not isinstance(settings, dict):
+        return {key: json.loads(text) for key, text in rows}
+    except ValueError as error:
         raise SettingsError(
-            f"{path} is not settings this app wrote; fix it or delete it."
-        )
-    return settings
+            f"{library} holds settings this app didn't write, so it can't read them."
+        ) from error
 
 
-def write_settings(home: Path, settings: dict[str, Any]) -> None:
-    """Replace settings.json whole, so a crash leaves the old file or the new one."""
-    home.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(dir=home, prefix=".settings-", suffix=".json")
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as file:
-            json.dump(settings, file, indent=2)
-        os.replace(temporary, home / SETTINGS_FILE)
-    except BaseException:
-        Path(temporary).unlink(missing_ok=True)
-        raise
+def write_setting(library: Path, key: str, value: Any) -> None:
+    """Set one of the app's settings: one statement, so it lands whole or not at all."""
+    with closing(open_library(library)) as connection:
+        connection.execute(UPSERT_APP_SETTING, (key, json.dumps(value)))
 
 
 def server_key_env(name: str) -> str:
@@ -201,31 +197,35 @@ def server_key_env(name: str) -> str:
     return f"DEEP_REASONING_{re.sub(r'[^A-Z0-9]+', '_', name.upper()).strip('_')}_KEY"
 
 
-def servers(home: Path) -> list[Provider]:
+def server_list(library: Path) -> list[dict[str, str]]:
+    return read_settings(library).get("servers", [])
+
+
+def servers(library: Path) -> list[Provider]:
     return [
         Provider(each["name"], each["base_url"], server_key_env(each["name"]), True)
-        for each in read_settings(home).get("servers", [])
+        for each in server_list(library)
     ]
 
 
-def providers(home: Path) -> list[Provider]:
-    return [*VENDORS, *servers(home)]
+def providers(library: Path) -> list[Provider]:
+    return [*VENDORS, *servers(library)]
 
 
-def find_provider(home: Path, name: str) -> Provider | None:
-    return next((each for each in providers(home) if each.name == name), None)
+def find_provider(library: Path, name: str) -> Provider | None:
+    return next((each for each in providers(library) if each.name == name), None)
 
 
-def usable(home: Path, saved: dict[str, str]) -> list[Provider]:
+def usable(library: Path, saved: dict[str, str]) -> list[Provider]:
     """The providers a chat can run on: vendors with a key, and custom servers, which may need none."""
     return [
         each
-        for each in providers(home)
+        for each in providers(library)
         if each.custom or key_status(each, saved) != NONE
     ]
 
 
-def provider_list(home: Path) -> list[dict[str, Any]]:
+def provider_list(home: Path, library: Path) -> list[dict[str, Any]]:
     """Each provider as the page shows it: never its key, only whether one is saved here,
     comes from the shell, or is missing."""
     saved = saved_keys(home)
@@ -237,7 +237,7 @@ def provider_list(home: Path) -> list[dict[str, Any]]:
             "custom": each.custom,
             "key": key_status(each, saved),
         }
-        for each in providers(home)
+        for each in providers(library)
     ]
 
 
@@ -265,7 +265,7 @@ def checked_url(base_url: str) -> str:
     return base_url
 
 
-def checked_name(home: Path, name: str) -> str:
+def checked_name(library: Path, name: str) -> str:
     name = name.strip()
     if not SERVER_NAME.fullmatch(name):
         raise SettingsError(
@@ -273,63 +273,56 @@ def checked_name(home: Path, name: str) -> str:
             f"up to 40, like {EXAMPLE_NAME}."
         )
     key_env = server_key_env(name)
-    for other in providers(home):
+    for other in providers(library):
         if other.name.lower() == name.lower() or other.key_env == key_env:
             raise SettingsError(f"There is a provider named {other.name} already.")
     return name
 
 
-def add_server(home: Path, name: str, base_url: str, key: str | None) -> None:
-    """Add a custom server, and its key if it has one."""
-    name, base_url = checked_name(home, name), checked_url(base_url)
+def add_server(
+    home: Path, library: Path, name: str, base_url: str, key: str | None
+) -> None:
+    """Add a custom server to the app file, and its key, if it has one, to .env in *home*."""
+    name, base_url = checked_name(library, name), checked_url(base_url)
     server = Provider(name, base_url, server_key_env(name), True)
     key = optional_key(key, server)
-    settings = read_settings(home)
-    settings["servers"] = [
-        *settings.get("servers", []),
-        {"name": name, "base_url": base_url},
-    ]
-    write_settings(home, settings)
+    added = {"name": name, "base_url": base_url}
+    write_setting(library, "servers", [*server_list(library), added])
     if key:
         write_key(home, server.key_env, key)
 
 
-def update_server(home: Path, server: Provider, base_url: str, key: str | None) -> None:
+def update_server(
+    home: Path, library: Path, server: Provider, base_url: str, key: str | None
+) -> None:
     """Change a custom server's base URL, and its key when a new one is given."""
     base_url = checked_url(base_url)
     key = optional_key(key, server)
-    settings = read_settings(home)
-    settings["servers"] = [
+    changed = [
         each | {"base_url": base_url} if each["name"] == server.name else each
-        for each in settings.get("servers", [])
+        for each in server_list(library)
     ]
-    write_settings(home, settings)
+    write_setting(library, "servers", changed)
     if key:
         write_key(home, server.key_env, key)
 
 
-def remove_server(home: Path, server: Provider) -> None:
-    settings = read_settings(home)
-    settings["servers"] = [
-        each for each in settings.get("servers", []) if each["name"] != server.name
-    ]
-    write_settings(home, settings)
+def remove_server(home: Path, library: Path, server: Provider) -> None:
+    kept = [each for each in server_list(library) if each["name"] != server.name]
+    write_setting(library, "servers", kept)
     drop_key(home, server.key_env)
 
 
-def remember_pick(home: Path, provider: str, model: str) -> None:
+def remember_pick(library: Path, provider: str, model: str) -> None:
     """The model picked last, in any chat: where new chats start."""
-    settings = read_settings(home)
-    write_settings(
-        home, settings | {"last_model": {"provider": provider, "name": model}}
-    )
+    write_setting(library, "last_model", {"provider": provider, "name": model})
 
 
-def starting_model(home: Path) -> dict[str, str] | None:
+def starting_model(home: Path, library: Path) -> dict[str, str] | None:
     """What a new chat runs on: the model picked last, while its provider can still answer;
     else the first model of the first vendor with a key that the app knows one for."""
-    can_answer = usable(home, saved_keys(home))
-    last = read_settings(home).get("last_model")
+    can_answer = usable(library, saved_keys(home))
+    last = read_settings(library).get("last_model")
     if last and any(each.name == last["provider"] for each in can_answer):
         return last
     first = next((each for each in can_answer if each.first_model), None)
@@ -338,13 +331,13 @@ def starting_model(home: Path) -> dict[str, str] | None:
     return {"provider": first.name, "name": first.first_model}
 
 
-def default_folder(home: Path) -> str | None:
+def default_folder(library: Path) -> str | None:
     """The folder new chats work in; None: each in its own scratch folder."""
-    return read_settings(home).get("default_folder")
+    return read_settings(library).get("default_folder")
 
 
-def save_default_folder(home: Path, folder: str | None) -> None:
-    write_settings(home, read_settings(home) | {"default_folder": folder})
+def save_default_folder(library: Path, folder: str | None) -> None:
+    write_setting(library, "default_folder", folder)
 
 
 def run_key(home: Path, provider: Provider) -> str:
@@ -388,9 +381,9 @@ async def list_models(provider: Provider, key: str | None) -> dict[str, Any]:
     return listing
 
 
-async def model_lists(home: Path) -> list[dict[str, Any]]:
+async def model_lists(home: Path, library: Path) -> list[dict[str, Any]]:
     """Each provider a chat can run on, with its models, fetched with its key here, so no
     key reaches the page."""
     saved = saved_keys(home)
-    lists = [list_models(each, key_of(each, saved)) for each in usable(home, saved)]
+    lists = [list_models(each, key_of(each, saved)) for each in usable(library, saved)]
     return list(await asyncio.gather(*lists))

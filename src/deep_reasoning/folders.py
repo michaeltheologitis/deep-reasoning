@@ -100,6 +100,14 @@ def scratch_folder(home: Path, chat: str) -> Path:
     return home / WORK / chat
 
 
+def starting_folder(default: str | None) -> str | None:
+    """Where a new chat works: the default folder while it is there; else, as when the app
+    file came from another computer, its scratch folder (None)."""
+    if default is None or not os.path.isdir(default):
+        return None
+    return default
+
+
 def working_folder(home: Path, chat: dict[str, Any]) -> Path:
     """Where the chat's next run works: the folder it chose, which must still be there, or
     its scratch folder, made if new."""

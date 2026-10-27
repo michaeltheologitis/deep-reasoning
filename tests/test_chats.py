@@ -1,9 +1,9 @@
 import re
-import sqlite3
 import time
 from contextlib import closing
 
 import pytest
+from deep_reasoner.namespaces import ROOT
 
 from deep_reasoning import chats as chats_module
 from deep_reasoning.chats import (
@@ -18,14 +18,51 @@ from deep_reasoning.chats import (
     rename_chat,
     title_new_chat,
 )
+from deep_reasoning.library import (
+    LIBRARY_ONLY,
+    SCHEMA_VERSION,
+    default_namespace,
+    open_library,
+    schema_version,
+    stored_config,
+)
 
 MANY = 200
 NOW = 1_800_000_000.0
+ADVISORS_NAMESPACES = {"root", "router", "course_advisor", "health_advisor"}
 
 
 @pytest.fixture
-def chats(tmp_path):
-    return tmp_path / "home" / ".deep-reasoning" / "chats.sqlite"
+def chats(library):
+    """The app file, which holds the chats beside the Library."""
+    return library
+
+
+def as_made_by_version_1(library):
+    """The file as version 1 made it: the Library alone."""
+    with closing(open_library(library)) as connection:
+        connection.execute("DROP TABLE chats")
+        connection.execute("DROP TABLE app_settings")
+        connection.execute(f"PRAGMA user_version = {LIBRARY_ONLY}")
+
+
+def test_a_chat_made_first_in_a_new_file_leaves_a_whole_library_beside_it(chats):
+    chat = create_chat(chats)
+    assert list_chats(chats) == [chat]
+    assert default_namespace(chats) == ROOT
+
+
+def test_a_version_1_library_opens_with_its_library_kept_and_gains_chats(imported):
+    with closing(open_library(imported)) as connection:
+        before = stored_config(connection)
+    as_made_by_version_1(imported)
+    chat = create_chat(imported)
+    with closing(open_library(imported)) as connection:
+        after = stored_config(connection)
+        version = schema_version(connection)
+    assert after == before and set(after["namespaces"]) == ADVISORS_NAMESPACES
+    assert list_chats(imported) == [chat]
+    assert version == SCHEMA_VERSION
 
 
 def test_new_chats_are_titled_new_chat_and_listed_newest_first(chats):
@@ -128,24 +165,3 @@ def test_a_choice_changes_only_what_it_names_and_only_that_chat(chats):
         "qwen3",
     )
     assert find_chat(chats, other["id"]) == other
-
-
-def test_a_chats_file_from_before_choices_opens_with_its_chats_kept(chats):
-    chats.parent.mkdir(parents=True)
-    with closing(sqlite3.connect(chats)) as connection, connection:
-        connection.execute(
-            "CREATE TABLE chats (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL)"
-        )
-        connection.execute("INSERT INTO chats VALUES ('old-chat', 'Old', 1.0)")
-    choose(chats, "old-chat", namespace="router")
-    assert list_chats(chats) == [
-        {
-            "id": "old-chat",
-            "title": "Old",
-            "created": 1.0,
-            "namespace": "router",
-            "provider": None,
-            "model": None,
-            "folder": None,
-        }
-    ]

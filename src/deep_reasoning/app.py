@@ -19,7 +19,6 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from deep_reasoning.chats import (
     CHAT_ID,
-    CHATS_FILE,
     choose,
     choose_folder,
     create_chat,
@@ -36,6 +35,7 @@ from deep_reasoning.folders import (
     remove_unless_kept,
     scratch_folder,
     short_path,
+    starting_folder,
     working_folder,
 )
 from deep_reasoning.library import (
@@ -122,28 +122,18 @@ def same_origin(
         )
 
 
-def keep_namespaces(chats, home):
-    """Give each chat from before chats.sqlite kept namespaces the one its runs used, so
-    it doesn't move to the Library's default."""
-    for chat in list_chats(chats):
-        starts = [] if chat["namespace"] else turn_starts(home, chat["id"])
-        if starts:
-            choose(chats, chat["id"], namespace=starts[-1]["namespace"])
-
-
 def create_app(library, home):
-    """The app over the Library file at *library*, which each request opens afresh,
-    keeping its chats and runs under *home*."""
+    """The app over the app file at *library*: the Library, the chats and the app's
+    settings, which each request opens afresh; its runs, scratch folders and keys are
+    under *home*."""
     library = Path(library)
     home = Path(home)
-    chats = home / CHATS_FILE
     runs = Runs(home)
 
     @asynccontextmanager
     async def lifespan(app):
         for run in end_unfinished(runs.home):
             log.warning("Ended a run the app stopped under", run=run)
-        keep_namespaces(chats, runs.home)
         yield
         await runs.close()
 
@@ -210,7 +200,7 @@ def create_app(library, home):
             return library_panel(connection)
 
     def known_provider(name: str):
-        found = find_provider(home, name)
+        found = find_provider(library, name)
         if found is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"There is no provider {name}.")
         return found
@@ -228,7 +218,7 @@ def create_app(library, home):
 
     @app.get("/api/providers")
     async def read_providers():
-        return provider_list(home)
+        return provider_list(home, library)
 
     @app.put("/api/providers/{name}/key")
     async def put_key(
@@ -236,21 +226,22 @@ def create_app(library, home):
         key: Annotated[str, Body(embed=True)],
     ):
         save_key(home, provider, key)
-        return provider_list(home)
+        return provider_list(home, library)
 
     @app.delete("/api/providers/{name}/key")
     async def delete_key(provider: KnownProvider):
         drop_key(home, provider.key_env)
-        return provider_list(home)
+        return provider_list(home, library)
 
+    # Coroutines, as each reads the server list and writes it back, so no two interleave.
     @app.post("/api/servers", status_code=HTTPStatus.CREATED)
     async def post_server(
         name: Annotated[str, Body()],
         base_url: Annotated[str, Body()],
         key: Annotated[str | None, Body()] = None,
     ):
-        add_server(home, name, base_url, key)
-        return provider_list(home)
+        add_server(home, library, name, base_url, key)
+        return provider_list(home, library)
 
     @app.put("/api/servers/{name}")
     async def put_server(
@@ -258,36 +249,35 @@ def create_app(library, home):
         base_url: Annotated[str, Body()],
         key: Annotated[str | None, Body()] = None,
     ):
-        update_server(home, server, base_url, key)
-        return provider_list(home)
+        update_server(home, library, server, base_url, key)
+        return provider_list(home, library)
 
     @app.delete("/api/servers/{name}")
     async def delete_server(server: KnownServer):
-        remove_server(home, server)
-        return provider_list(home)
+        remove_server(home, library, server)
+        return provider_list(home, library)
 
     @app.get("/api/models")
     async def read_models():
-        return await model_lists(home)
+        return await model_lists(home, library)
 
     @app.get("/api/folders")
     def read_folders(path: str = "~"):
         return list_folders(path)
 
-    # Coroutines, as every writer of settings.json is, so no two rewrites race.
     @app.get("/api/default-folder")
     async def read_default_folder():
-        return {"folder": shown_folder(default_folder(home))}
+        return {"folder": shown_folder(default_folder(library))}
 
     @app.put("/api/default-folder")
     async def put_default_folder(folder: Annotated[str | None, Body(embed=True)]):
-        save_default_folder(home, chosen_folder(folder))
+        save_default_folder(library, chosen_folder(folder))
         return await read_default_folder()
 
     def starting_points():
         """Where a chat that hasn't picked starts: the Library's default namespace, and the
         model new chats start on."""
-        return default_namespace(library), starting_model(home)
+        return default_namespace(library), starting_model(home, library)
 
     def shown(chat, starts):
         """A chat as the API gives it: with the id of its run that is going, if one is, and
@@ -309,7 +299,7 @@ def create_app(library, home):
     # The chat routes are coroutines, so they run on the event loop with the runs: what
     # they read of a run is whole, and no chat is deleted between this check and a route.
     async def known_chat(chat: Annotated[str, InPath(pattern=CHAT_ID)]):
-        found = find_chat(chats, chat)
+        found = find_chat(library, chat)
         if found is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"There is no chat {chat}.")
         return found
@@ -319,11 +309,12 @@ def create_app(library, home):
     @app.get("/api/chats")
     async def read_chats():
         starts = starting_points()
-        return [shown(chat, starts) for chat in list_chats(chats)]
+        return [shown(chat, starts) for chat in list_chats(library)]
 
     @app.post("/api/chats", status_code=HTTPStatus.CREATED)
     async def post_chat():
-        return shown(create_chat(chats, default_folder(home)), starting_points())
+        folder = starting_folder(default_folder(library))
+        return shown(create_chat(library, folder), starting_points())
 
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
@@ -339,29 +330,29 @@ def create_app(library, home):
             with closing(open_library(library)) as connection:
                 check_namespace(connection, change.namespace)
         model = change.model
-        if model is not None and find_provider(home, model.provider) is None:
+        if model is not None and find_provider(library, model.provider) is None:
             raise SettingsError(f"There is no provider {model.provider}.")
         moved = "folder" in change.model_fields_set
         folder = chosen_folder(change.folder) if moved else None
         if change.title is not None:
-            rename_chat(chats, chat["id"], change.title)
+            rename_chat(library, chat["id"], change.title)
         provider, name = (model.provider, model.name) if model else (None, None)
-        choose(chats, chat["id"], change.namespace, provider, name)
+        choose(library, chat["id"], change.namespace, provider, name)
         if moved:
-            choose_folder(chats, chat["id"], folder)
+            choose_folder(library, chat["id"], folder)
         if model is not None:
-            remember_pick(home, provider, name)
-        return shown(find_chat(chats, chat["id"]), starting_points())
+            remember_pick(library, provider, name)
+        return shown(find_chat(library, chat["id"]), starting_points())
 
     @app.delete("/api/chats/{chat}", status_code=HTTPStatus.NO_CONTENT)
     async def remove_chat(chat: KnownChat):
         # Read before anything goes, so settings that can't be read delete nothing.
-        chosen = [each["folder"] for each in list_chats(chats)]
-        chosen += [default_folder(home), *runs.folders_in_use(besides=chat["id"])]
+        chosen = [each["folder"] for each in list_chats(library)]
+        chosen += [default_folder(library), *runs.folders_in_use(besides=chat["id"])]
         keep = [each for each in chosen if each]
         # The chat goes first: a crash part way through leaves run folders that no chat
         # lists, never a chat missing some of its turns.
-        delete_chat(chats, chat["id"])
+        delete_chat(library, chat["id"])
         await runs.remove(chat["id"], keep)
         # After its workers exit, as they work in it; off the loop, as it may be large.
         scratch = scratch_folder(home, chat["id"])
@@ -383,7 +374,7 @@ def create_app(library, home):
                 )
         if model is None:
             raise SettingsError("Pick a model for this chat, under the message box.")
-        provider = find_provider(home, model["provider"])
+        provider = find_provider(library, model["provider"])
         if provider is None:
             raise SettingsError(
                 f"There is no provider {model['provider']} any more; pick another model."
@@ -403,9 +394,9 @@ def create_app(library, home):
         run = runs.start(
             chat["id"], prompt, config_for, earlier, provider.name, keys, folder
         )
-        choose(chats, chat["id"], namespace, provider.name, model["name"])
+        choose(library, chat["id"], namespace, provider.name, model["name"])
         if not starts:
-            title_new_chat(chats, chat["id"], prompt)
+            title_new_chat(library, chat["id"], prompt)
         return {"run": run}
 
     def known_run(run: Annotated[str, InPath(pattern=RUN_ID)]):
