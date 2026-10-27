@@ -2,7 +2,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { Worker } from "node:worker_threads";
 import { foldEvent, foldEvents } from "../src/deep_reasoning/web/fold.js";
+
+const FOLD_URL = new URL("../src/deep_reasoning/web/fold.js", import.meta.url).href;
+const FOLD_TIMEOUT_MS = 5000;
 
 const recorded = (name) => readFileSync(new URL(`runs/${name}.jsonl`, import.meta.url), "utf8").trim().split("\n").map(JSON.parse);
 const ofKind = (events, kind) => events.filter((event) => event.kind === kind);
@@ -19,6 +23,37 @@ function allRows(holder) {
 function allCells(holder) {
   return [...cells(holder), ...rowsOf(holder).flatMap(allCells)];
 }
+
+// Folds in a worker, so a fold that never returns fails its test instead of hanging the run: node:test's timeout can't stop a loop.
+function foldInWorker(events) {
+  const source = `
+    const { parentPort, workerData } = require("node:worker_threads");
+    import(workerData.url).then(({ foldEvents }) => {
+      const { turn, latest } = foldEvents(workerData.events);
+      parentPort.postMessage({ turn, latest });
+    });`;
+  const worker = new Worker(source, { eval: true, workerData: { url: FOLD_URL, events } });
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => worker.terminate().then(() => reject(new Error("the fold never returned"))), FOLD_TIMEOUT_MS);
+    worker.once("message", (fold) => {
+      clearTimeout(timer);
+      worker.terminate().then(() => resolve(fold));
+    });
+    worker.once("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+  });
+}
+
+// What a crafted file may hold and no run writes: sub-agents 2 and 3 each named as the other's parent.
+const parentCycle = [
+  { seq: 1, t: 0, kind: "turn.start", prompt: "Loop." },
+  { seq: 2, t: 0, kind: "agent.start", node: 1, parent: null, cell: null },
+  { seq: 3, t: 1, kind: "cell.start", node: 1, cell: 1, code: "subagent('A.')" },
+  { seq: 4, t: 2, kind: "agent.start", node: 2, parent: 3, cell: 1, task: "A.", drive: 1 },
+  { seq: 5, t: 2, kind: "agent.start", node: 3, parent: 2, cell: 1, task: "B.", drive: 1 },
+];
 
 test("a saved turn has the prompt, the answer and the run's own totals", () => {
   const events = recorded("fanout");
@@ -175,4 +210,22 @@ test("an event seen before, repeated or out of order, is ignored", () => {
   assert.equal(foldEvent(fold, events[4]), false);
   const replayed = [...events.slice(0, 10), events[9], events[4], ...events.slice(5, 12), ...events.slice(10)];
   assert.deepEqual(foldEvents(replayed).turn, foldEvents(events).turn);
+});
+
+test("a call in a node named its own ancestor costs once for each agent in the cycle", async () => {
+  const { turn } = await foldInWorker([...parentCycle, { seq: 6, t: 3, kind: "usage", node: 2, cost: 0.5 }]);
+  assert.deepEqual(
+    rowsOf(turn).map((row) => [row.task, row.cost]),
+    [
+      ["A.", 0.5],
+      ["B.", 0.5],
+    ],
+  );
+  assert.equal(turn.cost, null);
+});
+
+test("a step in a node named its own ancestor comes with each task above it once", async () => {
+  const { turn, latest } = await foldInWorker([...parentCycle, { seq: 6, t: 3, kind: "think", node: 2, text: "Round." }]);
+  assert.deepEqual(latest, { tasks: ["B.", "A."], step: { kind: "think", text: "Round." } });
+  assert.deepEqual(rowsOf(turn)[0].steps, [latest.step]);
 });
