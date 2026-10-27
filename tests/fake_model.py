@@ -56,6 +56,12 @@ def repl(*lines: str, think: str = "") -> str:
     return head + "<repl>\n" + "\n".join(lines) + "\n</repl>"
 
 
+def write(namespace: str, text: str) -> str:
+    """A turn whose cell writes the decomposition *text* into *namespace* with the
+    library tool."""
+    return repl(f"print(library.write_decomposition({namespace!r}, {text!r}))")
+
+
 def task_and_turn(messages: Messages) -> tuple[str, int]:
     """The live task (the last user message that is not an observation) and how many
     assistant turns its drive has had."""

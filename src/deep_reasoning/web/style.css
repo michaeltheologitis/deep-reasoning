@@ -122,6 +122,14 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .out.err { color: var(--err); }
 .out.warn { color: var(--warn); }
 .more { color: var(--dim); }
+/* a Library change wraps rather than clips: what it changed is the point of it */
+.change .glyph { color: var(--accent); }
+.change .head { white-space: normal; overflow-wrap: anywhere; }
+.change .head b { margin-right: 1ch; }
+.change .note, .changes .line, .yaml-label { color: var(--dim); }
+.yaml-label { margin: 3px 0 -3px 4ch; }
+.code.yaml { max-height: 24em; overflow-y: auto; }
+.changes { display: flex; flex-direction: column; gap: 3px; }
 
 .node { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 1ch; }
 .node .line { flex: 1 1 16ch; min-width: 0; }

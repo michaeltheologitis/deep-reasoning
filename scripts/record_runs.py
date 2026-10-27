@@ -5,7 +5,8 @@ answering on 127.0.0.1; its events, as the app file holds them, are written to
 tests/runs/<scenario>.jsonl, one JSON line each, with this machine's site-packages folder,
 which tracebacks name, written as SITE.
 
-Run from the repo root: uv run python scripts/record_runs.py
+Run from the repo root: uv run python scripts/record_runs.py [scenario ...], every
+scenario unless some are named.
 """
 
 import asyncio
@@ -22,9 +23,9 @@ import structlog
 TESTS = Path(__file__).resolve().parents[1] / "tests"
 sys.path.insert(0, str(TESTS))
 
-from fake_model import FakeOpenAI, repl, scripted, task_and_turn
+from fake_model import FakeOpenAI, repl, scripted, task_and_turn, write
 
-from deep_reasoning.library import open_library
+from deep_reasoning.library import ROOT, engine_config, open_library
 from deep_reasoning.runs import Runs, read_events
 
 OUT = TESTS / "runs"
@@ -37,6 +38,16 @@ SPIN = "while True:\n    pass"
 SLEEP = "import time\ntime.sleep(60)"
 # A cell blocked in C holds up a clean stop, so the server kills the worker this soon.
 KILL_AFTER_S = 0.5
+EXAMPLE = """name: count the tickets
+messages:
+- role: user
+  content: How many tickets are open?
+- role: assistant
+  content: Count them with len(open_tickets).
+"""
+REWORDED = EXAMPLE.replace(
+    "How many tickets are open?", "How many open tickets are left?"
+)
 FAN_OUT = {
     "Summarize two courses.": [
         repl(
@@ -127,6 +138,21 @@ SCENARIOS = {
         },
         "stop_at": SLEEP,
     },
+    "librarian": {
+        "prompt": "File the example.",
+        "namespace": "librarian",
+        "plan": {
+            "File the example.": [
+                write("librarian", EXAMPLE),
+                repl("print(subagent('Reword the example.', namespace='librarian'))"),
+                repl("FinalAnswer('filed')"),
+            ],
+            "Reword the example.": [
+                write("librarian", REWORDED),
+                repl("FinalAnswer('reworded')"),
+            ],
+        },
+    },
 }
 
 log = structlog.get_logger()
@@ -167,10 +193,19 @@ async def read_to_the_end(runs, run, stop_at):
 
 async def record(home, name, scenario):
     library = home / LIBRARY
+    namespace = scenario.get("namespace", ROOT)
     with FakeOpenAI(responder(scenario)) as fake:
-        config = config_on(fake, scenario.get("settings", {}))
+        settings = {"entry_namespace": namespace} | scenario.get("settings", {})
+
+        def config_for(folder):
+            # The Library's config, as the app builds a run's, with the fake's model.
+            told = engine_config(
+                library, namespace, folder / "tools", CHAT, folder.name
+            )
+            return told | config_on(fake, settings)
+
         runs = Runs(library, home, stop_grace_s=KILL_AFTER_S)
-        run = runs.start(CHAT, scenario["prompt"], lambda folder: config, [])
+        run = runs.start(CHAT, scenario["prompt"], config_for, [])
         await read_to_the_end(runs, run, scenario.get("stop_at"))
     with closing(open_library(library)) as connection:
         events = read_events(connection, run)
@@ -182,9 +217,10 @@ async def record(home, name, scenario):
 async def main():
     os.environ["OPENAI_API_KEY"] = "fake"
     OUT.mkdir(exist_ok=True)
+    names = sys.argv[1:] or SCENARIOS
     with tempfile.TemporaryDirectory() as home:
-        for name, scenario in SCENARIOS.items():
-            await record(Path(home), name, scenario)
+        for name in names:
+            await record(Path(home), name, SCENARIOS[name])
 
 
 if __name__ == "__main__":

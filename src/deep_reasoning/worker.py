@@ -27,7 +27,7 @@ from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
 from deep_reasoner.v2.messages import NoCodeBlock, code, user
 from genai_prices import Usage, calc_price
 
-from deep_reasoning.runs import SPEC
+from deep_reasoning.runs import CHANGE_FIELDS, SPEC
 
 log = structlog.get_logger()
 
@@ -38,8 +38,6 @@ REPL_BLOCK = re.compile(r"<repl>.*?(?:</repl>|$)", re.DOTALL)
 THINK_TAG = re.compile(r"</?think>")
 OBSERVATION = re.compile(r"\A<observation>\n?(.*?)\n?</observation>\Z", re.DOTALL)
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-# What the library tool logs of each change it makes to the Library.
-CHANGE_FIELDS = ("what", "namespace", "name", "before", "after")
 
 
 def source_of(reply: str) -> str | None:

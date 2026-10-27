@@ -153,9 +153,10 @@ many sub-agents it ran).
   history.agents(turn): each sub-agent drive of message number `turn`: node, parent, \
 drive, task, namespace, status, result, cost (its own sub-agents' included) and steps \
 (how many).
-  history.steps(turn, node=None): the thoughts and cells, in order, of message `turn`'s \
-top agent, or of the sub-agent whose node is `node`: {kind: "think", text} or \
-{kind: "cell", code, output, status, agents: the nodes of the sub-agents it started}, \
+  history.steps(turn, node=None): the thoughts, cells and Library changes, in order, of \
+message `turn`'s top agent, or of the sub-agent whose node is `node`: {kind: "think", \
+text}, {kind: "cell", code, output, status, agents: the nodes of the sub-agents it \
+started} or {kind: "change", what, namespace, name, before (None when added), after}, \
 each with its drive."""
 LIBRARY_DESCRIPTION = """\
 The `library` tool reads and writes the app's Library: its namespaces and the \

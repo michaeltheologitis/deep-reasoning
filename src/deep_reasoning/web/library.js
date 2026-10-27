@@ -1,5 +1,5 @@
 // The Library panel: the decompositions, namespaces, tools and data every run draws on, read from the server's Library file; adding, editing and deleting save there.
-import { PANEL_CLOSE, caret, closeOtherPanels, element, libraryChanged, request } from "./app.js";
+import { LIBRARY_CHANGED, PANEL_CLOSE, caret, closeOtherPanels, element, libraryChanged, request } from "./app.js";
 
 const LIBRARY_URL = "api/library";
 const ADD_URL = "api/decompositions";
@@ -68,6 +68,7 @@ let problem = null;
 let tab = TABS[0];
 // the namespace whose Delete is asking, and the server's refusal once it answered
 let deleting = null;
+let reloads = 0;
 
 const dot = () => element("span", { class: "lib-dot", "aria-hidden": "true" }, "·");
 const namespaceNamed = (name) => library.namespaces.find((namespace) => namespace.name === name);
@@ -541,13 +542,20 @@ function renderData() {
 
 const RENDERERS = { Decompositions: renderDecompositions, Namespaces: renderNamespaces, Tools: renderTools, Data: renderData };
 
+// A field being typed in when the agent's change redraws the panel is drawn again as itself, so it keeps focus and caret.
 function render() {
   for (const button of tabButtons) button.setAttribute("aria-selected", String(button.textContent === tab));
   body.setAttribute("aria-labelledby", `library-tab-${tab.toLowerCase()}`);
-  const focused = document.activeElement?.dataset?.key;
+  const active = document.activeElement;
+  const { selectionStart, selectionEnd } = active ?? {};
+  const focused = active?.dataset?.key;
   if (problem || !library) body.replaceChildren(element("p", { class: "lib-note" }, problem ?? "Loading the Library…"));
   else body.replaceChildren(...RENDERERS[tab]());
   if (focused) body.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus();
+  else if (active !== document.activeElement && body.contains(active)) {
+    active.focus({ preventScroll: true });
+    if (selectionStart != null) active.setSelectionRange(selectionStart, selectionEnd);
+  }
 }
 
 function flip(key) {
@@ -591,6 +599,17 @@ function useLibrary(found) {
   picker.value = picked;
 }
 
+// After the agent changed the Library in a run: read it afresh, keeping each form's draft. An answer older than the newest asked is dropped.
+async function reload() {
+  const asked = ++reloads;
+  const found = await request("GET", LIBRARY_URL).catch(() => null);
+  if (!found || asked !== reloads) return;
+  problem = null;
+  useLibrary(found);
+  libraryChanged(library);
+  if (!panel.hidden) render();
+}
+
 async function load() {
   try {
     useLibrary(await request("GET", LIBRARY_URL));
@@ -602,6 +621,7 @@ async function load() {
 
 toggleButton.addEventListener("click", () => setOpen(panel.hidden));
 panel.addEventListener(PANEL_CLOSE, () => setOpen(false));
+panel.addEventListener(LIBRARY_CHANGED, reload);
 // Esc inside the panel takes back a Delete first, else closes it, and stops there, so it never also stops a run.
 panel.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;

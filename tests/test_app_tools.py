@@ -22,7 +22,7 @@ from deep_reasoning.library import (
     open_library,
     writing,
 )
-from deep_reasoning.runs import LOST, chat_runs, read_turn, save_event
+from deep_reasoning.runs import CHANGE_FIELDS, LOST, chat_runs, read_turn, save_event
 
 RUNS = Path(__file__).parent / "runs"
 CHAT = "a-chat"
@@ -141,6 +141,26 @@ def test_a_sub_agent_driven_twice_has_a_row_per_drive_and_its_steps_in_order(lib
     assert drives == [(2, 1), (2, 2)]
     assert history.steps(1)[0]["agents"] == [2]
     assert [step["drive"] for step in history.steps(1, node=2)] == [1, 2]
+
+
+def as_change_step(event):
+    """A library.change event as history.steps lists it, in a first drive."""
+    return (
+        {"kind": "change"} | {key: event[key] for key in CHANGE_FIELDS} | {"drive": 1}
+    )
+
+
+def test_steps_list_each_library_change_with_the_agent_that_made_it(library):
+    events = recorded("librarian")
+    plant(library, CHAT, events)
+    history = history_of(library)
+    added, replaced = [event for event in events if event["kind"] == "library.change"]
+    [reworder] = history.agents(1)
+    top = history.steps(1)
+    assert [step["kind"] for step in top] == ["cell", "change", "cell", "cell"]
+    assert top[1] == as_change_step(added)
+    assert history.steps(1, node=reworder["node"])[1] == as_change_step(replaced)
+    assert (added["before"], replaced["before"]) == (None, added["after"])
 
 
 @pytest.mark.parametrize("name", ["stopped", "killed"])

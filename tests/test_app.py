@@ -17,6 +17,7 @@ from fake_model import (
     repl,
     scripted,
     task_and_turn,
+    write,
 )
 from fastapi.testclient import TestClient
 
@@ -546,11 +547,6 @@ ASKED = "How many tickets are open?"
 REWORDED_ASK = "How many open tickets are left?"
 REWORDED = EXAMPLE.replace(ASKED, REWORDED_ASK)
 CHANGE_FIELDS = ("node", "what", "namespace", "name", "before", "after")
-
-
-def write(namespace, text):
-    """A cell that writes the decomposition *text* into *namespace* with the library tool."""
-    return repl(f"print(library.write_decomposition({namespace!r}, {text!r}))")
 
 
 LIBRARY_PLAN = {
