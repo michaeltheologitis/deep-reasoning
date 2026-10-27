@@ -520,7 +520,8 @@ function renderTool(tool) {
       ["Granted in", tool.granted_in.join(", ") || "no namespace"],
     ]),
     tool.config && element("pre", { class: "code lib-pre" }, tool.config),
-    element("pre", { class: `code ${tool.description.includes("\n") ? "lib-pre" : "lib-doc"}` }, tool.description),
+    // A tool whose value is a function tells the agent its docstring, which only a build shows.
+    tool.description && element("pre", { class: `code ${tool.description.includes("\n") ? "lib-pre" : "lib-doc"}` }, tool.description),
   ];
 }
 

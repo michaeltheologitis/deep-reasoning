@@ -6,11 +6,14 @@ from itertools import count
 from pathlib import Path
 
 import pytest
+from fake_model import WORD_COUNT
 from structlog.testing import capture_logs
 
 from deep_reasoning.app_tools import (
     MAX_YAML_CHARS,
+    NOT_A_TOOL,
     NOT_TEXT,
+    SETS_OWN_KEYS,
     build_history,
     build_library,
     open_existing,
@@ -323,6 +326,7 @@ def library_tool(library, namespace="librarian"):
         "library": str(library),
         "chat": CHAT,
         "run": CURRENT,
+        "tools_dir": str(library.parent / "run-tools"),
         "namespace": namespace,
         "key_names": [SHELL_KEY_ENV],
     }
@@ -580,3 +584,75 @@ def test_a_namespace_the_tool_adds_never_inherits_claude_code(
     with pytest.raises(LibraryError, match=re.escape(refusal)):
         library_tool(coder).add_namespace(f"{parent}.x", "")
     assert stored_namespaces(coder) == before
+
+
+def stored_tools(library):
+    """Each tool in the app file, as (name, yaml, source)."""
+    with closing(open_library(library)) as connection:
+        return connection.execute("SELECT name, yaml, source FROM tools").fetchall()
+
+
+def test_a_chat_whose_namespace_doesnt_grant_the_tool_may_not_write_a_tool_nor_build_it(
+    fresh,
+):
+    raising = "def build(client, params):\n    raise RuntimeError('built')\n"
+    with pytest.raises(LibraryError, match=NOT_THIS_CHAT):
+        library_tool(fresh, "drafts").write_tool("counter", raising, "build")
+    assert stored_tools(fresh) == []
+
+
+HOLDS_ITSELF = []
+HOLDS_ITSELF.append(HOLDS_ITSELF)
+
+
+@pytest.mark.parametrize(
+    ("args", "refusal"),
+    [
+        ((NeverEqual("counter"), WORD_COUNT, "build"), NOT_A_TOOL),
+        (("counter", WORD_COUNT, "build", {"sep": NeverEqual(",")}), NOT_A_TOOL),
+        (("counter", WORD_COUNT, "build", {"sep": (",",)}), NOT_A_TOOL),
+        (("counter", WORD_COUNT, "build", {1: ","}), NOT_A_TOOL),
+        (("counter", WORD_COUNT, "build", {"seps": HOLDS_ITSELF}), NOT_A_TOOL),
+        (("counter", WORD_COUNT, "build", [","]), NOT_A_TOOL),
+        (("counter", WORD_COUNT, "build", {"factory_from": "/x.py"}), SETS_OWN_KEYS),
+        (
+            ("counter", f"{WORD_COUNT}# {SHELL_KEY}\n", "build"),
+            "holds a provider's key",
+        ),
+        (
+            ("counter", f"{WORD_COUNT}KEY = {ESCAPED_KEY}\n", "build"),
+            "holds a provider's",
+        ),
+        (
+            ("counter", WORD_COUNT, "build", {"key": SHELL_KEY}),
+            "holds a provider's key",
+        ),
+    ],
+    ids=[
+        "name-not-plain-text",
+        "a-setting-not-plain-text",
+        "a-tuple-setting",
+        "a-setting-not-keyed-by-text",
+        "a-setting-holding-itself",
+        "settings-not-a-dict",
+        "settings-setting-factory-from",
+        "a-key-in-the-source",
+        "a-key-spelled-by-an-escape",
+        "a-key-in-the-settings",
+    ],
+)
+def test_a_tool_the_tool_refuses_says_why_and_stores_nothing(
+    fresh, monkeypatch, args, refusal
+):
+    monkeypatch.setenv(SHELL_KEY_ENV, SHELL_KEY)
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        library_tool(fresh).write_tool(*args)
+    assert stored_tools(fresh) == []
+
+
+def test_a_tool_may_be_written_over_one_the_engine_builds(coder):
+    done = library_tool(coder).write_tool("coder", WORD_COUNT, "build")
+    assert done == {"done": "replaced", "what": "tool", "name": "coder"}
+    assert stored_tools(coder) == [
+        ("coder", "factory: build\nfactory_from: coder.py\n", WORD_COUNT)
+    ]

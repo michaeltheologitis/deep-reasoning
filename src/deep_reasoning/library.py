@@ -156,11 +156,12 @@ drive, task, namespace, status, result, cost (its own sub-agents' included) and 
   history.steps(turn, node=None): the thoughts, cells and Library changes, in order, of \
 message `turn`'s top agent, or of the sub-agent whose node is `node`: {kind: "think", \
 text}, {kind: "cell", code, output, status, agents: the nodes of the sub-agents it \
-started} or {kind: "change", what ("decomposition" or "namespace"), namespace, name, \
-before (None when added), after}, each with its drive."""
+started} or {kind: "change", what ("decomposition", "namespace" or "tool"), namespace, \
+name, before (None when added), after}, each with its drive."""
 LIBRARY_DESCRIPTION = """\
 The `library` tool reads and writes the app's Library: its namespaces, each with its own \
-fields, and the decompositions (worked examples) each one's agents are shown. A change \
+fields, the decompositions (worked examples) each one's agents are shown, and the custom \
+tools namespaces may grant. A change \
 applies from the user's next message, not in this run, and only a chat whose namespace \
 grants this tool may make one. A namespace's agents get what it sets and what the \
 namespaces above it set (root, then research, then research.papers): their tools, vars \
@@ -169,8 +170,9 @@ place of its parent's there; show() lists only each namespace's own. Locked, so 
 read them but not write them: root; a namespace's repl and reasoner; which namespaces \
 grant the app's own tools (library, history); granting a tool that runs Claude Code (its \
 factory is claude_code), which bills the user's subscription; a new namespace under one \
-that grants library or runs Claude Code (as its reasoner or a tool); the system prompt \
-and the run settings.
+that grants library or runs Claude Code (as its reasoner or a tool); a tool named as a \
+built-in (llm, rag, kg, safe_url, claude_code) or one of the app's; the system prompt and \
+the run settings.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \
@@ -185,8 +187,18 @@ prompt), vars (names and values its agents' Python has), tools (tool names it gr
 and spawn (the namespaces its agents may hand work to).
   library.change_namespace(name, yaml): gives namespace `name` the fields its YAML sets \
 in place of its own, keeping its decompositions.
+  library.write_tool(name, source, factory, settings=None): adds the tool `name` (a \
+Python name), or replaces the one of that name, from `source`, the text of a Python \
+module that defines the function `factory`. A run calls factory(client, params), with the \
+run's model client and params = `settings` (a dict of plain values), and it returns \
+deep_reasoner.primitives.Func(value, description=...): value is what agents call by the \
+tool's name (a function, or an object whose methods they call), and description is what \
+they are told it does (value's docstring when not given; name the methods). It is built \
+once here to check it. Agents see it only in a namespace that grants it: add its name to \
+a namespace's tools with change_namespace, from the next message.
 Each write returns what it did: {done: "added", "replaced" or "changed", what, name, \
-namespace}. A refusal raises ValueError saying why."""
+and the namespace for a decomposition or namespace}. A refusal raises ValueError saying \
+why."""
 # Added in code, never stored: a shared file mustn't choose the code they run. Each one's
 # factory in app_tools.py, and what the agent is told it does.
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
@@ -406,21 +418,37 @@ def stored_config(connection):
     return {**stored_settings(connection), "tools": tools, "namespaces": namespaces}
 
 
+def granted(namespaces):
+    """Every tool name some namespace grants itself; a list, as a shared file's may be anything."""
+    lists = [fields.get("tools") for fields in namespaces.values()]
+    return [tool for each in lists if isinstance(each, list) for tool in each]
+
+
 def engine_config(library_path, namespace, tools_dir, chat, run, key_names=()):
     """The Library as one plain dict that V2Config accepts, for run *run* of *chat*, which
     enters *namespace*; the run's model and client are the chat's to put in.
 
-    Each custom tool's source is written into *tools_dir*, and its factory_from points at that file.
-    Each of the app's tools is told the app file, the chat, the run, the namespace it enters,
-    and *key_names*, the variables of the worker's environment that hold keys.
+    Only the Library's tools some namespace grants are in it: a run builds each tool it
+    declares, so one that no namespace grants never runs, and one that fails to build can
+    be taken out of the namespaces that grant it. Each one's source is written into
+    *tools_dir*, and its factory_from points at that file. Each of the app's tools is told
+    the app file, the chat, the run, *tools_dir*, the namespace it enters, and *key_names*,
+    the variables of the worker's environment that hold keys.
     """
     tools_dir = Path(tools_dir).resolve()
     tools_dir.mkdir(parents=True, exist_ok=True)
     with closing(open_library(library_path)) as connection:
         config = stored_config(connection)
         tools = library_tools(connection)
-    sources = [(name, source) for name, _, source in tools if source is not None]
-    for name, source in sources:
+    grants = granted(config["namespaces"])
+    config["tools"] = {
+        name: block
+        for name, block in config["tools"].items()
+        if name in grants or name in APP_TOOLS
+    }
+    for name, _, source in tools:
+        if source is None or name not in config["tools"]:
+            continue
         file = tools_dir / tool_file(name)
         file.write_text(source, encoding="utf-8")
         config["tools"][name]["factory_from"] = str(file)
@@ -428,6 +456,7 @@ def engine_config(library_path, namespace, tools_dir, chat, run, key_names=()):
         "library": str(Path(library_path).resolve()),
         "chat": chat,
         "run": run,
+        "tools_dir": str(tools_dir),
         "namespace": namespace,
         "key_names": list(key_names),
     }
@@ -733,6 +762,26 @@ def change_namespace(connection, name, text, allowed=None):
     return before, stored
 
 
+def store_tool(connection, name, block, source, allowed=None):
+    """Store tool *name* as its config *block* and Python *source*, in place of one of its
+    name, inside a transaction that keeps it only if the engine accepts the Library;
+    *allowed*, given the connection under the write lock first, raises to refuse. What it
+    replaced: the old source, or the old block's YAML for a tool the engine builds; None
+    when it is new."""
+    with writing(connection):
+        if allowed is not None:
+            allowed(connection)
+        found = connection.execute(
+            "SELECT yaml, source FROM tools WHERE name = ?", (name,)
+        ).fetchone()
+        connection.execute(UPSERT_TOOL, (name, dump(block), source))
+        accepted(connection)
+    if found is None:
+        return None
+    text, before = found
+    return text if before is None else before
+
+
 def delete_namespace(connection, name, decompositions):
     """Delete namespace *name* and its decompositions, as many as the caller was told it
     has, or raise LibraryError saying why not; if new chats started there, they start in root."""
@@ -886,10 +935,13 @@ def run_settings(connection):
 
 
 def class_docstring(source):
-    """The first class's docstring: what the agent is told when a factory returns one and gives no description."""
-    classes = [
-        node for node in ast.parse(source).body if isinstance(node, ast.ClassDef)
-    ]
+    """The first class's docstring: what the agent is told when a factory returns one and gives no description.
+    Empty for source that doesn't parse, as a shared file may hold, so the panel still lists the tool."""
+    try:
+        body = ast.parse(source).body
+    except SyntaxError:
+        return ""
+    classes = [node for node in body if isinstance(node, ast.ClassDef)]
     return (ast.get_docstring(classes[0]) if classes else None) or ""
 
 

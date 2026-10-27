@@ -32,6 +32,7 @@ from deep_reasoning.library import (
     LIBRARY_ONLY,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
+    UPSERT_TOOL,
     LibraryError,
     add_decomposition,
     add_namespace,
@@ -43,6 +44,7 @@ from deep_reasoning.library import (
     import_config,
     open_library,
     panel,
+    store_tool,
     stored_config,
     writing,
 )
@@ -278,6 +280,7 @@ def test_an_imported_llm_tool_runs_on_the_chats_model(library, tmp_path):
         "models: {coder: {model: qwen/qwen3-coder-30b-a3b-instruct}}\n"
         "tools:\n"
         "  code_reviewer: {factory: llm, model: coder, system_prompt: Review it.}\n"
+        "namespaces: {root: {tools: [llm, code_reviewer]}}\n"
     )
     import_into(library, written)
     config = run_config(library, tmp_path)
@@ -435,9 +438,41 @@ def test_a_shared_librarys_tool_cannot_be_written_outside_the_tools_folder(
             "INSERT INTO tools VALUES (?, ?, ?)",
             ("../escaped", "factory: build\n", "def build(client, cfg): ...\n"),
         )
+        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({"tools": ["../escaped"]})))
     with pytest.raises(LibraryError, match="needs a Python name"):
         engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
     assert not (tmp_path / "escaped.py").exists()
+
+
+def test_a_runs_config_holds_only_the_tools_a_namespace_grants_and_the_panel_lists_all(
+    library, waitlist, tmp_path
+):
+    import_into(library, waitlist)
+    broken = ("unused", dump({"factory": "build", "factory_from": "unused.py"}))
+    with closing(open_library(library)) as connection:
+        connection.execute(UPSERT_TOOL, (*broken, "def build(:\n"))
+        listed = [tool["name"] for tool in panel(connection)["tools"]]
+    config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
+    assert list(config["tools"]) == ["waitlist", "history", "library"]
+    assert not (tmp_path / "tools" / "unused.py").exists()
+    assert listed == ["llm", "waitlist", "unused", "history", "library"]
+
+
+def test_a_tool_stored_over_another_gives_back_its_source_or_the_block_the_engine_built(
+    library,
+):
+    block = {"factory": "build", "factory_from": "mine.py"}
+    first, second = "def build(client, params): 1\n", "def build(client, params): 2\n"
+    with closing(open_library(library)) as connection:
+        connection.execute(
+            UPSERT_TOOL, ("mine", dump({"factory": "claude_code"}), None)
+        )
+        replaced = [
+            store_tool(connection, "mine", block, source) for source in (first, second)
+        ]
+        added = store_tool(connection, "other", block, first)
+    assert replaced == ["factory: claude_code\n", first]
+    assert added is None
 
 
 @pytest.mark.parametrize(
@@ -454,6 +489,7 @@ def test_a_runs_config_tells_each_app_tool_the_app_file_the_chat_and_the_run(
         "library": str(library.resolve()),
         "chat": CHAT,
         "run": RUN,
+        "tools_dir": str((tmp_path / "tools").resolve()),
         "namespace": ROOT,
         "key_names": [],
     }
