@@ -1,4 +1,18 @@
-// Folds a run's events into the turn the chat draws: the root's steps, each sub-agent as a row under the cell that started it, Library changes, and the totals.
+// Folds a run's events into the turn the chat draws: the root's steps, each sub-agent as a row under the cell that started it, Library changes, and the totals;
+// and words a Library change.
+
+const FIELD_CHARS = 60;
+
+// a cut never keeps half of an emoji, or of another character past U+FFFF: alone, it shows as �
+export const clip = (text, chars) => (text.length > chars ? `${text.slice(0, chars - 1).replace(/[\uD800-\uDBFF]$/, "")}…` : text);
+// A change event is untrusted, as any cell can log one and a shared file can hold any: each field shows as text, whatever it holds.
+export const asText = (value) => (typeof value === "string" ? value : (JSON.stringify(value) ?? "?"));
+export const field = (value) => clip(asText(value), FIELD_CHARS);
+
+export function changeText({ what, namespace, name, before }) {
+  if (what === "namespace") return `${before == null ? "added" : "changed"} namespace ${field(namespace)}`;
+  return `${before == null ? "added" : "replaced"} ${field(what)} "${field(name)}" in ${field(namespace)}`;
+}
 
 export function newFold() {
   return {

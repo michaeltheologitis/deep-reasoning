@@ -61,13 +61,16 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   secrets a cell reads from your shell.
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
 - In a chat in the `librarian` namespace, picked under the message box, the agent can add or edit a decomposition in
-  a namespace you name, with the app's own `library` tool; a chat in a namespace without it can't, even through a
-  sub-agent. The tool never changes root or writes a key, and a change applies from your next message. These limits
-  guard the tool, not the file: the agent's Python isn't sandboxed, and could open the file itself. A new Library
-  has `librarian`; in an older one, add a namespace with `tools: [library]`.
+  a namespace you name, and add a namespace or change one's own fields (its system suffix, vars, tools and spawn),
+  with the app's own `library` tool; a chat in a namespace without it can't, even through a sub-agent. The tool never
+  changes root, a namespace's REPL or backbone (`repl`, `reasoner`), which namespaces grant `library` or `history`,
+  the system prompt or the run settings; never grants a tool that runs Claude Code, which would bill your
+  subscription; adds no namespace under one that grants `library` or runs Claude Code; never deletes, and never
+  writes a key. A change applies from your next message. These limits guard the tool, not the file: the agent's Python isn't sandboxed, and could open the file
+  itself. A new Library has `librarian`; in an older one, add a namespace with `tools: [library]`.
 - Each Library change the agent makes shows in the chat, under its answer and where it was made in the tree, and opens
-  onto its YAML before and after; ask the agent to write the before back to undo it. The decompositions panel shows
-  the change at once.
+  onto its YAML before and after; ask the agent to write the before back to undo it. The decompositions panel and the
+  namespace menu under the message box show the change at once.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
 - The Tools tab lists the app's own tools beside the built-in ones; a tool of yours can't be named `history` or `library`.
 

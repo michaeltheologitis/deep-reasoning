@@ -12,12 +12,17 @@ import httpx
 import pytest
 from fake_model import (
     ASKED,
+    CHANGED_SUFFIX,
     EXAMPLE,
+    RESEARCH,
+    RESEARCH_CHANGED,
     REWORDED,
     REWORDED_ASK,
     SERVER_KEY,
     SERVER_NAME,
+    SUFFIX,
     FakeOpenAI,
+    library_cell,
     repl,
     scripted,
     task_and_turn,
@@ -554,12 +559,17 @@ REFUSALS = [
 ]
 
 
-async def librarian_chat(api):
-    """A new chat in the librarian namespace, where the library tool is granted."""
+async def chat_in(api, namespace):
+    """A new chat in *namespace*."""
     chat = await new_chat(api)
-    response = await api.patch(f"/api/chats/{chat}", json={"namespace": "librarian"})
+    response = await api.patch(f"/api/chats/{chat}", json={"namespace": namespace})
     assert response.status_code == 200, response.text
     return chat
+
+
+async def librarian_chat(api):
+    """A new chat in the librarian namespace, where the library tool is granted."""
+    return await chat_in(api, "librarian")
 
 
 def kinds(events, kind):
@@ -652,6 +662,197 @@ async def test_a_refused_write_fails_its_cell_in_the_panels_words_and_stores_not
         assert wording in cell["output"], cell["output"]
     assert changes(events) == []
     assert [each["decompositions"] for each in namespaces] == [[], []]
+    assert events[-1]["outcome"] == "answered", events[-1]
+
+
+NAMESPACE_PLAN = {
+    "Add research.": [
+        library_cell("add_namespace", "research", RESEARCH),
+        repl("FinalAnswer('added')"),
+    ],
+    "Change research.": [
+        library_cell("change_namespace", "research", RESEARCH_CHANGED),
+        repl("FinalAnswer('changed')"),
+    ],
+    "Use research.": [repl("print(year)"), repl("FinalAnswer('used')")],
+}
+
+
+def system_prompts(calls):
+    """What each of *calls* told the model as system messages: the prompt, then the
+    namespace's suffix."""
+    return [
+        "\n".join(
+            str(message["content"])
+            for message in call.messages
+            if message.get("role") == "system"
+        )
+        for call in calls
+    ]
+
+
+@pytest.mark.anyio
+async def test_the_library_tool_adds_a_namespace_whose_suffix_and_vars_the_next_run_there_gets(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(NAMESPACE_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            librarian = await librarian_chat(api)
+            added = await run_events(api, await send(api, librarian, "Add research."))
+            namespaces = (await api.get("/api/library")).json()["namespaces"]
+            chat = await chat_in(api, "research")
+            asked = len(fake.calls)
+            used = await run_events(api, await send(api, chat, "Use research."))
+    [change] = changes(added)
+    assert {key: change[key] for key in CHANGE_FIELDS} == {
+        "what": "namespace",
+        "namespace": "research",
+        "name": "research",
+        "before": None,
+        "after": RESEARCH,
+    }
+    assert "'done': 'added'" in kinds(added, "cell.end")[0]["output"]
+    research = next(each for each in namespaces if each["name"] == "research")
+    assert research["yaml"] == RESEARCH
+    assert kinds(used, "cell.end")[0]["output"] == "2026"
+    prompts = system_prompts(fake.calls[asked:])
+    assert prompts and all(SUFFIX in prompt for prompt in prompts)
+    assert not any(SUFFIX in prompt for prompt in system_prompts(fake.calls[:asked]))
+
+
+@pytest.mark.anyio
+async def test_a_namespace_the_library_tool_changes_has_its_old_yaml_as_before_and_the_next_run_gets_the_new(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(NAMESPACE_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            librarian = await librarian_chat(api)
+            await run_events(api, await send(api, librarian, "Add research."))
+            changed = await run_events(
+                api, await send(api, librarian, "Change research.")
+            )
+            asked = len(fake.calls)
+            chat = await chat_in(api, "research")
+            await run_events(api, await send(api, chat, "Use research."))
+    [change] = changes(changed)
+    assert (change["what"], change["namespace"]) == ("namespace", "research")
+    assert (change["before"], change["after"]) == (RESEARCH, RESEARCH_CHANGED)
+    assert "'done': 'changed'" in kinds(changed, "cell.end")[0]["output"]
+    prompts = system_prompts(fake.calls[asked:])
+    assert prompts and all(CHANGED_SUFFIX in prompt for prompt in prompts)
+    assert not any(SUFFIX in prompt for prompt in prompts)
+
+
+@pytest.mark.anyio
+async def test_a_namespace_change_event_holds_the_yaml_as_stored(library_on, connect):
+    plan = {
+        "Add a blank one.": [
+            library_cell("add_namespace", "blank", "{}\n"),
+            library_cell("change_namespace", "blank", "{}\n"),
+            repl("FinalAnswer('added')"),
+        ]
+    }
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await librarian_chat(api)
+            events = await run_events(api, await send(api, chat, "Add a blank one."))
+    added, changed = changes(events)
+    assert (added["before"], added["after"]) == (None, "")
+    assert (changed["before"], changed["after"]) == ("", "")
+
+
+# Set by the user in the panel: what the library tool may neither change nor drop.
+DRAFTS = "tools: [history]\nrepl: {type: local}\n"
+NAMESPACE_REFUSALS = [
+    (library_cell("add_namespace", "root", ""), "root is locked"),
+    (
+        library_cell("change_namespace", "root", "system_suffix: Hi.\n"),
+        "root is locked",
+    ),
+    (
+        library_cell("add_namespace", "research", "repl: {type: local}\n"),
+        "repl may not be set or changed: a namespace's repl and reasoner are the user's",
+    ),
+    (
+        library_cell("add_namespace", "research", "reasoner: {type: claude_code}\n"),
+        "reasoner may not be set or changed",
+    ),
+    (
+        library_cell("change_namespace", "drafts", "tools: [history]\n"),
+        "repl may not be set or changed",
+    ),
+    (
+        library_cell("add_namespace", "research", "tools: [library]\n"),
+        "tools may not add or take out library: which namespaces grant the app's own",
+    ),
+    (
+        library_cell("add_namespace", "research", "tools: [llm, history]\n"),
+        "tools may not add or take out history",
+    ),
+    (
+        library_cell("change_namespace", "librarian", "tools: []\n"),
+        "tools may not add or take out library",
+    ),
+    (
+        library_cell("change_namespace", "librarian", "tools: [library, history]\n"),
+        "tools may not add or take out history",
+    ),
+    (
+        library_cell("change_namespace", "drafts", "repl: {type: local}\n"),
+        "tools may not add or take out history",
+    ),
+    (
+        library_cell("add_namespace", "re search", ""),
+        "A namespace name is words of letters, digits, _ and -, joined by dots",
+    ),
+    (
+        library_cell("add_namespace", "research.papers", ""),
+        'Add namespace "research" first: "research.papers" goes under it.',
+    ),
+    (
+        library_cell("add_namespace", "librarian.notes", ""),
+        "librarian.notes would inherit library from librarian: which namespaces grant",
+    ),
+    (
+        library_cell("add_namespace", "research", "spawn: [nowhere]\n"),
+        'spawn names "nowhere", which is not a namespace in the Library.',
+    ),
+    (
+        library_cell("add_namespace", "research", "tools: [no_such_tool]\n"),
+        "The engine refuses it: namespace 'research' grants unknown tool 'no_such_tool'",
+    ),
+    (
+        library_cell("add_namespace", "research", f"system_suffix: {SERVER_KEY}\n"),
+        "holds a provider's key",
+    ),
+    (
+        library_cell("change_namespace", "nowhere", ""),
+        'The Library has no namespace "nowhere"',
+    ),
+]
+
+
+@pytest.mark.anyio
+async def test_a_refused_namespace_write_fails_its_cell_in_plain_words_and_changes_nothing(
+    library_on, connect
+):
+    cells = [cell for cell, _ in NAMESPACE_REFUSALS]
+    plan = {"Try these.": [*cells, repl("FinalAnswer('refused')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            drafts = {"name": "drafts", "yaml": DRAFTS}
+            response = await api.post("/api/namespaces", json=drafts)
+            assert response.status_code == 201, response.text
+            before = (await api.get("/api/library")).json()
+            chat = await librarian_chat(api)
+            events = await run_events(api, await send(api, chat, "Try these."))
+            after = (await api.get("/api/library")).json()
+    ended = kinds(events, "cell.end")[: len(NAMESPACE_REFUSALS)]
+    assert [cell["status"] for cell in ended] == ["failed"] * len(NAMESPACE_REFUSALS)
+    for cell, (_, wording) in zip(ended, NAMESPACE_REFUSALS, strict=True):
+        assert wording in cell["output"], cell["output"]
+    assert changes(events) == []
+    assert after == before
     assert events[-1]["outcome"] == "answered", events[-1]
 
 

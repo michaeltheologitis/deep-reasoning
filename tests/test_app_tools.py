@@ -10,15 +10,18 @@ from structlog.testing import capture_logs
 
 from deep_reasoning.app_tools import (
     MAX_YAML_CHARS,
+    NOT_TEXT,
     build_history,
     build_library,
     open_existing,
 )
 from deep_reasoning.library import (
+    UPSERT_TOOL,
     LibraryError,
     add_namespace,
     change_namespace,
     delete_namespace,
+    dump,
     open_library,
     writing,
 )
@@ -310,6 +313,8 @@ messages:
 NOT_THIS_CHAT = "The Library can be changed only in a chat whose namespace grants"
 SHELL_KEY_ENV = "A_PROVIDERS_KEY"
 SHELL_KEY = "sk-a-key-from-the-shell"
+# The key in YAML's double quotes with its "s" escaped: the text never holds it, the data does.
+ESCAPED_KEY = '"\\x73' + SHELL_KEY[1:] + '"'
 
 
 def library_tool(library, namespace="librarian"):
@@ -371,13 +376,25 @@ class NeverEqual(str):
 @pytest.mark.parametrize(
     ("namespace", "text", "refusal"),
     [
-        (NeverEqual("root"), EXAMPLE, "namespace and yaml should be text."),
-        ("drafts", NeverEqual(EXAMPLE), "namespace and yaml should be text."),
+        (NeverEqual("root"), EXAMPLE, NOT_TEXT),
+        ("drafts", NeverEqual(EXAMPLE), NOT_TEXT),
         ("root", EXAMPLE, "root is locked"),
         ("drafts", "#" * (MAX_YAML_CHARS + 1), "may be at most 1,000,000 characters"),
         ("drafts", EXAMPLE + f"# {SHELL_KEY}\n", "holds a provider's key"),
+        (
+            "drafts",
+            EXAMPLE.replace("How many tickets are open?", ESCAPED_KEY),
+            "holds a provider's key",
+        ),
     ],
-    ids=["text-unequal-to-root", "yaml-not-plain-text", "root", "too-long", "a-key"],
+    ids=[
+        "text-unequal-to-root",
+        "yaml-not-plain-text",
+        "root",
+        "too-long",
+        "a-key",
+        "an-escaped-key",
+    ],
 )
 def test_a_write_the_tool_refuses_says_why_and_stores_nothing(
     fresh, monkeypatch, namespace, text, refusal
@@ -417,3 +434,149 @@ def test_a_moved_app_file_is_never_made_afresh(fresh, tmp_path):
         with pytest.raises(LibraryError, match="can't be used now"):
             call()
     assert not fresh.exists()
+
+
+def stored_namespaces(library):
+    """Each namespace in the app file, as (name, yaml)."""
+    with closing(open_library(library)) as connection:
+        return connection.execute("SELECT name, yaml FROM namespaces").fetchall()
+
+
+@pytest.mark.parametrize("method", ["add_namespace", "change_namespace"])
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [(NeverEqual("root"), ""), ("drafts", NeverEqual("tools: [history]\n"))],
+    ids=["name-unequal-to-root", "yaml-not-plain-text"],
+)
+def test_a_namespace_write_takes_only_plain_text(fresh, method, name, text):
+    before = stored_namespaces(fresh)
+    with pytest.raises(LibraryError, match=re.escape(NOT_TEXT)):
+        getattr(library_tool(fresh), method)(name, text)
+    assert stored_namespaces(fresh) == before
+
+
+@pytest.mark.parametrize(
+    ("method", "name"),
+    [
+        ("add_namespace", "research"),
+        ("change_namespace", "drafts"),
+        ("add_namespace", "drafts"),
+        ("add_namespace", "missing.child"),
+        ("change_namespace", "nowhere"),
+    ],
+    ids=["add", "change", "add-existing", "add-under-missing", "change-missing"],
+)
+def test_a_chat_whose_namespace_doesnt_grant_the_tool_may_not_write_a_namespace(
+    fresh, method, name
+):
+    before = stored_namespaces(fresh)
+    with pytest.raises(LibraryError, match=NOT_THIS_CHAT):
+        getattr(library_tool(fresh, "drafts"), method)(name, "system_suffix: Hi.\n")
+    assert stored_namespaces(fresh) == before
+
+
+def test_a_change_keeping_the_repl_and_app_tools_the_user_set_is_written(fresh):
+    set_by_the_user = "tools: [history]\nrepl: {type: local}\n"
+    changed = "repl: {type: local}\ntools: [llm, history]\nsystem_suffix: Draft.\n"
+    with closing(open_library(fresh)) as connection:
+        change_namespace(connection, "drafts", set_by_the_user)
+    done = library_tool(fresh).change_namespace("drafts", changed)
+    assert done == {
+        "done": "changed",
+        "what": "namespace",
+        "namespace": "drafts",
+        "name": "drafts",
+    }
+    assert ("drafts", changed) in stored_namespaces(fresh)
+
+
+@pytest.mark.parametrize(
+    ("root", "name", "level"),
+    [
+        ("tools: [llm, history]\n", "librarian.notes", "librarian"),
+        ("tools: [llm, history, library]\n", "research", "root"),
+    ],
+    ids=["under-librarian", "under-a-root-granting-library"],
+)
+def test_a_namespace_the_tool_adds_never_inherits_library(fresh, root, name, level):
+    with closing(open_library(fresh)) as connection:
+        change_namespace(connection, "root", root)
+    before = stored_namespaces(fresh)
+    refusal = f"{name} would inherit library from {level}: which namespaces grant"
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        library_tool(fresh).add_namespace(name, "")
+    assert stored_namespaces(fresh) == before
+
+
+@pytest.fixture
+def coder(fresh):
+    """A fresh app file whose Library has coder, a tool of the user's that runs Claude
+    Code."""
+    with closing(open_library(fresh)) as connection, writing(connection):
+        connection.execute(
+            UPSERT_TOOL, ("coder", dump({"factory": "claude_code"}), None)
+        )
+    return fresh
+
+
+@pytest.mark.parametrize(
+    ("method", "name"), [("add_namespace", "research"), ("change_namespace", "drafts")]
+)
+def test_a_tool_that_runs_claude_code_is_never_granted_afresh(coder, method, name):
+    before = stored_namespaces(coder)
+    refusal = (
+        "tools may not add coder, which runs Claude Code on the user's subscription"
+    )
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        getattr(library_tool(coder), method)(name, "tools: [llm, coder]\n")
+    assert stored_namespaces(coder) == before
+
+
+@pytest.mark.parametrize(
+    "changed", ["tools: [coder]\nsystem_suffix: Draft.\n", "tools: []\n"]
+)
+def test_a_claude_code_tool_the_user_granted_may_be_kept_or_taken_out(coder, changed):
+    with closing(open_library(coder)) as connection:
+        change_namespace(connection, "drafts", "tools: [coder]\n")
+    assert library_tool(coder).change_namespace("drafts", changed)["done"] == "changed"
+    assert ("drafts", changed) in stored_namespaces(coder)
+
+
+@pytest.mark.parametrize(
+    ("method", "name"), [("add_namespace", "research"), ("change_namespace", "drafts")]
+)
+def test_a_namespace_whose_yaml_spells_a_key_with_an_escape_is_refused(
+    fresh, monkeypatch, method, name
+):
+    monkeypatch.setenv(SHELL_KEY_ENV, SHELL_KEY)
+    before = stored_namespaces(fresh)
+    with pytest.raises(LibraryError, match="holds a provider's key"):
+        getattr(library_tool(fresh), method)(name, f"system_suffix: {ESCAPED_KEY}\n")
+    assert stored_namespaces(fresh) == before
+
+
+@pytest.mark.parametrize(
+    ("parent", "own", "refusal"),
+    [
+        (
+            "coding",
+            "reasoner: {type: claude_code}\n",
+            "coding.x would inherit the claude_code reasoner from coding, which runs on",
+        ),
+        (
+            "coding",
+            "tools: [coder]\n",
+            "coding.x would inherit coder, which runs Claude Code on the user's",
+        ),
+    ],
+    ids=["a-claude-code-reasoner", "a-claude-code-tool"],
+)
+def test_a_namespace_the_tool_adds_never_inherits_claude_code(
+    coder, parent, own, refusal
+):
+    with closing(open_library(coder)) as connection:
+        add_namespace(connection, parent, own)
+    before = stored_namespaces(coder)
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        library_tool(coder).add_namespace(f"{parent}.x", "")
+    assert stored_namespaces(coder) == before

@@ -25,8 +25,11 @@ sys.path.insert(0, str(TESTS))
 
 from fake_model import (
     EXAMPLE,
+    RESEARCH,
+    RESEARCH_CHANGED,
     REWORDED,
     FakeOpenAI,
+    library_cell,
     repl,
     scripted,
     task_and_turn,
@@ -148,6 +151,17 @@ SCENARIOS = {
             "Reword the example.": [
                 write("librarian", REWORDED),
                 repl("FinalAnswer('reworded')"),
+            ],
+        },
+    },
+    "namespaces": {
+        "prompt": "Set up research.",
+        "namespace": "librarian",
+        "plan": {
+            "Set up research.": [
+                library_cell("add_namespace", "research", RESEARCH),
+                library_cell("change_namespace", "research", RESEARCH_CHANGED),
+                repl("FinalAnswer('set up')"),
             ],
         },
     },
