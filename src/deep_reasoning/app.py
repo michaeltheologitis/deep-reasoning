@@ -58,8 +58,9 @@ from deep_reasoning.runs import (
     RunInProgress,
     Runs,
     chat_runs,
+    chat_turns,
+    delete_orphans,
     end_unfinished,
-    read_events,
     read_turn,
 )
 from deep_reasoning.settings import (
@@ -139,6 +140,7 @@ def create_app(library, home):
     @asynccontextmanager
     async def lifespan(app):
         with closing(open_library(library)) as connection:
+            delete_orphans(connection)
             for run in end_unfinished(connection):
                 log.warning("Ended a run the app stopped under", run=run)
         yield
@@ -337,11 +339,9 @@ def create_app(library, home):
 
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
+        going = runs.live(chat["id"])
         with closing(open_library(library)) as connection:
-            turns = [
-                {"run": run, "events": read_events(connection, run)}
-                for run in chat_runs(connection, chat["id"])
-            ]
+            turns = chat_turns(connection, chat["id"], going)
         return shown(chat, starting_points()) | {"turns": turns}
 
     @app.patch("/api/chats/{chat}")
@@ -392,6 +392,10 @@ def create_app(library, home):
                 raise LibraryError(
                     f"This chat's namespace {namespace} no longer exists — pick another."
                 )
+            turns = [
+                read_turn(connection, run) for run in chat_runs(connection, chat["id"])
+            ]
+        earlier = [turn for turn in turns if turn is not None]
         if model is None:
             raise SettingsError("Pick a model for this chat, under the message box.")
         provider = find_provider(library, model["provider"])
@@ -401,10 +405,6 @@ def create_app(library, home):
             )
         key = run_key(home, provider)
         folder = working_folder(data, chat)
-        with closing(open_library(library)) as connection:
-            earlier = [
-                read_turn(connection, run) for run in chat_runs(connection, chat["id"])
-            ]
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
 
         def config_for(run_folder):

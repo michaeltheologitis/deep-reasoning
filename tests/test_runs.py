@@ -2,6 +2,7 @@ import errno
 import hashlib
 import os
 import shutil
+import sqlite3
 import threading
 import time
 from contextlib import aclosing, closing
@@ -658,6 +659,40 @@ async def test_a_runs_keys_reach_its_worker_alone_and_anthropics_never(
     assert events[0]["provider"] == "fake"
     for file in [library, *(home / "runs" / run).rglob("*")]:
         assert not file.is_file() or key.encode() not in file.read_bytes(), file
+
+
+async def test_a_key_a_cell_prints_never_reaches_the_app_file(
+    home, library, fake_config
+):
+    key = "sk-the-runs-own-key-0123456789"
+    shout = repl("import os", "print(os.environ['A_RUNS_KEY'])")
+    plan = {"Show the key.": [shout, repl("FinalAnswer(os.environ['A_RUNS_KEY'])")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(library, home)
+        keys = {"A_RUNS_KEY": key}
+        run = runs.start(CHAT, "Show the key.", fake_config(fake), [], "fake", keys)
+        events = [event async for event in runs.events(run)]
+    assert of_kind(events, "cell.end")[0]["output"] == "[key withheld]"
+    assert events[-1]["answer"] == "[key withheld]"
+    assert saved(library, run) == events
+    assert key.encode() not in library.read_bytes()
+
+
+async def test_a_start_the_app_file_refuses_leaves_no_run_behind(
+    home, library, fake_config
+):
+    refusing = (
+        "CREATE TRIGGER full BEFORE INSERT ON events"
+        " BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END"
+    )
+    with closing(open_library(library)) as connection:
+        connection.execute(refusing)
+    runs = Runs(library, home)
+    refused = pytest.raises(sqlite3.IntegrityError, match="disk is full")
+    with FakeOpenAI(scripted(FAN_OUT)) as fake, refused:
+        runs.start(CHAT, "Summarize two courses.", fake_config(fake), [])
+    assert runs.live(CHAT) is None and fake.calls == []
+    assert list((home / "runs").iterdir()) == []
 
 
 COURSES = {

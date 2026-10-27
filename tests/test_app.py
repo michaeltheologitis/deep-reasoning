@@ -119,6 +119,30 @@ async def run_events(api, run):
     return [event for _, event in server_sent(response.text)]
 
 
+def row(seq, kind, **fields):
+    """An event's (seq, data) row, as the app writes it."""
+    return seq, json.dumps({"seq": seq, "t": 100.0 + seq, "kind": kind} | fields)
+
+
+def plant(library, chat, run, rows):
+    """A run of *chat* in the app file, holding the (seq, data) rows given as they are,
+    as a file from someone else might."""
+    with closing(open_library(library)) as connection, writing(connection):
+        connection.execute("INSERT INTO runs VALUES (?, ?)", (run, chat))
+        connection.executemany(
+            "INSERT INTO events VALUES (?, ?, ?)", [(run, *each) for each in rows]
+        )
+
+
+def ends_saved(library, run):
+    with closing(open_library(library)) as connection:
+        found = connection.execute(
+            "SELECT count(*) FROM events WHERE run = ? AND data LIKE '%turn.end%'",
+            (run,),
+        )
+        return found.fetchone()[0]
+
+
 def saved_runs(library):
     """The runs whose events the app file holds."""
     with closing(open_library(library)) as connection:
@@ -776,6 +800,129 @@ def test_a_run_the_app_stopped_under_ends_failed_when_the_app_next_opens_the_fil
     events = turns[0]["events"]
     assert [event["kind"] for event in events] == ["turn.start", "turn.end"]
     assert (events[-1]["outcome"], events[-1]["detail"]) == ("failed", LOST)
+
+
+GOOD = "20261025-120000-000000"
+BROKEN = "20261025-120001-000000"
+STARTED = row(1, "turn.start", prompt="Hi.")
+USED = row(2, "usage", node=1, cost=0.25)
+
+
+@pytest.mark.parametrize(
+    "rows, ends",
+    [
+        pytest.param([(1, "{not json")], False, id="invalid JSON"),
+        pytest.param([], False, id="no events"),
+        pytest.param(
+            [STARTED, row(3, "usage", cost=0.5)], True, id="a gap in its seqs"
+        ),
+        pytest.param([STARTED, (2, "[1, 2]")], False, id="a last event no object"),
+        pytest.param(
+            [(1, json.dumps({"seq": 1, "kind": "turn.start", "prompt": "Hi."})), USED],
+            True,
+            id="a first event with no time",
+        ),
+    ],
+)
+def test_the_app_starts_past_a_run_it_cannot_end_and_ends_the_rest(
+    imported, home, rows, ends
+):
+    chat = create_chat(imported)["id"]
+    plant(imported, chat, GOOD, [STARTED, USED])
+    plant(imported, chat, BROKEN, rows)
+    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
+        turns = client.get(f"/api/chats/{chat}").json()["turns"]
+    good = turns[0]["events"]
+    assert (turns[0]["run"], good[-1]["outcome"], good[-1]["detail"]) == (
+        GOOD,
+        "failed",
+        LOST,
+    )
+    assert (good[-1]["seq"], good[-1]["cost"], good[-1]["seconds"]) == (3, 0.25, 1)
+    assert (ends_saved(imported, GOOD), ends_saved(imported, BROKEN)) == (1, ends)
+
+
+def test_the_app_starts_on_a_file_it_cannot_write_and_shows_a_lost_run_failed(
+    imported, home, monkeypatch
+):
+    chat = create_chat(imported)["id"]
+    plant(imported, chat, GOOD, [STARTED, USED])
+    connect = sqlite3.connect
+
+    def read_only(path, **options):
+        return connect(f"{Path(path).as_uri()}?mode=ro", uri=True, **options)
+
+    monkeypatch.setattr(sqlite3, "connect", read_only)
+    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
+        turns = client.get(f"/api/chats/{chat}").json()["turns"]
+    assert turns[0]["events"][-1]["detail"] == LOST
+    monkeypatch.undo()
+    assert ends_saved(imported, GOOD) == 0
+
+
+def test_a_run_with_no_turn_end_reads_back_failed_without_one_being_saved(client):
+    chat = client.post("/api/chats").json()["id"]
+    plant(client.app.state.runs.library, chat, GOOD, [STARTED, USED])
+    events = client.get(f"/api/chats/{chat}").json()["turns"][0]["events"]
+    assert [event["kind"] for event in events] == ["turn.start", "usage", "turn.end"]
+    assert (events[-1]["seq"], events[-1]["outcome"]) == (3, "failed")
+    assert ends_saved(client.app.state.runs.library, GOOD) == 0
+
+
+def test_an_event_row_the_app_could_not_have_written_is_left_out(client):
+    chat = client.post("/api/chats").json()["id"]
+    not_a_number = '{"seq": 3, "t": 103, "kind": "usage", "cost": NaN}'
+    rows = [
+        STARTED,
+        (2, "{oops"),
+        (3, not_a_number),
+        row(4, "usage"),
+        row(5, "turn.end"),
+    ]
+    plant(client.app.state.runs.library, chat, GOOD, rows)
+    read = client.get(f"/api/chats/{chat}")
+    streamed = client.get(f"/api/runs/{GOOD}/events")
+    assert read.status_code == streamed.status_code == 200
+    events = read.json()["turns"][0]["events"]
+    assert [event["seq"] for event in events] == [1, 4, 5]
+    assert [event for _, event in server_sent(streamed.text)] == events
+
+
+@pytest.mark.anyio
+async def test_a_follow_up_leaves_out_earlier_runs_with_no_message(library_on, connect):
+    with FakeOpenAI(scripted(PLAN)) as fake:
+        library = library_on(fake)
+        async with connect(library) as api:
+            chat = await new_chat(api)
+            answered = row(2, "turn.end", outcome="answered", answer="2", detail=None)
+            plant(
+                library,
+                chat,
+                GOOD,
+                [row(1, "turn.start", prompt="Count to two."), answered],
+            )
+            plant(library, chat, "20261025-120001-000000", [])
+            plant(library, chat, "20261025-120002-000000", [USED])
+            plant(library, chat, "20261025-120003-000000", [row(1, "turn.start")])
+            sent = await api.post(
+                f"/api/chats/{chat}/runs", json={"prompt": "What did I ask?"}
+            )
+            events = await run_events(api, sent.json()["run"])
+    assert sent.status_code == 201 and events[-1]["outcome"] == "answered"
+    recap = fake.calls[-1].messages[-2]["content"]
+    assert "Message 1: Count to two.\nAnswer 1: 2\n" in recap
+    assert "Message 2" not in recap
+
+
+def test_runs_of_chats_deleted_before_their_runs_are_deleted_when_the_app_starts(
+    imported, home
+):
+    chat = create_chat(imported)["id"]
+    plant(imported, chat, GOOD, [STARTED, row(2, "turn.end")])
+    plant(imported, "a-deleted-chat", BROKEN, [STARTED, row(2, "turn.end")])
+    with TestClient(create_app(imported, home), base_url=LOCAL):
+        pass
+    assert saved_runs(imported) == {GOOD}
 
 
 @pytest.mark.anyio

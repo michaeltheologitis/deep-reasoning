@@ -248,9 +248,10 @@ def lay_out(connection, path):
             raise LibraryError(
                 f"{path} is not a Library this version of Deep Reasoning can open."
             )
-        for version in range(found + 1, SCHEMA_VERSION + 1):
-            for statement in ADDED_IN[version][1]:
-                connection.execute(statement)
+        versions = range(found + 1, SCHEMA_VERSION + 1)
+        added = [each for version in versions for each in ADDED_IN[version][1]]
+        for statement in added:
+            connection.execute(statement)
         if found == 0:
             seed_new_library(connection)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")

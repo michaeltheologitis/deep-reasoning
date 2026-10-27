@@ -15,16 +15,17 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import sqlite3
 import sys
 import time
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from contextlib import closing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NoReturn
 
 import jinja2
 import structlog
@@ -41,7 +42,7 @@ SPEC = "spec.yaml"
 ADD_RUN = "INSERT INTO runs VALUES (?, ?)"
 ADD_EVENT = "INSERT INTO events VALUES (?, ?, ?)"
 FIRST_AND_LAST = (
-    "SELECT data FROM events WHERE run = :run"
+    "SELECT seq, data FROM events WHERE run = :run"
     " AND seq IN (1, (SELECT max(seq) FROM events WHERE run = :run)) ORDER BY seq"
 )
 LAST_EVENTS = (
@@ -64,6 +65,12 @@ SHUT_DOWN = "Deep Reasoning shut down while the run was going."
 LOST = "Deep Reasoning stopped while the run was going, so the run was lost."
 LOST_END = {"kind": "turn.end", "outcome": "failed", "answer": None, "detail": LOST}
 NOT_SAVED = "The app couldn't save the run in the Library file, so it ended the run"
+KEY_WITHHELD = "[key withheld]"
+# A shorter key is no secret (a local server's "x"), and withholding it would garble the run's text.
+SHORTEST_SECRET = 8
+# What an event row from a file someone else wrote may fail with.
+UNREADABLE = (TypeError, ValueError, RecursionError)
+NOT_ENDED = (*UNREADABLE, KeyError, IndexError, sqlite3.Error)
 RECAP = jinja2.Template(
     """\
 This conversation began before this run. Its earlier runs have ended, so their \
@@ -137,34 +144,83 @@ def save_event(connection: sqlite3.Connection, run: str, event: dict[str, Any]) 
         connection.execute(ADD_EVENT, (run, event["seq"], json.dumps(event)))
 
 
+def refuse_constant(name: str) -> NoReturn:
+    """Refuse NaN and Infinity: Python reads them, but no JSON response can carry them."""
+    raise ValueError(f"{name} is not JSON")
+
+
+def well_formed(event: Any, seq: Any) -> bool:
+    """Whether *event*, read from the row numbered *seq*, is one the app could have
+    written: an object with that seq, a time and a kind."""
+    return (
+        isinstance(event, dict)
+        and isinstance(seq, int)
+        and event.get("seq") == seq
+        and isinstance(event.get("t"), int | float)
+        and isinstance(event.get("kind"), str)
+    )
+
+
+def loaded_events(run: str, rows: Iterable[tuple[Any, Any]]) -> list[dict[str, Any]]:
+    """The events in the run's (seq, data) rows; one the app could not have written, as a
+    file from someone else may hold, is left out."""
+    events = []
+    for seq, data in rows:
+        try:
+            event = json.loads(data, parse_constant=refuse_constant)
+        except UNREADABLE:
+            event = None
+        if well_formed(event, seq):
+            events.append(event)
+        else:
+            log.warning("runs.event_left_out", run=run, seq=repr(seq))
+    return events
+
+
 def read_events(
     connection: sqlite3.Connection, run: str, after: int = 0
 ) -> list[dict[str, Any]]:
     """The run's events after seq *after*, in order."""
     rows = connection.execute(
-        "SELECT data FROM events WHERE run = ? AND seq > ? ORDER BY seq", (run, after)
+        "SELECT seq, data FROM events WHERE run = ? AND seq > ? ORDER BY seq",
+        (run, after),
     )
-    return [json.loads(data) for (data,) in rows]
+    return loaded_events(run, rows)
 
 
 def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
     """A turn's cost, None when any call's is unknown, and its seconds until *until*."""
-    costs = [event["cost"] for event in events if event["kind"] == "usage"]
-    cost = None if None in costs else math.fsum(costs)
-    return {"cost": cost, "seconds": until - events[0]["t"]}
+    costs = [event.get("cost") for event in events if event["kind"] == "usage"]
+    known = all(isinstance(cost, int | float) for cost in costs)
+    return {
+        "cost": math.fsum(costs) if known else None,
+        "seconds": until - events[0]["t"],
+    }
 
 
-def read_turn(connection: sqlite3.Connection, run: str) -> Turn:
+def lost_end(events: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """The turn.end of a run that has none, as the app stopped under it, after its last
+    event."""
+    last = events[-1]
+    stamp = {"seq": last["seq"] + 1, "t": last["t"]}
+    return stamp | LOST_END | totals(events, last["t"])
+
+
+def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
     """An ended run's message, how it ended and its namespace, from its first and last
-    events; a run the app couldn't save the end of ended failed."""
-    rows = connection.execute(FIRST_AND_LAST, {"run": run})
-    start, *rest = [json.loads(data) for (data,) in rows]
-    end = rest[0] if rest and rest[0]["kind"] == "turn.end" else LOST_END
+    events; a run the app couldn't save the end of ended failed. None for a run with no
+    turn.start, as a file from someone else may hold."""
+    events = loaded_events(run, connection.execute(FIRST_AND_LAST, {"run": run}))
+    start = events[0] if events else {}
+    if start.get("kind") != "turn.start" or not isinstance(start.get("prompt"), str):
+        log.warning("runs.turn_left_out", run=run)
+        return None
+    end = events[-1] if events[-1]["kind"] == "turn.end" else LOST_END
     return Turn(
         start["prompt"],
-        end["outcome"],
-        end["answer"],
-        end["detail"],
+        end.get("outcome"),
+        end.get("answer"),
+        end.get("detail"),
         start.get("namespace"),
     )
 
@@ -182,6 +238,24 @@ def chat_runs(connection: sqlite3.Connection, chat: str) -> list[str]:
     return runs
 
 
+def chat_turns(
+    connection: sqlite3.Connection, chat: str, going: str | None = None
+) -> list[dict[str, Any]]:
+    """The chat's turns as the page reads them: each run's events, oldest run first. A run
+    that isn't *going* and has no turn.end, as one whose end the app couldn't save, ends
+    failed; one with no turn.start, as a file from someone else may hold, is left out."""
+    turns = []
+    for run in chat_runs(connection, chat):
+        events = read_events(connection, run)
+        if not events or events[0]["kind"] != "turn.start":
+            log.warning("runs.turn_left_out", run=run)
+            continue
+        if run != going and events[-1]["kind"] != "turn.end":
+            events.append(lost_end(events))
+        turns.append({"run": run, "events": events})
+    return turns
+
+
 def delete_runs(connection: sqlite3.Connection, chat: str) -> list[str]:
     """Delete the chat's runs and their events from the app file; their ids."""
     with writing(connection):
@@ -194,15 +268,53 @@ def delete_runs(connection: sqlite3.Connection, chat: str) -> list[str]:
     return runs
 
 
+def delete_orphans(connection: sqlite3.Connection) -> None:
+    """Delete the runs, and their events, of chats no longer in the file, as when the app
+    stopped between deleting a chat and its runs; a file it can't write keeps them."""
+    try:
+        with writing(connection):
+            connection.execute(
+                "DELETE FROM events WHERE run IN (SELECT id FROM runs"
+                " WHERE chat NOT IN (SELECT id FROM chats))"
+            )
+            connection.execute(
+                "DELETE FROM runs WHERE chat NOT IN (SELECT id FROM chats)"
+            )
+    except sqlite3.Error as error:
+        log.warning("runs.orphans_kept", error=str(error))
+
+
 def end_unfinished(connection: sqlite3.Connection) -> list[str]:
     """End, as failed, every run the app stopped under without a turn.end; their ids."""
     rows = connection.execute(LAST_EVENTS).fetchall()
-    unfinished = [run for run, last in rows if json.loads(last)["kind"] != "turn.end"]
-    for run in unfinished:
-        events = read_events(connection, run)
-        stamp = {"seq": len(events) + 1, "t": time.time()}
-        save_event(connection, run, stamp | LOST_END | totals(events, events[-1]["t"]))
-    return unfinished
+    return [run for run, last in rows if ended_as_lost(connection, run, last)]
+
+
+def ended_as_lost(connection: sqlite3.Connection, run: str, last: Any) -> bool:
+    """End *run*, whose last event is the JSON *last*, as failed unless that is its
+    turn.end; whether it did. One it can't end, as a file from someone else or one it
+    can't write may hold, is left as it is."""
+    try:
+        if json.loads(last)["kind"] == "turn.end":
+            return False
+        save_event(connection, run, lost_end(read_events(connection, run)))
+    except NOT_ENDED as error:
+        log.warning("runs.not_ended", run=run, error=repr(error))
+        return False
+    return True
+
+
+def withheld(value: Any, secrets: Sequence[str]) -> Any:
+    """*value* with each of *secrets* replaced in all its text, all the way down."""
+    if isinstance(value, str):
+        for secret in secrets:
+            value = value.replace(secret, KEY_WITHHELD)
+        return value
+    if isinstance(value, dict):
+        return {name: withheld(each, secrets) for name, each in value.items()}
+    if isinstance(value, list):
+        return [withheld(each, secrets) for each in value]
+    return value
 
 
 def recap_of(turns: Sequence[Turn], namespace: str | None) -> str | None:
@@ -305,6 +417,7 @@ class Runs:
             self._record(run, live, start)
         except BaseException:
             live.db.close()
+            shutil.rmtree(run_folder, ignore_errors=True)
             raise
         self._live[run] = live
         live.pump = asyncio.create_task(self._pump(run, live))
@@ -436,6 +549,9 @@ class Runs:
             await self._end(run, live)
 
     async def _read(self, run: str, live: _Live) -> None:
+        """Record each event the worker writes, with the run's keys withheld: what a cell
+        prints goes into the file, which is shared."""
+        secrets = [key for key in live.keys.values() if len(key) >= SHORTEST_SECRET]
         while True:
             try:
                 line = await live.process.stdout.readline()
@@ -444,7 +560,7 @@ class Runs:
                 return
             if not line:
                 return
-            self._record(run, live, json.loads(line))
+            self._record(run, live, withheld(json.loads(line), secrets))
             if live.ended:
                 # The worker saves the run's tools as it closes: it gets the whole grace
                 # period for that, even after a Stop that used up most of it.
