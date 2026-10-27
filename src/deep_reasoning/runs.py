@@ -325,15 +325,16 @@ def end_unfinished(connection: sqlite3.Connection) -> list[str]:
 
 
 def ended_as_lost(connection: sqlite3.Connection, run: str) -> bool:
-    """End *run* as failed, after its highest seq, unless its last event that loads is its
-    turn.end; whether it did. One it can't end, as a file from someone else or one it
-    can't write may hold, is left as it is."""
+    """End *run* as failed, after its highest whole seq, unless its last event that loads
+    is its turn.end; whether it did. One it can't end, as a file from someone else or one
+    it can't write may hold, is left as it is."""
     try:
         if has_ended(first_loaded(connection, run, BACKWARD)):
             return False
         events = read_events(connection, run)
         top = connection.execute(
-            "SELECT max(seq) FROM events WHERE run = ?", (run,)
+            "SELECT max(seq) FROM events WHERE run = ? AND typeof(seq) = 'integer'",
+            (run,),
         ).fetchone()[0]
         save_event(connection, run, lost_end(events, top + 1))
     except NOT_ENDED as error:

@@ -840,6 +840,11 @@ USED = row(2, "usage", node=1, cost=0.25)
             False,
             id="a seq at SQLite's largest",
         ),
+        pytest.param(
+            [STARTED, (1.5, '{"seq": 1.5, "t": 101.5, "kind": "usage"}')],
+            True,
+            id="a seq that isn't whole",
+        ),
     ],
 )
 def test_the_app_starts_past_a_run_it_cannot_end_and_ends_the_rest(
@@ -848,8 +853,9 @@ def test_the_app_starts_past_a_run_it_cannot_end_and_ends_the_rest(
     chat = create_chat(imported)["id"]
     plant(imported, chat, GOOD, [STARTED, USED])
     plant(imported, chat, BROKEN, rows)
-    with TestClient(create_app(imported, home), base_url=LOCAL) as client:
-        turns = client.get(f"/api/chats/{chat}").json()["turns"]
+    for _ in range(2):
+        with TestClient(create_app(imported, home), base_url=LOCAL) as client:
+            turns = client.get(f"/api/chats/{chat}").json()["turns"]
     good = turns[0]["events"]
     assert (turns[0]["run"], good[-1]["outcome"], good[-1]["detail"]) == (
         GOOD,
