@@ -1,15 +1,15 @@
-{"seq": 1, "t": 1792958164.9491158, "kind": "turn.start", "run": "20261025-195604-948784", "chat": "recorded", "prompt": "Keep a spinner going.", "namespace": "root", "model": "gpt-6-luna"}
-{"seq": 2, "t": 1792958165.9118032, "kind": "agent.start", "node": 1, "parent": null, "cell": null, "task": "Keep a spinner going.", "namespace": "root", "drive": 1}
-{"seq": 3, "t": 1792958166.0256994, "kind": "usage", "node": 1, "model": "gpt-6-luna", "tokens_in": 674, "tokens_out": 4, "cost": 6.94e-05}
-{"seq": 4, "t": 1792958166.0259418, "kind": "cell.start", "node": 1, "cell": 1, "code": "print(subagent('Spin.'))"}
-{"seq": 5, "t": 1792958166.028397, "kind": "agent.start", "node": 2, "parent": 1, "cell": 1, "task": "Spin.", "namespace": "root", "drive": 1}
-{"seq": 6, "t": 1792958166.0742853, "kind": "usage", "node": 2, "model": "gpt-6-luna", "tokens_in": 671, "tokens_out": 5, "cost": 6.96e-05}
-{"seq": 7, "t": 1792958166.0744834, "kind": "cell.start", "node": 2, "cell": 2, "code": "print('warming up')"}
-{"seq": 8, "t": 1792958166.0752542, "kind": "cell.end", "node": 2, "cell": 2, "code": "print('warming up')", "output": "warming up", "status": "done"}
-{"seq": 9, "t": 1792958166.0792048, "kind": "usage", "node": 2, "model": "gpt-6-luna", "tokens_in": 679, "tokens_out": 6, "cost": 7.09e-05}
-{"seq": 10, "t": 1792958166.0793638, "kind": "cell.start", "node": 2, "cell": 3, "code": "while True:\n    pass"}
-{"seq": 11, "t": 1792958166.0852187, "kind": "cell.end", "node": 2, "cell": 3, "code": "while True:\n    pass", "output": "", "status": "stopped"}
-{"seq": 12, "t": 1792958166.0854633, "kind": "agent.end", "node": 2, "status": "stopped", "result": null, "detail": null}
-{"seq": 13, "t": 1792958166.0864162, "kind": "cell.end", "node": 1, "cell": 1, "code": "print(subagent('Spin.'))", "output": "", "status": "stopped"}
-{"seq": 14, "t": 1792958166.086565, "kind": "agent.end", "node": 1, "status": "stopped", "result": null, "detail": null}
-{"seq": 15, "t": 1792958166.0866723, "kind": "turn.end", "outcome": "stopped", "answer": null, "detail": null, "cost": 0.0002099, "seconds": 1.137556552886963}
+{"seq": 1, "t": 1793123530.1559808, "kind": "turn.start", "run": "20261027-175210-153292", "chat": "recorded", "prompt": "Keep a spinner going.", "namespace": "root", "model": "gpt-6-luna", "provider": null, "folder": "HOME/runs/20261027-175210-153292"}
+{"seq": 2, "t": 1793123531.4927268, "kind": "agent.start", "node": 1, "parent": null, "cell": null, "task": "Keep a spinner going.", "namespace": "root", "drive": 1}
+{"seq": 3, "t": 1793123531.6921341, "kind": "usage", "node": 1, "model": "gpt-6-luna", "tokens_in": 904, "tokens_out": 4, "cost": 9.24e-05}
+{"seq": 4, "t": 1793123531.6923683, "kind": "cell.start", "node": 1, "cell": 1, "code": "print(subagent('Spin.'))"}
+{"seq": 5, "t": 1793123531.6978278, "kind": "agent.start", "node": 2, "parent": 1, "cell": 1, "task": "Spin.", "namespace": "root", "drive": 1}
+{"seq": 6, "t": 1793123531.7616007, "kind": "usage", "node": 2, "model": "gpt-6-luna", "tokens_in": 901, "tokens_out": 5, "cost": 9.26e-05}
+{"seq": 7, "t": 1793123531.761799, "kind": "cell.start", "node": 2, "cell": 2, "code": "print('warming up')"}
+{"seq": 8, "t": 1793123531.7637296, "kind": "cell.end", "node": 2, "cell": 2, "code": "print('warming up')", "output": "warming up", "status": "done"}
+{"seq": 9, "t": 1793123531.7695224, "kind": "usage", "node": 2, "model": "gpt-6-luna", "tokens_in": 909, "tokens_out": 6, "cost": 9.39e-05}
+{"seq": 10, "t": 1793123531.769707, "kind": "cell.start", "node": 2, "cell": 3, "code": "while True:\n    pass"}
+{"seq": 11, "t": 1793123531.7811863, "kind": "cell.end", "node": 2, "cell": 3, "code": "while True:\n    pass", "output": "", "status": "stopped"}
+{"seq": 12, "t": 1793123531.781351, "kind": "agent.end", "node": 2, "status": "stopped", "result": null, "detail": null}
+{"seq": 13, "t": 1793123531.7829292, "kind": "cell.end", "node": 1, "cell": 1, "code": "print(subagent('Spin.'))", "output": "", "status": "stopped"}
+{"seq": 14, "t": 1793123531.7830663, "kind": "agent.end", "node": 1, "status": "stopped", "result": null, "detail": null}
+{"seq": 15, "t": 1793123531.7831576, "kind": "turn.end", "outcome": "stopped", "answer": null, "detail": null, "cost": 0.0002789, "seconds": 1.6271767616271973}
