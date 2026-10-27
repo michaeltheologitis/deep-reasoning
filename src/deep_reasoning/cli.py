@@ -1,9 +1,12 @@
-"""The `deep-reasoning` command: serve the app on 127.0.0.1 and open it in a tab, or import a config into the Library."""
+"""The `deep-reasoning` command: serve the app on 127.0.0.1 and open it in a tab, import a
+config into the Library, or reset: delete the Library file and its folders."""
 
 import argparse
 import contextlib
 import errno
 import logging
+import os
+import shutil
 import socket
 import sqlite3
 import sys
@@ -16,7 +19,10 @@ import uvicorn
 import yaml
 
 from deep_reasoning.app import create_app
+from deep_reasoning.chats import list_chats
+from deep_reasoning.folders import data_folder, holds_any, short_path
 from deep_reasoning.library import LibraryError, import_config, open_library
+from deep_reasoning.settings import ENV_FILE, default_folder
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -24,6 +30,11 @@ MAX_PORT = 65535
 # The app's home: its runs, scratch folders and keys, and its app file by default.
 HOME_DIR = ".deep-reasoning"
 LIBRARY_FILE = "library.sqlite"
+# SQLite's files beside an app file: while it is open, or after a crash.
+SIDE_FILES = ("-wal", "-shm", "-journal")
+# What versions before the app file kept directly in the app's home, unread since.
+LEFTOVERS = ("chats.sqlite", "settings.json", "runs", "work")
+CONFIRMATION = "delete"
 
 log = structlog.get_logger()
 
@@ -69,6 +80,90 @@ def import_or_exit(library, config):
         config=str(config),
         library=str(library),
         **imported,
+    )
+
+
+def chosen_or_exit(library):
+    """The folders the Library's chats and settings chose, which a reset never deletes; a
+    plain error, deleting nothing, when the file isn't a Library it can read."""
+    if not library.is_file():
+        return []
+    try:
+        chosen = [chat["folder"] for chat in list_chats(library)]
+        chosen.append(default_folder(library))
+    except (OSError, sqlite3.Error, LibraryError) as error:
+        sys.exit(
+            f"Could not read the Library at {library}, so nothing was deleted: {error}"
+        )
+    return [folder for folder in chosen if folder]
+
+
+def reset_plan(doomed, kept, home):
+    lines = [
+        "Stop Deep Reasoning before a reset: deleting its Library while it runs breaks it.",
+        "",
+        "This deletes the Library file, with its namespaces, decompositions, tools, chats and",
+        "settings; its runs' and chats' scratch folders; and what older versions left:",
+        *(f"  {short_path(path)}" for path in doomed),
+        *(
+            f"It keeps {short_path(path)}, as a chat chose it or a folder in it."
+            for path in kept
+        ),
+        f"It keeps your keys, in {short_path(home / ENV_FILE)} (remove them in settings),",
+        "every folder a chat chose, and other Library files and their folders.",
+    ]
+    return "\n".join(lines)
+
+
+def confirmed():
+    """Whether the person at the terminal typed the confirmation; Ctrl+C or Ctrl+D is a no."""
+    if not sys.stdin.isatty():
+        sys.exit(
+            "There is no terminal to ask on, so nothing was deleted. "
+            "Pass --yes to reset without asking."
+        )
+    try:
+        return input(f"Type {CONFIRMATION} to delete them: ").strip() == CONFIRMATION
+    except (EOFError, KeyboardInterrupt):
+        return False
+
+
+def delete(path):
+    """Delete *path*, a folder with all it holds; a symlink only as itself, even one to a
+    folder, so nothing is deleted through one."""
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def reset_or_exit(library, home, yes):
+    """Delete the app file at *library*, its SQLite side files and its data folder, and what
+    older versions left in the app's *home*, once it has said what goes and what stays and,
+    unless *yes*, been told to."""
+    paths = [library, *(library.with_name(library.name + side) for side in SIDE_FILES)]
+    paths += [data_folder(home, library), *(home / name for name in LEFTOVERS)]
+    # Listed before the Library is read: closing it can delete a side file left over.
+    there = [path for path in paths if os.path.lexists(path)]
+    chosen = chosen_or_exit(library)
+    kept = [path for path in there if holds_any(path, chosen)]
+    doomed = [path for path in there if path not in kept]
+    if not doomed:
+        print(
+            f"Nothing to reset: no Library at {short_path(library)}, nor folders of it."
+        )
+        return
+    print(reset_plan(doomed, kept, home))
+    if not yes and not confirmed():
+        sys.exit("Nothing was deleted.")
+    for path in doomed:
+        try:
+            delete(path)
+        except OSError as error:
+            sys.exit(f"Could not delete {short_path(path)}: {error}")
+    print(
+        "Deleted them. The next start makes a fresh Library, "
+        "with history at root and the librarian namespace."
     )
 
 
@@ -120,14 +215,29 @@ def main(argv=None):
         description="Read a deep_reasoner config into the Library, replacing same-named items.",
     )
     importer.add_argument("config", type=Path, help="the config's main YAML file")
-    # SUPPRESS keeps a --library given before `import` from being reset to the default.
-    importer.add_argument(
-        "--library", type=Path, default=argparse.SUPPRESS, help=library_help
+    resetter = commands.add_parser(
+        "reset",
+        help="delete the Library file and its run and scratch folders, after asking",
+        description=(
+            "Delete the Library file (its namespaces, decompositions, tools, chats and "
+            "settings), its runs' and chats' scratch folders, and what older versions "
+            "left in the app's home, after asking. Your keys and the folders chats chose "
+            "stay. Stop the app first."
+        ),
     )
+    resetter.add_argument("--yes", action="store_true", help="delete without asking")
+    for command in (importer, resetter):
+        # SUPPRESS keeps a --library given before the command from being reset to the default.
+        command.add_argument(
+            "--library", type=Path, default=argparse.SUPPRESS, help=library_help
+        )
     args = parser.parse_args(argv)
     if not 0 <= args.port <= MAX_PORT:
         parser.error(f"--port must be between 0 and {MAX_PORT}")
     if args.command == "import":
         import_or_exit(args.library, args.config)
+        return
+    if args.command == "reset":
+        reset_or_exit(args.library, home, args.yes)
         return
     serve(args.port, args.no_browser, args.library, home)
