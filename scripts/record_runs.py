@@ -3,7 +3,7 @@
 Each scenario runs deep_reasoner in a worker, as the app does, with tests/fake_model.py
 answering on 127.0.0.1; its events, as the app file holds them, are written to
 tests/runs/<scenario>.jsonl, one JSON line each, with this machine's site-packages folder,
-which tracebacks name, written as SITE.
+which tracebacks name, written as SITE, and the runs' temporary home as HOME.
 
 Run from the repo root: uv run python scripts/record_runs.py [scenario ...], every
 scenario unless some are named.
@@ -23,7 +23,15 @@ import structlog
 TESTS = Path(__file__).resolve().parents[1] / "tests"
 sys.path.insert(0, str(TESTS))
 
-from fake_model import FakeOpenAI, repl, scripted, task_and_turn, write
+from fake_model import (
+    EXAMPLE,
+    REWORDED,
+    FakeOpenAI,
+    repl,
+    scripted,
+    task_and_turn,
+    write,
+)
 
 from deep_reasoning.library import ROOT, engine_config, open_library
 from deep_reasoning.runs import Runs, read_events
@@ -38,16 +46,6 @@ SPIN = "while True:\n    pass"
 SLEEP = "import time\ntime.sleep(60)"
 # A cell blocked in C holds up a clean stop, so the server kills the worker this soon.
 KILL_AFTER_S = 0.5
-EXAMPLE = """name: count the tickets
-messages:
-- role: user
-  content: How many tickets are open?
-- role: assistant
-  content: Count them with len(open_tickets).
-"""
-REWORDED = EXAMPLE.replace(
-    "How many tickets are open?", "How many open tickets are left?"
-)
 FAN_OUT = {
     "Summarize two courses.": [
         repl(
@@ -180,7 +178,6 @@ def config_on(fake, settings):
         "client": client | {"max_retries": 0},
         "system_prompt": "You are a scripted test agent.",
         "max_iter": 6,
-        "entry_namespace": "root",
     } | settings
 
 
@@ -195,14 +192,13 @@ async def record(home, name, scenario):
     library = home / LIBRARY
     namespace = scenario.get("namespace", ROOT)
     with FakeOpenAI(responder(scenario)) as fake:
-        settings = {"entry_namespace": namespace} | scenario.get("settings", {})
 
         def config_for(folder):
             # The Library's config, as the app builds a run's, with the fake's model.
             told = engine_config(
                 library, namespace, folder / "tools", CHAT, folder.name
             )
-            return told | config_on(fake, settings)
+            return told | config_on(fake, scenario.get("settings", {}))
 
         runs = Runs(library, home, stop_grace_s=KILL_AFTER_S)
         run = runs.start(CHAT, scenario["prompt"], config_for, [])
@@ -210,7 +206,8 @@ async def record(home, name, scenario):
     with closing(open_library(library)) as connection:
         events = read_events(connection, run)
     lines = "".join(json.dumps(event) + "\n" for event in events)
-    (OUT / f"{name}.jsonl").write_text(lines.replace(SITE_PACKAGES, "SITE"))
+    lines = lines.replace(SITE_PACKAGES, "SITE").replace(str(home), "HOME")
+    (OUT / f"{name}.jsonl").write_text(lines)
     log.info("Recorded", scenario=name, run=run)
 
 

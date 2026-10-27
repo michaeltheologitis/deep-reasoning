@@ -269,6 +269,9 @@ function showMore(cell, count) {
   redraw(cell, keyOf(first));
 }
 
+// A change applies from the message after its turn's, so only the newest turn's says so.
+const appliesNext = (change) => state.current?.turns?.at(-1)?.changes.some((entry) => entry.step === change);
+
 // A change opens onto its YAML before (when it replaced one) and after; node is the step, or its entry under the answer, so each opens on its own.
 function renderChange(change, node = change, by = null) {
   const yaml = (label, value) => [element("div", { class: "yaml-label" }, label), element("pre", { class: "code yaml" }, asText(value))];
@@ -278,7 +281,7 @@ function renderChange(change, node = change, by = null) {
     toggler(node, { class: "line" }, [
       element("span"),
       element("span", { class: "glyph" }, "◆"),
-      element("span", { class: "head" }, element("b", {}, "Library"), " ", changeText(change), element("span", { class: "note" }, [by, FROM_NEXT].filter(Boolean).map((part) => ` · ${part}`))),
+      element("span", { class: "head" }, element("b", {}, "Library"), " ", changeText(change), element("span", { class: "note" }, [by, appliesNext(change) && FROM_NEXT].filter(Boolean).map((part) => ` · ${part}`))),
     ]),
     opened.has(node) && [change.before != null && yaml("before", change.before), yaml("after", change.after)],
   );
@@ -628,9 +631,10 @@ async function settingsChanged() {
   await readChoices();
 }
 
-// After the Library panel changed the Library: its namespaces, and each chat's, as one that never picked follows the default.
+// After the Library panel read the Library, or it changed: its namespaces, and each chat's, as one that never picked follows the default.
 async function libraryChanged(found) {
   useLibrary(found);
+  renderComposer();
   await readChoices();
 }
 
@@ -1119,19 +1123,7 @@ function wire() {
   }, SPIN_MS);
 }
 
-// The namespaces a chat can pick, and the default one new chats start in.
-async function loadLibrary() {
-  let found;
-  try {
-    found = await request("GET", "api/library");
-  } catch {
-    // the pickers stay hidden; the Library panel says what went wrong
-    return;
-  }
-  useLibrary(found);
-  renderComposer();
-}
-
+// The namespaces a chat can pick, and the default one new chats start in, as the Library panel reads them.
 function useLibrary(found) {
   library.namespaces = found.namespaces.map(({ name }) => name);
   library.defaultNamespace = found.default_namespace;
@@ -1154,6 +1146,5 @@ export { LIBRARY_CHANGED, PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, elem
 
 wire();
 start();
-loadLibrary();
 // read ahead, so the model menu opens on its lists; a failure shows when the menu opens
 loadModels().catch(() => {});

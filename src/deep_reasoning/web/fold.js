@@ -1,5 +1,4 @@
-// Folds a run's events into the turn the chat draws: the root's steps, each sub-agent as a row under the cell that started it, each change
-// the agent made to the Library, and the totals.
+// Folds a run's events into the turn the chat draws: the root's steps, each sub-agent as a row under the cell that started it, Library changes, and the totals.
 
 export function newFold() {
   return {
@@ -75,8 +74,7 @@ function startCell(fold, event) {
   addStep(fold, event.node, cell);
 }
 
-// A step of the agent that made it, after the cell it made it in; and on the turn, with the tasks above it, so the answer can list
-// every change however deep it was made.
+// A step of the agent that made it, and listed on the turn with the tasks above it, so the answer shows it however deep.
 function addChange(fold, event) {
   const { what, namespace, name, before, after } = event;
   if (addStep(fold, event.node, { kind: "change", what, namespace, name, before, after })) fold.turn.changes.push(fold.latest);

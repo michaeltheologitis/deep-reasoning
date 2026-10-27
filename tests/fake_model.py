@@ -22,6 +22,17 @@ BEARER = "Bearer "
 # What the tests call the fake, and the key they give it, as a custom server in settings.
 SERVER_NAME = "fake"
 SERVER_KEY = "sk-fake-server-key"
+# A decomposition for the library tool to write, and the same reworded, to replace it.
+ASKED = "How many tickets are open?"
+REWORDED_ASK = "How many open tickets are left?"
+EXAMPLE = f"""name: count the tickets
+messages:
+- role: user
+  content: {ASKED}
+- role: assistant
+  content: Count them with len(open_tickets).
+"""
+REWORDED = EXAMPLE.replace(ASKED, REWORDED_ASK)
 
 
 @dataclass(frozen=True)
