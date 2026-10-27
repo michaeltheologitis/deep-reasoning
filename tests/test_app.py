@@ -743,6 +743,24 @@ async def test_a_namespace_the_library_tool_changes_has_its_old_yaml_as_before_a
     assert not any(SUFFIX in prompt for prompt in prompts)
 
 
+@pytest.mark.anyio
+async def test_a_namespace_change_event_holds_the_yaml_as_stored(library_on, connect):
+    plan = {
+        "Add a blank one.": [
+            library_cell("add_namespace", "blank", "{}\n"),
+            library_cell("change_namespace", "blank", "{}\n"),
+            repl("FinalAnswer('added')"),
+        ]
+    }
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await librarian_chat(api)
+            events = await run_events(api, await send(api, chat, "Add a blank one."))
+    added, changed = changes(events)
+    assert (added["before"], added["after"]) == (None, "")
+    assert (changed["before"], changed["after"]) == ("", "")
+
+
 # Set by the user in the panel: what the library tool may neither change nor drop.
 DRAFTS = "tools: [history]\nrepl: {type: local}\n"
 NAMESPACE_REFUSALS = [

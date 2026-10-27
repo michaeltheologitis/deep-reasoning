@@ -167,9 +167,10 @@ namespaces above it set (root, then research, then research.papers): their tools
 and system_suffix texts add up, and a decomposition of the same name lower down takes the \
 place of its parent's there; show() lists only each namespace's own. Locked, so you may \
 read them but not write them: root; a namespace's repl and reasoner; which namespaces \
-grant the app's own tools (library, history), so no new namespace goes under one that \
-grants library; granting a tool that runs Claude Code (its factory is claude_code), which \
-bills the user's subscription; the system prompt and the run settings.
+grant the app's own tools (library, history); granting a tool that runs Claude Code (its \
+factory is claude_code), which bills the user's subscription; a new namespace under one \
+that grants library or runs Claude Code (as its reasoner or a tool); the system prompt \
+and the run settings.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \
@@ -447,11 +448,15 @@ def has_namespace(connection, name):
 
 
 def check_namespace(connection, name):
-    """Raise unless the Library has a namespace *name*."""
-    if not has_namespace(connection, name):
+    """Namespace *name*'s own YAML; raise if the Library has no namespace *name*."""
+    found = connection.execute(
+        "SELECT yaml FROM namespaces WHERE name = ?", (name,)
+    ).fetchone()
+    if found is None:
         raise LibraryError(
             f'The Library has no namespace "{name}"; pick one from the list.'
         )
+    return found[0]
 
 
 def config_and_registry(connection):
@@ -459,11 +464,6 @@ def config_and_registry(connection):
     as the engine resolves them."""
     config = V2Config.model_validate(stored_config(connection) | A_MODEL)
     return config, build_namespace_registry(config)
-
-
-def granted_tools(connection, namespace):
-    """The tools *namespace* has, its own and its chain's, as the engine resolves them."""
-    return config_and_registry(connection)[1].resolve(namespace).tools
 
 
 def check(connection):
@@ -696,8 +696,9 @@ def write_namespace(connection, namespace, text):
 
 def add_namespace(connection, name, text, allowed=None):
     """Store a new namespace *name* with the fields its YAML *text* gives, or raise
-    LibraryError saying why not. Its decompositions are added afterwards. *allowed*, given
-    the connection under the write lock and the namespace, raises to refuse."""
+    LibraryError saying why not; the YAML stored. Its decompositions are added afterwards.
+    *allowed*, given the connection under the write lock first and the namespace, raises to
+    refuse."""
     if not name:
         raise LibraryError(NAME_IT)
     if not NAMESPACE_NAME.fullmatch(name):
@@ -705,6 +706,8 @@ def add_namespace(connection, name, text, allowed=None):
     namespace, stored = authored(name, text)
     parent = name.rpartition(".")[0]
     with writing(connection):
+        if allowed is not None:
+            allowed(connection, namespace)
         if has_namespace(connection, name):
             raise LibraryError(
                 f'There is already a namespace "{name}"; open it and use Edit YAML.'
@@ -713,25 +716,21 @@ def add_namespace(connection, name, text, allowed=None):
             raise LibraryError(
                 f'Add namespace "{parent}" first: "{name}" goes under it.'
             )
-        if allowed is not None:
-            allowed(connection, namespace)
         write_namespace(connection, namespace, stored)
+    return stored
 
 
 def change_namespace(connection, name, text, allowed=None):
     """Give namespace *name* the fields its YAML *text* gives in place of its own, keeping
     its decompositions, or raise LibraryError saying why not; *allowed* as add_namespace
-    takes it. The YAML it replaced."""
+    takes it. The YAML it replaced, and the YAML stored."""
     namespace, stored = authored(name, text)
     with writing(connection):
-        check_namespace(connection, name)
         if allowed is not None:
             allowed(connection, namespace)
-        (before,) = connection.execute(
-            "SELECT yaml FROM namespaces WHERE name = ?", (name,)
-        ).fetchone()
+        before = check_namespace(connection, name)
         write_namespace(connection, namespace, stored)
-    return before
+    return before, stored
 
 
 def delete_namespace(connection, name, decompositions):

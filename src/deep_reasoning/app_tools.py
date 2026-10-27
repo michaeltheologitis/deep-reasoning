@@ -19,7 +19,7 @@ Each change is logged as library.change, which the worker records as a run event
 import copy
 import os
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from functools import cache
@@ -28,8 +28,9 @@ from types import SimpleNamespace
 from typing import Any
 
 import structlog
-from deep_reasoner.namespaces import ROOT, NamespaceConfig
+from deep_reasoner.namespaces import ROOT, NamespaceConfig, NamespaceRegistry
 from deep_reasoner.primitives import Func
+from deep_reasoner.v2.cli import V2Config
 
 from deep_reasoning.library import (
     APP_TOOLS,
@@ -42,8 +43,7 @@ from deep_reasoning.library import (
     change_namespace,
     config_and_registry,
     distrust,
-    granted_tools,
-    has_namespace,
+    loaded,
     namespace_rows,
 )
 from deep_reasoning.runs import CHANGE_FIELDS, chat_turns, secrets_of, total_cost
@@ -72,28 +72,11 @@ HOLDS_A_KEY = (
     "What you wrote holds a provider's key, and the Library file is shared, so keys never"
     " go in it. Take the key out."
 )
-# The backbone and REPL a namespace's agents run on are the user's: reasoner: claude_code
-# would bill their subscription.
+# reasoner: claude_code would bill the user's subscription.
 LOCKED_FIELDS = ("repl", "reasoner")
-FIELD_LOCKED = (
-    "{key} may not be set or changed: a namespace's repl and reasoner are the user's"
-    " choice, in the Library panel."
-)
-GRANT_LOCKED = (
-    "tools may not add or take out {tools}: which namespaces grant the app's own tools is"
-    " the user's choice, in the Library panel."
-)
-INHERITS_LIBRARY = (
-    "{name} would inherit library from {level}: which namespaces grant the app's own"
-    " tools is the user's choice, in the Library panel."
-)
-# A tool of this factory runs Claude Code, which bills the user's subscription as
-# reasoner: claude_code would.
+USERS_CHOICE = "the user's choice, in the Library panel."
+# A tool of this factory, or a reasoner of this type, runs on the user's subscription.
 CLAUDE_CODE = "claude_code"
-CLAUDE_CODE_LOCKED = (
-    "tools may not add {tools}, which runs Claude Code on the user's subscription:"
-    " granting it is the user's choice, in the Library panel."
-)
 
 
 @dataclass
@@ -321,6 +304,21 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
     return Func(history, description=HISTORY_DESCRIPTION)
 
 
+def texts_in(data: Any) -> Iterator[str]:
+    """Every text in parsed YAML *data*, keys included; each mapping or list once, as
+    aliases may share or nest them."""
+    stack, seen = [data], set()
+    while stack:
+        value = stack.pop()
+        if isinstance(value, str):
+            yield value
+        elif isinstance(value, dict | list) and id(value) not in seen:
+            seen.add(id(value))
+            stack.extend(
+                [*value, *value.values()] if isinstance(value, dict) else value
+            )
+
+
 def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
     """Raise unless the tool may write *yaml* for the namespace named *namespace*."""
     # Exactly str: a subclass could compare unequal to "root" and still name it.
@@ -330,39 +328,79 @@ def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
         raise LibraryError(ROOT_LOCKED)
     if len(yaml) > MAX_YAML_CHARS:
         raise LibraryError(TOO_LONG)
+    # Parsed too, as an escape such as "\x73k-" spells a key the raw text doesn't hold.
+    texts = [namespace, yaml, *texts_in(loaded(yaml))]
     secrets = secrets_of(os.environ, key_names)
-    if any(secret in text for secret in secrets for text in (namespace, yaml)):
+    if any(secret in text for secret in secrets for text in texts):
         raise LibraryError(HOLDS_A_KEY)
 
 
-def check_locks(connection: sqlite3.Connection, namespace: NamespaceConfig) -> None:
-    """Raise if *namespace* sets or changes what only the user may: its repl or reasoner;
-    which of the app's own tools it grants, its own or, when new, through its chain; or a
-    tool that runs Claude Code, granted afresh."""
-    config, registry = config_and_registry(connection)
+def claude_code_tools(config: V2Config, tools: Iterable[str]) -> list[str]:
+    """Those of *tools* that run Claude Code, sorted."""
+    return sorted(
+        tool
+        for tool in tools
+        if config.tools.get(tool, {}).get("factory", tool) == CLAUDE_CODE
+    )
+
+
+def check_locks(
+    config: V2Config, registry: NamespaceRegistry, namespace: NamespaceConfig
+) -> None:
+    """Raise if *namespace* sets or changes what only the user may: its repl or reasoner,
+    which of the app's own tools it grants, or a tool that runs Claude Code, granted
+    afresh; or, when new, would inherit library or Claude Code."""
     name = namespace.name
     new = name not in registry.names
     stored = NamespaceConfig(name=name) if new else registry.config(name)
     for key in LOCKED_FIELDS:
         if getattr(namespace, key) != getattr(stored, key):
-            raise LibraryError(FIELD_LOCKED.format(key=key))
-    changed = (set(namespace.tools) ^ set(stored.tools)) & APP_TOOLS.keys()
+            raise LibraryError(
+                f"{key} may not be set or changed: a namespace's repl and reasoner are"
+                f" {USERS_CHOICE}"
+            )
+    changed = sorted((set(namespace.tools) ^ set(stored.tools)) & APP_TOOLS.keys())
     if changed:
-        raise LibraryError(GRANT_LOCKED.format(tools=" and ".join(sorted(changed))))
-    # A change keeps its chain, and its own tools may not take library in or out.
-    above = registry.resolve(name.rpartition(".")[0] or ROOT)
-    if new and LIBRARY_TOOL in above.tools:
-        level = above.sources.tools[LIBRARY_TOOL]
-        raise LibraryError(INHERITS_LIBRARY.format(name=name, level=level))
-    granted = set(namespace.tools) - set(stored.tools)
-    claude = [
-        tool
-        for tool in granted
-        if config.tools.get(tool, {}).get("factory", tool) == CLAUDE_CODE
-    ]
+        raise LibraryError(
+            f"tools may not add or take out {' and '.join(changed)}: which namespaces"
+            f" grant the app's own tools is {USERS_CHOICE}"
+        )
+    claude = claude_code_tools(config, set(namespace.tools) - set(stored.tools))
     if claude:
         raise LibraryError(
-            CLAUDE_CODE_LOCKED.format(tools=" and ".join(sorted(claude)))
+            f"tools may not add {' and '.join(claude)}, which runs Claude Code on the"
+            f" user's subscription: granting it is {USERS_CHOICE}"
+        )
+    above = name.rpartition(".")[0] or ROOT
+    # A change keeps its chain, and a missing parent is refused after this.
+    if new and above in registry.names:
+        check_inherited(config, registry, name, above)
+
+
+def check_inherited(
+    config: V2Config, registry: NamespaceRegistry, name: str, above: str
+) -> None:
+    """Raise if new namespace *name*, under *above*, would inherit library or Claude
+    Code, as its backbone or a tool."""
+    resolved = registry.resolve(above)
+    if LIBRARY_TOOL in resolved.tools:
+        raise LibraryError(
+            f"{name} would inherit library from {resolved.sources.tools[LIBRARY_TOOL]}:"
+            f" which namespaces grant the app's own tools is {USERS_CHOICE}"
+        )
+    if registry.backbone(above) == CLAUDE_CODE:
+        level = resolved.sources.reasoner or "the run settings"
+        raise LibraryError(
+            f"{name} would inherit the claude_code reasoner from {level}, which runs on"
+            f" the user's subscription: which namespaces run Claude Code is {USERS_CHOICE}"
+        )
+    claude = claude_code_tools(config, resolved.tools)
+    if claude:
+        tool = claude[0]
+        raise LibraryError(
+            f"{name} would inherit {tool}, which runs Claude Code on the user's"
+            f" subscription, from {resolved.sources.tools[tool]}: which namespaces have it"
+            f" is {USERS_CHOICE}"
         )
 
 
@@ -383,18 +421,22 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         with app_file(library, "ro") as connection:
             return namespace_rows(connection, *config_and_registry(connection))
 
-    def may_write(connection: sqlite3.Connection) -> None:
+    def check_grant(registry: NamespaceRegistry) -> None:
         """Raise unless this run's chat is in a namespace that grants the library tool, as
         the Library stands under the write lock: a grant taken away meanwhile counts."""
-        granted = has_namespace(connection, chat_namespace) and (
-            LIBRARY_TOOL in granted_tools(connection, chat_namespace)
+        granted = chat_namespace in registry.names and (
+            LIBRARY_TOOL in registry.resolve(chat_namespace).tools
         )
         if not granted:
             raise LibraryError(NOT_THIS_CHAT)
 
+    def may_write(connection: sqlite3.Connection) -> None:
+        check_grant(config_and_registry(connection)[1])
+
     def may_change(connection: sqlite3.Connection, namespace: NamespaceConfig) -> None:
-        may_write(connection)
-        check_locks(connection, namespace)
+        config, registry = config_and_registry(connection)
+        check_grant(registry)
+        check_locks(config, registry, namespace)
 
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
@@ -417,16 +459,20 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         """Add namespace *name* with the fields *yaml* sets."""
         check_writable(name, yaml, key_names)
         with app_file(library, "rw") as connection:
-            add_namespace(connection, name, yaml, allowed=may_change)
-        return logged("added", None, yaml, what="namespace", namespace=name, name=name)
+            stored = add_namespace(connection, name, yaml, allowed=may_change)
+        return logged(
+            "added", None, stored, what="namespace", namespace=name, name=name
+        )
 
     def change(name: str, yaml: str) -> dict[str, Any]:
         """Give namespace *name* the fields *yaml* sets in place of its own."""
         check_writable(name, yaml, key_names)
         with app_file(library, "rw") as connection:
-            before = change_namespace(connection, name, yaml, allowed=may_change)
+            before, stored = change_namespace(
+                connection, name, yaml, allowed=may_change
+            )
         return logged(
-            "changed", before, yaml, what="namespace", namespace=name, name=name
+            "changed", before, stored, what="namespace", namespace=name, name=name
         )
 
     tool = SimpleNamespace(
