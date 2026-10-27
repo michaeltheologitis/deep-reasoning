@@ -67,8 +67,8 @@ from deep_reasoning.settings import (
     SettingsError,
     add_server,
     default_folder,
-    drop_key,
     find_provider,
+    forget_key,
     model_lists,
     provider_list,
     remember_pick,
@@ -83,6 +83,9 @@ from deep_reasoning.settings import (
 WEB = Path(__file__).parent / "web"
 # Requests naming any other host are refused, so a web page can't reach the API by DNS rebinding.
 LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+# The SQLite failures of the Library file a person can do something about; the rest are bugs.
+UNWRITABLE = ("SQLITE_READONLY", "SQLITE_FULL", "SQLITE_IOERR", "SQLITE_CANTOPEN")
+BUSY = ("SQLITE_BUSY", "SQLITE_LOCKED")
 MODEL_NAME = r"^[^\x00-\x1f\x7f]{1,200}$"
 
 log = structlog.get_logger()
@@ -151,8 +154,16 @@ def create_app(library, home):
         return JSONResponse({"detail": str(error)}, status_code=HTTPStatus.BAD_REQUEST)
 
     @app.exception_handler(sqlite3.OperationalError)
-    async def unwritable(request, error):
-        detail = f"The Library file can't be written: {error}."
+    async def unusable(request, error):
+        name = error.sqlite_errorname
+        if name.startswith(UNWRITABLE):
+            detail = f"The Library file can't be written: {error}."
+        elif name.startswith(BUSY):
+            detail = (
+                "The Library file is busy: another program is writing it. Try again."
+            )
+        else:
+            raise error
         return JSONResponse({"detail": detail}, status_code=HTTPStatus.BAD_REQUEST)
 
     @app.exception_handler(RequestValidationError)
@@ -238,7 +249,7 @@ def create_app(library, home):
 
     @app.delete("/api/providers/{name}/key")
     async def delete_key(provider: KnownProvider):
-        drop_key(home, provider.key_env)
+        forget_key(home, provider)
         return provider_list(home, library)
 
     @app.post("/api/servers", status_code=HTTPStatus.CREATED)

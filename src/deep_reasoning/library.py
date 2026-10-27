@@ -50,6 +50,7 @@ LIBRARY_SCHEMA = (
     "CREATE TABLE tools (name TEXT PRIMARY KEY, yaml TEXT NOT NULL, source TEXT)",
 )
 LIBRARY_TABLES = {"settings", "namespaces", "decompositions", "tools"}
+APP_TABLES = {"chats", "app_settings"}
 # A chat's choices are null until picked or run, and a null folder is its scratch folder.
 # app_settings is the app's, as JSON: the Library's own settings table is the run settings.
 APP_SCHEMA = (
@@ -224,7 +225,7 @@ def lay_out(connection, path):
         }
         if found == 0 and not names:
             write_new_library(connection)
-        elif found != LIBRARY_ONLY or not LIBRARY_TABLES <= names:
+        elif found != LIBRARY_ONLY or not LIBRARY_TABLES <= names or APP_TABLES & names:
             raise LibraryError(
                 f"{path} is not a Library this version of Deep Reasoning can open."
             )

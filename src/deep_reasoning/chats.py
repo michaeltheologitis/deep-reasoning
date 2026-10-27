@@ -4,6 +4,7 @@ in the app file beside the Library, so a copy of the file carries them.
 A chat's turns are its runs, under runs/ in the app's home; the file holds none of their events.
 """
 
+import os
 import re
 import sqlite3
 import time
@@ -44,22 +45,25 @@ def connect(path: Path) -> Iterator[sqlite3.Connection]:
         yield connection
 
 
-def has_plain_id(chat: sqlite3.Row) -> bool:
-    """Whether the chat's id is one the app could have made: the file may have come from
-    someone else, and an id names the chat's scratch folder."""
-    if isinstance(chat["id"], str) and re.fullmatch(CHAT_ID, chat["id"]):
+def well_formed(chat: sqlite3.Row) -> bool:
+    """Whether the app could have written the chat's row, as a file from someone else may
+    not have: its id names its scratch folder, and its folder is where its runs work."""
+    chat_id, folder = chat["id"], chat["folder"]
+    plain_id = isinstance(chat_id, str) and re.fullmatch(CHAT_ID, chat_id)
+    absolute = folder is None or (isinstance(folder, str) and os.path.isabs(folder))
+    if plain_id and absolute:
         return True
-    log.warning("chats.left_out", id=repr(chat["id"]))
+    log.warning("chats.left_out", id=repr(chat_id), folder=repr(folder))
     return False
 
 
 def list_chats(path: Path) -> list[Chat]:
-    """Every chat with a plain id, newest first."""
+    """Every chat the app could have written, newest first."""
     with connect(path) as connection:
         rows = connection.execute(
             f"SELECT {COLUMNS} FROM chats ORDER BY created DESC, rowid DESC"
         )
-        return [dict(row) for row in rows if has_plain_id(row)]
+        return [dict(row) for row in rows if well_formed(row)]
 
 
 def find_chat(path: Path, chat: str) -> Chat | None:
@@ -67,7 +71,7 @@ def find_chat(path: Path, chat: str) -> Chat | None:
         row = connection.execute(
             f"SELECT {COLUMNS} FROM chats WHERE id = ?", (chat,)
         ).fetchone()
-    return None if row is None else dict(row)
+    return None if row is None or not well_formed(row) else dict(row)
 
 
 def create_chat(path: Path, folder: str | None = None) -> Chat:

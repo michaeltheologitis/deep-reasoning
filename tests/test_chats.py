@@ -164,15 +164,28 @@ def test_a_choice_changes_only_what_it_names_and_only_that_chat(library):
     assert find_chat(library, other["id"]) == other
 
 
-@pytest.mark.parametrize("planted", ["../x", "x" * 101, b"not text"])
-def test_a_chat_whose_id_the_app_could_not_have_made_is_left_out(library, planted):
+@pytest.mark.parametrize(
+    ("planted", "folder"),
+    [
+        ("../x", None),
+        ("x" * 101, None),
+        (b"not text", None),
+        ("planted-chat", "relative/folder"),
+        ("planted-chat", "C:/Users/me"),
+        ("planted-chat", b"/not/text"),
+    ],
+)
+def test_a_chat_row_the_app_could_not_have_written_is_left_out(
+    library, planted, folder
+):
     chat = create_chat(library)
     with closing(open_library(library)) as connection:
         connection.execute(
-            "INSERT INTO chats (id, title, created) VALUES (?, 'Planted', 1.0)",
-            (planted,),
+            "INSERT INTO chats (id, title, created, folder) VALUES (?, 'Planted', 1.0, ?)",
+            (planted, folder),
         )
     with capture_logs() as logs:
         listed = list_chats(library)
-    assert listed == [chat]
-    assert [entry["event"] for entry in logs] == ["chats.left_out"]
+        found = find_chat(library, "planted-chat")
+    assert listed == [chat] and found is None
+    assert "chats.left_out" in {entry["event"] for entry in logs}

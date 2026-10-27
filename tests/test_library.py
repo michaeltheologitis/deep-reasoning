@@ -211,6 +211,18 @@ def test_a_file_that_is_not_a_library_is_refused_and_left_alone(tmp_path, versio
     assert other.read_bytes() == before
 
 
+def test_a_version_1_file_that_already_holds_app_tables_is_refused_and_left_alone(
+    library,
+):
+    open_library(library).close()
+    with closing(sqlite3.connect(library)) as connection:
+        connection.execute(f"PRAGMA user_version = {LIBRARY_ONLY}")
+    before = library.read_bytes()
+    with pytest.raises(LibraryError, match="is not a Library"):
+        open_library(library)
+    assert library.read_bytes() == before
+
+
 def test_an_open_reader_does_not_hold_up_a_write(library):
     with closing(open_library(library)) as reader:
         stored_config(reader)

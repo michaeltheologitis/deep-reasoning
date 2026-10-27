@@ -32,11 +32,14 @@ from deep_reasoning.library import (
     writing,
 )
 from deep_reasoning.settings import (
+    DEFAULT_FOLDER,
     ENV_FILE,
+    LAST_MODEL,
     SERVERS,
     VENDORS,
     add_server,
     default_folder,
+    saved_keys,
     server_key_env,
 )
 
@@ -730,6 +733,16 @@ def test_a_library_file_that_cannot_be_written_is_refused_in_plain_words(
     assert client.get("/api/chats").json() == [chat]
 
 
+def test_a_broken_library_file_is_not_passed_off_as_one_that_cannot_be_written(
+    client, library
+):
+    client.post("/api/chats")
+    with closing(open_library(library)) as connection:
+        connection.execute("DROP TABLE chats")
+    with pytest.raises(sqlite3.OperationalError, match="no such table: chats"):
+        client.get("/api/chats")
+
+
 def by_name(rows, field="name"):
     return {each[field]: each for each in rows}
 
@@ -791,6 +804,32 @@ def test_a_server_planted_under_a_vendors_name_never_gets_its_key(
     assert planted.listed == [] and anthropic.listed == [SHELL_KEY]
     assert [each["name"] for each in providers if each["custom"]] == []
     assert [each["provider"] for each in listings] == ["Anthropic"]
+
+
+def test_a_shared_files_server_of_the_same_name_never_gets_the_users_key(
+    client, home, library, tmp_path
+):
+    with FakeOpenAI(scripted(PLAN)) as own, FakeOpenAI(scripted(PLAN)) as planted:
+        mine = {"name": "groq", "base_url": own.base_url, "key": SAVED_KEY}
+        client.post("/api/servers", json=mine)
+        shared = tmp_path / "shared.sqlite"
+        shutil.copy(library, shared)
+        theirs = [{"name": "GROQ", "base_url": planted.base_url}]
+        with closing(open_library(shared)) as connection:
+            connection.execute(
+                "UPDATE app_settings SET json = ? WHERE key = ?",
+                (json.dumps(theirs), SERVERS),
+            )
+        with TestClient(create_app(shared, home), base_url=LOCAL) as other:
+            status = by_name(other.get("/api/providers").json())["GROQ"]["key"]
+            other.get("/api/models")
+            other.delete("/api/providers/GROQ/key")
+            other.delete("/api/servers/GROQ")
+        still = by_name(client.get("/api/providers").json())["groq"]["key"]
+        client.get("/api/models")
+    assert planted.listed == [None] and status == "none"
+    assert own.listed == [SAVED_KEY] and still == "set"
+    assert saved_keys(home)["DEEP_REASONING_GROQ_KEY"] == SAVED_KEY
 
 
 def test_removing_a_saved_key_leaves_the_shells_in_use(client, monkeypatch):
@@ -1252,20 +1291,26 @@ def test_the_default_folder_is_kept_when_it_is_in_a_deleted_chats_scratch_folder
     assert (inside / "keep.txt").read_text() == "mine"
 
 
-def test_a_delete_with_settings_it_cannot_read_is_refused_before_anything_goes(
-    client, data, library
+def test_malformed_settings_read_as_unset_and_the_page_can_set_them_again(
+    client, library
 ):
-    chat = client.post("/api/chats").json()["id"]
-    scratch = data / "work" / chat
-    scratch.mkdir(parents=True)
-    (scratch / "keep.txt").write_text("mine")
+    planted = [(SERVERS, '"x"'), (LAST_MODEL, "1"), (DEFAULT_FOLDER, '"C:/Users/me"')]
     with closing(open_library(library)) as connection:
-        connection.execute("INSERT INTO app_settings VALUES ('servers', '[1')")
-        refused = client.delete(f"/api/chats/{chat}")
-        connection.execute("DELETE FROM app_settings")
-    assert refused.status_code == 400
-    assert [each["id"] for each in client.get("/api/chats").json()] == [chat]
-    assert (scratch / "keep.txt").read_text() == "mine"
+        connection.executemany("INSERT INTO app_settings VALUES (?, ?)", planted)
+    chat = client.post("/api/chats")
+    folder = client.get("/api/default-folder").json()
+    added = client.post("/api/servers", json={"name": "vllm", "base_url": VLLM})
+    qwen = {"provider": "vllm", "name": "qwen3"}
+    client.patch(f"/api/chats/{chat.json()['id']}", json={"model": qwen})
+    assert (chat.status_code, chat.json()["model"], folder) == (
+        201,
+        None,
+        {"folder": None},
+    )
+    assert (
+        added.status_code == 201 and by_name(added.json())["vllm"]["base_url"] == VLLM
+    )
+    assert client.post("/api/chats").json()["model"] == qwen
 
 
 @pytest.mark.anyio

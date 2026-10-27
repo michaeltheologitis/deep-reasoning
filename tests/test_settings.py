@@ -48,6 +48,7 @@ OPENAI = VENDORS[0]
 KEY = "sk-saved-in-settings"
 SHELL_KEY = "sk-from-the-shell"
 LOCAL_URL = "http://127.0.0.1:8000/v1"
+MOVED_URL = "http://127.0.0.1:9000/v1"
 OPENAI_LIVE_LIST = ("gpt-4", "gpt-6-luna", "gpt-image-2", "text-embedding-3-small")
 THEIRS = """\
 # my own settings
@@ -168,13 +169,16 @@ def test_a_custom_server_is_added_changed_and_removed_with_its_key(app_home, lib
         "DEEP_REASONING_LM_STUDIO_KEY",
         True,
     )
-    assert saved_keys(app_home) == {server.key_env: "sk-local"}
-    update_server(app_home, library, server, "http://127.0.0.1:9000/v1", None)
-    assert find_provider(library, "LM Studio").base_url == "http://127.0.0.1:9000/v1"
-    assert saved_keys(app_home) == {server.key_env: "sk-local"}
-    update_server(app_home, library, server, "http://127.0.0.1:9000/v1", "sk-newer")
-    assert saved_keys(app_home) == {server.key_env: "sk-newer"}
-    remove_server(app_home, library, server)
+    url_env = "DEEP_REASONING_LM_STUDIO_URL"
+    assert saved_keys(app_home) == {url_env: LOCAL_URL, server.key_env: "sk-local"}
+    update_server(app_home, library, server, MOVED_URL, None)
+    moved = find_provider(library, "LM Studio")
+    assert moved.base_url == MOVED_URL
+    assert saved_keys(app_home) == {url_env: MOVED_URL, server.key_env: "sk-local"}
+    assert run_key(app_home, moved) == "sk-local"
+    update_server(app_home, library, moved, MOVED_URL, "sk-newer")
+    assert saved_keys(app_home) == {url_env: MOVED_URL, server.key_env: "sk-newer"}
+    remove_server(app_home, library, moved)
     assert find_provider(library, "LM Studio") is None
     assert saved_keys(app_home) == {}
 
@@ -182,7 +186,20 @@ def test_a_custom_server_is_added_changed_and_removed_with_its_key(app_home, lib
 def test_a_custom_server_with_no_key_runs_on_a_placeholder(app_home, library):
     add_server(app_home, library, "vllm", LOCAL_URL, None)
     assert run_key(app_home, find_provider(library, "vllm")) == NO_KEY
-    assert not (app_home / ENV_FILE).exists()
+    assert saved_keys(app_home) == {"DEEP_REASONING_VLLM_URL": LOCAL_URL}
+
+
+def test_a_shell_key_for_a_custom_server_is_used_only_once_saved_for_its_address(
+    app_home, library, monkeypatch
+):
+    monkeypatch.setenv("DEEP_REASONING_VLLM_KEY", SHELL_KEY)
+    plant(library, SERVERS, json.dumps([{"name": "vllm", "base_url": LOCAL_URL}]))
+    server = find_provider(library, "vllm")
+    unbound = (key_status(server, saved_keys(app_home)), run_key(app_home, server))
+    update_server(app_home, library, server, LOCAL_URL, None)
+    saved_here = (key_status(server, saved_keys(app_home)), run_key(app_home, server))
+    assert unbound == ("none", NO_KEY)
+    assert saved_here == ("shell", SHELL_KEY)
 
 
 def test_a_vendor_with_no_key_cannot_run(app_home):
@@ -251,14 +268,15 @@ def test_server_key_variables_are_derived_from_their_names():
         (LAST_MODEL, '{"provider": "vllm"}'),
         (DEFAULT_FOLDER, '["/home/me"]'),
         (DEFAULT_FOLDER, '"relative/folder"'),
+        (DEFAULT_FOLDER, json.dumps("C:\\Users\\me")),
     ],
 )
-def test_settings_this_app_did_not_write_are_refused_plainly(
-    app_home, library, key, text
-):
+def test_a_setting_this_app_could_not_have_written_reads_as_unset(library, key, text):
     plant(library, key, text)
-    with pytest.raises(SettingsError, match="holds settings this app didn't write"):
-        provider_list(app_home, library)
+    with capture_logs() as logs:
+        settings = read_settings(library)
+    assert settings == {}
+    assert [entry["event"] for entry in logs] == ["settings.left_out"]
 
 
 @pytest.mark.parametrize(

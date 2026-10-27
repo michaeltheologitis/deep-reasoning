@@ -36,6 +36,8 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   searches the vendor's full list, and any model name is accepted.
 - Keys come from settings or your shell. Settings keeps them in `~/.deep-reasoning/.env`, readable only by you, and
   never shows them again. A saved key wins over the shell's.
+- A custom server's key goes only to the address you saved the server with; a server of the same name at another
+  address, as in a shared Library file, gets no key until you give it one.
 - Runs never read or receive `ANTHROPIC_API_KEY`: Claude Code, as a namespace's backbone or tool, would bill that key
   instead of your Claude subscription.
 

@@ -5,7 +5,9 @@ Keys live in .env in the app's home, readable only by you: never in the app file
 a run's folder, an event, a log or a response. A key saved there wins over the same
 variable in the shell. The custom servers, the model picked last and the default folder,
 none of it secret, live in the app file's app_settings table, so a copy of the file
-carries them.
+carries them. A custom server's key, saved or from the shell, goes only to the address
+recorded beside it in .env when the server was saved here: a shared file's server may
+borrow the name of one of yours.
 """
 
 import asyncio
@@ -15,7 +17,7 @@ import re
 import sqlite3
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -133,7 +135,8 @@ VENDORS = (
 
 
 def saved_keys(home: Path) -> dict[str, str]:
-    """The keys in the app's .env, by variable name."""
+    """What the app's .env holds, by variable name: the keys, and the address each custom
+    server's key is for."""
     path = home / ENV_FILE
     if not path.is_file():
         return {}
@@ -141,7 +144,17 @@ def saved_keys(home: Path) -> dict[str, str]:
     return {name: value for name, value in values.items() if value}
 
 
+def bound(provider: Provider, saved: dict[str, str]) -> bool:
+    """Whether the provider's key is meant for its address: a vendor's always; a custom
+    server's only when .env records its base URL as the address the key was saved for."""
+    if not provider.custom:
+        return True
+    return saved.get(server_url_env(provider.name)) == provider.base_url
+
+
 def key_status(provider: Provider, saved: dict[str, str]) -> str:
+    if not bound(provider, saved):
+        return NONE
     if saved.get(provider.key_env):
         return SET
     if os.environ.get(provider.key_env):
@@ -150,7 +163,10 @@ def key_status(provider: Provider, saved: dict[str, str]) -> str:
 
 
 def key_of(provider: Provider, saved: dict[str, str]) -> str | None:
-    """The provider's key: the one saved in settings, else the shell's."""
+    """The provider's key: the one saved in settings, else the shell's; none for a custom
+    server at an address the key wasn't saved for."""
+    if not bound(provider, saved):
+        return None
     key = saved.get(provider.key_env) or os.environ.get(provider.key_env) or ""
     # A shell or hand-edited key may end in a stray newline or carriage return.
     return key.strip() or None
@@ -172,7 +188,8 @@ def optional_key(key: str | None, provider: Provider) -> str | None:
 
 
 def write_key(home: Path, name: str, key: str) -> None:
-    """Set *name* in .env, leaving its other lines as they are; the file is the user's alone."""
+    """Set *name* in .env, leaving its other lines as they are; the file is the user's alone.
+    A key or a base URL: printable ASCII on one line, so it can't break a line."""
     path = home / ENV_FILE
     home.mkdir(parents=True, exist_ok=True)
     if path.is_file() and not path.is_symlink():
@@ -189,29 +206,47 @@ def drop_key(home: Path, name: str) -> None:
         unset_key(path, name)
 
 
+def bind_address(home: Path, server: Provider) -> None:
+    """Record in .env that the custom server's key, saved or from the shell, is for its
+    base URL, and for no other server of its name."""
+    write_key(home, server_url_env(server.name), server.base_url)
+
+
 def save_key(home: Path, provider: Provider, key: str) -> None:
-    write_key(home, provider.key_env, checked_key(key, provider))
+    key = checked_key(key, provider)
+    if provider.custom:
+        bind_address(home, provider)
+    write_key(home, provider.key_env, key)
 
 
-def settings_in(connection: sqlite3.Connection, library: Path) -> dict[str, Any]:
-    """The app's settings in the open file at *library*, each as this app writes it: the
-    file may have come from someone else."""
-    rows = connection.execute("SELECT key, json FROM app_settings").fetchall()
-    unreadable = (
-        f"{library} holds settings this app didn't write, so it can't read them."
-    )
-    try:
-        settings = {key: json.loads(text) for key, text in rows}
-    except ValueError as error:
-        raise SettingsError(unreadable) from error
-    if any(key in SHAPES and not SHAPES[key](value) for key, value in settings.items()):
-        raise SettingsError(unreadable)
-    return settings
+def forget_key(home: Path, provider: Provider) -> None:
+    """Drop the provider's saved key, unless it was saved for another server's address."""
+    if bound(provider, saved_keys(home)):
+        drop_key(home, provider.key_env)
+
+
+def well_shaped(key: str, value: Any) -> bool:
+    if key not in SHAPES or SHAPES[key](value):
+        return True
+    log.warning("settings.left_out", key=key, why="not what this app writes there")
+    return False
+
+
+def settings_in(connection: sqlite3.Connection) -> dict[str, Any]:
+    """The app's settings in the open file; one this app couldn't have written, as a file
+    from someone else may hold, is left out with a warning, so it reads as unset."""
+    settings = {}
+    for key, text in connection.execute("SELECT key, json FROM app_settings"):
+        try:
+            settings[key] = json.loads(text)
+        except ValueError:
+            log.warning("settings.left_out", key=key, why="not JSON")
+    return {key: value for key, value in settings.items() if well_shaped(key, value)}
 
 
 def read_settings(library: Path) -> dict[str, Any]:
     with closing(open_library(library)) as connection:
-        return settings_in(connection, library)
+        return settings_in(connection)
 
 
 def write_setting(library: Path, key: str, value: Any) -> None:
@@ -225,14 +260,24 @@ def changing_servers(library: Path) -> Iterator[list[Any]]:
     """The stored server entries, to change in place: written back as the block ends, in
     the transaction they were read in, so another process's change waits, never lost."""
     with closing(open_library(library)) as connection, writing(connection):
-        entries = settings_in(connection, library).get(SERVERS, [])
+        entries = settings_in(connection).get(SERVERS, [])
         yield entries
         connection.execute(UPSERT_APP_SETTING, (SERVERS, json.dumps(entries)))
 
 
+def env_stem(name: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_")
+
+
 def server_key_env(name: str) -> str:
     """The variable a custom server's key is kept under: DEEP_REASONING_<NAME>_KEY."""
-    return f"DEEP_REASONING_{re.sub(r'[^A-Z0-9]+', '_', name.upper()).strip('_')}_KEY"
+    return f"DEEP_REASONING_{env_stem(name)}_KEY"
+
+
+def server_url_env(name: str) -> str:
+    """The variable holding the address a custom server's key is for:
+    DEEP_REASONING_<NAME>_URL."""
+    return f"DEEP_REASONING_{env_stem(name)}_URL"
 
 
 def refuse_taken(name: str, others: list[Provider]) -> None:
@@ -357,6 +402,7 @@ def add_server(
     with changing_servers(library) as entries:
         refuse_taken(name, [*VENDORS, *trusted_servers(entries)])
         entries.append({"name": name, "base_url": base_url})
+    bind_address(home, server)
     if key:
         write_key(home, server.key_env, key)
 
@@ -372,14 +418,21 @@ def update_server(
             each | {"base_url": base_url} if named(each, server.name) else each
             for each in entries
         ]
+    bind_address(home, replace(server, base_url=base_url))
     if key:
         write_key(home, server.key_env, key)
 
 
 def remove_server(home: Path, library: Path, server: Provider) -> None:
+    """Remove a custom server, and its key and address from .env when they are its own,
+    not those of another file's server of its name."""
+    keep_key = not bound(server, saved_keys(home))
     with changing_servers(library) as entries:
         entries[:] = [each for each in entries if not named(each, server.name)]
+    if keep_key:
+        return
     drop_key(home, server.key_env)
+    drop_key(home, server_url_env(server.name))
 
 
 def remember_pick(library: Path, provider: str, model: str) -> None:
