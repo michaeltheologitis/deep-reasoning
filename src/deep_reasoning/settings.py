@@ -212,6 +212,18 @@ def bind_address(home: Path, server: Provider) -> None:
     write_key(home, server_url_env(server.name), server.base_url)
 
 
+def record_server(
+    home: Path, server: Provider, key: str | None, claimable: bool
+) -> None:
+    """Record in .env the address the custom server's key is for, and the key if one was
+    typed. With no key typed, only when the name's binding is *claimable*, so saving a
+    shared file's server under one of your servers' names never hands it your key."""
+    if key or claimable:
+        bind_address(home, server)
+    if key:
+        write_key(home, server.key_env, key)
+
+
 def save_key(home: Path, provider: Provider, key: str) -> None:
     key = checked_key(key, provider)
     if provider.custom:
@@ -395,32 +407,32 @@ def named(entry: Any, name: str) -> bool:
 def add_server(
     home: Path, library: Path, name: str, base_url: str, key: str | None
 ) -> None:
-    """Add a custom server to the app file, and its key, if it has one, to .env in *home*."""
+    """Add a custom server to the app file, and its key, if it has one, to .env in *home*;
+    without a key, it takes the name's binding only if no other address holds it."""
     name, base_url = checked_name(name), checked_url(base_url)
     server = Provider(name, base_url, server_key_env(name), True)
     key = optional_key(key, server)
+    unbound = server_url_env(name) not in saved_keys(home)
     with changing_servers(library) as entries:
         refuse_taken(name, [*VENDORS, *trusted_servers(entries)])
         entries.append({"name": name, "base_url": base_url})
-    bind_address(home, server)
-    if key:
-        write_key(home, server.key_env, key)
+    record_server(home, server, key, claimable=unbound)
 
 
 def update_server(
     home: Path, library: Path, server: Provider, base_url: str, key: str | None
 ) -> None:
-    """Change a custom server's base URL, and its key when a new one is given."""
+    """Change a custom server's base URL, and its key when a new one is given; without
+    a key, the name's binding follows only a server whose own address it was."""
     base_url = checked_url(base_url)
     key = optional_key(key, server)
+    its_own = bound(server, saved_keys(home))
     with changing_servers(library) as entries:
         entries[:] = [
             each | {"base_url": base_url} if named(each, server.name) else each
             for each in entries
         ]
-    bind_address(home, replace(server, base_url=base_url))
-    if key:
-        write_key(home, server.key_env, key)
+    record_server(home, replace(server, base_url=base_url), key, claimable=its_own)
 
 
 def remove_server(home: Path, library: Path, server: Provider) -> None:

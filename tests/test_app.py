@@ -806,30 +806,55 @@ def test_a_server_planted_under_a_vendors_name_never_gets_its_key(
     assert [each["provider"] for each in listings] == ["Anthropic"]
 
 
+def shared_copy(library, tmp_path, name, base_url):
+    """A copy of the file, as someone else might share it, whose only server is *name*
+    at *base_url*."""
+    shared = tmp_path / "shared.sqlite"
+    shutil.copy(library, shared)
+    theirs = [{"name": name, "base_url": base_url}]
+    with closing(open_library(shared)) as connection:
+        connection.execute(
+            "UPDATE app_settings SET json = ? WHERE key = ?",
+            (json.dumps(theirs), SERVERS),
+        )
+    return shared
+
+
 def test_a_shared_files_server_of_the_same_name_never_gets_the_users_key(
     client, home, library, tmp_path
 ):
     with FakeOpenAI(scripted(PLAN)) as own, FakeOpenAI(scripted(PLAN)) as planted:
         mine = {"name": "groq", "base_url": own.base_url, "key": SAVED_KEY}
         client.post("/api/servers", json=mine)
-        shared = tmp_path / "shared.sqlite"
-        shutil.copy(library, shared)
-        theirs = [{"name": "GROQ", "base_url": planted.base_url}]
-        with closing(open_library(shared)) as connection:
-            connection.execute(
-                "UPDATE app_settings SET json = ? WHERE key = ?",
-                (json.dumps(theirs), SERVERS),
-            )
+        shared = shared_copy(library, tmp_path, "GROQ", planted.base_url)
         with TestClient(create_app(shared, home), base_url=LOCAL) as other:
             status = by_name(other.get("/api/providers").json())["GROQ"]["key"]
+            blank = {"base_url": planted.base_url}
+            saved = by_name(other.put("/api/servers/GROQ", json=blank).json())
             other.get("/api/models")
             other.delete("/api/providers/GROQ/key")
             other.delete("/api/servers/GROQ")
         still = by_name(client.get("/api/providers").json())["groq"]["key"]
         client.get("/api/models")
-    assert planted.listed == [None] and status == "none"
+    assert planted.listed == [None]
+    assert status == saved["GROQ"]["key"] == "none"
     assert own.listed == [SAVED_KEY] and still == "set"
     assert saved_keys(home)["DEEP_REASONING_GROQ_KEY"] == SAVED_KEY
+
+
+def test_a_key_typed_for_a_shared_files_server_of_the_same_name_goes_to_it(
+    client, home, library, tmp_path
+):
+    with FakeOpenAI(scripted(PLAN)) as own, FakeOpenAI(scripted(PLAN)) as planted:
+        mine = {"name": "groq", "base_url": own.base_url, "key": SAVED_KEY}
+        client.post("/api/servers", json=mine)
+        shared = shared_copy(library, tmp_path, "GROQ", planted.base_url)
+        with TestClient(create_app(shared, home), base_url=LOCAL) as other:
+            typed = {"base_url": planted.base_url, "key": "sk-typed-for-theirs"}
+            saved = by_name(other.put("/api/servers/GROQ", json=typed).json())
+            other.get("/api/models")
+    assert saved["GROQ"]["key"] == "set"
+    assert planted.listed == ["sk-typed-for-theirs"]
 
 
 def test_removing_a_saved_key_leaves_the_shells_in_use(client, monkeypatch):

@@ -190,16 +190,27 @@ def test_a_custom_server_with_no_key_runs_on_a_placeholder(app_home, library):
 
 
 def test_a_shell_key_for_a_custom_server_is_used_only_once_saved_for_its_address(
-    app_home, library, monkeypatch
+    app_home, library, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("DEEP_REASONING_VLLM_KEY", SHELL_KEY)
     plant(library, SERVERS, json.dumps([{"name": "vllm", "base_url": LOCAL_URL}]))
-    server = find_provider(library, "vllm")
-    unbound = (key_status(server, saved_keys(app_home)), run_key(app_home, server))
-    update_server(app_home, library, server, LOCAL_URL, None)
-    saved_here = (key_status(server, saved_keys(app_home)), run_key(app_home, server))
+    planted = find_provider(library, "vllm")
+    unbound = (key_status(planted, saved_keys(app_home)), run_key(app_home, planted))
+    add_server(app_home, tmp_path / "mine.sqlite", "vllm", LOCAL_URL, None)
+    saved_here = (key_status(planted, saved_keys(app_home)), run_key(app_home, planted))
     assert unbound == ("none", NO_KEY)
     assert saved_here == ("shell", SHELL_KEY)
+
+
+def test_a_server_added_under_a_name_bound_elsewhere_gets_its_key_only_when_given_one(
+    app_home, library, tmp_path
+):
+    add_server(app_home, library, "vllm", LOCAL_URL, KEY)
+    other = tmp_path / "other.sqlite"
+    add_server(app_home, other, "vllm", MOVED_URL, None)
+    blank = key_status(find_provider(other, "vllm"), saved_keys(app_home))
+    mine = key_status(find_provider(library, "vllm"), saved_keys(app_home))
+    assert (blank, mine) == ("none", "set")
 
 
 def test_a_vendor_with_no_key_cannot_run(app_home):
