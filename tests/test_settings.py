@@ -1,14 +1,18 @@
 import json
 import stat
+from dataclasses import replace
 
 import pytest
+from fake_model import FakeOpenAI, scripted
 
 from deep_reasoning import settings as settings_module
 from deep_reasoning.settings import (
     ENV_FILE,
     NO_KEY,
+    OPENAI_MODELS,
     SETTINGS_FILE,
     VENDORS,
+    Provider,
     SettingsError,
     add_server,
     default_folder,
@@ -16,6 +20,7 @@ from deep_reasoning.settings import (
     find_provider,
     key_of,
     key_status,
+    list_models,
     provider_list,
     remember_pick,
     remove_server,
@@ -34,6 +39,7 @@ OPENAI = VENDORS[0]
 KEY = "sk-saved-in-settings"
 SHELL_KEY = "sk-from-the-shell"
 LOCAL_URL = "http://127.0.0.1:8000/v1"
+OPENAI_LIVE_LIST = ("gpt-4", "gpt-6-luna", "gpt-image-2", "text-embedding-3-small")
 THEIRS = """\
 # my own settings
 export EDITOR=vim
@@ -268,3 +274,36 @@ def test_the_default_folder_is_kept_beside_the_other_settings(app_home, tmp_path
     save_default_folder(app_home, None)
     assert default_folder(app_home) is None
     assert find_provider(app_home, "vllm") is not None
+
+
+def test_each_vendor_features_the_model_new_chats_start_on():
+    for vendor in VENDORS:
+        assert vendor.first_model is None or vendor.first_model in vendor.featured
+
+
+@pytest.mark.anyio
+async def test_a_vendors_listing_features_its_current_tiers_beside_its_whole_list():
+    with FakeOpenAI(scripted({}), models=OPENAI_LIVE_LIST) as fake:
+        listing = await list_models(replace(OPENAI, base_url=fake.base_url), KEY)
+    assert listing["featured"] == list(OPENAI_MODELS)
+    assert listing["models"] == list(OPENAI_LIVE_LIST)
+
+
+@pytest.mark.anyio
+async def test_a_vendor_whose_list_fails_still_features_its_current_tiers():
+    with FakeOpenAI(scripted({}), models=None) as fake:
+        listing = await list_models(replace(OPENAI, base_url=fake.base_url), KEY)
+    assert listing == {
+        "provider": "OpenAI",
+        "models": [],
+        "problem": f"No list: {fake.base_url}/models answered 404 Not Found.",
+        "featured": list(OPENAI_MODELS),
+    }
+
+
+@pytest.mark.anyio
+async def test_a_custom_servers_listing_features_its_whole_list():
+    with FakeOpenAI(scripted({}), models=("qwen3-32b", "qwen3-8b")) as fake:
+        server = Provider("vllm", fake.base_url, server_key_env("vllm"), custom=True)
+        listing = await list_models(server, None)
+    assert listing["featured"] == listing["models"] == ["qwen3-32b", "qwen3-8b"]

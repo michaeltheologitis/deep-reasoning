@@ -739,6 +739,7 @@ async def test_models_are_listed_through_the_app_with_each_providers_key(
             "provider": SERVER_NAME,
             "models": ["fake-large", "fake-small"],
             "problem": None,
+            "featured": ["fake-large", "fake-small"],
         }
     ]
     assert fake.listed == [SERVER_KEY]
@@ -755,6 +756,7 @@ def test_a_listing_that_fails_says_why_in_plain_words(client, home):
         "provider": "unlisted",
         "models": [],
         "problem": f"No list: {fake.base_url}/models answered 404 Not Found.",
+        "featured": [],
     }
     assert listings["gone"]["models"] == []
     assert listings["gone"]["problem"].startswith(
@@ -776,6 +778,7 @@ def test_a_key_no_header_can_carry_is_never_repeated_in_a_listing(
             "models": [],
             "problem": "No list: the vllm key can't be sent; is it one line of "
             "plain text?",
+            "featured": [],
         }
     ]
     assert "sk-" not in response.text

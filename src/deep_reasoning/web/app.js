@@ -572,13 +572,15 @@ function openSettings() {
   byId("settings").dispatchEvent(new Event(PANEL_OPEN));
 }
 
-// Each provider that can answer, with its listed models, a typed name, and why its list is missing if it is.
+// Each provider that can answer, with why its list is missing if it is: its featured models, or, once something is typed,
+// every model it knows that matches (featured first) and the typed name.
 function modelGroups(lists, query) {
   const typed = query.trim();
-  return lists.map(({ provider, models, problem }) => {
-    const matches = models.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
+  return lists.map(({ provider, featured, models, problem }) => {
+    const known = typed ? [...new Set([...featured, ...models])] : featured;
+    const matches = known.filter((name) => name.toLowerCase().includes(typed.toLowerCase()));
     const options = matches.map((name) => ({ value: { provider, name }, label: name }));
-    if (typed && !models.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });
+    if (typed && !known.includes(typed)) options.push({ value: { provider, name: typed }, label: `use “${typed}”` });
     if (!options.length) options.push({ value: null, label: "use model name…", hint: `type a model name for ${provider}` });
     return { name: provider, note: problem, options };
   });

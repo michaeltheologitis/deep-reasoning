@@ -49,7 +49,32 @@ class Provider:
     custom: bool = False
     # what a new chat starts on when no chat has picked a model yet
     first_model: str | None = None
+    # the models the menu shows before anything is typed, strongest first
+    featured: tuple[str, ...] = ()
 
+
+# Each vendor's current tiers, strongest first, from its own models page on 2026-10-27:
+# refresh them when a vendor ships a new tier. OpenRouter serves the same under its own ids.
+OPENAI_MODELS = ("gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna")
+ANTHROPIC_MODELS = (
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+)
+GEMINI_MODELS = ("gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite")
+OPENROUTER_MODELS = (
+    "openai/gpt-6-astra",
+    "openai/gpt-6.1-sol",
+    "openai/gpt-6-luna",
+    "anthropic/claude-fable-5.1",
+    "anthropic/claude-opus-5.5",
+    "anthropic/claude-sonnet-5.5",
+    "anthropic/claude-haiku-5.5",
+    "google/gemini-4-argon",
+    "google/gemini-3.8-flash",
+    "google/gemini-3.5-flash-lite",
+)
 
 # The app knows these vendors' addresses, each from the vendor's own docs: they take only a key.
 VENDORS = (
@@ -58,16 +83,26 @@ VENDORS = (
         "https://api.openai.com/v1",
         "OPENAI_API_KEY",
         first_model="gpt-6-luna",
+        featured=OPENAI_MODELS,
     ),
-    Provider("OpenRouter", "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
+    Provider(
+        "OpenRouter",
+        "https://openrouter.ai/api/v1",
+        "OPENROUTER_API_KEY",
+        featured=OPENROUTER_MODELS,
+    ),
     # never ANTHROPIC_API_KEY: with it set, Claude Code bills that key instead of the subscription
     Provider(
-        "Anthropic", "https://api.anthropic.com/v1/", "DEEP_REASONING_ANTHROPIC_KEY"
+        "Anthropic",
+        "https://api.anthropic.com/v1/",
+        "DEEP_REASONING_ANTHROPIC_KEY",
+        featured=ANTHROPIC_MODELS,
     ),
     Provider(
         "Google Gemini",
         "https://generativelanguage.googleapis.com/v1beta/openai/",
         "GEMINI_API_KEY",
+        featured=GEMINI_MODELS,
     ),
 )
 
@@ -323,7 +358,9 @@ def run_key(home: Path, provider: Provider) -> str:
 
 
 async def list_models(provider: Provider, key: str | None) -> dict[str, Any]:
-    """The provider's models from its own GET {base_url}/models, or why there are none."""
+    """The provider's models from its own GET {base_url}/models, or why there are none, and
+    the ones the menu shows before anything is typed: a vendor's current tiers, even with
+    no list, or a custom server's whole list."""
     url = f"{provider.base_url.rstrip('/')}/models"
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     listing = {"provider": provider.name, "models": [], "problem": None}
@@ -347,6 +384,7 @@ async def list_models(provider: Provider, key: str | None) -> dict[str, Any]:
         )
     except (ValueError, KeyError, TypeError):
         listing["problem"] = f"No list: {url} didn't answer with a list of models."
+    listing["featured"] = list(provider.featured or listing["models"])
     return listing
 
 
