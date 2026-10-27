@@ -28,6 +28,8 @@ from fake_model import (
     RESEARCH,
     RESEARCH_CHANGED,
     REWORDED,
+    SPLIT_COUNT,
+    WORD_COUNT,
     FakeOpenAI,
     library_cell,
     repl,
@@ -162,6 +164,20 @@ SCENARIOS = {
                 library_cell("add_namespace", "research", RESEARCH),
                 library_cell("change_namespace", "research", RESEARCH_CHANGED),
                 repl("FinalAnswer('set up')"),
+            ],
+        },
+    },
+    "tools": {
+        "prompt": "Make a word counter.",
+        "namespace": "librarian",
+        "plan": {
+            "Make a word counter.": [
+                library_cell("write_tool", "word_count", WORD_COUNT, "build"),
+                library_cell("add_namespace", "counting", "tools: [word_count]\n"),
+                library_cell(
+                    "write_tool", "word_count", SPLIT_COUNT, "build", {"sep": ","}
+                ),
+                repl("FinalAnswer('made')"),
             ],
         },
     },

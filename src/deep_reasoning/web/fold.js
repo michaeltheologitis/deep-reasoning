@@ -11,6 +11,7 @@ export const field = (value) => clip(asText(value), FIELD_CHARS);
 
 export function changeText({ what, namespace, name, before }) {
   if (what === "namespace") return `${before == null ? "added" : "changed"} namespace ${field(namespace)}`;
+  if (what === "tool") return `${before == null ? "added" : "replaced"} tool ${field(name)}`;
   return `${before == null ? "added" : "replaced"} ${field(what)} "${field(name)}" in ${field(namespace)}`;
 }
 

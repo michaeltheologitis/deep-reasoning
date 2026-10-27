@@ -13,12 +13,17 @@ transactions; the locks are here, as the panel may still edit root, a namespace'
 reasoner, and which namespaces grant the app's own tools. It writes only in a run whose
 chat's namespace grants it, so a sub-agent spawned into such a namespace from another chat
 can't, and never a key. It guards the tool, not the file: a cell can open the file itself.
+A tool it writes is built first, as a run builds it, from a file in the run's tools folder.
 Each change is logged as library.change, which the worker records as a run event.
 """
 
+import ast
 import copy
+import keyword
 import os
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
@@ -29,11 +34,13 @@ from typing import Any
 
 import structlog
 from deep_reasoner.namespaces import ROOT, NamespaceConfig, NamespaceRegistry
-from deep_reasoner.primitives import Func
-from deep_reasoner.v2.cli import V2Config
+from deep_reasoner.primitives import RESERVED_NAMES, Func
+from deep_reasoner.tools import ToolBuildError
+from deep_reasoner.v2.cli import V2Config, make_tool
 
 from deep_reasoning.library import (
     APP_TOOLS,
+    BUILDERS,
     HISTORY_DESCRIPTION,
     LIBRARY_DESCRIPTION,
     LIBRARY_TOOL,
@@ -43,8 +50,13 @@ from deep_reasoning.library import (
     change_namespace,
     config_and_registry,
     distrust,
+    dump,
     loaded,
     namespace_rows,
+    parsed_python,
+    store_tool,
+    tool_file,
+    tool_text,
 )
 from deep_reasoning.runs import CHANGE_FIELDS, chat_turns, secrets_of, total_cost
 
@@ -77,6 +89,29 @@ LOCKED_FIELDS = ("repl", "reasoner")
 USERS_CHOICE = "the user's choice, in the Library panel."
 # A tool of this factory, or a reasoner of this type, runs on the user's subscription.
 CLAUDE_CODE = "claude_code"
+NOT_A_TOOL = (
+    "name, source and factory should be text, and settings a dict of plain values (text,"
+    " numbers, True, False, None, and lists and dicts of them keyed by text, each one"
+    " used once), or None."
+)
+PLAIN = (str, int, float, bool, type(None))
+# Deeper settings are refused, as YAML writes them by recursion.
+MAX_NESTING = 20
+# A run hands the factory every key of the tool's block but these.
+OWN_KEYS = ("factory", "factory_from")
+SETS_OWN_KEYS = "settings may not hold factory or factory_from: write_tool sets them."
+TAKEN_NAMES = (*BUILDERS, *APP_TOOLS, *sorted(RESERVED_NAMES))
+TOOL_TOO_LONG = (
+    f"The source, and the settings as YAML, may each be at most {MAX_YAML_CHARS:,}"
+    " characters."
+)
+CHECKS = "checks"
+# Any other REPL is a sandbox, and building a tool runs its code in the worker, outside it.
+LOCAL_REPL = "local"
+NOT_LOCAL = (
+    "write_tool works only in a chat whose namespace runs the local REPL: building the"
+    " tool to check it runs its code outside any sandbox."
+)
 
 
 @dataclass
@@ -319,6 +354,13 @@ def texts_in(data: Any) -> Iterator[str]:
             )
 
 
+def check_no_key(texts: list[str], key_names: list[str]) -> None:
+    """Raise if any of *texts* holds the value of a key variable in *key_names*."""
+    secrets = secrets_of(os.environ, key_names)
+    if any(secret in text for secret in secrets for text in texts):
+        raise LibraryError(HOLDS_A_KEY)
+
+
 def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
     """Raise unless the tool may write *yaml* for the namespace named *namespace*."""
     # Exactly str: a subclass could compare unequal to "root" and still name it.
@@ -329,10 +371,73 @@ def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
     if len(yaml) > MAX_YAML_CHARS:
         raise LibraryError(TOO_LONG)
     # Parsed too, as an escape such as "\x73k-" spells a key the raw text doesn't hold.
-    texts = [namespace, yaml, *texts_in(loaded(yaml))]
-    secrets = secrets_of(os.environ, key_names)
-    if any(secret in text for secret in secrets for text in texts):
-        raise LibraryError(HOLDS_A_KEY)
+    check_no_key([namespace, yaml, *texts_in(loaded(yaml))], key_names)
+
+
+def plain(value: Any) -> bool:
+    """Whether *value* is text, a number, True, False or None, or a list or dict of them
+    keyed by text, nested at most MAX_NESTING deep, each list and dict in it once (so
+    none holds itself)."""
+    stack, seen = [(value, 0)], set()
+    while stack:
+        each, depth = stack.pop()
+        if type(each) in PLAIN:
+            continue
+        if type(each) not in (list, dict) or id(each) in seen or depth == MAX_NESTING:
+            return False
+        seen.add(id(each))
+        if type(each) is dict and any(type(key) is not str for key in each):
+            return False
+        items = each.values() if type(each) is dict else each
+        stack.extend((item, depth + 1) for item in items)
+    return True
+
+
+def check_tool(
+    name: str, source: str, factory: str, settings: Any, key_names: list[str]
+) -> None:
+    """Raise unless the tool may write tool *name*, built by the function *factory* in
+    the Python *source* with *settings*, before it is built."""
+    texts = [name, source, factory]
+    is_plain = settings is None or type(settings) is dict and plain(settings)
+    if any(type(each) is not str for each in texts) or not is_plain:
+        raise LibraryError(NOT_A_TOOL)
+    if settings and any(key in settings for key in OWN_KEYS):
+        raise LibraryError(SETS_OWN_KEYS)
+    tool_file(name)
+    if keyword.iskeyword(name) or name in TAKEN_NAMES:
+        raise LibraryError(
+            f'"{name}" is taken: it is a Python keyword, a built-in or app tool, or a name'
+            f" the REPL binds itself ({', '.join(TAKEN_NAMES)}). Pick another."
+        )
+    if max(len(source), len(dump(settings))) > MAX_YAML_CHARS:
+        raise LibraryError(TOOL_TOO_LONG)
+    module = parsed_python(source)
+    # Its literals too, as an escape can spell a key the raw text doesn't hold.
+    literals = [
+        node.value if type(node.value) is str else node.value.decode("latin-1")
+        for node in ast.walk(module)
+        if isinstance(node, ast.Constant) and type(node.value) in (str, bytes)
+    ]
+    check_no_key([*texts, *texts_in(settings), *literals], key_names)
+
+
+def check_tool_locks(
+    config: V2Config, registry: NamespaceRegistry, chat_namespace: str, name: str
+) -> None:
+    """Raise if the tool may not write tool *name* in a chat in *chat_namespace*: the
+    chat's REPL is a sandbox, root grants the tool, or the engine builds it from its
+    block alone, which the tool couldn't write back."""
+    if registry.resolve(chat_namespace).repl.type != LOCAL_REPL:
+        raise LibraryError(NOT_LOCAL)
+    if name in registry.config(ROOT).tools:
+        raise LibraryError(f"root grants {name}: replacing it is {USERS_CHOICE}")
+    block = config.tools.get(name)
+    if block is not None and "factory_from" not in block:
+        raise LibraryError(
+            f"{name} is built by the engine's own {block.get('factory', name)} factory,"
+            f" which write_tool can't write back: replacing it is {USERS_CHOICE}"
+        )
 
 
 def claude_code_tools(config: V2Config, tools: Iterable[str]) -> list[str]:
@@ -412,9 +517,10 @@ def logged(done: str, before: str | None, after: str, **change: str) -> Event:
 
 def build_library(client: Any, params: dict[str, Any]) -> Func:
     """The library tool, over the app file *library* its block in the run's config names,
-    for a run of a chat in *namespace*, whose worker holds keys in *key_names*."""
+    for a run of a chat in *namespace*, whose worker holds keys in *key_names*; it builds
+    a tool it writes with the run's *client*, in the run's *tools_dir*."""
     library, chat_namespace = params["library"], params["namespace"]
-    key_names = params["key_names"]
+    key_names, tools_dir = params["key_names"], Path(params["tools_dir"])
 
     def show() -> list[dict[str, Any]]:
         """Every namespace, as the Library panel shows it."""
@@ -437,6 +543,11 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         config, registry = config_and_registry(connection)
         check_grant(registry)
         check_locks(config, registry, namespace)
+
+    def may_write_tool(connection: sqlite3.Connection, name: str) -> None:
+        config, registry = config_and_registry(connection)
+        check_grant(registry)
+        check_tool_locks(config, registry, chat_namespace, name)
 
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
@@ -475,10 +586,62 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
             "changed", before, stored, what="namespace", namespace=name, name=name
         )
 
+    def check_builds(name: str, block: dict[str, Any], source: str) -> None:
+        """Raise unless the engine builds tool *name* from *source*, as a run would."""
+        checks = tools_dir / CHECKS
+        checks.mkdir(parents=True, exist_ok=True)
+        # A folder of its own each time: the engine keeps each file it imported, by path.
+        folder = Path(tempfile.mkdtemp(dir=checks))
+        file = folder / tool_file(name)
+        file.write_text(source, encoding="utf-8")
+        try:
+            make_tool(
+                name,
+                block | {"factory_from": str(file)},
+                client=client,
+                config_path=None,
+            )
+        except ToolBuildError as error:
+            raise LibraryError(
+                f"Tool {name} doesn't build, so it wasn't written: {error.detail}"
+            ) from error
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def write_tool(
+        name: str, source: str, factory: str, settings: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Add tool *name*, built by the function *factory* in the Python *source* with
+        *settings* as its params, or replace the one of its name."""
+        check_tool(name, source, factory, settings, key_names)
+        # The grant and the locks first, before the tool's code runs; the build holds no
+        # write lock, so they are checked again under it.
+        with app_file(library, "ro") as connection:
+            may_write_tool(connection, name)
+        block = {
+            "factory": factory,
+            "factory_from": tool_file(name),
+            **(settings or {}),
+        }
+        check_builds(name, block, source)
+        with app_file(library, "rw") as connection:
+            found = store_tool(
+                connection,
+                name,
+                block,
+                source,
+                allowed=lambda locked: may_write_tool(locked, name),
+            )
+        before = None if found is None else tool_text(name, *found)
+        after = tool_text(name, dump(block), source)
+        done = "added" if found is None else "replaced"
+        return logged(done, before, after, what="tool", name=name)
+
     tool = SimpleNamespace(
         show=show,
         write_decomposition=write_decomposition,
         add_namespace=add,
         change_namespace=change,
+        write_tool=write_tool,
     )
     return Func(tool, description=LIBRARY_DESCRIPTION)

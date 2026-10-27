@@ -20,7 +20,10 @@ from fake_model import (
     REWORDED_ASK,
     SERVER_KEY,
     SERVER_NAME,
+    SPLIT_COUNT,
     SUFFIX,
+    WORD_COUNT,
+    WORD_COUNT_DOC,
     FakeOpenAI,
     library_cell,
     repl,
@@ -37,6 +40,7 @@ from deep_reasoning.folders import data_folder
 from deep_reasoning.library import (
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
+    UPSERT_TOOL,
     dump,
     import_config,
     open_library,
@@ -854,6 +858,171 @@ async def test_a_refused_namespace_write_fails_its_cell_in_plain_words_and_chang
     assert changes(events) == []
     assert after == before
     assert events[-1]["outcome"] == "answered", events[-1]
+
+
+TOOL_PLAN = {
+    "Make a word counter.": [
+        library_cell("write_tool", "word_count", WORD_COUNT, "build"),
+        library_cell("change_namespace", "counting", "tools: [word_count]\n"),
+        repl("FinalAnswer('made')"),
+    ],
+    "Split on commas.": [
+        library_cell("write_tool", "word_count", SPLIT_COUNT, "build", {"sep": ","}),
+        repl("FinalAnswer('split')"),
+    ],
+    "Count a,b,c d.": [
+        repl("print(word_count('a,b,c d'))"),
+        repl("FinalAnswer('counted')"),
+    ],
+}
+
+
+@pytest.mark.anyio
+async def test_a_tool_the_library_tool_writes_and_grants_is_called_from_the_next_message(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(TOOL_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            counting = {"name": "counting", "yaml": ""}
+            response = await api.post("/api/namespaces", json=counting)
+            assert response.status_code == 201, response.text
+            librarian = await librarian_chat(api)
+            chat = await chat_in(api, "counting")
+            made = await run_events(
+                api, await send(api, librarian, "Make a word counter.")
+            )
+            asked = len(fake.calls)
+            counted = await run_events(api, await send(api, chat, "Count a,b,c d."))
+            told = system_prompts(fake.calls[asked:])
+            split = await run_events(
+                api, await send(api, librarian, "Split on commas.")
+            )
+            again = await run_events(api, await send(api, chat, "Count a,b,c d."))
+            tools = (await api.get("/api/library")).json()["tools"]
+    added, granted = changes(made)
+    [replaced] = changes(split)
+    assert {key: added[key] for key in CHANGE_FIELDS} == {
+        "what": "tool",
+        "namespace": None,
+        "name": "word_count",
+        "before": None,
+        "after": f"factory: build\nfactory_from: word_count.py\n# word_count.py\n{WORD_COUNT}",
+    }
+    split_row = (
+        "factory: build\nfactory_from: word_count.py\nsep: ','\n# word_count.py\n"
+    )
+    assert (granted["what"], granted["after"]) == ("namespace", "tools: [word_count]\n")
+    assert (replaced["before"], replaced["after"]) == (
+        added["after"],
+        split_row + SPLIT_COUNT,
+    )
+    assert "'done': 'added'" in kinds(made, "cell.end")[0]["output"]
+    assert "'done': 'replaced'" in kinds(split, "cell.end")[0]["output"]
+    outputs = [kinds(events, "cell.end")[0]["output"] for events in (counted, again)]
+    assert outputs == ["2", "3"]
+    assert told and all(WORD_COUNT_DOC in prompt for prompt in told)
+    [row] = [tool for tool in tools if tool["name"] == "word_count"]
+    assert row["granted_in"] == ["counting"]
+
+
+RAISES = "def build(client, params):\n    raise RuntimeError('no index')\n"
+TOOL_REFUSALS = [
+    (
+        library_cell("write_tool", "counter", "def build(:\n", "build"),
+        "The source is not valid Python (line 1: invalid syntax).",
+    ),
+    (
+        library_cell("write_tool", "counter", WORD_COUNT, "make"),
+        "Tool counter doesn't build, so it wasn't written: ",
+        "defines no 'make'",
+    ),
+    (
+        library_cell("write_tool", "counter", RAISES, "build"),
+        "raised RuntimeError: no index",
+    ),
+    (
+        library_cell(
+            "write_tool", "counter", "def build(client, params): return 1", "build"
+        ),
+        "returned int, not a Func",
+    ),
+    (
+        library_cell("write_tool", "llm", WORD_COUNT, "build"),
+        '"llm" is taken: it is a Python keyword, a built-in or app tool, or a name',
+    ),
+    (library_cell("write_tool", "history", WORD_COUNT, "build"), '"history" is taken'),
+    (
+        library_cell("write_tool", "subagent", WORD_COUNT, "build"),
+        '"subagent" is taken',
+    ),
+    (library_cell("write_tool", "lambda", WORD_COUNT, "build"), '"lambda" is taken'),
+    (
+        library_cell("write_tool", "word count", WORD_COUNT, "build"),
+        'Tool "word count" needs a Python name',
+    ),
+    (
+        library_cell("write_tool", "counter", f"{WORD_COUNT}# {SERVER_KEY}\n", "build"),
+        "holds a provider's key",
+    ),
+    (
+        repl(
+            "class Name(str):",
+            "    pass",
+            f"print(library.write_tool(Name('counter'), {WORD_COUNT!r}, 'build'))",
+        ),
+        "name, source and factory should be text",
+    ),
+    (
+        repl("print(library.write_tool('counter', '#' * 1_000_001, 'build'))"),
+        "may each be at most 1,000,000 characters",
+    ),
+]
+
+
+@pytest.mark.anyio
+async def test_a_refused_tool_fails_its_cell_in_plain_words_and_stores_nothing(
+    library_on, connect
+):
+    cells = [cell for cell, *_ in TOOL_REFUSALS]
+    plan = {"Try these.": [*cells, repl("FinalAnswer('refused')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            before = (await api.get("/api/library")).json()
+            chat = await librarian_chat(api)
+            events = await run_events(api, await send(api, chat, "Try these."))
+            after = (await api.get("/api/library")).json()
+    ended = kinds(events, "cell.end")[: len(TOOL_REFUSALS)]
+    assert [cell["status"] for cell in ended] == ["failed"] * len(TOOL_REFUSALS)
+    for cell, (_, *wordings) in zip(ended, TOOL_REFUSALS, strict=True):
+        assert all(each in cell["output"] for each in wordings), cell["output"]
+    assert changes(events) == []
+    assert after == before
+    assert events[-1]["outcome"] == "answered", events[-1]
+
+
+@pytest.mark.anyio
+async def test_a_tool_no_namespace_grants_never_runs_so_a_broken_one_fails_runs_only_while_granted(
+    library, library_on, connect
+):
+    broken = dump({"factory": "build", "factory_from": "broken.py"})
+    plan = {"Hi.": [repl("FinalAnswer('hello')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        async with connect(library_on(fake)) as api:
+            with closing(open_library(library)) as connection:
+                connection.execute(UPSERT_TOOL, ("broken", broken, RAISES))
+            chat = await new_chat(api)
+            ungranted = await run_events(api, await send(api, chat, "Hi."))
+            grant = {"name": "uses_broken", "yaml": "tools: [broken]\n"}
+            response = await api.post("/api/namespaces", json=grant)
+            assert response.status_code == 201, response.text
+            granted = await run_events(api, await send(api, chat, "Hi."))
+            response = await api.put("/api/namespaces/uses_broken", json={"yaml": ""})
+            assert response.status_code == 200, response.text
+            again = await run_events(api, await send(api, chat, "Hi."))
+    outcomes = [events[-1]["outcome"] for events in (ungranted, granted, again)]
+    assert outcomes == ["answered", "failed", "answered"]
+    assert "broken" in granted[-1]["detail"]
+    assert "raised RuntimeError: no index" in granted[-1]["detail"]
 
 
 SPAWNED_PLAN = {

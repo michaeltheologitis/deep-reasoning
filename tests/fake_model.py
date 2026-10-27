@@ -42,6 +42,19 @@ vars:
   year: 2026
 """
 RESEARCH_CHANGED = RESEARCH.replace(SUFFIX, CHANGED_SUFFIX)
+# A tool for the library tool to write, and the same splitting on its settings' sep.
+WORD_COUNT_DOC = "How many words text has."
+WORD_COUNT = f'''from deep_reasoner.primitives import Func
+
+
+def build(client, params):
+    def word_count(text):
+        """{WORD_COUNT_DOC}"""
+        return len(text.split())
+
+    return Func(word_count)
+'''
+SPLIT_COUNT = WORD_COUNT.replace("text.split()", 'text.split(params["sep"])')
 
 
 @dataclass(frozen=True)

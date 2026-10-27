@@ -263,10 +263,19 @@ test("the turn lists every Library change, a sub-agent's with the tasks above it
   assert.equal(turn.changes[1].step, changes(reworder)[0]);
 });
 
-test("a change reads as what it did: a decomposition added or replaced in its namespace, a namespace added or changed", () => {
+test("a change reads as what it did: a decomposition added or replaced in its namespace, a namespace added or changed, a tool added or replaced", () => {
   const worded = (name) => foldEvents(recorded(name)).turn.changes.map(({ step }) => changeText(step));
   assert.deepEqual(worded("librarian"), ['added decomposition "count the tickets" in librarian', 'replaced decomposition "count the tickets" in librarian']);
   assert.deepEqual(worded("namespaces"), ["added namespace research", "changed namespace research"]);
+  assert.deepEqual(worded("tools"), ["added tool word_count", "added namespace counting", "replaced tool word_count"]);
+});
+
+test("a tool's change opens onto its block's YAML and its Python, before and after", () => {
+  const [added, , replaced] = foldEvents(recorded("tools")).turn.changes.map(({ step }) => step);
+  assert.equal(added.before, null);
+  assert.match(added.after, /^factory: build\nfactory_from: word_count\.py\n# word_count\.py\nfrom deep_reasoner\.primitives import Func\n/);
+  assert.equal(replaced.before, added.after);
+  assert.match(replaced.after, /\nsep: ','\n[^]*text\.split\(params\["sep"\]\)/);
 });
 
 test("a change with odd fields, as a crafted file may hold, folds as it came, and one of no known agent is left out", () => {
