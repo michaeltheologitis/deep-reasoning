@@ -57,13 +57,20 @@ def well_formed(chat: sqlite3.Row) -> bool:
     return False
 
 
+def chats_in(connection: sqlite3.Connection) -> list[Chat]:
+    """Every chat in the open app file that the app could have written, newest first."""
+    cursor = connection.cursor()
+    cursor.row_factory = sqlite3.Row
+    rows = cursor.execute(
+        f"SELECT {COLUMNS} FROM chats ORDER BY created DESC, rowid DESC"
+    )
+    return [dict(row) for row in rows if well_formed(row)]
+
+
 def list_chats(path: Path) -> list[Chat]:
     """Every chat the app could have written, newest first."""
     with connect(path) as connection:
-        rows = connection.execute(
-            f"SELECT {COLUMNS} FROM chats ORDER BY created DESC, rowid DESC"
-        )
-        return [dict(row) for row in rows if well_formed(row)]
+        return chats_in(connection)
 
 
 def find_chat(path: Path, chat: str) -> Chat | None:
