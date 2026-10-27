@@ -57,10 +57,11 @@ from deep_reasoning.runs import (
     RUN_ID,
     RunInProgress,
     Runs,
+    chat_runs,
+    chat_turns,
+    delete_orphans,
     end_unfinished,
-    read_events,
     read_turn,
-    turn_starts,
 )
 from deep_reasoning.settings import (
     Provider,
@@ -71,6 +72,7 @@ from deep_reasoning.settings import (
     forget_key,
     model_lists,
     provider_list,
+    providers,
     remember_pick,
     remove_server,
     run_key,
@@ -128,18 +130,20 @@ def same_origin(
 
 
 def create_app(library, home):
-    """The app over the app file at *library*: the Library, the chats and the app's
-    settings, which each request opens afresh. The keys are in *home*, and the file's runs
-    and scratch folders in its data folder there."""
+    """The app over the app file at *library*: the Library, the chats, their runs' events
+    and the app's settings, which each request opens afresh. The keys are in *home*, and
+    the file's run and scratch folders in its data folder there."""
     library = Path(library)
     home = Path(home)
     data = data_folder(home, library)
-    runs = Runs(data)
+    runs = Runs(library, data)
 
     @asynccontextmanager
     async def lifespan(app):
-        for run in end_unfinished(runs.home):
-            log.warning("Ended a run the app stopped under", run=run)
+        with closing(open_library(library)) as connection:
+            delete_orphans(connection)
+            for run in end_unfinished(connection):
+                log.warning("Ended a run the app stopped under", run=run)
         yield
         await runs.close()
 
@@ -336,10 +340,9 @@ def create_app(library, home):
 
     @app.get("/api/chats/{chat}")
     async def read_chat(chat: KnownChat):
-        turns = [
-            {"run": start["run"], "events": list(read_events(runs.home, start["run"]))}
-            for start in turn_starts(runs.home, chat["id"])
-        ]
+        going = runs.live(chat["id"])
+        with closing(open_library(library)) as connection:
+            turns = chat_turns(connection, chat["id"], going)
         return shown(chat, starting_points()) | {"turns": turns}
 
     @app.patch("/api/chats/{chat}")
@@ -368,8 +371,8 @@ def create_app(library, home):
         chosen = [each["folder"] for each in list_chats(library)]
         chosen += [default_folder(library), *runs.folders_in_use(besides=chat["id"])]
         keep = [each for each in chosen if each]
-        # The chat goes first: a crash part way through leaves run folders that no chat
-        # lists, never a chat missing some of its turns.
+        # The chat goes first: a crash part way through leaves runs that no chat lists,
+        # never a chat missing some of its turns.
         delete_chat(library, chat["id"])
         await runs.remove(chat["id"], keep)
         # After its workers exit, as they work in it; off the loop, as it may be large.
@@ -390,6 +393,10 @@ def create_app(library, home):
                 raise LibraryError(
                     f"This chat's namespace {namespace} no longer exists — pick another."
                 )
+            turns = [
+                read_turn(connection, run) for run in chat_runs(connection, chat["id"])
+            ]
+        earlier = [turn for turn in turns if turn is not None]
         if model is None:
             raise SettingsError("Pick a model for this chat, under the message box.")
         provider = find_provider(library, model["provider"])
@@ -399,8 +406,6 @@ def create_app(library, home):
             )
         key = run_key(home, provider)
         folder = working_folder(data, chat)
-        starts = turn_starts(runs.home, chat["id"])
-        earlier = [read_turn(runs.home, start["run"]) for start in starts]
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
 
         def config_for(run_folder):
@@ -409,11 +414,20 @@ def create_app(library, home):
             return config | {"model": model["name"], "client": client}
 
         keys = {provider.key_env: key}
+        # Any provider's key in the shell reaches the worker, so is withheld too.
+        key_names = [each.key_env for each in providers(library)]
         run = runs.start(
-            chat["id"], prompt, config_for, earlier, provider.name, keys, folder
+            chat["id"],
+            prompt,
+            config_for,
+            earlier,
+            provider.name,
+            keys,
+            folder,
+            key_names,
         )
         choose(library, chat["id"], namespace, provider.name, model["name"])
-        if not starts:
+        if not earlier:
             title_new_chat(library, chat["id"], prompt)
         return {"run": run}
 

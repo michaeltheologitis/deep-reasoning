@@ -20,6 +20,7 @@ from deep_reasoning.chats import (
     title_new_chat,
 )
 from deep_reasoning.library import (
+    BEFORE_EVENTS,
     LIBRARY_ONLY,
     SCHEMA_VERSION,
     default_namespace,
@@ -27,18 +28,26 @@ from deep_reasoning.library import (
     schema_version,
     stored_config,
 )
+from deep_reasoning.runs import chat_runs, read_events, save_event
+from deep_reasoning.settings import (
+    LAST_MODEL,
+    read_settings,
+    remember_pick,
+    save_default_folder,
+)
 
 MANY = 200
 NOW = 1_800_000_000.0
 ADVISORS_NAMESPACES = {"root", "router", "course_advisor", "health_advisor"}
 
 
-def as_made_by_version_1(library):
-    """The file as version 1 made it: the Library alone."""
+def as_made_by(version, library):
+    """The file as *version* made it, without the tables of the versions after it."""
+    later = {LIBRARY_ONLY: ["events", "runs", "chats", "app_settings"]}
     with closing(open_library(library)) as connection:
-        connection.execute("DROP TABLE chats")
-        connection.execute("DROP TABLE app_settings")
-        connection.execute(f"PRAGMA user_version = {LIBRARY_ONLY}")
+        for table in later.get(version, ["events", "runs"]):
+            connection.execute(f"DROP TABLE {table}")
+        connection.execute(f"PRAGMA user_version = {version}")
 
 
 def test_a_chat_made_first_in_a_new_file_leaves_a_whole_library_beside_it(library):
@@ -50,7 +59,7 @@ def test_a_chat_made_first_in_a_new_file_leaves_a_whole_library_beside_it(librar
 def test_a_version_1_library_opens_with_its_library_kept_and_gains_chats(imported):
     with closing(open_library(imported)) as connection:
         before = stored_config(connection)
-    as_made_by_version_1(imported)
+    as_made_by(LIBRARY_ONLY, imported)
     chat = create_chat(imported)
     with closing(open_library(imported)) as connection:
         after = stored_config(connection)
@@ -58,6 +67,29 @@ def test_a_version_1_library_opens_with_its_library_kept_and_gains_chats(importe
     assert after == before and set(after["namespaces"]) == ADVISORS_NAMESPACES
     assert list_chats(imported) == [chat]
     assert version == SCHEMA_VERSION
+
+
+def test_a_version_2_file_opens_with_its_chats_and_settings_kept_and_gains_runs(
+    imported, tmp_path
+):
+    chat = create_chat(imported, str(tmp_path))
+    rename_chat(imported, chat["id"], "Plans")
+    remember_pick(imported, "OpenAI", "gpt-6-luna")
+    save_default_folder(imported, str(tmp_path))
+    before, settings = list_chats(imported), read_settings(imported)
+    as_made_by(BEFORE_EVENTS, imported)
+    run = "20261025-120000-000000"
+    started = {"seq": 1, "t": 100.0, "kind": "turn.start", "chat": chat["id"]}
+    with closing(open_library(imported)) as connection:
+        version = schema_version(connection)
+        save_event(connection, run, started)
+        runs = chat_runs(connection, chat["id"])
+        events = read_events(connection, run)
+    assert version == SCHEMA_VERSION
+    assert list_chats(imported) == before and before[0]["title"] == "Plans"
+    assert read_settings(imported) == settings
+    assert settings[LAST_MODEL] == {"provider": "OpenAI", "name": "gpt-6-luna"}
+    assert (runs, events) == ([run], [started])
 
 
 def test_new_chats_are_titled_new_chat_and_listed_newest_first(library):

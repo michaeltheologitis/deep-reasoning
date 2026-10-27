@@ -1,10 +1,11 @@
 """The app file: the Library (every namespace, decomposition and custom tool, and the run
-settings) in one SQLite file, which also holds the chats and the app's own settings, so a
-copy of it carries the whole app but for the keys and the runs.
+settings) in one SQLite file, which also holds the chats, their runs' events and the app's
+own settings, so a copy of it carries the whole app but for the keys and the runs' working
+folders.
 
 Each Library row holds the engine's own YAML, so the file turns back into a deep_reasoner
-config at run start. chats.py and settings.py keep the chats and the app's settings; this
-module lays the whole file out.
+config at run start. chats.py, runs.py and settings.py keep the chats, the runs' events and
+the app's settings; this module lays the whole file out.
 """
 
 import ast
@@ -37,9 +38,11 @@ from pydantic import ValidationError
 
 log = structlog.get_logger()
 
-SCHEMA_VERSION = 2
-# Version 1 held the Library alone; it opens and gains APP_SCHEMA.
+SCHEMA_VERSION = 3
+# Version 1 held the Library alone, and version 2 added the chats and the app's settings;
+# a file of either opens and gains the tables of the versions after it.
 LIBRARY_ONLY = 1
+BEFORE_EVENTS = 2
 LIBRARY_SCHEMA = (
     "CREATE TABLE settings (key TEXT PRIMARY KEY, yaml TEXT NOT NULL)",
     "CREATE TABLE namespaces (name TEXT PRIMARY KEY, yaml TEXT NOT NULL)",
@@ -60,6 +63,22 @@ APP_SCHEMA = (
     ),
     "CREATE TABLE app_settings (key TEXT PRIMARY KEY, json TEXT NOT NULL)",
 )
+RUN_TABLES = {"runs", "events"}
+# Each run's chat, and its events as the JSON the page folds, numbered from 1 (seq).
+RUN_SCHEMA = (
+    "CREATE TABLE runs (id TEXT PRIMARY KEY, chat TEXT NOT NULL)",
+    "CREATE INDEX runs_by_chat ON runs (chat)",
+    (
+        "CREATE TABLE events (run TEXT NOT NULL, seq INTEGER NOT NULL, data TEXT NOT NULL,"
+        " PRIMARY KEY (run, seq))"
+    ),
+)
+# The tables each version added, and how.
+ADDED_IN = {
+    LIBRARY_ONLY: (LIBRARY_TABLES, LIBRARY_SCHEMA),
+    BEFORE_EVENTS: (APP_TABLES, APP_SCHEMA),
+    SCHEMA_VERSION: (RUN_TABLES, RUN_SCHEMA),
+}
 # Upserts keep a row's place, so decompositions stay in the order they were added.
 UPSERT_SETTING = "INSERT INTO settings VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET yaml = excluded.yaml"
 UPSERT_NAMESPACE = "INSERT INTO namespaces VALUES (?, ?) ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml"
@@ -203,6 +222,11 @@ def open_library(path):
     # Autocommit: a read holds no lock once it has run; writes go through writing().
     connection = sqlite3.connect(path, isolation_level=None)
     try:
+        # Deleted rows are wiped, not left in free pages that a copy would carry.
+        connection.execute("PRAGMA secure_delete = ON")
+        # A shared file's triggers and views never run: one could keep what is deleted.
+        connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)
+        connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_VIEW, False)
         if schema_version(connection) != SCHEMA_VERSION:
             lay_out(connection, path)
         grant_llm_at_an_untouched_root(connection)
@@ -213,8 +237,8 @@ def open_library(path):
 
 
 def lay_out(connection, path):
-    """Write the whole app file into an empty file, or add what a version-1 Library lacks,
-    keeping its Library; refuse, untouched, a file that holds anything else."""
+    """Write the whole app file into an empty file, or add what a file of an earlier version
+    lacks, keeping what it holds; refuse, untouched, a file that holds anything else."""
     with writing(connection):
         # Read again under the lock: another process may have just laid it out.
         found = schema_version(connection)
@@ -223,20 +247,31 @@ def lay_out(connection, path):
         names = {
             name for (name,) in connection.execute("SELECT name FROM sqlite_master")
         }
-        if found == 0 and not names:
-            write_new_library(connection)
-        elif found != LIBRARY_ONLY or not LIBRARY_TABLES <= names or APP_TABLES & names:
+        if not written_by_an_earlier_version(found, names):
             raise LibraryError(
                 f"{path} is not a Library this version of Deep Reasoning can open."
             )
-        for statement in APP_SCHEMA:
+        versions = range(found + 1, SCHEMA_VERSION + 1)
+        added = [each for version in versions for each in ADDED_IN[version][1]]
+        for statement in added:
             connection.execute(statement)
+        if found == 0:
+            seed_new_library(connection)
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 
-def write_new_library(connection):
-    for statement in LIBRARY_SCHEMA:
-        connection.execute(statement)
+def written_by_an_earlier_version(found, names):
+    """Whether a file at version *found*, holding *names*, is empty or one an earlier
+    version wrote: every table of its version, and none of a later one's."""
+    if found == 0:
+        return not names
+    return 0 < found < SCHEMA_VERSION and all(
+        tables <= names if version <= found else not tables & names
+        for version, (tables, _) in ADDED_IN.items()
+    )
+
+
+def seed_new_library(connection):
     connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
     settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
     connection.executemany(UPSERT_SETTING, settings)

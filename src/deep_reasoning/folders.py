@@ -98,7 +98,7 @@ def list_folders(typed: str) -> dict[str, Any]:
 
 
 def data_folder(home: Path, library: Path) -> Path:
-    """Where the runs and scratch folders of the app file at *library* live: a folder of
+    """Where the run and scratch folders of the app file at *library* live: a folder of
     the app's *home* named for the file's real path, so a copy of the file never shares
     them with the original, and a moved file starts afresh, deleting nothing."""
     digest = hashlib.sha256(str(library.resolve()).encode()).hexdigest()

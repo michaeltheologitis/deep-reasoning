@@ -1,7 +1,7 @@
 """Chats: each one's id, title, when it was made, and what its next message runs on and in,
 in the app file beside the Library, so a copy of the file carries them.
 
-A chat's turns are its runs, under runs/ in the app's home; the file holds none of their events.
+A chat's turns are its runs, whose events runs.py keeps in the same file.
 """
 
 import os

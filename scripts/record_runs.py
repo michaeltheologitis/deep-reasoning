@@ -1,17 +1,20 @@
 """Record real runs against the tests' fake model, as the fold's test fixtures.
 
 Each scenario runs deep_reasoner in a worker, as the app does, with tests/fake_model.py
-answering on 127.0.0.1; its events.jsonl is copied to tests/runs/<scenario>.jsonl, with
-this machine's site-packages folder, which tracebacks name, written as SITE.
+answering on 127.0.0.1; its events, as the app file holds them, are written to
+tests/runs/<scenario>.jsonl, one JSON line each, with this machine's site-packages folder,
+which tracebacks name, written as SITE.
 
 Run from the repo root: uv run python scripts/record_runs.py
 """
 
 import asyncio
+import json
 import os
 import sys
 import sysconfig
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 import structlog
@@ -21,11 +24,13 @@ sys.path.insert(0, str(TESTS))
 
 from fake_model import FakeOpenAI, repl, scripted, task_and_turn
 
-from deep_reasoning.runs import EVENTS, RUNS, Runs
+from deep_reasoning.library import open_library
+from deep_reasoning.runs import Runs, read_events
 
 OUT = TESTS / "runs"
 SITE_PACKAGES = sysconfig.get_paths()["purelib"]
 CHAT = "recorded"
+LIBRARY = "library.sqlite"
 PRICED = "gpt-6-luna"
 UNPRICED = "a-model-nobody-prices"
 SPIN = "while True:\n    pass"
@@ -161,13 +166,16 @@ async def read_to_the_end(runs, run, stop_at):
 
 
 async def record(home, name, scenario):
+    library = home / LIBRARY
     with FakeOpenAI(responder(scenario)) as fake:
         config = config_on(fake, scenario.get("settings", {}))
-        runs = Runs(home, stop_grace_s=KILL_AFTER_S)
+        runs = Runs(library, home, stop_grace_s=KILL_AFTER_S)
         run = runs.start(CHAT, scenario["prompt"], lambda folder: config, [])
         await read_to_the_end(runs, run, scenario.get("stop_at"))
-    events = (home / RUNS / run / EVENTS).read_text(encoding="utf-8")
-    (OUT / f"{name}.jsonl").write_text(events.replace(SITE_PACKAGES, "SITE"))
+    with closing(open_library(library)) as connection:
+        events = read_events(connection, run)
+    lines = "".join(json.dumps(event) + "\n" for event in events)
+    (OUT / f"{name}.jsonl").write_text(lines.replace(SITE_PACKAGES, "SITE"))
     log.info("Recorded", scenario=name, run=run)
 
 
