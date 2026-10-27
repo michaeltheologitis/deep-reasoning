@@ -38,6 +38,8 @@ REPL_BLOCK = re.compile(r"<repl>.*?(?:</repl>|$)", re.DOTALL)
 THINK_TAG = re.compile(r"</?think>")
 OBSERVATION = re.compile(r"\A<observation>\n?(.*?)\n?</observation>\Z", re.DOTALL)
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+# What the library tool logs of each change it makes to the Library.
+CHANGE_FIELDS = ("what", "namespace", "name", "before", "after")
 
 
 def source_of(reply: str) -> str | None:
@@ -130,6 +132,7 @@ class Recorder:
             "claude.call": self._claude_call,
             "repl.execute": self._repl_execute,
             "agent.end": self._agent_end,
+            "library.change": self._library_change,
         }
 
     def __call__(
@@ -261,6 +264,14 @@ class Recorder:
             result=result,
             detail=event.get("detail"),
         )
+
+    def _library_change(self, event: dict[str, Any]) -> None:
+        """A change the library tool made, in the open cell of the agent that called it."""
+        node = event.get("agent_id") or self._root
+        agent = self._agents.get(node)
+        fields = {key: event.get(key) for key in CHANGE_FIELDS}
+        cell = agent.cell if agent else None
+        self.emit("library.change", node=node, cell=cell, **fields)
 
     def _own(self, event: dict[str, Any]) -> bool:
         """The event is a known agent's own model call or cell, not a tool's inside it."""
