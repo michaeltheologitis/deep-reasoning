@@ -1,27 +1,27 @@
 """Chats: each one's id, title, when it was made, and what its next message runs on and in,
-in chats.sqlite in the app's home.
+in the app file beside the Library, so a copy of the file carries them.
 
-A chat's turns are its runs, under runs/ beside it; this file holds none of their events.
+A chat's turns are its runs, under runs/ in the app's home; the file holds none of their events.
 """
 
+import os
+import re
 import sqlite3
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
+import structlog
 from coolname import generate_slug
 
-CHATS_FILE = "chats.sqlite"
+from deep_reasoning.library import open_library
+
+log = structlog.get_logger()
+
 # A chat id: plain characters only, like the ids the app makes.
 CHAT_ID = r"^[A-Za-z0-9_-]{1,100}$"
-SCHEMA = (
-    "CREATE TABLE IF NOT EXISTS chats"
-    " (id TEXT PRIMARY KEY, title TEXT NOT NULL, created REAL NOT NULL)"
-)
-# Null until picked or run, and a null folder is the scratch folder. A file made before
-# they were added gets them when next opened.
 CHOICES = ("namespace", "provider", "model", "folder")
 COLUMNS = "id, title, created, namespace, provider, model, folder"
 # Adds no row when the id is taken.
@@ -38,32 +38,32 @@ Chat = dict[str, Any]
 
 @contextmanager
 def connect(path: Path) -> Iterator[sqlite3.Connection]:
-    """The chats file at *path*, made if new. Autocommit: every write here is one
+    """The app file at *path*, laid out if new. Autocommit: every write here is one
     statement, which SQLite runs as a transaction of its own."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(path, isolation_level=None)
-    connection.row_factory = sqlite3.Row
-    try:
-        connection.execute(SCHEMA)
-        add_choices(connection)
+    with closing(open_library(path)) as connection:
+        connection.row_factory = sqlite3.Row
         yield connection
-    finally:
-        connection.close()
 
 
-def add_choices(connection: sqlite3.Connection) -> None:
-    present = {row["name"] for row in connection.execute("PRAGMA table_info(chats)")}
-    for column in [each for each in CHOICES if each not in present]:
-        connection.execute(f"ALTER TABLE chats ADD COLUMN {column} TEXT")
+def well_formed(chat: sqlite3.Row) -> bool:
+    """Whether the app could have written the chat's row, as a file from someone else may
+    not have: its id names its scratch folder, and its folder is where its runs work."""
+    chat_id, folder = chat["id"], chat["folder"]
+    plain_id = isinstance(chat_id, str) and re.fullmatch(CHAT_ID, chat_id)
+    absolute = folder is None or (isinstance(folder, str) and os.path.isabs(folder))
+    if plain_id and absolute:
+        return True
+    log.warning("chats.left_out", id=repr(chat_id), folder=repr(folder))
+    return False
 
 
 def list_chats(path: Path) -> list[Chat]:
-    """Every chat, newest first."""
+    """Every chat the app could have written, newest first."""
     with connect(path) as connection:
         rows = connection.execute(
             f"SELECT {COLUMNS} FROM chats ORDER BY created DESC, rowid DESC"
         )
-        return [dict(row) for row in rows]
+        return [dict(row) for row in rows if well_formed(row)]
 
 
 def find_chat(path: Path, chat: str) -> Chat | None:
@@ -71,7 +71,7 @@ def find_chat(path: Path, chat: str) -> Chat | None:
         row = connection.execute(
             f"SELECT {COLUMNS} FROM chats WHERE id = ?", (chat,)
         ).fetchone()
-    return None if row is None else dict(row)
+    return None if row is None or not well_formed(row) else dict(row)
 
 
 def create_chat(path: Path, folder: str | None = None) -> Chat:

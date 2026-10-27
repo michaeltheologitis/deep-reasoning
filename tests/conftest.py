@@ -95,8 +95,8 @@ def library_on(library, home):
     key, that new chats start on: call it with the fake."""
 
     def on(fake):
-        add_server(home, SERVER_NAME, fake.base_url, SERVER_KEY)
-        remember_pick(home, SERVER_NAME, "gpt-6-luna")
+        add_server(home, library, SERVER_NAME, fake.base_url, SERVER_KEY)
+        remember_pick(library, SERVER_NAME, "gpt-6-luna")
         return library
 
     return on

@@ -1,11 +1,11 @@
 """Runs: each message is one run of deep_reasoner in a worker subprocess, streamed as events.
 
-A run lives in runs/<run>/ under the app's home: spec.yaml, what the worker runs, with
-the engine config; events.jsonl, every event as one JSON line, appended as it happens;
-and worker.log, the worker's stderr. The server numbers each event (seq, from 1) and
-stamps its time (t). The model's key reaches the worker in its environment only, never
-in the run's folder. The worker works in the chat's folder: its cwd, where the agent's
-Python reads and writes.
+A run lives in runs/<run>/ in the app file's data folder: spec.yaml, what the worker
+runs, with the engine config; events.jsonl, every event as one JSON line, appended as it
+happens; and worker.log, the worker's stderr. The server numbers each event (seq, from
+1) and stamps its time (t). The model's key reaches the worker in its environment only,
+never in the run's folder. The worker works in the chat's folder: its cwd, where the
+agent's Python reads and writes.
 """
 
 import asyncio

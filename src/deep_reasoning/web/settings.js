@@ -14,7 +14,7 @@ const toggleButton = document.getElementById("settings-toggle");
 // what the server last said: each provider, and where its key is, never the key
 let providers = [];
 let loadProblem = null;
-// the folder new chats start in, as the server keeps it in settings.json; null: each chat's own scratch folder
+// the folder new chats start in, as the server keeps it in the app file; null: each chat's own scratch folder
 let defaultFolder = null;
 // the name of the provider whose form shows, or ADDING for a new server's
 let opened = null;

@@ -1,10 +1,11 @@
 """Working folders: where each chat's Python runs and reads and writes files.
 
 A chat works in the folder its user chose, or else in its scratch folder, work/<chat>/ in
-the app's home, made on its first run and deleted with the chat. A folder the user chose
-is never deleted. Paths reach the page with your home folder written as ~.
+the app file's data folder, made on its first run and deleted with the chat. A folder the
+user chose is never deleted. Paths reach the page with your home folder written as ~.
 """
 
+import hashlib
 import os
 import re
 import shutil
@@ -19,6 +20,9 @@ from deep_reasoning.chats import CHAT_ID
 log = structlog.get_logger()
 
 WORK = "work"
+FILES = "files"
+# Of the sha256 of the app file's path: 64 bits, so no two files on a computer share one.
+PATH_DIGITS = 16
 HOME = "~"
 GONE = "That folder no longer exists — pick another."
 
@@ -93,14 +97,31 @@ def list_folders(typed: str) -> dict[str, Any]:
     }
 
 
-def scratch_folder(home: Path, chat: str) -> Path:
-    """work/<chat> in the app's home. Only a plain id names one, so no id reaches outside."""
+def data_folder(home: Path, library: Path) -> Path:
+    """Where the runs and scratch folders of the app file at *library* live: a folder of
+    the app's *home* named for the file's real path, so a copy of the file never shares
+    them with the original, and a moved file starts afresh, deleting nothing."""
+    digest = hashlib.sha256(str(library.resolve()).encode()).hexdigest()
+    return home / FILES / digest[:PATH_DIGITS]
+
+
+def scratch_folder(data: Path, chat: str) -> Path:
+    """work/<chat> in the app file's *data* folder. Only a plain id names one, so no id
+    reaches outside."""
     if not re.fullmatch(CHAT_ID, chat):
         raise ValueError(f"{chat!r} is not a chat id")
-    return home / WORK / chat
+    return data / WORK / chat
 
 
-def working_folder(home: Path, chat: dict[str, Any]) -> Path:
+def starting_folder(default: str | None) -> str | None:
+    """Where a new chat works: the default folder while it is there; else, as when the app
+    file came from another computer, its scratch folder (None)."""
+    if default is None or not os.path.isdir(default):
+        return None
+    return default
+
+
+def working_folder(data: Path, chat: dict[str, Any]) -> Path:
     """Where the chat's next run works: the folder it chose, which must still be there, or
     its scratch folder, made if new."""
     if chat["folder"] is not None:
@@ -108,7 +129,7 @@ def working_folder(home: Path, chat: dict[str, Any]) -> Path:
         if not os.path.isdir(folder):
             raise FolderError(GONE)
         return folder
-    scratch = scratch_folder(home, chat["id"])
+    scratch = scratch_folder(data, chat["id"])
     scratch.mkdir(parents=True, exist_ok=True)
     return scratch
 
