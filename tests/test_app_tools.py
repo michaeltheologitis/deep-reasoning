@@ -5,6 +5,7 @@ from itertools import count
 from pathlib import Path
 
 import pytest
+from structlog.testing import capture_logs
 
 from deep_reasoning.app_tools import build_history, open_read_only
 from deep_reasoning.library import open_library, writing
@@ -15,6 +16,7 @@ CHAT = "a-chat"
 ANOTHER_CHAT = "another-chat"
 CURRENT = "20261027-235959-000000"
 RUN_NUMBERS = count()
+EXHAUSTED = "Agent failed to produce a final answer within 3 iterations."
 
 
 def recorded(name):
@@ -144,6 +146,87 @@ def test_a_run_the_app_stopped_under_reads_as_failed(library):
     [turn] = history.turns()
     assert (turn["outcome"], turn["detail"]) == ("failed", LOST)
     assert history.agents(1)[0]["status"] == "stopped"
+
+
+def test_an_exhausted_run_and_its_exhausted_sub_agent_read_as_such(library):
+    plant(library, CHAT, recorded("exhausted"))
+    history = history_of(library)
+    [turn] = history.turns()
+    [looping] = history.agents(1)
+    assert (turn["outcome"], turn["answer"]) == ("exhausted", EXHAUSTED)
+    assert (looping["status"], looping["result"], looping["steps"]) == (
+        "exhausted",
+        None,
+        3,
+    )
+    assert looping["cost"] == pytest.approx(cost_of_calls(recorded("exhausted"), {2}))
+
+
+def crafted(*events):
+    """A run's rows as a file from someone else may hold them: a turn.start, *events*,
+    then a turn.end."""
+    rows = [{"kind": "turn.start", "prompt": "Crafted."}, *events]
+    rows.append({"kind": "turn.end", "outcome": "answered", "answer": "crafted"})
+    return [{"seq": seq, "t": float(seq)} | row for seq, row in enumerate(rows, 1)]
+
+
+ROOT_AND_CELL = (
+    {"kind": "agent.start", "node": 1, "parent": None, "cell": None},
+    {"kind": "cell.start", "node": 1, "cell": 1, "code": "print('kept')"},
+)
+
+
+def test_a_sub_agent_started_again_as_the_root_leaves_history_answering(library):
+    plant(library, CHAT, recorded("nested"))
+    plant(
+        library,
+        CHAT,
+        crafted(
+            *ROOT_AND_CELL,
+            {"kind": "agent.start", "node": 2, "parent": 1, "cell": 1},
+            {"kind": "agent.start", "node": 2, "parent": None, "cell": None},
+            {"kind": "usage", "node": 2, "cost": 0.5},
+        ),
+    )
+    history = history_of(library)
+    assert [turn["message"] for turn in history.turns()] == [
+        "Plan the term.",
+        "Crafted.",
+    ]
+    assert [(agent["node"], agent["status"]) for agent in history.agents(2)] == [
+        (2, "stopped")
+    ]
+    assert history.agents(1)[0]["task"] == "Survey CS."
+
+
+def test_events_naming_a_node_or_cell_no_run_could_have_are_left_out(library):
+    plant(library, CHAT, recorded("nested"))
+    run = crafted(
+        *ROOT_AND_CELL,
+        {"kind": "agent.start", "node": [2], "parent": 1, "cell": 1},
+        {"kind": "usage", "node": [2], "cost": 0.5},
+        {"kind": "cell.start", "node": 1, "cell": {"id": 2}, "code": "print('out')"},
+    )
+    plant(library, CHAT, run)
+    history = history_of(library)
+    with capture_logs() as logs:
+        turns = history.turns()
+    assert [turn["message"] for turn in turns] == ["Plan the term.", "Crafted."]
+    assert history.agents(2) == []
+    assert [step["code"] for step in history.steps(2)] == ["print('kept')"]
+    left_out = [
+        entry["seq"] for entry in logs if entry["event"] == "history.event_left_out"
+    ]
+    assert left_out == [4, 5, 6]
+
+
+def test_the_earlier_runs_are_read_once_and_handed_out_as_copies(library):
+    plant(library, CHAT, recorded("nested"))
+    history = history_of(library)
+    history.steps(1)[0]["code"] = "changed"
+    plant(library, CHAT, recorded("fanout"))
+    assert [turn["message"] for turn in history.turns()] == ["Plan the term."]
+    assert history.steps(1)[0]["code"] != "changed"
 
 
 def test_a_call_with_an_unpriced_model_has_no_cost(library):

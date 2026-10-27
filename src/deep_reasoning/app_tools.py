@@ -7,36 +7,41 @@ history reads the chat's earlier runs from the app file, read-only, as the page 
 runs.py checks each row, and folded() folds a run's events into its tree as fold.js does.
 """
 
-import math
+import copy
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import structlog
 from deep_reasoner.primitives import Func
 
 from deep_reasoning.library import HISTORY_DESCRIPTION, distrust
-from deep_reasoning.runs import chat_turns
+from deep_reasoning.runs import chat_turns, total_cost
+
+log = structlog.get_logger()
 
 Event = dict[str, Any]
+Holder = dict[str, Any]
 STARTED_WITH = ("node", "parent", "drive", "task", "namespace")
 AGENT_FIELDS = (*STARTED_WITH, "status", "result")
 ENDED_WITH = ("outcome", "answer", "detail", "cost", "seconds")
+LOOKUP_FIELDS = ("node", "parent", "cell")
 
 
 @dataclass
 class Tree:
     """A run's events folded: the root agent's drive, each sub-agent drive as a row, and
-    for each node its current drive and its parent's node."""
+    each node's current drive (its holder) with its parent's node."""
 
-    root: dict[str, Any] = field(
-        default_factory=lambda: {"node": None, "drive": None, "steps": []}
+    root: Holder = field(
+        default_factory=lambda: {"node": None, "drive": None, "costs": [], "steps": []}
     )
-    rows: list[dict[str, Any]] = field(default_factory=list)
-    drives: dict[Any, dict[str, Any]] = field(default_factory=dict)
-    parents: dict[Any, Any] = field(default_factory=dict)
+    rows: list[Holder] = field(default_factory=list)
+    nodes: dict[Any, tuple[Holder, Any]] = field(default_factory=dict)
     cells: dict[Any, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -44,7 +49,7 @@ def start_agent(tree: Tree, event: Event) -> None:
     node, parent = event.get("node"), event.get("parent")
     if parent is None:
         tree.root |= {"node": node, "drive": event.get("drive")}
-        tree.drives[node] = tree.root
+        tree.nodes[node] = (tree.root, None)
         return
     cell = tree.cells.get(event.get("cell"))
     if cell is None:
@@ -54,12 +59,15 @@ def start_agent(tree: Tree, event: Event) -> None:
     if node not in cell["agents"]:
         cell["agents"].append(node)
     tree.rows.append(row)
-    tree.drives[node] = row
-    tree.parents[node] = parent
+    tree.nodes[node] = (row, parent)
+
+
+def holder_of(tree: Tree, node: Any) -> Holder | None:
+    return tree.nodes.get(node, (None, None))[0]
 
 
 def add_step(tree: Tree, node: Any, step: dict[str, Any]) -> None:
-    holder = tree.drives.get(node)
+    holder = holder_of(tree, node)
     if holder is not None:
         step["drive"] = holder["drive"]
         holder["steps"].append(step)
@@ -86,14 +94,14 @@ def add_usage(tree: Tree, event: Event) -> None:
     """A call's cost counts for its agent and every agent above it."""
     node, seen = event.get("node"), set()
     # Each once: a file from someone else may name a node its own ancestor.
-    while node in tree.parents and node not in seen:
+    while node in tree.nodes and node not in seen:
         seen.add(node)
-        tree.drives[node]["costs"].append(event.get("cost"))
-        node = tree.parents[node]
+        holder, node = tree.nodes[node]
+        holder["costs"].append(event.get("cost"))
 
 
 def end_agent(tree: Tree, event: Event) -> None:
-    row = tree.drives.get(event.get("node"))
+    row = holder_of(tree, event.get("node"))
     if row is None or row is tree.root:
         return
     result = event.get("result")
@@ -119,24 +127,27 @@ FOLDS = {
 }
 
 
+def well_keyed(event: Event) -> bool:
+    """Whether *event*'s node, parent and cell are ones a run of the app's could have."""
+    return all(isinstance(event.get(key), int | str | None) for key in LOOKUP_FIELDS)
+
+
 def folded(events: list[Event]) -> Tree:
-    """A run's events as the tree fold.js folds them into for the page."""
+    """A run's events as the tree fold.js folds them into for the page. An event that
+    isn't well keyed, as a file from someone else may hold, is left out."""
     tree = Tree()
     for event in events:
         fold = FOLDS.get(event["kind"])
-        if fold is not None:
-            fold(tree, event)
+        if fold is None:
+            continue
+        if not well_keyed(event):
+            log.warning("history.event_left_out", seq=event["seq"])
+            continue
+        fold(tree, event)
     return tree
 
 
-def summed(costs: list[Any]) -> float | None:
-    """The total of *costs*; None once any is unknown, as runs.totals counts a turn's."""
-    if all(isinstance(cost, int | float) for cost in costs):
-        return math.fsum(costs)
-    return None
-
-
-def turn_row(number: int, events: list[Event]) -> dict[str, Any]:
+def turn_row(number: int, events: list[Event], tree: Tree) -> dict[str, Any]:
     start, end = events[0], events[-1]
     return {
         "turn": number,
@@ -144,13 +155,13 @@ def turn_row(number: int, events: list[Event]) -> dict[str, Any]:
         "namespace": start.get("namespace"),
         "model": start.get("model"),
         **{key: end.get(key) for key in ENDED_WITH},
-        "agents": len(folded(events).rows),
+        "agents": len(tree.rows),
     }
 
 
-def agent_row(row: dict[str, Any]) -> dict[str, Any]:
+def agent_row(row: Holder) -> dict[str, Any]:
     fields = {key: row[key] for key in AGENT_FIELDS}
-    return fields | {"cost": summed(row["costs"]), "steps": len(row["steps"])}
+    return fields | {"cost": total_cost(row["costs"]), "steps": len(row["steps"])}
 
 
 def open_read_only(library: str | Path) -> sqlite3.Connection:
@@ -175,8 +186,13 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
     in the run's config names them."""
     library, chat, run = params["library"], params["chat"], params["run"]
 
-    def chosen(turn: int) -> list[Event]:
-        runs = earlier_runs(library, chat, run)
+    @cache
+    def earlier() -> list[tuple[list[Event], Tree]]:
+        # Read once: no run of the chat's starts or ends while this one is going.
+        return [(events, folded(events)) for events in earlier_runs(library, chat, run)]
+
+    def chosen(turn: int) -> Tree:
+        runs = earlier()
         if not runs:
             raise ValueError("This chat has no earlier messages: this is its first.")
         if not isinstance(turn, int) or not 1 <= turn <= len(runs):
@@ -184,23 +200,23 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
                 f"There is no message {turn!r}: this chat's earlier messages are"
                 f" numbered 1 to {len(runs)}."
             )
-        return runs[turn - 1]
+        return runs[turn - 1][1]
 
     def turns() -> list[dict[str, Any]]:
         """This chat's earlier messages, numbered from 1, with how each ended."""
-        runs = earlier_runs(library, chat, run)
-        return [turn_row(number, events) for number, events in enumerate(runs, 1)]
+        return [turn_row(number, *each) for number, each in enumerate(earlier(), 1)]
 
     def agents(turn: int) -> list[dict[str, Any]]:
         """Each sub-agent drive of message *turn*."""
-        return [agent_row(row) for row in folded(chosen(turn)).rows]
+        return [agent_row(row) for row in chosen(turn).rows]
 
     def steps(turn: int, node: Any = None) -> list[dict[str, Any]]:
         """The thoughts and cells of message *turn*'s top agent, or of sub-agent *node*."""
-        tree = folded(chosen(turn))
-        if node is None or node == tree.root["node"]:
-            return tree.root["steps"]
-        drives = [row for row in tree.rows if row["node"] == node]
+        tree = chosen(turn)
+        top = node is None or node == tree.root["node"]
+        drives = (
+            [tree.root] if top else [row for row in tree.rows if row["node"] == node]
+        )
         if not drives:
             nodes = [
                 tree.root["node"],
@@ -209,7 +225,8 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
             raise ValueError(
                 f"Message {turn} has no agent {node!r}: its agents' nodes are {nodes}."
             )
-        return [step for row in drives for step in row["steps"]]
+        # A copy: the folded runs are kept for the next call.
+        return copy.deepcopy([step for row in drives for step in row["steps"]])
 
     history = SimpleNamespace(turns=turns, agents=agents, steps=steps)
     return Func(history, description=HISTORY_DESCRIPTION)

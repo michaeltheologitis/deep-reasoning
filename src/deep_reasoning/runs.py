@@ -221,14 +221,17 @@ def has_ended(event: dict[str, Any] | None) -> bool:
     return event is not None and event["kind"] == "turn.end"
 
 
+def total_cost(costs: Sequence[Any]) -> float | None:
+    """What *costs* add up to; None when any of them is unknown."""
+    if all(isinstance(cost, int | float) for cost in costs):
+        return math.fsum(costs)
+    return None
+
+
 def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
     """A turn's cost, None when any call's is unknown, and its seconds until *until*."""
     costs = [event.get("cost") for event in events if event["kind"] == "usage"]
-    known = all(isinstance(cost, int | float) for cost in costs)
-    return {
-        "cost": math.fsum(costs) if known else None,
-        "seconds": until - events[0]["t"],
-    }
+    return {"cost": total_cost(costs), "seconds": until - events[0]["t"]}
 
 
 def lost_end(events: Sequence[dict[str, Any]], seq: int) -> dict[str, Any]:

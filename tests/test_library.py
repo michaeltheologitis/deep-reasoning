@@ -119,7 +119,7 @@ def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
     assert FAKE_KEY.encode() not in library.read_bytes()
 
 
-def test_a_fresh_library_grants_llm_at_root_and_the_engine_accepts_it(
+def test_a_fresh_library_grants_llm_and_history_at_root_and_the_engine_accepts_it(
     library, tmp_path
 ):
     config = run_config(library, tmp_path)
@@ -127,7 +127,9 @@ def test_a_fresh_library_grants_llm_at_root_and_the_engine_accepts_it(
     assert config.namespaces[ROOT].tools == ["llm", "history"]
 
 
-def test_a_library_made_with_an_empty_root_is_given_llm_there_once(library, tmp_path):
+def test_a_library_made_with_an_empty_root_is_given_a_fresh_root_once(
+    library, tmp_path
+):
     with closing(open_library(library)) as connection, writing(connection):
         connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
     upgraded = dumped(library)
@@ -450,10 +452,9 @@ def test_a_runs_config_tells_the_history_tool_the_app_file_the_chat_and_the_run(
         assert connection.execute("SELECT count(*) FROM tools").fetchone() == (0,)
 
 
-@pytest.mark.parametrize("name", ["history", "library"])
-def test_an_import_may_not_give_a_tool_an_app_tools_name(library, tmp_path, name):
+def test_an_import_may_not_give_a_tool_an_app_tools_name(library, tmp_path):
     config = tmp_path / "tool.yaml"
-    config.write_text(f"tools:\n  {name}: {{factory: llm}}\n")
+    config.write_text("tools:\n  history: {factory: llm}\n")
     with pytest.raises(LibraryError, match="one of the app's own tools"):
         import_into(library, config)
     with closing(open_library(library)) as connection:

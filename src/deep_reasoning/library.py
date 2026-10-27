@@ -90,8 +90,7 @@ UPSERT_TOOL = (
     "INSERT INTO tools VALUES (?, ?, ?)"
     " ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml, source = excluded.source"
 )
-# Root grants llm to every namespace below it, as in the engine's example configs, and
-# the app's history tool.
+# Granted at root, so every namespace below has them, as in the engine's example configs.
 FRESH_ROOT = {"tools": ["llm", "history"]}
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
@@ -153,17 +152,14 @@ drive, task, namespace, status, result, cost (its own sub-agents' included) and 
 top agent, or of the sub-agent whose node is `node`: {kind: "think", text} or \
 {kind: "cell", code, output, status, agents: the nodes of the sub-agents it started}, \
 each with its drive."""
-# The app's own tools, built by app_tools.py and added to every config in code, never
-# stored in the file; each is told the app file, the chat and the run.
+# Added in code, never stored: a shared file mustn't choose the code they run.
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
 APP_TOOLS = {
     "history": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_history"},
 }
 APP_TOOL_DESCRIPTIONS = {"history": HISTORY_DESCRIPTION}
-APP_TOOLS_MODULE = "deep_reasoning.app_tools"
+APP_TOOLS_MODULE = f"{__package__}.{APP_TOOLS_FILE.stem}"
 APP = "Deep Reasoning"
-# No tool of the Library's may take an app tool's name, or that of the one to come.
-RESERVED_TOOLS = {*APP_TOOLS, "library"}
 # A new namespace's name, from the page: plain words, joined by dots for a child.
 NAMESPACE_NAME = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 NAME_IT = 'Name the namespace, like "research"; "research.papers" goes under research.'
@@ -253,7 +249,7 @@ def open_library(path):
         distrust(connection)
         if schema_version(connection) != SCHEMA_VERSION:
             lay_out(connection, path)
-        grant_llm_at_an_untouched_root(connection)
+        freshen_an_untouched_root(connection)
     except BaseException:
         connection.close()
         raise
@@ -307,7 +303,7 @@ def seed_new_library(connection):
     connection.executemany(UPSERT_SETTING, settings)
 
 
-def grant_llm_at_an_untouched_root(connection):
+def freshen_an_untouched_root(connection):
     """Give a Library made with an empty root the root a new one starts with."""
     parameters = {"root": ROOT, "empty": dump({}), "fresh": dump(FRESH_ROOT)}
     found = connection.execute(
@@ -338,21 +334,24 @@ def stored_settings(connection):
     return {key: yaml.safe_load(text) for key, text in rows if key not in CHATS_DECIDE}
 
 
-def stored_tools(connection):
-    """The Library's tools, then the app's. A stored tool under an app tool's name, as a
-    shared file may hold, is left out: the app's own takes its place."""
-    tools = {}
-    for name, text in connection.execute("SELECT name, yaml FROM tools ORDER BY rowid"):
-        if name in RESERVED_TOOLS:
+def library_tools(connection):
+    """The Library's own tools, each as its name, YAML and source. A row under an app
+    tool's name, as a shared file may hold, is left out: the app's own takes its place."""
+    rows = connection.execute("SELECT name, yaml, source FROM tools ORDER BY rowid")
+    tools = []
+    for name, text, source in rows:
+        if name in APP_TOOLS:
             log.warning("library.tool_shadowed", tool=name)
             continue
-        tools[name] = yaml.safe_load(text)
-    return tools | {name: dict(block) for name, block in APP_TOOLS.items()}
+        tools.append((name, text, source))
+    return tools
 
 
 def stored_config(connection):
-    """The Library as a plain dict in the engine's config shape; a custom tool's factory_from names its stored file."""
-    tools = stored_tools(connection)
+    """The Library as a plain dict in the engine's config shape, the app's tools after its
+    own; a custom tool's factory_from names its stored file."""
+    tools = {name: yaml.safe_load(text) for name, text, _ in library_tools(connection)}
+    tools |= {name: dict(block) for name, block in APP_TOOLS.items()}
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, yaml FROM decompositions ORDER BY rowid"
@@ -378,13 +377,9 @@ def engine_config(library_path, namespace, tools_dir, chat, run):
     tools_dir.mkdir(parents=True, exist_ok=True)
     with closing(open_library(library_path)) as connection:
         config = stored_config(connection)
-        rows = connection.execute(
-            "SELECT name, source FROM tools WHERE source IS NOT NULL"
-        )
-        sources = rows.fetchall()
+        tools = library_tools(connection)
+    sources = [(name, source) for name, _, source in tools if source is not None]
     for name, source in sources:
-        if name in RESERVED_TOOLS:
-            continue
         file = tools_dir / tool_file(name)
         file.write_text(source, encoding="utf-8")
         config["tools"][name]["factory_from"] = str(file)
@@ -421,7 +416,7 @@ def check(connection):
 
 def tool_row(name, block, config_dir):
     """A tool's row: its config block, and for a tool of your own its Python source."""
-    if name in RESERVED_TOOLS:
+    if name in APP_TOOLS:
         raise LibraryError(
             f'Tool "{name}" has the name of one of the app\'s own tools; rename yours.'
         )
@@ -906,7 +901,7 @@ def panel(connection):
         }
         for name in names
     ]
-    sources = dict(connection.execute("SELECT name, source FROM tools"))
+    sources = {name: source for name, _, source in library_tools(connection)}
     return {
         "default_namespace": config.entry_namespace,
         "run_settings": run_settings(connection),

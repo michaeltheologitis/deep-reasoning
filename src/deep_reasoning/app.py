@@ -409,8 +409,7 @@ def create_app(library, home):
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
 
         def config_for(run_folder):
-            # The Library's tools as they are now, in a folder of its own; the chat's model.
-            # The app's tools are told the chat and the run, which names its folder.
+            # A run's folder is named by its id.
             run = run_folder.name
             tools = run_folder / "tools"
             config = engine_config(library, namespace, tools, chat["id"], run)
