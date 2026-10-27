@@ -40,6 +40,8 @@ log = structlog.get_logger()
 Outcome = Literal["answered", "exhausted", "failed", "stopped"]
 RUNS = "runs"
 SPEC = "spec.yaml"
+# What a library.change event says of a change the library tool made to the Library.
+CHANGE_FIELDS = ("what", "namespace", "name", "before", "after")
 ADD_RUN = "INSERT INTO runs VALUES (?, ?)"
 ADD_EVENT = "INSERT INTO events VALUES (?, ?, ?)"
 FORWARD = "SELECT seq, data FROM events WHERE run = ? ORDER BY seq"

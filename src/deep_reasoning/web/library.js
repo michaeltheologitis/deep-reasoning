@@ -1,5 +1,5 @@
 // The Library panel: the decompositions, namespaces, tools and data every run draws on, read from the server's Library file; adding, editing and deleting save there.
-import { PANEL_CLOSE, caret, closeOtherPanels, element, libraryChanged, request } from "./app.js";
+import { LIBRARY_CHANGED, PANEL_CLOSE, caret, closeOtherPanels, element, libraryChanged, request } from "./app.js";
 
 const LIBRARY_URL = "api/library";
 const ADD_URL = "api/decompositions";
@@ -68,6 +68,9 @@ let problem = null;
 let tab = TABS[0];
 // the namespace whose Delete is asking, and the server's refusal once it answered
 let deleting = null;
+// each read and change of the Library, numbered as sent: an answer is used only while none sent later has been
+let sent = 0;
+let applied = 0;
 
 const dot = () => element("span", { class: "lib-dot", "aria-hidden": "true" }, "·");
 const namespaceNamed = (name) => library.namespaces.find((namespace) => namespace.name === name);
@@ -235,17 +238,22 @@ async function readFile() {
 }
 
 async function addDecomposition(text) {
-  const namespace = namespaceNamed(picker.value);
-  const { name, yaml } = await request("POST", ADD_URL, { namespace: namespace.name, yaml: text });
-  namespace.decompositions.push({ name, yaml });
-  const row = decompositionKey(namespace.name, name);
+  const namespace = picker.value;
+  const { name, yaml } = await request("POST", ADD_URL, { namespace, yaml: text });
+  applied = ++sent;
+  // looked up again: a read answered meanwhile may have replaced the Library, and may hold the new one already
+  const { decompositions } = namespaceNamed(namespace);
+  if (!decompositions.some((each) => each.name === name)) decompositions.push({ name, yaml });
+  const row = decompositionKey(namespace, name);
   opened.add(row);
-  return { said: `Added "${name}" to ${namespace.name}`, row };
+  return { said: `Added "${name}" to ${namespace}`, row };
 }
 
 // A namespace's change reaches every namespace under it, so the server answers with the whole Library.
 async function changeLibrary(method, url, body) {
-  useLibrary(await request(method, url, body));
+  const found = await request(method, url, body);
+  applied = ++sent;
+  useLibrary(found);
   libraryChanged(library);
 }
 
@@ -298,7 +306,7 @@ async function deleteNamespace(name, button) {
   } catch (error) {
     deleting = { name, refusal: error.message };
     // a refusal may come from a change made elsewhere, so the next confirm asks about what is there now
-    await changeLibrary("GET", LIBRARY_URL).catch(() => {});
+    await load();
     render();
     reveal(`delete:${name}`);
     return;
@@ -541,13 +549,20 @@ function renderData() {
 
 const RENDERERS = { Decompositions: renderDecompositions, Namespaces: renderNamespaces, Tools: renderTools, Data: renderData };
 
+// A field being typed in when the agent's change redraws the panel is drawn again as itself, so it keeps focus and caret.
 function render() {
   for (const button of tabButtons) button.setAttribute("aria-selected", String(button.textContent === tab));
   body.setAttribute("aria-labelledby", `library-tab-${tab.toLowerCase()}`);
-  const focused = document.activeElement?.dataset?.key;
+  const active = document.activeElement;
+  const { selectionStart, selectionEnd } = active ?? {};
+  const focused = active?.dataset?.key;
   if (problem || !library) body.replaceChildren(element("p", { class: "lib-note" }, problem ?? "Loading the Library…"));
   else body.replaceChildren(...RENDERERS[tab]());
   if (focused) body.querySelector(`[data-key="${CSS.escape(focused)}"]`)?.focus();
+  else if (active !== document.activeElement && body.contains(active)) {
+    active.focus({ preventScroll: true });
+    if (selectionStart != null) active.setSelectionRange(selectionStart, selectionEnd);
+  }
 }
 
 function flip(key) {
@@ -591,17 +606,27 @@ function useLibrary(found) {
   picker.value = picked;
 }
 
+// At start, and after each change the agent makes in a run; drafts live in their forms, so they survive.
 async function load() {
+  const asked = ++sent;
+  let found;
   try {
-    useLibrary(await request("GET", LIBRARY_URL));
+    found = await request("GET", LIBRARY_URL);
   } catch (error) {
-    problem = `Could not load the Library (${error.message}).`;
+    if (!library) problem = `Could not load the Library (${error.message}).`;
+  }
+  if (found && asked > applied) {
+    applied = asked;
+    problem = null;
+    useLibrary(found);
+    libraryChanged(library);
   }
   if (!panel.hidden) render();
 }
 
 toggleButton.addEventListener("click", () => setOpen(panel.hidden));
 panel.addEventListener(PANEL_CLOSE, () => setOpen(false));
+panel.addEventListener(LIBRARY_CHANGED, load);
 // Esc inside the panel takes back a Delete first, else closes it, and stops there, so it never also stops a run.
 panel.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;

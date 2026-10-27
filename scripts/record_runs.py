@@ -3,9 +3,10 @@
 Each scenario runs deep_reasoner in a worker, as the app does, with tests/fake_model.py
 answering on 127.0.0.1; its events, as the app file holds them, are written to
 tests/runs/<scenario>.jsonl, one JSON line each, with this machine's site-packages folder,
-which tracebacks name, written as SITE.
+which tracebacks name, written as SITE, and the runs' temporary home as HOME.
 
-Run from the repo root: uv run python scripts/record_runs.py
+Run from the repo root: uv run python scripts/record_runs.py [scenario ...], every
+scenario unless some are named.
 """
 
 import asyncio
@@ -22,9 +23,17 @@ import structlog
 TESTS = Path(__file__).resolve().parents[1] / "tests"
 sys.path.insert(0, str(TESTS))
 
-from fake_model import FakeOpenAI, repl, scripted, task_and_turn
+from fake_model import (
+    EXAMPLE,
+    REWORDED,
+    FakeOpenAI,
+    repl,
+    scripted,
+    task_and_turn,
+    write,
+)
 
-from deep_reasoning.library import open_library
+from deep_reasoning.library import ROOT, engine_config, open_library
 from deep_reasoning.runs import Runs, read_events
 
 OUT = TESTS / "runs"
@@ -127,6 +136,21 @@ SCENARIOS = {
         },
         "stop_at": SLEEP,
     },
+    "librarian": {
+        "prompt": "File the example.",
+        "namespace": "librarian",
+        "plan": {
+            "File the example.": [
+                write("librarian", EXAMPLE),
+                repl("print(subagent('Reword the example.', namespace='librarian'))"),
+                repl("FinalAnswer('filed')"),
+            ],
+            "Reword the example.": [
+                write("librarian", REWORDED),
+                repl("FinalAnswer('reworded')"),
+            ],
+        },
+    },
 }
 
 log = structlog.get_logger()
@@ -154,7 +178,6 @@ def config_on(fake, settings):
         "client": client | {"max_retries": 0},
         "system_prompt": "You are a scripted test agent.",
         "max_iter": 6,
-        "entry_namespace": "root",
     } | settings
 
 
@@ -167,24 +190,34 @@ async def read_to_the_end(runs, run, stop_at):
 
 async def record(home, name, scenario):
     library = home / LIBRARY
+    namespace = scenario.get("namespace", ROOT)
     with FakeOpenAI(responder(scenario)) as fake:
-        config = config_on(fake, scenario.get("settings", {}))
+
+        def config_for(folder):
+            # The Library's config, as the app builds a run's, with the fake's model.
+            told = engine_config(
+                library, namespace, folder / "tools", CHAT, folder.name
+            )
+            return told | config_on(fake, scenario.get("settings", {}))
+
         runs = Runs(library, home, stop_grace_s=KILL_AFTER_S)
-        run = runs.start(CHAT, scenario["prompt"], lambda folder: config, [])
+        run = runs.start(CHAT, scenario["prompt"], config_for, [])
         await read_to_the_end(runs, run, scenario.get("stop_at"))
     with closing(open_library(library)) as connection:
         events = read_events(connection, run)
     lines = "".join(json.dumps(event) + "\n" for event in events)
-    (OUT / f"{name}.jsonl").write_text(lines.replace(SITE_PACKAGES, "SITE"))
+    lines = lines.replace(SITE_PACKAGES, "SITE").replace(str(home), "HOME")
+    (OUT / f"{name}.jsonl").write_text(lines)
     log.info("Recorded", scenario=name, run=run)
 
 
 async def main():
     os.environ["OPENAI_API_KEY"] = "fake"
     OUT.mkdir(exist_ok=True)
+    names = sys.argv[1:] or SCENARIOS
     with tempfile.TemporaryDirectory() as home:
-        for name, scenario in SCENARIOS.items():
-            await record(Path(home), name, scenario)
+        for name in names:
+            await record(Path(home), name, SCENARIOS[name])
 
 
 if __name__ == "__main__":

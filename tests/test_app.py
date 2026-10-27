@@ -11,12 +11,17 @@ from pathlib import Path
 import httpx
 import pytest
 from fake_model import (
+    ASKED,
+    EXAMPLE,
+    REWORDED,
+    REWORDED_ASK,
     SERVER_KEY,
     SERVER_NAME,
     FakeOpenAI,
     repl,
     scripted,
     task_and_turn,
+    write,
 )
 from fastapi.testclient import TestClient
 
@@ -32,7 +37,7 @@ from deep_reasoning.library import (
     open_library,
     writing,
 )
-from deep_reasoning.runs import LOST, save_event
+from deep_reasoning.runs import CHANGE_FIELDS, LOST, save_event
 from deep_reasoning.settings import (
     DEFAULT_FOLDER,
     ENV_FILE,
@@ -535,24 +540,6 @@ async def test_a_follow_up_reads_how_an_earlier_message_was_worked_out_with_hist
     assert "The `history` tool" in fake.calls[-1].messages[0]["content"]
 
 
-EXAMPLE = """name: count the tickets
-messages:
-- role: user
-  content: How many tickets are open?
-- role: assistant
-  content: Count them with len(open_tickets).
-"""
-ASKED = "How many tickets are open?"
-REWORDED_ASK = "How many open tickets are left?"
-REWORDED = EXAMPLE.replace(ASKED, REWORDED_ASK)
-CHANGE_FIELDS = ("node", "what", "namespace", "name", "before", "after")
-
-
-def write(namespace, text):
-    """A cell that writes the decomposition *text* into *namespace* with the library tool."""
-    return repl(f"print(library.write_decomposition({namespace!r}, {text!r}))")
-
-
 LIBRARY_PLAN = {
     "Save the example.": [write("librarian", EXAMPLE), repl("FinalAnswer('saved')")],
     "Reword it.": [write("librarian", REWORDED), repl("FinalAnswer('reworded')")],
@@ -596,7 +583,7 @@ async def test_the_library_tool_adds_a_decomposition_then_replaces_it_each_chang
             namespaces = (await api.get("/api/library")).json()["namespaces"]
     [root] = kinds(added, "agent.start")
     [first], [second] = changes(added), changes(replaced)
-    assert {key: first[key] for key in CHANGE_FIELDS} == {
+    assert {key: first[key] for key in ("node", *CHANGE_FIELDS)} == {
         "node": root["node"],
         "what": "decomposition",
         "namespace": "librarian",

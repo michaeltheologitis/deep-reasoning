@@ -14,6 +14,7 @@ const last = (events) => events.at(-1);
 const sum = (numbers) => numbers.reduce((total, number) => total + number, 0);
 const costOf = (events, node) => sum(ofKind(events, "usage").filter((event) => event.node === node).map((event) => event.cost));
 const cells = (holder) => holder.steps.filter((step) => step.kind === "cell");
+const changes = (holder) => holder.steps.filter((step) => step.kind === "change");
 const rowsOf = (holder) => cells(holder).flatMap((cell) => cell.agents);
 
 function allRows(holder) {
@@ -196,12 +197,14 @@ test("a running sub-agent is a running row, and it costs what its calls so far c
   assert.equal(turn.outcome, null);
 });
 
-test("folding live, after catching up on the events so far, gives the saved turn", () => {
-  const events = recorded("nested");
-  const fold = foldEvents(events.slice(0, 9));
-  for (const event of events.slice(9)) foldEvent(fold, event);
-  assert.deepEqual(fold.turn, foldEvents(events).turn);
-});
+for (const name of ["nested", "librarian"]) {
+  test(`folding ${name} live, after catching up on the events so far, gives the saved turn`, () => {
+    const events = recorded(name);
+    const fold = foldEvents(events.slice(0, 9));
+    for (const event of events.slice(9)) foldEvent(fold, event);
+    assert.deepEqual(fold.turn, foldEvents(events).turn);
+  });
+}
 
 test("an event seen before, repeated or out of order, is ignored", () => {
   const events = recorded("fanout");
@@ -228,4 +231,47 @@ test("a step in a node named its own ancestor comes with each task above it once
   const { turn, latest } = await foldInWorker([...parentCycle, { seq: 6, t: 3, kind: "think", node: 2, text: "Round." }]);
   assert.deepEqual(latest, { tasks: ["B.", "A."], step: { kind: "think", text: "Round." } });
   assert.deepEqual(rowsOf(turn)[0].steps, [latest.step]);
+});
+
+test("a Library change is a step of the agent that made it, after the cell it made it in", () => {
+  const events = recorded("librarian");
+  const { turn } = foldEvents(events);
+  const [reworder] = rowsOf(turn);
+  assert.deepEqual(
+    turn.steps.map((step) => step.kind),
+    ["cell", "change", "cell", "cell"],
+  );
+  assert.deepEqual(
+    reworder.steps.map((step) => step.kind),
+    ["cell", "change", "cell"],
+  );
+  const asFolded = ({ what, namespace, name, before, after }) => ({ kind: "change", what, namespace, name, before, after });
+  assert.deepEqual([...changes(turn), ...changes(reworder)], ofKind(events, "library.change").map(asFolded));
+  const [added] = changes(turn);
+  const [replaced] = changes(reworder);
+  assert.deepEqual([added.name, added.before, replaced.before], ["count the tickets", null, added.after]);
+});
+
+test("the turn lists every Library change, a sub-agent's with the tasks above it", () => {
+  const { turn } = foldEvents(recorded("librarian"));
+  const [reworder] = rowsOf(turn);
+  assert.deepEqual(
+    turn.changes.map(({ tasks }) => tasks),
+    [[], ["Reword the example."]],
+  );
+  assert.equal(turn.changes[0].step, changes(turn)[0]);
+  assert.equal(turn.changes[1].step, changes(reworder)[0]);
+});
+
+test("a change with odd fields, as a crafted file may hold, folds as it came, and one of no known agent is left out", () => {
+  const odd = { what: 7, namespace: ["research"], name: { a: 1 }, before: 5 };
+  const { turn } = foldEvents([
+    { seq: 1, t: 0, kind: "turn.start", prompt: "Forge." },
+    { seq: 2, t: 0, kind: "agent.start", node: 1, parent: null, cell: null },
+    { seq: 3, t: 1, kind: "library.change", node: 1, cell: null, ...odd },
+    { seq: 4, t: 1, kind: "library.change", node: 9, cell: 1, name: "nowhere" },
+  ]);
+  const step = { kind: "change", ...odd, after: undefined };
+  assert.deepEqual(turn.steps, [step]);
+  assert.deepEqual(turn.changes, [{ tasks: [], step }]);
 });

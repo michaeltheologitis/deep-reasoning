@@ -65,6 +65,9 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   sub-agent. The tool never changes root or writes a key, and a change applies from your next message. These limits
   guard the tool, not the file: the agent's Python isn't sandboxed, and could open the file itself. A new Library
   has `librarian`; in an older one, add a namespace with `tools: [library]`.
+- Each Library change the agent makes shows in the chat, under its answer and where it was made in the tree, and opens
+  onto its YAML before and after; ask the agent to write the before back to undo it. The decompositions panel shows
+  the change at once.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
 - The Tools tab lists the app's own tools beside the built-in ones; a tool of yours can't be named `history` or `library`.
 

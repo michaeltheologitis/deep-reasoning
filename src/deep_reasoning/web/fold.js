@@ -1,8 +1,8 @@
-// Folds a run's events into the turn the chat draws: the root's steps, each sub-agent as a row under the cell that started it, and the totals.
+// Folds a run's events into the turn the chat draws: the root's steps, each sub-agent as a row under the cell that started it, Library changes, and the totals.
 
 export function newFold() {
   return {
-    turn: { prompt: "", steps: [], answer: null, outcome: null, detail: null, cost: null, seconds: null, started: null, model: null, namespace: null },
+    turn: { prompt: "", steps: [], changes: [], answer: null, outcome: null, detail: null, cost: null, seconds: null, started: null, model: null, namespace: null },
     seq: 0,
     // node → its holder (the turn for the root, else its row) and its parent's node
     nodes: new Map(),
@@ -33,6 +33,7 @@ const FOLDS = {
   think: (fold, event) => addStep(fold, event.node, { kind: "think", text: event.text }),
   "cell.start": startCell,
   "cell.end": endCell,
+  "library.change": addChange,
   usage: addUsage,
   "agent.end": endAgent,
   "turn.end": endTurn,
@@ -60,16 +61,23 @@ function lineage(fold, node) {
 
 function addStep(fold, node, step) {
   const holder = fold.nodes.get(node)?.holder;
-  if (!holder) return;
+  if (!holder) return false;
   holder.steps.push(step);
   const tasks = [...lineage(fold, node)].filter((entry) => entry.parent != null).map((entry) => entry.holder.task);
   fold.latest = { tasks: tasks.reverse(), step };
+  return true;
 }
 
 function startCell(fold, event) {
   const cell = { kind: "cell", code: event.code, output: null, status: "running", agents: [] };
   fold.cells.set(event.cell, cell);
   addStep(fold, event.node, cell);
+}
+
+// A step of the agent that made it, and listed on the turn with the tasks above it, so the answer shows it however deep.
+function addChange(fold, event) {
+  const { what, namespace, name, before, after } = event;
+  if (addStep(fold, event.node, { kind: "change", what, namespace, name, before, after })) fold.turn.changes.push(fold.latest);
 }
 
 function endCell(fold, event) {

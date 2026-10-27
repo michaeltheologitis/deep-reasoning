@@ -13,11 +13,14 @@ const CONFLICT = 409;
 const NEW_TITLE = "New chat";
 const SCRATCH_NAME = "scratch";
 const FOLDER_NAME_CHARS = 24;
+const FIELD_CHARS = 60;
 const POPOVER_MARGIN_PX = 8;
 const NOT_ANSWERING = "the app isn't answering; is deep-reasoning still running?";
 const RECONNECTING = "Lost the connection to the run; reconnecting…";
 const PANEL_CLOSE = "panel-close";
 const PANEL_OPEN = "panel-open";
+const LIBRARY_CHANGED = "library-changed";
+const FROM_NEXT = "from the next message";
 const MENU_STEPS = { ArrowDown: 1, ArrowUp: -1 };
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
 const SPIN = ["·", "✢", "✳︎", "✶", "✻", "✽", "✻", "✶", "✳︎", "✢"];
@@ -71,6 +74,10 @@ const formatCount = (count) => counter.format(count);
 const plural = (count, noun) => `${formatCount(count)} ${noun}${count === 1 ? "" : "s"}`;
 // a cut never keeps half of an emoji, or of another character past U+FFFF: alone, it shows as �
 const clip = (text, chars) => (text.length > chars ? `${text.slice(0, chars - 1).replace(/[\uD800-\uDBFF]$/, "")}…` : text);
+// A change event is untrusted, as any cell can log one and a shared file can hold any: each field shows as text, whatever it holds.
+const asText = (value) => (typeof value === "string" ? value : (JSON.stringify(value) ?? "?"));
+const field = (value) => clip(asText(value), FIELD_CHARS);
+const changeText = ({ what, namespace, name, before }) => `${before == null ? "added" : "replaced"} ${field(what)} "${field(name)}" in ${field(namespace)}`;
 const keyOf = (node) => {
   if (!keys.has(node)) keys.set(node, String(nextId++));
   return keys.get(node);
@@ -133,6 +140,7 @@ function toggler(node, props, kids, set = opened, key = keyOf(node)) {
 
 function describe(step) {
   if (step.kind === "think") return { text: step.text };
+  if (step.kind === "change") return { text: `Library: ${changeText(step)}` };
   const count = step.agents.length;
   if (count) return { text: count === 1 ? "Delegated to a sub-agent" : `Delegated to ${plural(count, "sub-agent")}` };
   if (isFinal(step)) return { text: "Final answer" };
@@ -261,9 +269,38 @@ function showMore(cell, count) {
   redraw(cell, keyOf(first));
 }
 
+// A change applies from the message after its turn's, so only the newest turn's says so.
+const appliesNext = (change) => state.current?.turns?.at(-1)?.changes.some((entry) => entry.step === change);
+
+// A change opens onto its YAML before (when it replaced one) and after; node is the step, or its entry under the answer, so each opens on its own.
+function renderChange(change, node = change, by = null) {
+  const yaml = (label, value) => [element("div", { class: "yaml-label" }, label), element("pre", { class: "code yaml" }, asText(value))];
+  return element(
+    "div",
+    { class: "cell change" },
+    toggler(node, { class: "line" }, [
+      element("span"),
+      element("span", { class: "glyph" }, "◆"),
+      element("span", { class: "head" }, element("b", {}, "Library"), " ", changeText(change), element("span", { class: "note" }, [by, appliesNext(change) && FROM_NEXT].filter(Boolean).map((part) => ` · ${part}`))),
+    ]),
+    opened.has(node) && [change.before != null && yaml("before", change.before), yaml("after", change.after)],
+  );
+}
+
+function stepView(step, root) {
+  if (step.kind === "think") return renderThink(step);
+  if (step.kind === "change") return renderChange(step);
+  return renderCell(step, root);
+}
+
 function renderStep(step, root) {
-  const el = step.kind === "think" ? renderThink(step) : renderCell(step, root);
-  return remember(step, el, () => renderStep(step, root));
+  return remember(step, stepView(step, root), () => renderStep(step, root));
+}
+
+// Every change the run made, however deep in its tree, so they show with the tree shut.
+function renderListedChange(entry) {
+  const by = entry.tasks.length > 0 && `by “${field(entry.tasks.at(-1))}”`;
+  return remember(entry, renderChange(entry.step, entry, by), () => renderListedChange(entry));
 }
 
 function renderUnder(agent) {
@@ -351,6 +388,7 @@ function renderTurn(turn, previous) {
     open && element("div", { class: "steps" }, turn.steps.map((step) => renderStep(step, true))),
     turn.answer != null && renderAnswer(turn.answer),
     turn.outcome === "failed" && turn.detail && out(turn.detail, { tone: "err", full: true }),
+    turn.changes.length > 0 && element("div", { class: "changes" }, turn.changes.map(renderListedChange)),
   );
   return remember(turn, el, () => renderTurn(turn, previous));
 }
@@ -593,9 +631,10 @@ async function settingsChanged() {
   await readChoices();
 }
 
-// After the Library panel changed the Library: its namespaces, and each chat's, as one that never picked follows the default.
+// After the Library panel read the Library, or it changed: its namespaces, and each chat's, as one that never picked follows the default.
 async function libraryChanged(found) {
   useLibrary(found);
+  renderComposer();
   await readChoices();
 }
 
@@ -932,6 +971,7 @@ function follow(chat, run, fold) {
 
 function receive(live, event) {
   if (!foldEvent(live.fold, event)) return;
+  if (event.kind === "library.change") byId("library").dispatchEvent(new Event(LIBRARY_CHANGED));
   if (event.kind === "turn.end") return finish(live);
   drawLive(live);
 }
@@ -1083,19 +1123,7 @@ function wire() {
   }, SPIN_MS);
 }
 
-// The namespaces a chat can pick, and the default one new chats start in.
-async function loadLibrary() {
-  let found;
-  try {
-    found = await request("GET", "api/library");
-  } catch {
-    // the pickers stay hidden; the Library panel says what went wrong
-    return;
-  }
-  useLibrary(found);
-  renderComposer();
-}
-
+// The namespaces a chat can pick, and the default one new chats start in, as the Library panel reads them.
 function useLibrary(found) {
   library.namespaces = found.namespaces.map(({ name }) => name);
   library.defaultNamespace = found.default_namespace;
@@ -1114,10 +1142,9 @@ async function start() {
   else newChat();
 }
 
-export { PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, libraryChanged, request, settingsChanged };
+export { LIBRARY_CHANGED, PANEL_CLOSE, PANEL_OPEN, caret, closeOtherPanels, element, folderPicker, libraryChanged, request, settingsChanged };
 
 wire();
 start();
-loadLibrary();
 // read ahead, so the model menu opens on its lists; a failure shows when the menu opens
 loadModels().catch(() => {});

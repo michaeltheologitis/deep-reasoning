@@ -42,7 +42,7 @@ from deep_reasoning.library import (
     has_namespace,
     namespace_rows,
 )
-from deep_reasoning.runs import chat_turns, secrets_of, total_cost
+from deep_reasoning.runs import CHANGE_FIELDS, chat_turns, secrets_of, total_cost
 
 log = structlog.get_logger()
 
@@ -121,6 +121,12 @@ def start_cell(tree: Tree, event: Event) -> None:
     add_step(tree, event.get("node"), cell)
 
 
+def add_change(tree: Tree, event: Event) -> None:
+    """A change the library tool made, as a step of the agent that made it."""
+    change = {key: event.get(key) for key in CHANGE_FIELDS}
+    add_step(tree, event.get("node"), {"kind": "change"} | change)
+
+
 def end_cell(tree: Tree, event: Event) -> None:
     cell = tree.cells.get(event.get("cell"))
     if cell is not None:
@@ -158,6 +164,7 @@ FOLDS = {
     "think": think,
     "cell.start": start_cell,
     "cell.end": end_cell,
+    "library.change": add_change,
     "usage": add_usage,
     "agent.end": end_agent,
     "turn.end": end_turn,
@@ -265,7 +272,8 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
         return [agent_row(row) for row in chosen(turn).rows]
 
     def steps(turn: int, node: Any = None) -> list[dict[str, Any]]:
-        """The thoughts and cells of message *turn*'s top agent, or of sub-agent *node*."""
+        """The thoughts, cells and Library changes of message *turn*'s top agent, or of
+        sub-agent *node*."""
         tree = chosen(turn)
         top = node is None or node == tree.root["node"]
         drives = (

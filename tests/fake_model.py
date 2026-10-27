@@ -22,6 +22,17 @@ BEARER = "Bearer "
 # What the tests call the fake, and the key they give it, as a custom server in settings.
 SERVER_NAME = "fake"
 SERVER_KEY = "sk-fake-server-key"
+# A decomposition for the library tool to write, and the same reworded, to replace it.
+ASKED = "How many tickets are open?"
+REWORDED_ASK = "How many open tickets are left?"
+EXAMPLE = f"""name: count the tickets
+messages:
+- role: user
+  content: {ASKED}
+- role: assistant
+  content: Count them with len(open_tickets).
+"""
+REWORDED = EXAMPLE.replace(ASKED, REWORDED_ASK)
 
 
 @dataclass(frozen=True)
@@ -54,6 +65,12 @@ def repl(*lines: str, think: str = "") -> str:
     """One assistant turn: an optional <think>, then a <repl> block."""
     head = f"<think>{think}</think>\n" if think else ""
     return head + "<repl>\n" + "\n".join(lines) + "\n</repl>"
+
+
+def write(namespace: str, text: str) -> str:
+    """A turn whose cell writes the decomposition *text* into *namespace* with the
+    library tool."""
+    return repl(f"print(library.write_decomposition({namespace!r}, {text!r}))")
 
 
 def task_and_turn(messages: Messages) -> tuple[str, int]:
