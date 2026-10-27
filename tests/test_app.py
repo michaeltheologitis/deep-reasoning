@@ -38,6 +38,7 @@ from deep_reasoning.app import WEB, create_app
 from deep_reasoning.chats import create_chat
 from deep_reasoning.folders import data_folder
 from deep_reasoning.library import (
+    HISTORY_DESCRIPTION,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
     UPSERT_TOOL,
@@ -546,7 +547,7 @@ async def test_a_follow_up_reads_how_an_earlier_message_was_worked_out_with_hist
     assert refused["status"] == "failed"
     assert "ValueError: There is no message 9" in refused["output"]
     assert events[-1]["outcome"] == "answered", events[-1]
-    assert "The `history` tool" in fake.calls[-1].messages[0]["content"]
+    assert HISTORY_DESCRIPTION in fake.calls[-1].messages[0]["content"]
 
 
 LIBRARY_PLAN = {

@@ -80,7 +80,9 @@ RECAP = jinja2.Template(
     """\
 This conversation began before this run. Its earlier runs have ended, so their \
 variables and sub-agents are gone; below are the user's earlier messages, each with \
-the answer it got.
+the answer it got. How each was worked out (its thoughts, cells and sub-agents) is kept: \
+to explain an earlier answer, print it with the history tool, when you have it, and \
+answer in a later cell from what it printed.
 {% for turn in turns %}
 Message {{ loop.index }}{% if turn.namespace and turn.namespace != namespace %} (in namespace {{ turn.namespace }}){% endif %}: {{ turn.message }}
 Answer {{ loop.index }}: {% if turn.outcome == "answered" %}{{ turn.answer or "" }}
