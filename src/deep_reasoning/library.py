@@ -165,9 +165,11 @@ applies from the user's next message, not in this run, and only a chat whose nam
 grants this tool may make one. A namespace's agents get what it sets and what the \
 namespaces above it set (root, then research, then research.papers): their tools, vars \
 and system_suffix texts add up, and a decomposition of the same name lower down takes the \
-place of its parent's there; show() lists only each namespace's own. Locked: root, a \
-namespace's repl and reasoner, which namespaces grant the app's own tools (library, \
-history), the system prompt and the run settings; you may read them, not write them.
+place of its parent's there; show() lists only each namespace's own. Locked, so you may \
+read them but not write them: root; a namespace's repl and reasoner; which namespaces \
+grant the app's own tools (library, history), so no new namespace goes under one that \
+grants library; granting a tool that runs Claude Code (its factory is claude_code), which \
+bills the user's subscription; the system prompt and the run settings.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \

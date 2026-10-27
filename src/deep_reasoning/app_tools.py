@@ -83,6 +83,17 @@ GRANT_LOCKED = (
     "tools may not add or take out {tools}: which namespaces grant the app's own tools is"
     " the user's choice, in the Library panel."
 )
+INHERITS_LIBRARY = (
+    "{name} would inherit library from {level}: which namespaces grant the app's own"
+    " tools is the user's choice, in the Library panel."
+)
+# A tool of this factory runs Claude Code, which bills the user's subscription as
+# reasoner: claude_code would.
+CLAUDE_CODE = "claude_code"
+CLAUDE_CODE_LOCKED = (
+    "tools may not add {tools}, which runs Claude Code on the user's subscription:"
+    " granting it is the user's choice, in the Library panel."
+)
 
 
 @dataclass
@@ -324,23 +335,35 @@ def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
         raise LibraryError(HOLDS_A_KEY)
 
 
-def own_fields(connection: sqlite3.Connection, name: str) -> NamespaceConfig:
-    """Namespace *name*'s own fields as the engine reads them; none for a new one."""
-    if not has_namespace(connection, name):
-        return NamespaceConfig(name=name)
-    return config_and_registry(connection)[1].config(name)
-
-
 def check_locks(connection: sqlite3.Connection, namespace: NamespaceConfig) -> None:
-    """Raise if *namespace* sets or changes what only the user may: its repl or reasoner,
-    or which of the app's own tools it grants."""
-    stored = own_fields(connection, namespace.name)
+    """Raise if *namespace* sets or changes what only the user may: its repl or reasoner;
+    which of the app's own tools it grants, its own or, when new, through its chain; or a
+    tool that runs Claude Code, granted afresh."""
+    config, registry = config_and_registry(connection)
+    name = namespace.name
+    new = name not in registry.names
+    stored = NamespaceConfig(name=name) if new else registry.config(name)
     for key in LOCKED_FIELDS:
         if getattr(namespace, key) != getattr(stored, key):
             raise LibraryError(FIELD_LOCKED.format(key=key))
     changed = (set(namespace.tools) ^ set(stored.tools)) & APP_TOOLS.keys()
     if changed:
         raise LibraryError(GRANT_LOCKED.format(tools=" and ".join(sorted(changed))))
+    # A change keeps its chain, and its own tools may not take library in or out.
+    above = registry.resolve(name.rpartition(".")[0] or ROOT)
+    if new and LIBRARY_TOOL in above.tools:
+        level = above.sources.tools[LIBRARY_TOOL]
+        raise LibraryError(INHERITS_LIBRARY.format(name=name, level=level))
+    granted = set(namespace.tools) - set(stored.tools)
+    claude = [
+        tool
+        for tool in granted
+        if config.tools.get(tool, {}).get("factory", tool) == CLAUDE_CODE
+    ]
+    if claude:
+        raise LibraryError(
+            CLAUDE_CODE_LOCKED.format(tools=" and ".join(sorted(claude)))
+        )
 
 
 def logged(done: str, before: str | None, after: str, **change: str) -> Event:

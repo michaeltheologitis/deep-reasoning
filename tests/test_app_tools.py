@@ -16,10 +16,12 @@ from deep_reasoning.app_tools import (
     open_existing,
 )
 from deep_reasoning.library import (
+    UPSERT_TOOL,
     LibraryError,
     add_namespace,
     change_namespace,
     delete_namespace,
+    dump,
     open_library,
     writing,
 )
@@ -464,3 +466,55 @@ def test_a_change_keeping_the_repl_and_app_tools_the_user_set_is_written(fresh):
         "name": "drafts",
     }
     assert ("drafts", changed) in stored_namespaces(fresh)
+
+
+@pytest.mark.parametrize(
+    ("root", "name", "level"),
+    [
+        ("tools: [llm, history]\n", "librarian.notes", "librarian"),
+        ("tools: [llm, history, library]\n", "research", "root"),
+    ],
+    ids=["under-librarian", "under-a-root-granting-library"],
+)
+def test_a_namespace_the_tool_adds_never_inherits_library(fresh, root, name, level):
+    with closing(open_library(fresh)) as connection:
+        change_namespace(connection, "root", root)
+    before = stored_namespaces(fresh)
+    refusal = f"{name} would inherit library from {level}: which namespaces grant"
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        library_tool(fresh).add_namespace(name, "")
+    assert stored_namespaces(fresh) == before
+
+
+@pytest.fixture
+def coder(fresh):
+    """A fresh app file whose Library has coder, a tool of the user's that runs Claude
+    Code."""
+    with closing(open_library(fresh)) as connection, writing(connection):
+        connection.execute(
+            UPSERT_TOOL, ("coder", dump({"factory": "claude_code"}), None)
+        )
+    return fresh
+
+
+@pytest.mark.parametrize(
+    ("method", "name"), [("add_namespace", "research"), ("change_namespace", "drafts")]
+)
+def test_a_tool_that_runs_claude_code_is_never_granted_afresh(coder, method, name):
+    before = stored_namespaces(coder)
+    refusal = (
+        "tools may not add coder, which runs Claude Code on the user's subscription"
+    )
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        getattr(library_tool(coder), method)(name, "tools: [llm, coder]\n")
+    assert stored_namespaces(coder) == before
+
+
+@pytest.mark.parametrize(
+    "changed", ["tools: [coder]\nsystem_suffix: Draft.\n", "tools: []\n"]
+)
+def test_a_claude_code_tool_the_user_granted_may_be_kept_or_taken_out(coder, changed):
+    with closing(open_library(coder)) as connection:
+        change_namespace(connection, "drafts", "tools: [coder]\n")
+    assert library_tool(coder).change_namespace("drafts", changed)["done"] == "changed"
+    assert ("drafts", changed) in stored_namespaces(coder)

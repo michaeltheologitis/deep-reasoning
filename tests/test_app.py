@@ -792,6 +792,10 @@ NAMESPACE_REFUSALS = [
         'Add namespace "research" first: "research.papers" goes under it.',
     ),
     (
+        library_cell("add_namespace", "librarian.notes", ""),
+        "librarian.notes would inherit library from librarian: which namespaces grant",
+    ),
+    (
         library_cell("add_namespace", "research", "spawn: [nowhere]\n"),
         'spawn names "nowhere", which is not a namespace in the Library.',
     ),
