@@ -275,7 +275,12 @@ messages:
 
 
 def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(library):
-    told = {"library": str(library), "chat": CHAT, "run": CURRENT}
+    told = {
+        "library": str(library),
+        "chat": CHAT,
+        "run": CURRENT,
+        "namespace": "librarian",
+    }
     tool = build_library(None, told).value
     done = tool.write_decomposition("librarian", EXAMPLE)
     shown = tool.show()

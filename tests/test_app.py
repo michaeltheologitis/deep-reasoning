@@ -667,6 +667,75 @@ async def test_a_refused_write_fails_its_cell_in_the_panels_words_and_stores_not
     assert events[-1]["outcome"] == "answered", events[-1]
 
 
+SPAWNED_PLAN = {
+    "Have a librarian write it.": [
+        repl("print(subagent('Write the example.', namespace='librarian'))"),
+        repl("FinalAnswer('asked')"),
+    ],
+    "Hand the tool over.": [
+        repl(
+            "print(subagent('Write the example.', namespace='root',"
+            " tools={'library': library}))"
+        ),
+        repl("FinalAnswer('handed')"),
+    ],
+    "Write the example.": [write("librarian", EXAMPLE), repl("FinalAnswer('tried')")],
+}
+
+
+async def spawned_run(api, chat, prompt):
+    """The events of *prompt*'s run, whose root has a sub-agent write the example; the
+    sub-agent's start; and its first cell, which writes."""
+    events = await run_events(api, await send(api, chat, prompt))
+    [child] = [each for each in kinds(events, "agent.start") if each["parent"]]
+    cells = [
+        each for each in kinds(events, "cell.end") if each["node"] == child["node"]
+    ]
+    return events, child, cells[0]
+
+
+@pytest.mark.anyio
+async def test_a_sub_agent_spawned_into_librarian_from_another_chat_may_not_write(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(SPAWNED_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            events, _, cell = await spawned_run(api, chat, "Have a librarian write it.")
+            namespaces = (await api.get("/api/library")).json()["namespaces"]
+    assert events[0]["namespace"] == "root"
+    assert cell["status"] == "failed"
+    assert (
+        "The Library can be changed only in a chat whose namespace grants the library"
+        " tool; pick librarian under the message box."
+    ) in cell["output"]
+    assert changes(events) == []
+    assert [each["decompositions"] for each in namespaces] == [[], []]
+    assert events[-1]["outcome"] == "answered", events[-1]
+
+
+@pytest.mark.anyio
+async def test_in_a_librarian_chat_a_sub_agent_handed_the_tool_elsewhere_writes(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(SPAWNED_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await librarian_chat(api)
+            events, child, cell = await spawned_run(api, chat, "Hand the tool over.")
+            namespaces = (await api.get("/api/library")).json()["namespaces"]
+    [change] = changes(events)
+    assert (child["namespace"], cell["status"]) == ("root", "done")
+    assert (change["node"], change["namespace"], change["before"]) == (
+        child["node"],
+        "librarian",
+        None,
+    )
+    librarian = next(each for each in namespaces if each["name"] == "librarian")
+    assert librarian["decompositions"] == [
+        {"name": "count the tickets", "yaml": EXAMPLE}
+    ]
+
+
 def held_on(prompt, plan):
     """A responder that follows *plan*, holding *prompt*'s first call until released;
     and the release."""

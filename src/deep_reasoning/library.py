@@ -95,7 +95,8 @@ FRESH_ROOT = {"tools": ["llm", "history"]}
 # library writes the Library, so it is granted in a namespace of its own, which a chat
 # picks when it wants edits, and which no namespace inherits from.
 LIBRARIAN = "librarian"
-FRESH_LIBRARIAN = {"tools": ["library"]}
+LIBRARY_TOOL = "library"
+FRESH_LIBRARIAN = {"tools": [LIBRARY_TOOL]}
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
     " AND NOT EXISTS (SELECT 1 FROM decompositions WHERE namespace = :root)"
@@ -159,7 +160,8 @@ each with its drive."""
 LIBRARY_DESCRIPTION = """\
 The `library` tool reads and writes the app's Library: its namespaces and the \
 decompositions (worked examples) each one's agents are shown. A change applies from the \
-user's next message, not in this run. root is locked: you may read it, not write it.
+user's next message, not in this run, and only a chat whose namespace grants this tool may \
+make one. root is locked: you may read it, not write it.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \
@@ -173,9 +175,12 @@ why."""
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
 APP_TOOLS = {
     "history": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_history"},
-    "library": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_library"},
+    LIBRARY_TOOL: {"factory_from": str(APP_TOOLS_FILE), "factory": "build_library"},
 }
-APP_TOOL_DESCRIPTIONS = {"history": HISTORY_DESCRIPTION, "library": LIBRARY_DESCRIPTION}
+APP_TOOL_DESCRIPTIONS = {
+    "history": HISTORY_DESCRIPTION,
+    LIBRARY_TOOL: LIBRARY_DESCRIPTION,
+}
 APP_TOOLS_MODULE = f"{__package__}.{APP_TOOLS_FILE.stem}"
 APP = "Deep Reasoning"
 # A new namespace's name, from the page: plain words, joined by dots for a child.
@@ -390,7 +395,7 @@ def engine_config(library_path, namespace, tools_dir, chat, run):
     enters *namespace*; the run's model and client are the chat's to put in.
 
     Each custom tool's source is written into *tools_dir*, and its factory_from points at that file.
-    Each of the app's tools is told the app file, the chat and the run.
+    Each of the app's tools is told the app file, the chat, the run and the namespace it enters.
     """
     tools_dir = Path(tools_dir).resolve()
     tools_dir.mkdir(parents=True, exist_ok=True)
@@ -402,7 +407,12 @@ def engine_config(library_path, namespace, tools_dir, chat, run):
         file = tools_dir / tool_file(name)
         file.write_text(source, encoding="utf-8")
         config["tools"][name]["factory_from"] = str(file)
-    told = {"library": str(Path(library_path).resolve()), "chat": chat, "run": run}
+    told = {
+        "library": str(Path(library_path).resolve()),
+        "chat": chat,
+        "run": run,
+        "namespace": namespace,
+    }
     for name in APP_TOOLS:
         config["tools"][name] |= told
     return config | {"entry_namespace": namespace}
@@ -425,6 +435,12 @@ def check_namespace(connection, name):
         raise LibraryError(
             f'The Library has no namespace "{name}"; pick one from the list.'
         )
+
+
+def granted_tools(connection, namespace):
+    """The tools *namespace* has, its own and its chain's, as the engine resolves them."""
+    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
+    return build_namespace_registry(config).resolve(namespace).tools
 
 
 def check(connection):

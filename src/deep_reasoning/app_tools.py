@@ -7,8 +7,9 @@ history reads the chat's earlier runs from the app file, read-only, as the page 
 runs.py checks each row, and folded() folds a run's events into its tree as fold.js does.
 
 library reads and writes the Library through library.py, with the panel's checks and
-transactions; the lock is here, as the panel may still edit root. Each change is logged as
-library.change, which the worker records as a run event.
+transactions; the lock is here, as the panel may still edit root. It writes only in a run
+whose chat's namespace grants it, so a sub-agent spawned into such a namespace from another
+chat can't. Each change is logged as library.change, which the worker records as a run event.
 """
 
 import copy
@@ -27,8 +28,10 @@ from deep_reasoner.primitives import Func
 from deep_reasoning.library import (
     HISTORY_DESCRIPTION,
     LIBRARY_DESCRIPTION,
+    LIBRARY_TOOL,
     LibraryError,
     distrust,
+    granted_tools,
     open_library,
     panel,
     save_decomposition,
@@ -45,6 +48,10 @@ ENDED_WITH = ("outcome", "answer", "detail", "cost", "seconds")
 LOOKUP_FIELDS = ("node", "parent", "cell")
 ROOT_LOCKED = (
     "root is locked: the library tool never writes it. Write into another namespace."
+)
+NOT_THIS_CHAT = (
+    "The Library can be changed only in a chat whose namespace grants the library tool;"
+    " pick librarian under the message box."
 )
 
 
@@ -249,8 +256,9 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
 
 
 def build_library(client: Any, params: dict[str, Any]) -> Func:
-    """The library tool, over the app file *library* its block in the run's config names."""
-    library = params["library"]
+    """The library tool, over the app file *library* its block in the run's config names,
+    for a run of a chat in *namespace*."""
+    library, chat_namespace = params["library"], params["namespace"]
 
     def show() -> list[dict[str, Any]]:
         """Every namespace, as the Library panel shows it."""
@@ -264,6 +272,8 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
         if namespace == ROOT:
             raise LibraryError(ROOT_LOCKED)
         with closing(open_library(library)) as connection:
+            if LIBRARY_TOOL not in granted_tools(connection, chat_namespace):
+                raise LibraryError(NOT_THIS_CHAT)
             name, before = save_decomposition(connection, namespace, yaml)
         change = {"what": "decomposition", "namespace": namespace, "name": name}
         log.info("library.change", **change, before=before, after=yaml)
