@@ -24,7 +24,9 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   after a restart. Deleting a chat wipes its messages from the file.
 - Each message is a run, shown live as a tree of sub-agents you open level by level. Esc stops it.
 - Each run shows its time, sub-agent count, cost (when the price is known) and model.
-- Follow-ups see the chat's earlier messages and answers.
+- Follow-ups see the chat's earlier messages and answers, and can ask how one was worked out: the agent reads the
+  chat's earlier runs (each message's sub-agents, thoughts and cells) with the app's own `history` tool. A new
+  Library grants it at root; in an older one, add `history` to a namespace's tools.
 - Each chat has its own model, namespace and working folder, picked under the message box; a change applies from
   the next message.
 - Light and dark themes; works at phone width.
@@ -59,5 +61,7 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   secrets a cell reads from your shell.
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
+- The Tools tab lists the app's own tools beside the built-in ones; a tool of yours can't be named `history` or
+  `library`.
 
 The previous app, built on OpenHands, is in history at `a80bb2e`; its design docs are on the `design-docs` branch.

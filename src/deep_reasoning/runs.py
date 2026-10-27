@@ -432,11 +432,12 @@ class Runs:
         key_names: Sequence[str] = (),
     ) -> str:
         """Start a run of *prompt* in *chat*, given the chat's *earlier* turns, and return
-        its id. *config_for* gives the engine config for the run's folder; *provider*
-        names who serves its model, and *keys* go into the worker's environment only.
-        The values of *keys* and of *key_names* in that environment are withheld from
-        the run's events. The worker works in *folder*, the run's own folder unless
-        given. Raises RunInProgress while the chat has a run going."""
+        its id. *config_for* gives the engine config for the run's folder, which the
+        run's id names; *provider* names who serves its model, and *keys* go into the
+        worker's environment only. The values of *keys* and of *key_names* in that
+        environment are withheld from the run's events. The worker works in *folder*,
+        the run's own folder unless given. Raises RunInProgress while the chat has a
+        run going."""
         if self.live(chat) is not None:
             raise RunInProgress(chat)
         run = new_run_id()

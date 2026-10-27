@@ -90,8 +90,9 @@ UPSERT_TOOL = (
     "INSERT INTO tools VALUES (?, ?, ?)"
     " ON CONFLICT (name) DO UPDATE SET yaml = excluded.yaml, source = excluded.source"
 )
-# Root grants llm to every namespace below it, as in the engine's example configs.
-FRESH_ROOT = {"tools": ["llm"]}
+# Root grants llm to every namespace below it, as in the engine's example configs, and
+# the app's history tool.
+FRESH_ROOT = {"tools": ["llm", "history"]}
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
     " AND NOT EXISTS (SELECT 1 FROM decompositions WHERE namespace = :root)"
@@ -138,6 +139,31 @@ BUILTIN_DESCRIPTIONS = {
     "safe_url": DEFAULT_SAFE_URL_DESCRIPTION,
     "claude_code": DEFAULT_CLAUDE_DESCRIPTION,
 }
+HISTORY_DESCRIPTION = """\
+The `history` tool reads this chat's earlier messages and how you worked out each one, so \
+you can explain your earlier reasoning. Its methods return plain data (lists of dicts): \
+slice it in Python and print only what you need.
+  history.turns(): the earlier messages, numbered from 1 as the chat's recap numbers them: \
+turn, message, namespace, model, outcome, answer, detail, cost, seconds and agents (how \
+many sub-agents it ran).
+  history.agents(turn): each sub-agent drive of message number `turn`: node, parent, \
+drive, task, namespace, status, result, cost (its own sub-agents' included) and steps \
+(how many).
+  history.steps(turn, node=None): the thoughts and cells, in order, of message `turn`'s \
+top agent, or of the sub-agent whose node is `node`: {kind: "think", text} or \
+{kind: "cell", code, output, status, agents: the nodes of the sub-agents it started}, \
+each with its drive."""
+# The app's own tools, built by app_tools.py and added to every config in code, never
+# stored in the file; each is told the app file, the chat and the run.
+APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
+APP_TOOLS = {
+    "history": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_history"},
+}
+APP_TOOL_DESCRIPTIONS = {"history": HISTORY_DESCRIPTION}
+APP_TOOLS_MODULE = "deep_reasoning.app_tools"
+APP = "Deep Reasoning"
+# No tool of the Library's may take an app tool's name, or that of the one to come.
+RESERVED_TOOLS = {*APP_TOOLS, "library"}
 # A new namespace's name, from the page: plain words, joined by dots for a child.
 NAMESPACE_NAME = re.compile(r"[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*")
 NAME_IT = 'Name the namespace, like "research"; "research.papers" goes under research.'
@@ -224,9 +250,7 @@ def open_library(path):
     try:
         # Deleted rows are wiped, not left in free pages that a copy would carry.
         connection.execute("PRAGMA secure_delete = ON")
-        # A shared file's triggers and views never run: one could keep what is deleted.
-        connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)
-        connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_VIEW, False)
+        distrust(connection)
         if schema_version(connection) != SCHEMA_VERSION:
             lay_out(connection, path)
         grant_llm_at_an_untouched_root(connection)
@@ -234,6 +258,12 @@ def open_library(path):
         connection.close()
         raise
     return connection
+
+
+def distrust(connection):
+    """Never run the file's own triggers and views: a shared file's could keep what is deleted."""
+    connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_TRIGGER, False)
+    connection.setconfig(sqlite3.SQLITE_DBCONFIG_ENABLE_VIEW, False)
 
 
 def lay_out(connection, path):
@@ -308,10 +338,21 @@ def stored_settings(connection):
     return {key: yaml.safe_load(text) for key, text in rows if key not in CHATS_DECIDE}
 
 
+def stored_tools(connection):
+    """The Library's tools, then the app's. A stored tool under an app tool's name, as a
+    shared file may hold, is left out: the app's own takes its place."""
+    tools = {}
+    for name, text in connection.execute("SELECT name, yaml FROM tools ORDER BY rowid"):
+        if name in RESERVED_TOOLS:
+            log.warning("library.tool_shadowed", tool=name)
+            continue
+        tools[name] = yaml.safe_load(text)
+    return tools | {name: dict(block) for name, block in APP_TOOLS.items()}
+
+
 def stored_config(connection):
     """The Library as a plain dict in the engine's config shape; a custom tool's factory_from names its stored file."""
-    rows = connection.execute("SELECT name, yaml FROM tools ORDER BY rowid")
-    tools = {name: yaml.safe_load(text) for name, text in rows}
+    tools = stored_tools(connection)
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, yaml FROM decompositions ORDER BY rowid"
@@ -326,11 +367,12 @@ def stored_config(connection):
     return {**stored_settings(connection), "tools": tools, "namespaces": namespaces}
 
 
-def engine_config(library_path, namespace, tools_dir):
-    """The Library as one plain dict that V2Config accepts, for a run that enters *namespace*;
-    the run's model and client are the chat's to put in.
+def engine_config(library_path, namespace, tools_dir, chat, run):
+    """The Library as one plain dict that V2Config accepts, for run *run* of *chat*, which
+    enters *namespace*; the run's model and client are the chat's to put in.
 
     Each custom tool's source is written into *tools_dir*, and its factory_from points at that file.
+    Each of the app's tools is told the app file, the chat and the run.
     """
     tools_dir = Path(tools_dir).resolve()
     tools_dir.mkdir(parents=True, exist_ok=True)
@@ -341,9 +383,14 @@ def engine_config(library_path, namespace, tools_dir):
         )
         sources = rows.fetchall()
     for name, source in sources:
+        if name in RESERVED_TOOLS:
+            continue
         file = tools_dir / tool_file(name)
         file.write_text(source, encoding="utf-8")
         config["tools"][name]["factory_from"] = str(file)
+    told = {"library": str(Path(library_path).resolve()), "chat": chat, "run": run}
+    for name in APP_TOOLS:
+        config["tools"][name] |= told
     return config | {"entry_namespace": namespace}
 
 
@@ -374,6 +421,10 @@ def check(connection):
 
 def tool_row(name, block, config_dir):
     """A tool's row: its config block, and for a tool of your own its Python source."""
+    if name in RESERVED_TOOLS:
+        raise LibraryError(
+            f'Tool "{name}" has the name of one of the app\'s own tools; rename yours.'
+        )
     factory = block.get("factory", name)
     factory_from = block.get("factory_from")
     if not isinstance(factory, str) or not isinstance(factory_from, str | None):
@@ -774,25 +825,37 @@ def class_docstring(source):
     return (ast.get_docstring(classes[0]) if classes else None) or ""
 
 
+def origin(name, factory, block, source):
+    """Where a tool comes from, as the panel shows it, and what the agent is told it does
+    unless its block says."""
+    if name in APP_TOOLS:
+        made = {"file": APP_TOOLS_MODULE, "defined_in": APP, "badge": "the app's"}
+        return made, APP_TOOL_DESCRIPTIONS[name]
+    if source is None:
+        made = {
+            "file": BUILDERS[factory].__module__,
+            "defined_in": None,
+            "badge": "built-in",
+        }
+        return made, BUILTIN_DESCRIPTIONS[factory]
+    made = {"file": block["factory_from"], "defined_in": "the Library", "badge": None}
+    return made, class_docstring(source)
+
+
 def tool_rows(config, registry, names, sources):
     rows = []
     for name in declared_tool_names(config):
         block = config.tools.get(name, {})
         factory = block.get("factory", name)
-        source = sources.get(name)
-        builtin = source is None
-        description = block.get("description") or (
-            BUILTIN_DESCRIPTIONS[factory] if builtin else class_docstring(source)
-        )
+        made, description = origin(name, factory, block, sources.get(name))
         row = {
             "name": name,
             "factory": factory,
-            "file": BUILDERS[factory].__module__ if builtin else block["factory_from"],
-            "defined_in": None if builtin else "the Library",
+            **made,
             "granted_in": [
                 each for each in names if name in registry.config(each).tools
             ],
-            "description": description,
+            "description": block.get("description") or description,
             "config": dump({name: block}).rstrip() if block else None,
         }
         rows.append(row)

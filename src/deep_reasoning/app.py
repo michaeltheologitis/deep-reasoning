@@ -410,7 +410,10 @@ def create_app(library, home):
 
         def config_for(run_folder):
             # The Library's tools as they are now, in a folder of its own; the chat's model.
-            config = engine_config(library, namespace, run_folder / "tools")
+            # The app's tools are told the chat and the run, which names its folder.
+            run = run_folder.name
+            tools = run_folder / "tools"
+            config = engine_config(library, namespace, tools, chat["id"], run)
             return config | {"model": model["name"], "client": client}
 
         keys = {provider.key_env: key}
