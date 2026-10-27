@@ -194,7 +194,8 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
     assert "model" not in settings and "client" not in settings
     assert settings["max_depth"] == {"value": "8", "source": "the engine's default"}
     assert [(tool["name"], tool["granted_in"]) for tool in library["tools"]] == [
-        ("llm", ["root"])
+        ("llm", ["root"]),
+        ("history", []),
     ]
     [catalog] = library["variables"]
     assert (catalog["name"], catalog["where"], len(catalog["rows"])) == (
@@ -204,7 +205,7 @@ def test_the_api_returns_the_library_as_the_engine_resolves_it(client):
     )
 
 
-def test_a_fresh_library_shows_llm_granted_at_root_and_inherited_below(
+def test_a_fresh_library_shows_llm_and_the_apps_history_granted_at_root_and_inherited_below(
     library, home, tmp_path
 ):
     child = tmp_path / "child.yaml"
@@ -215,12 +216,21 @@ def test_a_fresh_library_shows_llm_granted_at_root_and_inherited_below(
     by_name = namespaces(client)
     tools = client.get("/api/library").json()["tools"]
     assert field(by_name["root"], "Tools") == [
-        {"value": "llm", "source": "granted here", "here": True}
+        {"value": "llm", "source": "granted here", "here": True},
+        {"value": "history", "source": "granted here", "here": True},
     ]
     assert field(by_name["helper"], "Tools") == [
-        {"value": "llm", "source": "inherited from root", "here": False}
+        {"value": "llm", "source": "inherited from root", "here": False},
+        {"value": "history", "source": "inherited from root", "here": False},
     ]
-    assert [(tool["name"], tool["granted_in"]) for tool in tools] == [("llm", ["root"])]
+    assert [(tool["name"], tool["granted_in"]) for tool in tools] == [
+        ("llm", ["root"]),
+        ("history", ["root"]),
+    ]
+    assert [(tool["defined_in"], tool["badge"]) for tool in tools] == [
+        (None, "built-in"),
+        ("Deep Reasoning", "the app's"),
+    ]
 
 
 def test_a_valid_decomposition_is_stored_and_listed_under_its_namespace(client):
@@ -478,6 +488,36 @@ async def test_a_run_on_a_fresh_library_gets_the_llm_tools_answer(library_on, co
             events = await run_events(api, run)
     assert events[-1]["outcome"] == "answered", events[-1]
     assert events[-1]["answer"] == "7"
+
+
+HISTORY_PLAN = {
+    "Count to two.": [repl("print(1)"), repl("FinalAnswer(2)")],
+    "How did you count?": [
+        repl("t = history.turns()", "print(len(t), t[0]['message'], t[0]['answer'])"),
+        repl("print(history.steps(1))"),
+        repl("print(history.steps(9))"),
+        repl("FinalAnswer('by printing 1')"),
+    ],
+}
+
+
+@pytest.mark.anyio
+async def test_a_follow_up_reads_how_an_earlier_message_was_worked_out_with_history(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(HISTORY_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            await run_events(api, await send(api, chat, "Count to two."))
+            events = await run_events(api, await send(api, chat, "How did you count?"))
+    turns, steps, refused, _ = [each for each in events if each["kind"] == "cell.end"]
+    assert turns["output"] == "1 Count to two. 2"
+    assert "'code': 'print(1)'" in steps["output"]
+    assert "'code': 'FinalAnswer(2)'" in steps["output"]
+    assert refused["status"] == "failed"
+    assert "ValueError: There is no message 9" in refused["output"]
+    assert events[-1]["outcome"] == "answered", events[-1]
+    assert "The `history` tool" in fake.calls[-1].messages[0]["content"]
 
 
 def held_on(prompt, plan):

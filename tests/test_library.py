@@ -24,7 +24,9 @@ from deep_reasoner.v2.cli import (
 from structlog.testing import capture_logs
 
 from deep_reasoning.library import (
+    APP_TOOLS_FILE,
     BEFORE_EVENTS,
+    HISTORY_DESCRIPTION,
     LIBRARY_ONLY,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
@@ -44,6 +46,8 @@ from deep_reasoning.library import (
 )
 
 FAKE_KEY = "sk-test-not-a-real-key"
+CHAT = "a-chat"
+RUN = "20261027-120000-000000"
 ADVISORS_NAMESPACES = {"root", "router", "course_advisor", "health_advisor"}
 ROUTER_DECOMPOSITIONS = [
     "route a course question",
@@ -89,7 +93,7 @@ def no_network(monkeypatch):
 def run_config(library, tmp_path, namespace=ROOT):
     """The config of a run on gpt-6-luna, as the app makes it."""
     return V2Config.model_validate(
-        engine_config(library, namespace, tmp_path / "tools") | CHATS_MODEL
+        engine_config(library, namespace, tmp_path / "tools", CHAT, RUN) | CHATS_MODEL
     )
 
 
@@ -107,7 +111,7 @@ def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
     library, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
-    config = engine_config(library, ROOT, tmp_path / "tools")
+    config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
     assert list(config["namespaces"]) == [ROOT]
     assert default_namespace(library) == ROOT
     assert "model" not in config and "client" not in config
@@ -115,20 +119,22 @@ def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
     assert FAKE_KEY.encode() not in library.read_bytes()
 
 
-def test_a_fresh_library_grants_llm_at_root_and_the_engine_accepts_it(
+def test_a_fresh_library_grants_llm_and_history_at_root_and_the_engine_accepts_it(
     library, tmp_path
 ):
     config = run_config(library, tmp_path)
     build_namespace_registry(config).check(declared_tool_names(config))
-    assert config.namespaces[ROOT].tools == ["llm"]
+    assert config.namespaces[ROOT].tools == ["llm", "history"]
 
 
-def test_a_library_made_with_an_empty_root_is_given_llm_there_once(library, tmp_path):
+def test_a_library_made_with_an_empty_root_is_given_a_fresh_root_once(
+    library, tmp_path
+):
     with closing(open_library(library)) as connection, writing(connection):
         connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
     upgraded = dumped(library)
     assert dumped(library) == upgraded
-    assert run_config(library, tmp_path).namespaces[ROOT].tools == ["llm"]
+    assert run_config(library, tmp_path).namespaces[ROOT].tools == ["llm", "history"]
 
 
 def test_a_read_only_library_with_an_empty_root_still_opens_as_it_is(
@@ -185,7 +191,7 @@ def test_a_library_that_still_holds_a_model_and_client_opens_and_they_go_unread(
         )
     with closing(open_library(library)) as connection:
         shown = panel(connection)
-    config = engine_config(library, ROOT, tmp_path / "tools")
+    config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
     assert "model" not in config and "client" not in config
     assert [row["label"] for row in shown["run_settings"]][:2] == [
         "max_iter",
@@ -257,7 +263,7 @@ def test_import_brings_no_model_or_client(library, tmp_path):
         "model: qwen/qwen3-30b\nclient: {base_url: 'https://api.novita.ai/v3/openai'}\n"
     )
     import_into(library, written)
-    config = engine_config(library, ROOT, tmp_path / "tools")
+    config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
     assert "model" not in config and "client" not in config
     assert run_config(library, tmp_path).llm_kwargs == {}
 
@@ -275,7 +281,7 @@ def test_an_imported_llm_tool_runs_on_the_chats_model(library, tmp_path):
         "factory": "llm",
         "system_prompt": "Review it.",
     }
-    assert "models" not in engine_config(library, ROOT, tmp_path / "tools")
+    assert "models" not in engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
 
 
 def test_an_import_reads_back_as_the_engine_loads_the_config(library, tmp_path):
@@ -406,7 +412,9 @@ def test_a_custom_tools_source_round_trips_and_the_engine_loads_its_factory(
     library, waitlist, tmp_path
 ):
     import_into(library, waitlist)
-    block = engine_config(library, ROOT, tmp_path / "tools")["tools"]["waitlist"]
+    block = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)["tools"][
+        "waitlist"
+    ]
     written = block["factory_from"]
     assert Path(written).read_text() == (waitlist.parent / "tools.py").read_text()
     build = load_tool_factory("waitlist", block["factory"], written, None)
@@ -424,8 +432,54 @@ def test_a_shared_librarys_tool_cannot_be_written_outside_the_tools_folder(
             ("../escaped", "factory: build\n", "def build(client, cfg): ...\n"),
         )
     with pytest.raises(LibraryError, match="needs a Python name"):
-        engine_config(library, ROOT, tmp_path / "tools")
+        engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
     assert not (tmp_path / "escaped.py").exists()
+
+
+def test_a_runs_config_tells_the_history_tool_the_app_file_the_chat_and_the_run(
+    library, tmp_path, monkeypatch
+):
+    monkeypatch.chdir(library.parent)
+    config = engine_config(Path(library.name), ROOT, tmp_path / "tools", CHAT, RUN)
+    assert config["tools"]["history"] == {
+        "factory_from": str(APP_TOOLS_FILE),
+        "factory": "build_history",
+        "library": str(library.resolve()),
+        "chat": CHAT,
+        "run": RUN,
+    }
+    with closing(open_library(library)) as connection:
+        assert connection.execute("SELECT count(*) FROM tools").fetchone() == (0,)
+
+
+def test_an_import_may_not_give_a_tool_an_app_tools_name(library, tmp_path):
+    config = tmp_path / "tool.yaml"
+    config.write_text("tools:\n  history: {factory: llm}\n")
+    with pytest.raises(LibraryError, match="one of the app's own tools"):
+        import_into(library, config)
+    with closing(open_library(library)) as connection:
+        assert connection.execute("SELECT count(*) FROM tools").fetchone() == (0,)
+
+
+def test_a_shared_files_tool_named_history_is_shadowed_by_the_apps(library, tmp_path):
+    with closing(open_library(library)) as connection:
+        connection.execute(
+            "INSERT INTO tools VALUES (?, ?, ?)",
+            (
+                "history",
+                "factory: build\nfactory_from: history.py\n",
+                "def build(): 1\n",
+            ),
+        )
+    with capture_logs() as logs:
+        config = engine_config(library, ROOT, tmp_path / "tools", CHAT, RUN)
+        with closing(open_library(library)) as connection:
+            tools = {each["name"]: each for each in panel(connection)["tools"]}
+    assert config["tools"]["history"]["factory_from"] == str(APP_TOOLS_FILE)
+    assert not (tmp_path / "tools" / "history.py").exists()
+    assert tools["history"]["file"] == "deep_reasoning.app_tools"
+    assert tools["history"]["description"] == HISTORY_DESCRIPTION
+    assert "library.tool_shadowed" in {entry["event"] for entry in logs}
 
 
 def test_the_engine_config_builds_a_registry_and_a_reasoner_without_a_model_call(

@@ -221,14 +221,17 @@ def has_ended(event: dict[str, Any] | None) -> bool:
     return event is not None and event["kind"] == "turn.end"
 
 
+def total_cost(costs: Sequence[Any]) -> float | None:
+    """What *costs* add up to; None when any of them is unknown."""
+    if all(isinstance(cost, int | float) for cost in costs):
+        return math.fsum(costs)
+    return None
+
+
 def totals(events: Sequence[dict[str, Any]], until: float) -> dict[str, Any]:
     """A turn's cost, None when any call's is unknown, and its seconds until *until*."""
     costs = [event.get("cost") for event in events if event["kind"] == "usage"]
-    known = all(isinstance(cost, int | float) for cost in costs)
-    return {
-        "cost": math.fsum(costs) if known else None,
-        "seconds": until - events[0]["t"],
-    }
+    return {"cost": total_cost(costs), "seconds": until - events[0]["t"]}
 
 
 def lost_end(events: Sequence[dict[str, Any]], seq: int) -> dict[str, Any]:
@@ -432,11 +435,12 @@ class Runs:
         key_names: Sequence[str] = (),
     ) -> str:
         """Start a run of *prompt* in *chat*, given the chat's *earlier* turns, and return
-        its id. *config_for* gives the engine config for the run's folder; *provider*
-        names who serves its model, and *keys* go into the worker's environment only.
-        The values of *keys* and of *key_names* in that environment are withheld from
-        the run's events. The worker works in *folder*, the run's own folder unless
-        given. Raises RunInProgress while the chat has a run going."""
+        its id. *config_for* gives the engine config for the run's folder, which the
+        run's id names; *provider* names who serves its model, and *keys* go into the
+        worker's environment only. The values of *keys* and of *key_names* in that
+        environment are withheld from the run's events. The worker works in *folder*,
+        the run's own folder unless given. Raises RunInProgress while the chat has a
+        run going."""
         if self.live(chat) is not None:
             raise RunInProgress(chat)
         run = new_run_id()

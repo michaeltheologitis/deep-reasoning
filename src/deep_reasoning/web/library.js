@@ -519,7 +519,7 @@ function renderTool(tool) {
 function renderTools() {
   const rows = library.tools.map((tool) => {
     const granted = tool.granted_in.length ? `granted in ${tool.granted_in.join(", ")}` : "not granted";
-    return disclosure(`t:${tool.name}`, rowHead(tool.name, granted, tool.defined_in ? null : "built-in"), () => renderTool(tool));
+    return disclosure(`t:${tool.name}`, rowHead(tool.name, granted, tool.badge), () => renderTool(tool));
   });
   return [element("div", { class: "lib-rows" }, rows)];
 }

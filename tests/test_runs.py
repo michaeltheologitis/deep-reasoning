@@ -752,7 +752,8 @@ async def test_gpt_6_luna_on_openai_answers_and_remembers_the_chat(
     }
 
     def config_for(folder):
-        config = engine_config(library, default_namespace(library), folder / "tools")
+        namespace = default_namespace(library)
+        config = engine_config(library, namespace, folder / "tools", CHAT, folder.name)
         return config | chats_model
 
     runs = Runs(library, home)
