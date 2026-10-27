@@ -147,10 +147,19 @@ def test_a_library_change_is_recorded_for_the_agent_whose_cell_made_it():
         "before": None,
         "after": "name: count\n",
     }
-    events = recorded(agent_start(ROOT, None), agent_start(CHILD, ROOT), change)
+    events = recorded(
+        agent_start(ROOT, None),
+        agent_start(CHILD, ROOT),
+        model_reply(
+            CHILD, "<repl>\nlibrary.write_decomposition('librarian', y)\n</repl>"
+        ),
+        change,
+    )
+    [cell] = [event["cell"] for event in events if event["kind"] == "cell.start"][-1:]
     assert events[-1] == {
         "kind": "library.change",
         "node": CHILD,
+        "cell": cell,
         "what": "decomposition",
         "namespace": "librarian",
         "name": "count",

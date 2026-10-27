@@ -455,6 +455,7 @@ def test_a_runs_config_tells_each_app_tool_the_app_file_the_chat_and_the_run(
         "chat": CHAT,
         "run": RUN,
         "namespace": ROOT,
+        "key_names": [],
     }
     with closing(open_library(library)) as connection:
         assert connection.execute("SELECT count(*) FROM tools").fetchone() == (0,)

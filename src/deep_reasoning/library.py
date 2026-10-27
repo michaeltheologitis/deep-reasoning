@@ -161,7 +161,10 @@ LIBRARY_DESCRIPTION = """\
 The `library` tool reads and writes the app's Library: its namespaces and the \
 decompositions (worked examples) each one's agents are shown. A change applies from the \
 user's next message, not in this run, and only a chat whose namespace grants this tool may \
-make one. root is locked: you may read it, not write it.
+make one. root is locked: you may read it, not write it. A namespace's agents are shown its \
+own decompositions and those of the namespaces above it (root, then research, then \
+research.papers), and one of the same name lower down takes the place of its parent's \
+there; show() lists only each namespace's own.
   library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
 (the fields it sets itself), fields (each as the engine resolves it, with where it comes \
 from) and decompositions (each with its name and yaml). Slice it in Python and print \
@@ -171,15 +174,12 @@ only what you need.
 namespace `namespace`, or replaces the one of that name there. Returns what it did: \
 {done: "added" or "replaced", what, name, namespace}. A refusal raises ValueError saying \
 why."""
-# Added in code, never stored: a shared file mustn't choose the code they run.
+# Added in code, never stored: a shared file mustn't choose the code they run. Each one's
+# factory in app_tools.py, and what the agent is told it does.
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
 APP_TOOLS = {
-    "history": {"factory_from": str(APP_TOOLS_FILE), "factory": "build_history"},
-    LIBRARY_TOOL: {"factory_from": str(APP_TOOLS_FILE), "factory": "build_library"},
-}
-APP_TOOL_DESCRIPTIONS = {
-    "history": HISTORY_DESCRIPTION,
-    LIBRARY_TOOL: LIBRARY_DESCRIPTION,
+    "history": ("build_history", HISTORY_DESCRIPTION),
+    LIBRARY_TOOL: ("build_library", LIBRARY_DESCRIPTION),
 }
 APP_TOOLS_MODULE = f"{__package__}.{APP_TOOLS_FILE.stem}"
 APP = "Deep Reasoning"
@@ -375,7 +375,10 @@ def stored_config(connection):
     """The Library as a plain dict in the engine's config shape, the app's tools after its
     own; a custom tool's factory_from names its stored file."""
     tools = {name: yaml.safe_load(text) for name, text, _ in library_tools(connection)}
-    tools |= {name: dict(block) for name, block in APP_TOOLS.items()}
+    tools |= {
+        name: {"factory_from": str(APP_TOOLS_FILE), "factory": factory}
+        for name, (factory, _) in APP_TOOLS.items()
+    }
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, yaml FROM decompositions ORDER BY rowid"
@@ -390,12 +393,13 @@ def stored_config(connection):
     return {**stored_settings(connection), "tools": tools, "namespaces": namespaces}
 
 
-def engine_config(library_path, namespace, tools_dir, chat, run):
+def engine_config(library_path, namespace, tools_dir, chat, run, key_names=()):
     """The Library as one plain dict that V2Config accepts, for run *run* of *chat*, which
     enters *namespace*; the run's model and client are the chat's to put in.
 
     Each custom tool's source is written into *tools_dir*, and its factory_from points at that file.
-    Each of the app's tools is told the app file, the chat, the run and the namespace it enters.
+    Each of the app's tools is told the app file, the chat, the run, the namespace it enters,
+    and *key_names*, the variables of the worker's environment that hold keys.
     """
     tools_dir = Path(tools_dir).resolve()
     tools_dir.mkdir(parents=True, exist_ok=True)
@@ -412,6 +416,7 @@ def engine_config(library_path, namespace, tools_dir, chat, run):
         "chat": chat,
         "run": run,
         "namespace": namespace,
+        "key_names": list(key_names),
     }
     for name in APP_TOOLS:
         config["tools"][name] |= told
@@ -437,16 +442,22 @@ def check_namespace(connection, name):
         )
 
 
+def config_and_registry(connection):
+    """The Library as a run's config, with the llm tool a model brings, and its namespaces
+    as the engine resolves them."""
+    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
+    return config, build_namespace_registry(config)
+
+
 def granted_tools(connection, namespace):
     """The tools *namespace* has, its own and its chain's, as the engine resolves them."""
-    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
-    return build_namespace_registry(config).resolve(namespace).tools
+    return config_and_registry(connection)[1].resolve(namespace).tools
 
 
 def check(connection):
     """Raise unless the engine would accept the Library: every chain resolves and every tool granted exists."""
-    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
-    build_namespace_registry(config).check(declared_tool_names(config))
+    config, registry = config_and_registry(connection)
+    registry.check(declared_tool_names(config))
 
 
 def tool_row(name, block, config_dir):
@@ -588,37 +599,28 @@ def parsed(text):
     return decomposition
 
 
-def add_decomposition(connection, namespace, text):
-    """Store the decomposition written as YAML *text* under *namespace*, or raise LibraryError saying why not."""
+def add_decomposition(connection, namespace, text, replace=False, allowed=None):
+    """Store the decomposition written as YAML *text* under *namespace*, or raise
+    LibraryError saying why not: one of its name there is refused, or with *replace* put in
+    its place. *allowed*, given the connection under the write lock first, raises to refuse.
+    The stored row, and the YAML it replaced (None when it is new)."""
     name = parsed(text).name
     stored = {"namespace": namespace, "name": name, "yaml": text}
-    try:
-        with writing(connection):
-            # Under the lock, so a namespace deleted meanwhile leaves no decomposition behind.
-            check_namespace(connection, namespace)
-            connection.execute(
-                "INSERT INTO decompositions VALUES (?, ?, ?)", tuple(stored.values())
-            )
-    except sqlite3.IntegrityError as error:
-        raise LibraryError(
-            f'{namespace} already has "{name}"; rename it, or pick another namespace.'
-        ) from error
-    return stored
-
-
-def save_decomposition(connection, namespace, text):
-    """Store the decomposition written as YAML *text* under *namespace*, replacing the one
-    of its name there; its name, and the YAML it replaced (None when it is new). Raise
-    LibraryError saying why not."""
-    name = parsed(text).name
     with writing(connection):
+        if allowed is not None:
+            allowed(connection)
+        # Under the lock, so a namespace deleted meanwhile leaves no decomposition behind.
         check_namespace(connection, namespace)
         found = connection.execute(
             "SELECT yaml FROM decompositions WHERE namespace = ? AND name = ?",
             (namespace, name),
         ).fetchone()
-        connection.execute(UPSERT_DECOMPOSITION, (namespace, name, text))
-    return name, None if found is None else found[0]
+        if found is not None and not replace:
+            raise LibraryError(
+                f'{namespace} already has "{name}"; rename it, or pick another namespace.'
+            )
+        connection.execute(UPSERT_DECOMPOSITION, tuple(stored.values()))
+    return stored, None if found is None else found[0]
 
 
 def namespace_problem(error):
@@ -875,7 +877,7 @@ def origin(name, factory, block, source):
     unless its block says."""
     if name in APP_TOOLS:
         made = {"file": APP_TOOLS_MODULE, "defined_in": APP, "badge": "the app's"}
-        return made, APP_TOOL_DESCRIPTIONS[name]
+        return made, APP_TOOLS[name][1]
     if source is None:
         made = {
             "file": BUILDERS[factory].__module__,
@@ -927,11 +929,14 @@ def shape(rows):
     )
 
 
-def panel(connection):
-    """What the Library panel shows: run settings, namespaces as the engine resolves them, tools, tabular vars."""
-    config = V2Config.model_validate(stored_config(connection) | A_MODEL)
-    registry = build_namespace_registry(config)
-    names = sorted(registry.names, key=registry.chain)
+def in_chain_order(registry):
+    """The namespaces' names, each after the ones above it."""
+    return sorted(registry.names, key=registry.chain)
+
+
+def namespace_rows(connection, config, registry):
+    """Each namespace as the panel shows it: its depth, its fields as the engine resolves
+    them, its own decompositions and its own YAML."""
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, name, yaml FROM decompositions ORDER BY rowid"
@@ -941,7 +946,7 @@ def panel(connection):
     # What each one's Edit YAML opens on: blank for a namespace that sets nothing.
     rows = connection.execute("SELECT name, yaml FROM namespaces")
     own = {name: "" if text == EMPTY_NAMESPACE else text for name, text in rows}
-    namespaces = [
+    return [
         {
             "name": name,
             "depth": len(registry.chain(name)) - 1,
@@ -949,13 +954,19 @@ def panel(connection):
             "decompositions": decompositions[name],
             "yaml": own.get(name, ""),
         }
-        for name in names
+        for name in in_chain_order(registry)
     ]
+
+
+def panel(connection):
+    """What the Library panel shows: run settings, namespaces as the engine resolves them, tools, tabular vars."""
+    config, registry = config_and_registry(connection)
+    names = in_chain_order(registry)
     sources = {name: source for name, _, source in library_tools(connection)}
     return {
         "default_namespace": config.entry_namespace,
         "run_settings": run_settings(connection),
-        "namespaces": namespaces,
+        "namespaces": namespace_rows(connection, config, registry),
         "tools": tool_rows(config, registry, names, sources),
         "variables": variables(registry, names),
     }

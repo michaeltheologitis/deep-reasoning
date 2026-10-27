@@ -200,7 +200,8 @@ def create_app(library, home):
         namespace: Annotated[str, Body()], yaml: Annotated[str, Body()]
     ):
         with closing(open_library(library)) as connection:
-            return add_decomposition(connection, namespace, yaml)
+            stored, _ = add_decomposition(connection, namespace, yaml)
+            return stored
 
     # Each answers with the whole Library: a namespace's fields reach every namespace under it.
     # An imported namespace's name may hold a /, hence :path.
@@ -407,17 +408,19 @@ def create_app(library, home):
         key = run_key(home, provider)
         folder = working_folder(data, chat)
         client = {"base_url": provider.base_url, "api_key_env": provider.key_env}
+        keys = {provider.key_env: key}
+        # Any provider's key in the shell reaches the worker, so is withheld too.
+        key_names = [each.key_env for each in providers(library)]
 
         def config_for(run_folder):
             # A run's folder is named by its id.
             run = run_folder.name
             tools = run_folder / "tools"
-            config = engine_config(library, namespace, tools, chat["id"], run)
+            config = engine_config(
+                library, namespace, tools, chat["id"], run, key_names
+            )
             return config | {"model": model["name"], "client": client}
 
-        keys = {provider.key_env: key}
-        # Any provider's key in the shell reaches the worker, so is withheld too.
-        key_names = [each.key_env for each in providers(library)]
         run = runs.start(
             chat["id"],
             prompt,

@@ -266,9 +266,12 @@ class Recorder:
         )
 
     def _library_change(self, event: dict[str, Any]) -> None:
-        """A change the library tool made, from the cell of the agent that called it."""
+        """A change the library tool made, in the open cell of the agent that called it."""
+        node = event.get("agent_id") or self._root
+        agent = self._agents.get(node)
         fields = {key: event.get(key) for key in CHANGE_FIELDS}
-        self.emit("library.change", node=event.get("agent_id") or self._root, **fields)
+        cell = agent.cell if agent else None
+        self.emit("library.change", node=node, cell=cell, **fields)
 
     def _own(self, event: dict[str, Any]) -> bool:
         """The event is a known agent's own model call or cell, not a tool's inside it."""

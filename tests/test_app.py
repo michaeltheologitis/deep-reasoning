@@ -563,6 +563,7 @@ REFUSALS = [
     (write("librarian", "name: count\n"), "Add messages: a list of turns"),
     (write("nowhere", EXAMPLE), 'The Library has no namespace "nowhere"'),
     (write("root", EXAMPLE), "root is locked"),
+    (write("librarian", f"{EXAMPLE}# {SERVER_KEY}\n"), "holds a provider's key"),
 ]
 
 

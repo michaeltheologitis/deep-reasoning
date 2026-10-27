@@ -1,4 +1,5 @@
 import json
+import re
 import sqlite3
 from contextlib import closing
 from itertools import count
@@ -7,8 +8,20 @@ from pathlib import Path
 import pytest
 from structlog.testing import capture_logs
 
-from deep_reasoning.app_tools import build_history, build_library, open_read_only
-from deep_reasoning.library import open_library, writing
+from deep_reasoning.app_tools import (
+    MAX_YAML_CHARS,
+    build_history,
+    build_library,
+    open_existing,
+)
+from deep_reasoning.library import (
+    LibraryError,
+    add_namespace,
+    change_namespace,
+    delete_namespace,
+    open_library,
+    writing,
+)
 from deep_reasoning.runs import LOST, chat_runs, read_turn, save_event
 
 RUNS = Path(__file__).parent / "runs"
@@ -258,7 +271,7 @@ def test_the_tool_reads_the_app_file_without_writing_it_or_running_its_own_sql(
             "CREATE TRIGGER wipe AFTER INSERT ON events BEGIN DELETE FROM runs; END"
         )
     before = library.read_bytes()
-    with closing(open_read_only(library)) as connection:
+    with closing(open_existing(library)) as connection:
         with pytest.raises(sqlite3.OperationalError, match="readonly"):
             connection.execute("DELETE FROM events")
         with pytest.raises(sqlite3.OperationalError, match="planted"):
@@ -274,14 +287,41 @@ messages:
 """
 
 
-def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(library):
+NOT_THIS_CHAT = "The Library can be changed only in a chat whose namespace grants"
+SHELL_KEY_ENV = "A_PROVIDERS_KEY"
+SHELL_KEY = "sk-a-key-from-the-shell"
+
+
+def library_tool(library, namespace="librarian"):
+    """The library tool, as a run of a chat in *namespace* gets it."""
     told = {
         "library": str(library),
         "chat": CHAT,
         "run": CURRENT,
-        "namespace": "librarian",
+        "namespace": namespace,
+        "key_names": [SHELL_KEY_ENV],
     }
-    tool = build_library(None, told).value
+    return build_library(None, told).value
+
+
+def stored(library):
+    """Each decomposition in the app file, as (namespace, name)."""
+    with closing(open_library(library)) as connection:
+        return connection.execute(
+            "SELECT namespace, name FROM decompositions"
+        ).fetchall()
+
+
+@pytest.fixture
+def fresh(library):
+    """A fresh app file, with a namespace drafts beside the librarian."""
+    with closing(open_library(library)) as connection:
+        add_namespace(connection, "drafts", "")
+    return library
+
+
+def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(fresh):
+    tool = library_tool(fresh)
     done = tool.write_decomposition("librarian", EXAMPLE)
     shown = tool.show()
     by_name = {each["name"]: each for each in shown}
@@ -292,8 +332,68 @@ def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(librar
         "name": "count the tickets",
     }
     assert json.loads(json.dumps(shown)) == shown
-    assert list(by_name) == ["root", "librarian"]
+    assert list(by_name) == ["root", "drafts", "librarian"]
     assert by_name["librarian"]["yaml"] == "tools:\n- library\n"
     assert by_name["librarian"]["decompositions"] == [
         {"name": "count the tickets", "yaml": EXAMPLE}
     ]
+
+
+class NeverEqual(str):
+    """Text that compares unequal to everything, itself included."""
+
+    def __eq__(self, other):
+        return False
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    ("namespace", "text", "refusal"),
+    [
+        (NeverEqual("root"), EXAMPLE, "namespace and yaml should be text."),
+        ("drafts", NeverEqual(EXAMPLE), "namespace and yaml should be text."),
+        ("root", EXAMPLE, "root is locked"),
+        ("drafts", "#" * (MAX_YAML_CHARS + 1), "may be at most 1,000,000 characters"),
+        ("drafts", EXAMPLE + f"# {SHELL_KEY}\n", "holds a provider's key"),
+    ],
+    ids=["text-unequal-to-root", "yaml-not-plain-text", "root", "too-long", "a-key"],
+)
+def test_a_write_the_tool_refuses_says_why_and_stores_nothing(
+    fresh, monkeypatch, namespace, text, refusal
+):
+    monkeypatch.setenv(SHELL_KEY_ENV, SHELL_KEY)
+    with pytest.raises(LibraryError, match=re.escape(refusal)):
+        library_tool(fresh).write_decomposition(namespace, text)
+    assert stored(fresh) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "argument"),
+    [(change_namespace, "tools: [llm]\n"), (delete_namespace, 0)],
+)
+def test_a_chat_whose_namespace_lost_the_grant_mid_run_may_not_write(
+    fresh, change, argument
+):
+    tool = library_tool(fresh)
+    with closing(open_library(fresh)) as connection:
+        change(connection, "librarian", argument)
+    with pytest.raises(LibraryError, match=NOT_THIS_CHAT):
+        tool.write_decomposition("drafts", EXAMPLE)
+    assert stored(fresh) == []
+
+
+def test_a_busy_app_file_is_a_refusal_in_words(fresh):
+    refused = pytest.raises(LibraryError, match="can't be used now .*; try again")
+    with closing(open_library(fresh)) as connection, writing(connection), refused:
+        library_tool(fresh).write_decomposition("drafts", EXAMPLE)
+    assert stored(fresh) == []
+
+
+def test_a_moved_app_file_is_never_made_afresh(fresh, tmp_path):
+    tool = library_tool(fresh)
+    fresh.rename(tmp_path / "moved.sqlite")
+    for call in (tool.show, lambda: tool.write_decomposition("drafts", EXAMPLE)):
+        with pytest.raises(LibraryError, match="can't be used now"):
+            call()
+    assert not fresh.exists()

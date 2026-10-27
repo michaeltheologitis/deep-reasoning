@@ -1,7 +1,9 @@
 """The agent's own tools: the app gives every run these, besides the Library's.
 
 The engine builds each from this file by its path (factory_from), in the worker, with only
-what its block in the run's config holds: the app file's path, the chat and the run.
+what its block in the run's config holds: the app file's path, the chat, the run, the chat's
+namespace and the variables that hold keys. Each opens the app file as it is, never making
+a moved or deleted one afresh.
 
 history reads the chat's earlier runs from the app file, read-only, as the page reads them:
 runs.py checks each row, and folded() folds a run's events into its tree as fold.js does.
@@ -9,12 +11,15 @@ runs.py checks each row, and folded() folds a run's events into its tree as fold
 library reads and writes the Library through library.py, with the panel's checks and
 transactions; the lock is here, as the panel may still edit root. It writes only in a run
 whose chat's namespace grants it, so a sub-agent spawned into such a namespace from another
-chat can't. Each change is logged as library.change, which the worker records as a run event.
+chat can't, and never a key. It guards the tool, not the file: a cell can open the file
+itself. Each change is logged as library.change, which the worker records as a run event.
 """
 
 import copy
+import os
 import sqlite3
-from contextlib import closing
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -30,13 +35,14 @@ from deep_reasoning.library import (
     LIBRARY_DESCRIPTION,
     LIBRARY_TOOL,
     LibraryError,
+    add_decomposition,
+    config_and_registry,
     distrust,
     granted_tools,
-    open_library,
-    panel,
-    save_decomposition,
+    has_namespace,
+    namespace_rows,
 )
-from deep_reasoning.runs import chat_turns, total_cost
+from deep_reasoning.runs import chat_turns, secrets_of, total_cost
 
 log = structlog.get_logger()
 
@@ -52,6 +58,14 @@ ROOT_LOCKED = (
 NOT_THIS_CHAT = (
     "The Library can be changed only in a chat whose namespace grants the library tool;"
     " pick librarian under the message box."
+)
+# As the panel's limit on a decomposition's file; past 64 MiB, its change event would end
+# the run after the write.
+MAX_YAML_CHARS = 1_000_000
+TOO_LONG = f"A decomposition's YAML may be at most {MAX_YAML_CHARS:,} characters."
+HOLDS_A_KEY = (
+    "The YAML holds a provider's key, and the Library file is shared, so keys never go in"
+    " it. Take the key out."
 )
 
 
@@ -187,19 +201,36 @@ def agent_row(row: Holder) -> dict[str, Any]:
     return fields | {"cost": total_cost(row["costs"]), "steps": len(row["steps"])}
 
 
-def open_read_only(library: str | Path) -> sqlite3.Connection:
-    """The app file at *library*, for reading only: it can't write the file, and runs
-    none of the file's own triggers or views. In WAL mode it holds up no event the server
-    saves meanwhile."""
-    connection = sqlite3.connect(f"{Path(library).as_uri()}?mode=ro", uri=True)
+def open_existing(library: str | Path, mode: str = "ro") -> sqlite3.Connection:
+    """The app file at *library* as it is, to read ("ro") or to write ("rw"): unlike
+    open_library, it never makes a moved or deleted file afresh. It runs none of the file's
+    own triggers or views, and wipes what it deletes. In WAL mode a reader holds up no event
+    the server saves meanwhile."""
+    connection = sqlite3.connect(
+        f"{Path(library).as_uri()}?mode={mode}", uri=True, isolation_level=None
+    )
+    connection.execute("PRAGMA secure_delete = ON")
     distrust(connection)
     return connection
+
+
+@contextmanager
+def app_file(library: str, mode: str) -> Iterator[sqlite3.Connection]:
+    """The app file as it is, for one use; a SQLite failure (busy, read only, moved or
+    deleted) as a LibraryError in words the model can pass on."""
+    try:
+        with closing(open_existing(library, mode)) as connection:
+            yield connection
+    except sqlite3.OperationalError as error:
+        raise LibraryError(
+            f"The Library file can't be used now ({error}); try again."
+        ) from error
 
 
 def earlier_runs(library: str, chat: str, run: str) -> list[list[Event]]:
     """The events of each of *chat*'s runs but *run*, oldest first, as the page reads
     them: a run that didn't start is left out, and one with no turn.end ends failed."""
-    with closing(open_read_only(library)) as connection:
+    with closing(open_existing(library)) as connection:
         turns = chat_turns(connection, chat)
     return [turn["events"] for turn in turns if turn["run"] != run]
 
@@ -257,25 +288,44 @@ def build_history(client: Any, params: dict[str, Any]) -> Func:
 
 def build_library(client: Any, params: dict[str, Any]) -> Func:
     """The library tool, over the app file *library* its block in the run's config names,
-    for a run of a chat in *namespace*."""
+    for a run of a chat in *namespace*, whose worker holds keys in *key_names*."""
     library, chat_namespace = params["library"], params["namespace"]
+    key_names = params["key_names"]
 
     def show() -> list[dict[str, Any]]:
         """Every namespace, as the Library panel shows it."""
-        with closing(open_library(library)) as connection:
-            return panel(connection)["namespaces"]
+        with app_file(library, "ro") as connection:
+            return namespace_rows(connection, *config_and_registry(connection))
+
+    def may_write(connection: sqlite3.Connection) -> None:
+        """Raise unless this run's chat is in a namespace that grants the library tool, as
+        the Library stands under the write lock: a grant taken away meanwhile counts."""
+        granted = has_namespace(connection, chat_namespace) and (
+            LIBRARY_TOOL in granted_tools(connection, chat_namespace)
+        )
+        if not granted:
+            raise LibraryError(NOT_THIS_CHAT)
 
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
-        if not isinstance(namespace, str) or not isinstance(yaml, str):
+        # Exactly str: a subclass could compare unequal to "root" and still name it.
+        if type(namespace) is not str or type(yaml) is not str:
             raise LibraryError("namespace and yaml should be text.")
         if namespace == ROOT:
             raise LibraryError(ROOT_LOCKED)
-        with closing(open_library(library)) as connection:
-            if LIBRARY_TOOL not in granted_tools(connection, chat_namespace):
-                raise LibraryError(NOT_THIS_CHAT)
-            name, before = save_decomposition(connection, namespace, yaml)
-        change = {"what": "decomposition", "namespace": namespace, "name": name}
+        if len(yaml) > MAX_YAML_CHARS:
+            raise LibraryError(TOO_LONG)
+        if any(secret in yaml for secret in secrets_of(os.environ, key_names)):
+            raise LibraryError(HOLDS_A_KEY)
+        with app_file(library, "rw") as connection:
+            stored, before = add_decomposition(
+                connection, namespace, yaml, replace=True, allowed=may_write
+            )
+        change = {
+            "what": "decomposition",
+            "namespace": namespace,
+            "name": stored["name"],
+        }
         log.info("library.change", **change, before=before, after=yaml)
         return {"done": "added" if before is None else "replaced", **change}
 
