@@ -79,7 +79,6 @@ namespaces:
 ADDED = "name: added\nmessages: [{role: user, content: hi}]\n"
 RESEARCH = "vars: {topic: ml}\nsystem_suffix: |\n  Cite each source.\n"
 WAIT_FOR_THE_LOCK_S = 0.3
-# A fresh Library's worked example at root.
 SEEDED = parsed(HISTORY_EXAMPLE)
 # What the app puts in for a chat on OpenAI's gpt-6-luna.
 CHATS_MODEL = {

@@ -336,7 +336,6 @@ def library_tool(library, namespace="librarian"):
     return build_library(None, told).value
 
 
-# A fresh app file's decompositions: the worked example at root.
 FRESH = [("root", parsed(HISTORY_EXAMPLE).name)]
 
 
@@ -375,20 +374,26 @@ def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(fresh)
     ]
 
 
+@pytest.mark.parametrize(
+    ("content", "stored_content"),
+    [
+        (
+            "|\n    [repl]\n    FinalAnswer(3)\n    [/repl]\n",
+            "|\n    <repl>\n    FinalAnswer(3)\n    </repl>\n",
+        ),
+        ("[repl]FinalAnswer(3)[/repl]\n", "<repl>FinalAnswer(3)</repl>\n"),
+    ],
+    ids=["block", "one-line"],
+)
 def test_a_decomposition_written_with_repl_placeholders_is_stored_with_the_real_tags(
-    fresh,
+    fresh, content, stored_content
 ):
-    answer = (
-        "- role: assistant\n  content: |\n    [repl]\n    FinalAnswer(3)\n    [/repl]\n"
-    )
+    answer = "- role: assistant\n  content: "
     tool = library_tool(fresh)
-    tool.write_decomposition("drafts", EXAMPLE + answer)
+    tool.write_decomposition("drafts", EXAMPLE + answer + content)
     by_name = {each["name"]: each for each in tool.show()}
-    stored_answer = (
-        "- role: assistant\n  content: |\n    <repl>\n    FinalAnswer(3)\n    </repl>\n"
-    )
     assert by_name["drafts"]["decompositions"] == [
-        {"name": "count the tickets", "yaml": EXAMPLE + stored_answer}
+        {"name": "count the tickets", "yaml": EXAMPLE + answer + stored_content}
     ]
 
 

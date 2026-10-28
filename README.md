@@ -27,7 +27,8 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - Follow-ups see the chat's earlier messages and answers, and can ask how one was worked out: the agent reads the
   chat's earlier runs (each message's sub-agents, thoughts and cells) with the app's own `history` tool. A new
   Library grants it at root, beside a worked example of reading it before answering (`explain an earlier answer`); in
-  an older one, add `history` to a namespace's tools, and an example like it in the decompositions panel.
+  an older one, add `history` to a namespace's tools, and an example like it in the decompositions panel. If you
+  take `history` out of root, delete root's example in the panel too: it shows a call the agent no longer has.
 - Each chat has its own model, namespace and working folder, picked under the message box; a change applies from
   the next message.
 - Light and dark themes; works at phone width.

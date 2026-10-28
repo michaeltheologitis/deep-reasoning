@@ -97,8 +97,7 @@ FRESH_ROOT = {"tools": ["llm", "history"]}
 LIBRARIAN = "librarian"
 LIBRARY_TOOL = "library"
 FRESH_LIBRARIAN = {"tools": [LIBRARY_TOOL]}
-# A fresh Library's worked example at root, which every namespace inherits: without it,
-# models answer in the cell that prints history.steps, before they see what it printed.
+# Every namespace inherits it: without it, models answer in the cell printing history.
 HISTORY_EXAMPLE_FILE = Path(__file__).with_name("history_example.yaml")
 HISTORY_EXAMPLE = HISTORY_EXAMPLE_FILE.read_text(encoding="utf-8")
 UNTOUCHED_ROOT = (
@@ -153,10 +152,10 @@ earlier sub-agent did or found, read what you actually did with `history`: \
 print(history.steps(1)) prints message 1's thoughts and cells (code and output). For \
 what a sub-agent did, find its node with history.agents(1) and print \
 history.steps(1, node=<its node>): its own thoughts and cells. Then answer in a later \
-cell, from what it printed, not by redoing the work or guessing a method. The recap holds only each earlier message and its answer, and ctx.history only \
-this run's conversation; history holds every step of the earlier ones. Its methods \
-return plain data (lists of dicts), and the REPL shows only what you print: print what \
-you need.
+cell, from what it printed, not by redoing the work or guessing a method. The recap \
+holds only each earlier message and its answer, and ctx.history only this run's \
+conversation; history holds every step of the earlier ones. Its methods return plain \
+data (lists of dicts), and the REPL shows only what you print: print what you need.
   history.turns(): the earlier messages, numbered from 1 as the chat's recap numbers them: \
 turn, message, namespace, model, outcome, answer, detail, cost, seconds and agents (how \
 many sub-agents it ran).
@@ -192,11 +191,11 @@ decompositions (each with its name and yaml).
 to namespace `namespace`, or replaces the one of that name there. Agents copy it, so \
 write it as they work, like those show() lists: name: <its name>, then messages:, a list \
 of turns, each a role and content (content: | for several lines): the user's task; then \
-assistant turns, each <think>…</think> then one <repl>…</repl> block of Python that \
-prints what it needs, each followed by a user turn holding the \
-<observation>…</observation> that code printed; the last assistant turn's <repl> calls \
-FinalAnswer(...). The last <repl> block in your reply is the one that runs, so in your \
-cell write the repl tags as [repl] and [/repl]; the tool writes the real ones.
+assistant turns, each <think>…</think> and one <repl>…</repl> of Python; after each \
+but the last, a user turn with the <observation>…</observation> its code printed; the \
+last calls FinalAnswer(...). The last <repl> block in your reply is the one that runs, \
+so in your cell write the repl tags as [repl] and [/repl]; the tool writes the real \
+ones.
   library.add_namespace(name, yaml): adds namespace `name` ("research", or \
 "research.papers" under an existing research) with the fields its YAML sets, written as \
 show() gives a namespace's yaml: system_suffix (text added to its agents' system \

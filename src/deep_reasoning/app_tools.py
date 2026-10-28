@@ -106,9 +106,6 @@ TOOL_TOO_LONG = (
     " characters."
 )
 CHECKS = "checks"
-# A cell can't hold the engine's tags, as it runs the last <repl> block of a reply: the
-# model writes these in a decomposition, and the tool writes the real ones.
-REPL_PLACEHOLDERS = {"[repl]": "<repl>", "[/repl]": "</repl>"}
 # Any other REPL is a sandbox, and building a tool runs its code in the worker, outside it.
 LOCAL_REPL = "local"
 NOT_LOCAL = (
@@ -377,13 +374,6 @@ def check_writable(namespace: str, yaml: str, key_names: list[str]) -> None:
     check_no_key([namespace, yaml, *texts_in(loaded(yaml))], key_names)
 
 
-def with_repl_tags(yaml: str) -> str:
-    """*yaml* with each [repl] and [/repl] written as the engine's tag."""
-    for placeholder, tag in REPL_PLACEHOLDERS.items():
-        yaml = yaml.replace(placeholder, tag)
-    return yaml
-
-
 def plain(value: Any) -> bool:
     """Whether *value* is text, a number, True, False or None, or a list or dict of them
     keyed by text, nested at most MAX_NESTING deep, each list and dict in it once (so
@@ -561,8 +551,10 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
 
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
+        # The engine runs a reply's last <repl> block, so a cell writes [repl] instead.
+        if type(yaml) is str:
+            yaml = yaml.replace("[repl]", "<repl>").replace("[/repl]", "</repl>")
         check_writable(namespace, yaml, key_names)
-        yaml = with_repl_tags(yaml)
         with app_file(library, "rw") as connection:
             stored, before = add_decomposition(
                 connection, namespace, yaml, replace=True, allowed=may_write

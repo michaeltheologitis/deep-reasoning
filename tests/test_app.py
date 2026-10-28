@@ -678,7 +678,6 @@ async def test_a_change_to_the_library_applies_from_the_next_message(
     assert showing(thanking, ASKED) == [False]
 
 
-# A fresh Library's decompositions, root's then librarian's: the worked example at root.
 FRESH_DECOMPOSITIONS = [
     [{"name": parsed(HISTORY_EXAMPLE).name, "yaml": HISTORY_EXAMPLE}],
     [],
