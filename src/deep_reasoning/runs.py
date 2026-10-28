@@ -76,21 +76,21 @@ LARGEST_NUMBER = 2**53
 # What an event row from a file someone else wrote may fail with.
 UNREADABLE = (TypeError, ValueError, RecursionError, OverflowError)
 NOT_ENDED = (*UNREADABLE, KeyError, IndexError, sqlite3.Error)
-RECAP = jinja2.Template(
+# What a follow-up's run is told ahead of the chat's earlier turns.
+EARLIER_TURNS_NOTE = """\
+This conversation began before this run: the user's earlier messages and your answers \
+follow, then the user's next message. Their runs have ended, so their variables are gone \
+and their sub-agents can't be called again. How each answer was worked out (its \
+thoughts, cells and its sub-agents' steps) is kept: to explain an earlier answer, print \
+it with the history tool, when you have it, and answer in a later cell from what it \
+printed."""
+# An earlier turn's assistant turn: its answer, or why it has none.
+ANSWER = jinja2.Template(
     """\
-This conversation began before this run. Its earlier runs have ended, so their \
-variables are gone and their sub-agents can't be called again; below are the user's \
-earlier messages, each with the answer it got. How each was worked out (its thoughts, \
-cells and its sub-agents' steps) is kept: to explain an earlier answer, print it with \
-the history tool, when you have it, and answer in a later cell from what it printed.
-{% for turn in turns %}
-Message {{ loop.index }}{% if turn.namespace and turn.namespace != namespace %} (in namespace {{ turn.namespace }}){% endif %}: {{ turn.message }}
-Answer {{ loop.index }}: {% if turn.outcome == "answered" %}{{ turn.answer or "" }}
-{%- elif turn.outcome == "failed" %}(none: the run failed: {{ turn.detail }})
-{%- elif turn.outcome == "stopped" %}(none: the user stopped the run before it answered)
-{%- else %}(none: the run ended without a final answer){% endif %}
-{% endfor %}
-The user's next message follows.""",
+{% if turn.outcome == "answered" %}{{ turn.answer or "" }}
+{%- elif turn.outcome == "failed" %}(No answer: the run failed: {{ turn.detail }})
+{%- elif turn.outcome == "stopped" %}(No answer: the user stopped the run before it answered.)
+{%- else %}(No answer: the run ended without a final answer.){% endif %}""",
     undefined=jinja2.StrictUndefined,
 )
 
@@ -105,7 +105,6 @@ class Turn:
     outcome: Outcome
     answer: str | None
     detail: str | None
-    namespace: str | None = None
 
 
 @dataclass
@@ -212,7 +211,7 @@ def first_loaded(
 
 def started(event: dict[str, Any] | None) -> bool:
     """Whether a run's first event that loads is its turn.start, with its message: else,
-    as in a file from someone else, the run is left out of the page and the recap."""
+    as in a file from someone else, the run is left out of the page and of follow-ups."""
     return (
         event is not None
         and event["kind"] == "turn.start"
@@ -254,9 +253,8 @@ def ended(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
-    """An ended run's message, how it ended and its namespace, from its first and last
-    events that load; None for a run that didn't start, as one in a file from someone
-    else may not have."""
+    """An ended run's message and how it ended, from its first and last events that load;
+    None for a run that didn't start, as one in a file from someone else may not have."""
     start = first_loaded(connection, run, FORWARD)
     if not started(start):
         log.warning("runs.turn_left_out", run=run)
@@ -265,11 +263,7 @@ def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
     if not has_ended(end):
         end = LOST_END
     return Turn(
-        start["prompt"],
-        end.get("outcome"),
-        end.get("answer"),
-        end.get("detail"),
-        start.get("namespace"),
+        start["prompt"], end.get("outcome"), end.get("answer"), end.get("detail")
     )
 
 
@@ -370,11 +364,17 @@ def withheld(value: Any, secrets: Sequence[str]) -> Any:
     return value
 
 
-def recap_of(turns: Sequence[Turn], namespace: str | None) -> str | None:
-    """The chat so far as one user message for a fresh run in *namespace*: every earlier
-    message and its answer, whole, each marked when it ran in another namespace. None
-    before the first answer."""
-    return RECAP.render(turns=turns, namespace=namespace) if turns else None
+def earlier_messages(turns: Sequence[Turn]) -> list[dict[str, str]]:
+    """The chat so far as chat messages for a fresh run: a system note, then each earlier
+    message, whole, as the user's turn and its answer as the assistant's. None for the
+    chat's first message."""
+    if not turns:
+        return []
+    messages = [{"role": "system", "content": EARLIER_TURNS_NOTE}]
+    for turn in turns:
+        messages.append({"role": "user", "content": turn.message})
+        messages.append({"role": "assistant", "content": ANSWER.render(turn=turn)})
+    return messages
 
 
 def new_run_id() -> str:
@@ -456,8 +456,12 @@ class Runs:
         try:
             config = config_for(run_folder)
             namespace = config.get("entry_namespace")
-            recap = recap_of(earlier, namespace)
-            spec = {"chat": chat, "prompt": prompt, "recap": recap, "config": config}
+            spec = {
+                "chat": chat,
+                "prompt": prompt,
+                "earlier": earlier_messages(earlier),
+                "config": config,
+            }
             # YAML keeps dates and int keys; ASCII, as a raw NEL would read back as a space.
             spec_yaml = yaml.dump(spec, Dumper=YAML_DUMPER, sort_keys=False)
             (run_folder / SPEC).write_text(spec_yaml)

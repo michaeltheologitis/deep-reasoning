@@ -25,16 +25,17 @@ from deep_reasoning.library import (
     open_library,
 )
 from deep_reasoning.runs import (
+    EARLIER_TURNS_NOTE,
     LOST,
     TOO_LONG,
     RunInProgress,
     Runs,
     Turn,
+    earlier_messages,
     end_unfinished,
     new_run_id,
     read_events,
     read_turn,
-    recap_of,
     save_event,
 )
 from deep_reasoning.settings import VENDORS
@@ -326,28 +327,48 @@ async def test_an_unknown_models_calls_cost_null_not_zero(home, library, fake_co
     assert events[-1]["cost"] is None
 
 
-async def test_a_follow_up_gets_every_earlier_turn_whole(home, library, fake_config):
+async def test_a_follow_up_gets_each_earlier_message_and_answer_whole_as_turns(
+    home, library, fake_config
+):
     question = "Repeat this back: " + " ".join(["word"] * 5_000)
     answer = "x" * 20_000
     plan = {
         "Repeat this back": [repl(f"FinalAnswer('x' * {len(answer)})")],
         "What did I ask first?": [repl("FinalAnswer('that')")],
+        "And what did you answer?": [repl("FinalAnswer('x')")],
     }
     with FakeOpenAI(scripted(plan)) as fake:
         runs = Runs(library, home)
         first, _ = await run_to_the_end(runs, question, fake_config(fake))
         earlier = [turn_of(library, first)]
-        _, events = await run_to_the_end(
+        second, _ = await run_to_the_end(
             runs, "What did I ask first?", fake_config(fake), earlier
         )
-    messages = fake.calls[1].messages
-    assert [message["role"] for message in messages] == ["system", "user", "user"]
-    assert f"Message 1: {question}\nAnswer 1: {answer}\n" in messages[1]["content"]
-    assert messages[2]["content"] == "What did I ask first?"
-    assert of_kind(events, "agent.start")[0]["task"] == "What did I ask first?"
+        earlier.append(turn_of(library, second))
+        asked = len(fake.calls)
+        _, events = await run_to_the_end(
+            runs, "And what did you answer?", fake_config(fake), earlier
+        )
+    opening = fake.calls[0].messages
+    messages = fake.calls[asked].messages
+    assert [message["role"] for message in opening] == ["system", "user"]
+    assert opening[-1]["content"] == question
+    roles = ["system", "user", "assistant", "user", "assistant", "user"]
+    assert [message["role"] for message in messages[-6:]] == roles
+    assert messages[-6]["content"].startswith(EARLIER_TURNS_NOTE)
+    assert [message["content"] for message in messages[-5:]] == [
+        question,
+        answer,
+        "What did I ask first?",
+        "that",
+        "And what did you answer?",
+    ]
+    assert of_kind(events, "agent.start")[0]["task"] == "And what did you answer?"
 
 
-async def test_after_a_stop_the_next_message_is_sent_alone(home, library, fake_config):
+async def test_a_stopped_message_goes_in_once_saying_why_it_has_no_answer(
+    home, library, fake_config
+):
     plan = {"Try again, briefly.": [repl("FinalAnswer('ok')")]}
     with FakeOpenAI(scripted(plan)) as fake:
         runs = Runs(library, home)
@@ -358,12 +379,11 @@ async def test_after_a_stop_the_next_message_is_sent_alone(home, library, fake_c
         await run_to_the_end(runs, "Try again, briefly.", fake_config(fake), earlier)
     texts = [message["content"] for message in fake.calls[0].messages]
     assert sum(text.count("Count the stars.") for text in texts) == 1
-    stopped_turn = (
-        "Message 1: Count the stars.\n"
-        "Answer 1: (none: the user stopped the run before it answered)"
-    )
-    assert stopped_turn in texts[-2]
-    assert texts[-1] == "Try again, briefly."
+    assert texts[-3:] == [
+        "Count the stars.",
+        "(No answer: the user stopped the run before it answered.)",
+        "Try again, briefly.",
+    ]
 
 
 async def test_turns_survive_a_restart(home, library, fake_config):
@@ -373,7 +393,7 @@ async def test_turns_survive_a_restart(home, library, fake_config):
         )
     restarted = Runs(library, home)
     assert turn_of(library, run) == Turn(
-        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None, "root"
+        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None
     )
     assert [event async for event in restarted.events(run)] == events
 
@@ -600,7 +620,7 @@ async def test_an_event_the_app_file_refuses_ends_the_run_failed_and_frees_the_c
     assert events[-1]["kind"] == "turn.end" and events[-1]["outcome"] == "failed"
     assert FULL in events[-1]["detail"]
     assert saved(library, run) == events[:2]
-    assert turn_of(library, run) == Turn("Spin.", "failed", None, LOST, "root")
+    assert turn_of(library, run) == Turn("Spin.", "failed", None, LOST)
     assert again[-1]["outcome"] == "answered"
 
 
@@ -617,35 +637,26 @@ def test_run_ids_are_utc_so_they_sort_in_order_across_a_clock_change(monkeypatch
     assert before <= run <= after
 
 
-def test_the_recap_says_why_a_turn_has_no_answer():
+def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
     turns = [
         Turn("One?", "answered", "1", None),
         Turn("Two?", "failed", None, "KeyError: 2"),
         Turn("Three?", "stopped", None, None),
         Turn("Four?", "exhausted", "Agent failed to produce a final answer.", None),
     ]
-    blocks = recap_of(turns, "root").split("\n\n")
-    assert blocks[0].startswith("This conversation began before this run.")
-    assert blocks[1:] == [
-        "Message 1: One?\nAnswer 1: 1",
-        "Message 2: Two?\nAnswer 2: (none: the run failed: KeyError: 2)",
-        "Message 3: Three?\nAnswer 3: (none: the user stopped the run before it answered)",
-        "Message 4: Four?\nAnswer 4: (none: the run ended without a final answer)",
-        "The user's next message follows.",
+    messages = earlier_messages(turns)
+    assert messages[0] == {"role": "system", "content": EARLIER_TURNS_NOTE}
+    assert [(message["role"], message["content"]) for message in messages[1:]] == [
+        ("user", "One?"),
+        ("assistant", "1"),
+        ("user", "Two?"),
+        ("assistant", "(No answer: the run failed: KeyError: 2)"),
+        ("user", "Three?"),
+        ("assistant", "(No answer: the user stopped the run before it answered.)"),
+        ("user", "Four?"),
+        ("assistant", "(No answer: the run ended without a final answer.)"),
     ]
-    assert recap_of([], "root") is None
-
-
-def test_the_recap_marks_each_turn_that_ran_in_another_namespace():
-    turns = [
-        Turn("One?", "answered", "1", None, "router"),
-        Turn("Two?", "answered", "2", None, "course_advisor"),
-    ]
-    blocks = recap_of(turns, "course_advisor").split("\n\n")
-    assert blocks[1:3] == [
-        "Message 1 (in namespace router): One?\nAnswer 1: 1",
-        "Message 2: Two?\nAnswer 2: 2",
-    ]
+    assert earlier_messages([]) == []
 
 
 async def test_a_runs_keys_reach_its_worker_alone_and_anthropics_never(

@@ -72,15 +72,15 @@ def cost_of_calls(events, nodes):
     )
 
 
-def test_turns_number_the_chats_earlier_messages_as_the_recap_does(library):
+def test_turns_number_the_chats_earlier_messages_as_a_follow_up_gets_them(library):
     plant(library, CHAT, recorded("nested"))
     plant(library, CHAT, [{"seq": 1, "t": 1.0, "kind": "usage"}])
     plant(library, CHAT, recorded("failing"))
     current = plant(library, CHAT, recorded("fanout"))
     turns = history_of(library, run=current).turns()
     with closing(open_library(library)) as connection:
-        recap = [read_turn(connection, run) for run in chat_runs(connection, CHAT)]
-    expected = [turn.message for turn in recap if turn is not None][:-1]
+        earlier = [read_turn(connection, run) for run in chat_runs(connection, CHAT)]
+    expected = [turn.message for turn in earlier if turn is not None][:-1]
     assert [turn["message"] for turn in turns] == expected
     assert [(turn["turn"], turn["message"], turn["answer"]) for turn in turns] == [
         (1, "Plan the term.", "CS: CS101 is light"),

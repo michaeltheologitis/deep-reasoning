@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from deep_reasoner.v2.agent import DEFAULT_EXAMPLE_FENCE
 from fake_model import (
     ASKED,
     CHANGED_SUFFIX,
@@ -49,7 +50,7 @@ from deep_reasoning.library import (
     parsed,
     writing,
 )
-from deep_reasoning.runs import CHANGE_FIELDS, LOST, save_event
+from deep_reasoning.runs import CHANGE_FIELDS, EARLIER_TURNS_NOTE, LOST, save_event
 from deep_reasoning.settings import (
     DEFAULT_FOLDER,
     ENV_FILE,
@@ -464,16 +465,32 @@ async def test_a_stream_resumes_after_its_query_or_its_header_whichever_is_later
 
 
 @pytest.mark.anyio
-async def test_a_follow_up_runs_with_the_chat_so_far(library_on, connect):
-    with FakeOpenAI(scripted(PLAN)) as fake:
+async def test_a_follow_up_gets_the_chat_so_far_as_turns_after_the_examples(
+    library_on, connect
+):
+    plan = PLAN | {"And what did you answer?": [repl("FinalAnswer('2')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
         async with connect(library_on(fake)) as api:
             chat, another = await new_chat(api), await new_chat(api)
             await run_events(api, await send(api, chat, "Count to two."))
             await run_events(api, await send(api, chat, "What did I ask?"))
+            asked = len(fake.calls)
+            await run_events(api, await send(api, chat, "And what did you answer?"))
             await run_events(api, await send(api, another, "What did I ask?"))
-    follow_up, fresh = fake.calls[-2].messages, fake.calls[-1].messages
-    assert "Message 1: Count to two.\nAnswer 1: 2\n" in follow_up[-2]["content"]
-    assert all("Count to two." not in message["content"] for message in fresh)
+    third, fresh = fake.calls[asked].messages, fake.calls[-1].messages
+    assert [(message["role"], message["content"]) for message in third[-7:]] == [
+        ("system", DEFAULT_EXAMPLE_FENCE),
+        ("system", EARLIER_TURNS_NOTE),
+        ("user", "Count to two."),
+        ("assistant", "2"),
+        ("user", "What did I ask?"),
+        ("assistant", "to count"),
+        ("user", "And what did you answer?"),
+    ]
+    assert [(message["role"], message["content"]) for message in fresh[-2:]] == [
+        ("system", DEFAULT_EXAMPLE_FENCE),
+        ("user", "What did I ask?"),
+    ]
 
 
 @pytest.mark.anyio
@@ -1588,7 +1605,7 @@ def answered(seq, answer):
 
 
 @pytest.mark.anyio
-async def test_the_page_and_a_follow_ups_recap_agree_on_how_each_run_started_and_ended(
+async def test_the_page_and_a_follow_ups_turns_agree_on_how_each_run_started_and_ended(
     library_on, connect
 ):
     junk_after_its_end = "20261025-120005-000000"
@@ -1625,10 +1642,15 @@ async def test_the_page_and_a_follow_ups_recap_agree_on_how_each_run_started_and
     assert sent.status_code == 201 and events[-1]["outcome"] == "answered"
     assert [turn["run"] for turn in page] == [GOOD, junk_after_its_end]
     assert [turn["events"][-1]["answer"] for turn in page] == ["2", "3"]
-    recap = fake.calls[-1].messages[-2]["content"]
-    assert "Message 1: Count to two.\nAnswer 1: 2\n" in recap
-    assert "Message 2: Again.\nAnswer 2: 3\n" in recap
-    assert "Message 3" not in recap
+    told = fake.calls[-1].messages[-6:]
+    assert [(message["role"], message["content"]) for message in told] == [
+        ("system", EARLIER_TURNS_NOTE),
+        ("user", "Count to two."),
+        ("assistant", "2"),
+        ("user", "Again."),
+        ("assistant", "3"),
+        ("user", "What did I ask?"),
+    ]
 
 
 def test_runs_of_chats_deleted_before_their_runs_are_deleted_when_the_app_starts(
@@ -2018,7 +2040,7 @@ async def test_a_run_uses_the_chats_model_and_its_providers_key_kept_out_of_the_
 
 
 @pytest.mark.anyio
-async def test_switching_namespace_mid_chat_runs_the_next_message_there_and_says_so(
+async def test_switching_namespace_mid_chat_runs_the_next_message_there(
     imported, library_on, connect
 ):
     plan = {"Hi.": [repl("FinalAnswer('hello')")]}
@@ -2037,10 +2059,7 @@ async def test_switching_namespace_mid_chat_runs_the_next_message_there_and_says
     ]
     assert switched.json()["namespace"] == read["namespace"] == "course_advisor"
     texts = [message["content"] for message in fake.calls[-1].messages]
-    assert any(
-        "Message 1 (in namespace router): Hi.\nAnswer 1: hello" in text
-        for text in texts
-    )
+    assert texts[-3:] == ["Hi.", "hello", "Hi."]
 
 
 def test_a_namespace_or_model_the_app_does_not_have_is_refused(client):
