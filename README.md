@@ -23,7 +23,7 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - Chats on the left: new, rename, delete. Saved in the Library file (below) with every message's run, they come back
   after a restart. Deleting a chat wipes its messages from the file.
 - Each message is a run, shown live as a tree of sub-agents you open level by level. Esc stops it.
-- Each run shows its time, sub-agent count, cost (when the price is known) and model.
+- Each run shows its time, sub-agent count, cost (N/A when the model's price isn't known) and model.
 - Follow-ups see the chat's earlier messages and answers, and can ask how one was worked out: the agent reads the
   chat's earlier runs (each message's sub-agents, thoughts and cells) with the app's own `history` tool. A new
   Library grants it at root, beside a worked example of reading it before answering (`explain an earlier answer`); in

@@ -178,9 +178,31 @@ test("a row the run's end stopped is timed to that end", () => {
 });
 
 test("one unpriced call makes every total above it unknown, not zero", () => {
-  const { turn } = foldEvents(recorded("unpriced"));
-  assert.equal(turn.cost, null);
-  assert.ok(allRows(turn).every((row) => row.cost === null));
+  const events = recorded("unpriced");
+  const { turn } = foldEvents(events);
+  assert.deepEqual([turn.cost, turn.unpriced], [null, true]);
+  assert.ok(allRows(turn).every((row) => row.cost === null && row.unpriced));
+  assert.equal(foldEvents(events.slice(0, -1)).turn.unpriced, true);
+});
+
+test("a priced run's totals are known", () => {
+  const { turn } = foldEvents(recorded("fanout"));
+  assert.ok(turn.cost > 0);
+  assert.equal(turn.unpriced, false);
+  assert.ok(allRows(turn).every((row) => row.cost > 0 && !row.unpriced));
+});
+
+test("a sub-agent with no calls yet has no cost, unlike one whose call was unpriced", () => {
+  const events = recorded("unpriced");
+  const firstCall = (node) => events.findIndex((event) => event.kind === "usage" && event.node === node);
+  const { turn } = foldEvents(events.slice(0, firstCall(3) + 1));
+  assert.deepEqual(
+    rowsOf(turn).map((row) => [row.task, row.cost, row.unpriced]),
+    [
+      ["Summarize C1.", null, false],
+      ["Summarize C2.", null, true],
+    ],
+  );
 });
 
 test("a running sub-agent is a running row, and it costs what its calls so far cost", () => {

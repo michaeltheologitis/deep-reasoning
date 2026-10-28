@@ -17,12 +17,11 @@ export function changeText({ what, namespace, name, before }) {
 
 export function newFold() {
   return {
-    turn: { prompt: "", steps: [], changes: [], answer: null, outcome: null, detail: null, cost: null, seconds: null, started: null, model: null, namespace: null },
+    turn: { prompt: "", steps: [], changes: [], answer: null, outcome: null, detail: null, cost: null, unpriced: false, seconds: null, started: null, model: null, namespace: null },
     seq: 0,
     // node → its holder (the turn for the root, else its row) and its parent's node
     nodes: new Map(),
     cells: new Map(),
-    unpriced: new Set(),
     // the newest step, and the tasks of the sub-agents above it
     latest: null,
   };
@@ -62,7 +61,7 @@ function startAgent(fold, event) {
   const cell = fold.cells.get(event.cell);
   if (!cell) return;
   const { task, namespace, drive, t } = event;
-  const row = { task, namespace, drive, status: "running", result: null, cost: null, seconds: null, started: t, steps: [] };
+  const row = { task, namespace, drive, status: "running", result: null, cost: null, unpriced: false, seconds: null, started: t, steps: [] };
   cell.agents.push(row);
   fold.nodes.set(event.node, { holder: row, parent: event.parent });
 }
@@ -100,11 +99,12 @@ function endCell(fold, event) {
   if (cell) Object.assign(cell, { code: event.code, output: event.output, status: event.status });
 }
 
-// A call's cost counts for its agent, every agent above it and the turn; once one call is unpriced, so is each of their totals.
+// A call's cost counts for its agent, every agent above it and the turn; once one call is unpriced, so is each of their totals
+// (unpriced, cost null), unlike a holder with no calls yet (cost null alone).
 function addUsage(fold, event) {
   for (const { holder } of lineage(fold, event.node)) {
-    if (event.cost == null) fold.unpriced.add(holder);
-    holder.cost = fold.unpriced.has(holder) ? null : (holder.cost ?? 0) + event.cost;
+    holder.unpriced ||= event.cost == null;
+    holder.cost = holder.unpriced ? null : (holder.cost ?? 0) + event.cost;
   }
 }
 
@@ -116,7 +116,8 @@ function endAgent(fold, event) {
 
 function endTurn(fold, event) {
   const { outcome, answer, detail, cost, seconds } = event;
-  Object.assign(fold.turn, { outcome, answer, detail, cost, seconds });
+  // the run's own total, null only when a call was unpriced: it counts every call, and a run with none costs 0
+  Object.assign(fold.turn, { outcome, answer, detail, cost, unpriced: cost == null, seconds });
   markStopped(fold.turn, event.t);
 }
 
