@@ -9,8 +9,8 @@ You need [uv](https://docs.astral.sh/uv/getting-started/installation/) and GitHu
 password, run `gh auth login` and let it set up git's credentials). Then:
 
 ```
-git clone https://github.com/michaeltheologitis/deep-reasoning.git
-cd deep-reasoning
+git clone https://github.com/michaeltheologitis/deep-reasoning-app.git
+cd deep-reasoning-app
 uv run deep-reasoning
 ```
 
