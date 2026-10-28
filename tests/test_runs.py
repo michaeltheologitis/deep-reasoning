@@ -373,9 +373,8 @@ async def test_a_follow_up_gets_each_earlier_message_and_answer_whole_as_turns(
 async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labeled(
     home, library, fake_config
 ):
-    earlier = [
-        Turn("Which courses follow CS201?", "answered", "CS310 and CS330.", None)
-    ]
+    asked, answer = "Which courses follow CS201?", "CS310 and CS330."
+    earlier = [Turn(asked, "answered", answer, None, "CS201 leads to two.")]
     # A Claude child's socket path must fit in 107 bytes: tmp_path leaves no room.
     with tempfile.TemporaryDirectory(prefix="dr-", dir="/tmp") as short:
         claude = write_fake_claude_cli(Path(short) / "claude", echo_argv=True)
@@ -394,10 +393,30 @@ async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labele
         "Conversation so far:",
         f"[system] {EARLIER_TURNS_NOTE}",
         "[user] Which courses follow CS201?",
-        "[assistant] dr repl exec --code 'FinalAnswer('\\''CS310 and CS330.'\\'')'",
+        "[assistant] <think>CS201 leads to two.</think>",
+        "dr repl exec --code 'FinalAnswer('\\''CS310 and CS330.'\\'')'",
         "Of those, which are 4-credit?",
     ]
     assert fake.calls == []
+
+
+async def test_an_earlier_answer_opens_with_its_top_agents_last_thought_not_a_sub_agents(
+    home, library, fake_config
+):
+    plan = FAN_OUT | {"And then?": [repl("FinalAnswer('done')")]}
+    with FakeOpenAI(scripted(plan)) as fake:
+        runs = Runs(library, home)
+        first, events = await run_to_the_end(
+            runs, "Summarize two courses.", fake_config(fake)
+        )
+        earlier = [turn_of(library, first)]
+        await run_to_the_end(runs, "And then?", fake_config(fake), earlier)
+    root = of_kind(events, "agent.start")[0]["node"]
+    last = of_kind(events, "think")[-1]
+    assert (last["text"], last["node"] != root) == ("Easy.", True)
+    shown = fake.calls[-1].messages[-2]["content"]
+    cell = "<repl>\nFinalAnswer(" + repr(FAN_OUT_ANSWER) + ")\n</repl>"
+    assert shown == "<think>Fan out.</think>\n" + cell
 
 
 async def test_a_stopped_message_goes_in_once_saying_why_it_has_no_answer(
@@ -427,7 +446,7 @@ async def test_turns_survive_a_restart(home, library, fake_config):
         )
     restarted = Runs(library, home)
     assert turn_of(library, run) == Turn(
-        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None
+        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None, "Fan out."
     )
     assert [event async for event in restarted.events(run)] == events
 
@@ -691,6 +710,17 @@ def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
         ("assistant", "(No answer: the run ended without a final answer.)"),
     ]
     assert earlier_messages([]) == []
+
+
+def test_an_earlier_answer_opens_with_its_thought_or_else_shows_the_bare_cell():
+    turns = [
+        Turn("One?", "answered", "1", None, "It printed 1."),
+        Turn("Two?", "answered", "2", None),
+    ]
+    assert [message["content"] for message in earlier_messages(turns)[2::2]] == [
+        "<think>It printed 1.</think>\n<repl>\nFinalAnswer('1')\n</repl>",
+        "<repl>\nFinalAnswer('2')\n</repl>",
+    ]
 
 
 def test_an_earlier_answer_shows_as_a_final_answer_cell_that_round_trips_exactly():

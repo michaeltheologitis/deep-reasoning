@@ -468,7 +468,10 @@ async def test_a_stream_resumes_after_its_query_or_its_header_whichever_is_later
 async def test_a_follow_up_gets_the_chat_so_far_as_turns_after_the_examples(
     library_on, connect
 ):
-    plan = PLAN | {"And what did you answer?": [repl("FinalAnswer('2')")]}
+    plan = PLAN | {
+        "Count to two.": [repl("print(1)"), repl("FinalAnswer(2)", think="Then 2.")],
+        "And what did you answer?": [repl("FinalAnswer('2')")],
+    }
     with FakeOpenAI(scripted(plan)) as fake:
         async with connect(library_on(fake)) as api:
             chat, another = await new_chat(api), await new_chat(api)
@@ -482,7 +485,7 @@ async def test_a_follow_up_gets_the_chat_so_far_as_turns_after_the_examples(
         ("system", DEFAULT_EXAMPLE_FENCE),
         ("system", EARLIER_TURNS_NOTE),
         ("user", "Count to two."),
-        ("assistant", "<repl>\nFinalAnswer('2')\n</repl>"),
+        ("assistant", "<think>Then 2.</think>\n<repl>\nFinalAnswer('2')\n</repl>"),
         ("user", "What did I ask?"),
         ("assistant", "<repl>\nFinalAnswer('to count')\n</repl>"),
         ("user", "And what did you answer?"),

@@ -84,11 +84,12 @@ and their sub-agents can't be called again. How each answer was worked out (its 
 thoughts, cells and its sub-agents' steps) is kept: to explain an earlier answer, print \
 it with the history tool, when you have it, and answer in a later cell from what it \
 printed. Each earlier answer is shown as the FinalAnswer it gave."""
-# An earlier turn's assistant turn: the cell that gave its answer, as the engine's worked
-# examples show one, or why it has none.
+# An earlier turn's assistant turn: its top agent's last thought and the cell that gave its
+# answer, as the engine's worked examples show one, or why it has none.
 ANSWER = jinja2.Template(
     """\
-{% if turn.outcome == "answered" %}<repl>
+{% if turn.outcome == "answered" %}{% if turn.thought %}<think>{{ turn.thought }}</think>
+{% endif %}<repl>
 FinalAnswer({{ answer }})
 </repl>
 {%- elif turn.outcome == "failed" %}(No answer: the run failed: {{ turn.detail }})
@@ -108,6 +109,7 @@ class Turn:
     outcome: Outcome
     answer: str | None
     detail: str | None
+    thought: str | None = None  # its top agent's last, shown before its answer
 
 
 @dataclass
@@ -204,12 +206,39 @@ def read_events(connection: sqlite3.Connection, run: str) -> list[dict[str, Any]
 
 
 def first_loaded(
-    connection: sqlite3.Connection, run: str, query: str
+    connection: sqlite3.Connection,
+    run: str,
+    query: str,
+    matching: Callable[[dict[str, Any]], bool] | None = None,
 ) -> dict[str, Any] | None:
-    """The run's first event that loads, in the order of *query*: FORWARD or BACKWARD."""
+    """The run's first event that loads, in the order of *query*: FORWARD or BACKWARD;
+    with *matching*, the first that loads and matches."""
     with closing(connection.execute(query, (run,))) as rows:
         events = (loaded_event(run, seq, data) for seq, data in rows)
-        return next((event for event in events if event is not None), None)
+        loaded = (event for event in events if event is not None)
+        return next((e for e in loaded if matching is None or matching(e)), None)
+
+
+def starts_the_top_agent(event: dict[str, Any]) -> bool:
+    """Whether *event* starts the run's top agent, the one with no parent, as the page
+    folds it."""
+    return event["kind"] == "agent.start" and event.get("parent") is None
+
+
+def last_thought(connection: sqlite3.Connection, run: str) -> str | None:
+    """The last thought of the run's top agent; None when it had none."""
+    top = first_loaded(connection, run, FORWARD, starts_the_top_agent)
+    if top is None:
+        return None
+    node = top.get("node")
+    thought = first_loaded(
+        connection,
+        run,
+        BACKWARD,
+        lambda e: e["kind"] == "think" and e.get("node") == node,
+    )
+    text = thought and thought.get("text")
+    return text if isinstance(text, str) else None
 
 
 def started(event: dict[str, Any] | None) -> bool:
@@ -256,8 +285,9 @@ def ended(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
-    """An ended run's message and how it ended, from its first and last events that load;
-    None for a run that didn't start, as one in a file from someone else may not have."""
+    """An ended run's message and how it ended, from its first and last events that load,
+    with its top agent's last thought when it answered; None for a run that didn't start,
+    as one in a file from someone else may not have."""
     start = first_loaded(connection, run, FORWARD)
     if not started(start):
         log.warning("runs.turn_left_out", run=run)
@@ -265,9 +295,9 @@ def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
     end = first_loaded(connection, run, BACKWARD)
     if not has_ended(end):
         end = LOST_END
-    return Turn(
-        start["prompt"], end.get("outcome"), end.get("answer"), end.get("detail")
-    )
+    outcome = end.get("outcome")
+    thought = last_thought(connection, run) if outcome == "answered" else None
+    return Turn(start["prompt"], outcome, end.get("answer"), end.get("detail"), thought)
 
 
 def chat_runs(connection: sqlite3.Connection, chat: str) -> list[str]:
