@@ -23,8 +23,9 @@ from typing import Any, NoReturn, TextIO
 import structlog
 import yaml
 from deep_reasoner.core import configure_structlog_fixture
+from deep_reasoner.v2.agent import _parts
 from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
-from deep_reasoner.v2.messages import NoCodeBlock, assistant, code, system, user
+from deep_reasoner.v2.messages import NoCodeBlock, code
 from genai_prices import Usage, calc_price
 
 from deep_reasoning.runs import CHANGE_FIELDS, SPEC
@@ -38,7 +39,6 @@ REPL_BLOCK = re.compile(r"<repl>.*?(?:</repl>|$)", re.DOTALL)
 THINK_TAG = re.compile(r"</?think>")
 OBSERVATION = re.compile(r"\A<observation>\n?(.*?)\n?</observation>\Z", re.DOTALL)
 YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-MESSAGE_OF = {"system": system, "user": user, "assistant": assistant}
 
 
 def source_of(reply: str) -> str | None:
@@ -334,9 +334,10 @@ async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:
     try:
         config = V2Config.model_validate(spec["config"])
         reasoner, alias = build_reasoner(config, run_dir=folder)
+        # The conversation this run continues, as the agent's history= takes it: the
+        # engine's build_reasoner takes no history=.
+        reasoner._given_history = _parts(spec["earlier"], "history")
         with alias:
-            earlier = [MESSAGE_OF[m["role"]](m["content"]) for m in spec["earlier"]]
-            reasoner.send(*earlier)
             answer = await reasoner.acall(spec["prompt"])
     except Exception as error:
         log.exception("worker.run_failed")

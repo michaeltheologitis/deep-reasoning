@@ -167,9 +167,9 @@ print(history.steps(1)) prints message 1's thoughts and cells (code and output).
 what a sub-agent did, find its node with history.agents(1) and print \
 history.steps(1, node=<its node>): its own thoughts and cells. Then answer in a later \
 cell, from what it printed, not by redoing the work or guessing a method. The earlier \
-turns hold only each message and its answer, and ctx.history only this run's \
-conversation; history holds every step of the earlier ones. Its methods return plain \
-data (lists of dicts), and the REPL shows only what you print: print what you need.
+turns, in ctx.history too, hold only each message and its answer; history holds every \
+step of the earlier runs. Its methods return plain data (lists of dicts), and the REPL \
+shows only what you print: print what you need.
   history.turns(): the earlier messages, numbered from 1, the chat's first message: \
 turn, message, namespace, model, outcome, answer, detail, cost, seconds and agents (how \
 many sub-agents it ran).

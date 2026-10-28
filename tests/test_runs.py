@@ -1,8 +1,10 @@
 import errno
 import hashlib
+import json
 import os
 import shutil
 import sqlite3
+import tempfile
 import threading
 import time
 from contextlib import aclosing, closing
@@ -13,6 +15,7 @@ from pathlib import Path
 import pytest
 import structlog
 import yaml
+from deep_reasoner.mocks import write_fake_claude_cli
 from fake_model import FakeOpenAI, repl, scripted, task_and_turn
 from genai_prices import Usage, calc_price
 from structlog.testing import capture_logs
@@ -364,6 +367,36 @@ async def test_a_follow_up_gets_each_earlier_message_and_answer_whole_as_turns(
         "And what did you answer?",
     ]
     assert of_kind(events, "agent.start")[0]["task"] == "And what did you answer?"
+
+
+async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labeled(
+    home, library, fake_config
+):
+    earlier = [
+        Turn("Which courses follow CS201?", "answered", "CS310 and CS330.", None)
+    ]
+    # A Claude child's socket path must fit in 107 bytes: tmp_path leaves no room.
+    with tempfile.TemporaryDirectory(prefix="dr-", dir="/tmp") as short:
+        claude = write_fake_claude_cli(Path(short) / "claude", echo_argv=True)
+        reasoner = {"type": "claude_code", "executable": str(claude)}
+        with FakeOpenAI(scripted({})) as fake:
+            _, events = await run_to_the_end(
+                Runs(library, Path(short)),
+                "Of those, which are 4-credit?",
+                fake_config(fake, reasoner=reasoner),
+                earlier,
+            )
+    # The stub's result, which ends the answer, echoes the prompt it was given.
+    answer = events[-1]["answer"]
+    prompt = json.loads(answer[answer.index("{") :])["stdin"]
+    assert prompt.splitlines() == [
+        "Conversation so far:",
+        f"[system] {EARLIER_TURNS_NOTE}",
+        "[user] Which courses follow CS201?",
+        "[assistant] CS310 and CS330.",
+        "Of those, which are 4-credit?",
+    ]
+    assert fake.calls == []
 
 
 async def test_a_stopped_message_goes_in_once_saying_why_it_has_no_answer(

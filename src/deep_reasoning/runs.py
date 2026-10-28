@@ -83,7 +83,7 @@ follow, then the user's next message. Their runs have ended, so their variables 
 and their sub-agents can't be called again. How each answer was worked out (its \
 thoughts, cells and its sub-agents' steps) is kept: to explain an earlier answer, print \
 it with the history tool, when you have it, and answer in a later cell from what it \
-printed."""
+printed. Your earlier answers show only their final text; reply in your usual format."""
 # An earlier turn's assistant turn: its answer, or why it has none.
 ANSWER = jinja2.Template(
     """\
