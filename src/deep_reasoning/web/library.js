@@ -1,5 +1,6 @@
 // The Library panel: the decompositions, namespaces, tools and data every run draws on, read from the server's Library file; adding, editing and deleting save there.
 import { LIBRARY_CHANGED, PANEL_CLOSE, caret, closeOtherPanels, element, libraryChanged, request } from "./app.js";
+import { turnProblems } from "./turns.js";
 
 const LIBRARY_URL = "api/library";
 const ADD_URL = "api/decompositions";
@@ -15,6 +16,8 @@ const NAMESPACE_NAME = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
 const INDENT = "  ";
 const CHECK_DELAY_MS = 300;
 const MAX_FILE_BYTES = 1_000_000;
+// what heads a decomposition's turn problems in the add form: they don't stop Add, as a draft may have them
+const WARNED = "Add saves it, but marks it ✗ until these are fixed:";
 // the shape of the generated decompositions, small enough to edit in place
 const TEMPLATE = `name: count the open tickets
 messages:
@@ -95,8 +98,8 @@ panel.append(
 );
 
 // A YAML editor its toggle opens, checked as you type; the server's refusal shows where the form's own problems do.
-function yamlForm({ id, label, action, text, problems, save, before = [], beside = null, after = [], first = null }) {
-  const form = { problems, save, first, saving: false, timer: null };
+function yamlForm({ id, label, action, text, problems, warnings = () => [], save, before = [], beside = null, after = [], first = null }) {
+  const form = { problems, warnings, save, first, saving: false, timer: null };
   form.toggle = element("button", { type: "button", class: "lib-action", "aria-expanded": "false", "aria-controls": id, "data-key": id, onclick: () => (form.el.hidden ? openForm(form) : closeForm(form)) }, label);
   form.editor = element(
     "textarea",
@@ -158,18 +161,20 @@ function indentOnTab(e) {
   document.execCommand("insertText", false, INDENT);
 }
 
+// Problems stop the form; warnings, read only once there are none, don't.
 function check(form) {
   clearTimeout(form.timer);
   const found = form.problems(form.editor.value);
-  showProblems(form, found);
+  showProblems(form, found, found.length ? [] : form.warnings(form.editor.value));
   form.submit.disabled = form.saving || found.length > 0;
   return found;
 }
 
 // unchanged problems are left alone, so the live region doesn't repeat them at every pause in typing
-function showProblems(form, found) {
-  if ([...form.problemList.children].map((line) => line.textContent).join("\n") === found.join("\n")) return;
-  form.problemList.replaceChildren(...found.map((text) => element("p", {}, text)));
+function showProblems(form, found, warned = []) {
+  const warning = warned.length ? [WARNED, ...warned] : [];
+  if ([...form.problemList.children].map((line) => line.textContent).join("\n") === [...found, ...warning].join("\n")) return;
+  form.problemList.replaceChildren(...found.map((text) => element("p", {}, text)), ...warning.map((text) => element("p", { class: "lib-warning" }, text)));
 }
 
 // save() sends the YAML and says what was done, and which row to show if any.
@@ -207,6 +212,8 @@ const decompositionForm = yamlForm({
   action: "Add",
   text: TEMPLATE,
   problems: (text) => decompositionProblems(text, namespaceNamed(picker.value)),
+  // only once the shape is right, so the YAML reads and its turns are as turnProblems takes them
+  warnings: (text) => turnProblems(readYaml(text).value.messages),
   save: addDecomposition,
   beside: element("label", { class: "lib-action lib-file-pick" }, "or choose a .yaml file", fileInput),
   after: element("div", { class: "lib-form-line" }, element("label", { for: picker.id }, "namespace"), picker),
@@ -239,14 +246,14 @@ async function readFile() {
 
 async function addDecomposition(text) {
   const namespace = picker.value;
-  const { name, yaml } = await request("POST", ADD_URL, { namespace, yaml: text });
+  const { name, yaml, problems } = await request("POST", ADD_URL, { namespace, yaml: text });
   applied = ++sent;
   // looked up again: a read answered meanwhile may have replaced the Library, and may hold the new one already
   const { decompositions } = namespaceNamed(namespace);
-  if (!decompositions.some((each) => each.name === name)) decompositions.push({ name, yaml });
+  if (!decompositions.some((each) => each.name === name)) decompositions.push({ name, yaml, problems });
   const row = decompositionKey(namespace, name);
   opened.add(row);
-  return { said: `Added "${name}" to ${namespace}`, row };
+  return { said: `Added "${name}" to ${namespace}${problems.length ? ", marked ✗" : ""}`, row };
 }
 
 // A namespace's change reaches every namespace under it, so the server answers with the whole Library.
@@ -394,10 +401,10 @@ function nameProblem(name, namespace) {
 function messageProblems(messages) {
   if (messages === undefined) return ["Add messages: a list of turns, each with a role and content, as in the template."];
   if (!Array.isArray(messages) || !messages.length) return ['messages should be a list of at least one turn, each starting "- role:".'];
-  return messages.flatMap((message, i) => turnProblems(message, `Message ${i + 1}`));
+  return messages.flatMap((message, i) => messageShapeProblems(message, `Message ${i + 1}`));
 }
 
-function turnProblems(message, label) {
+function messageShapeProblems(message, label) {
   if (!isMapping(message)) return [`${label} should be a mapping with role and content.`];
   const extra = Object.keys(message).filter((key) => !MESSAGE_KEYS.includes(key));
   const { role, content } = message;
@@ -469,8 +476,17 @@ function sourced(items) {
 
 const group = (title, rows) => element("section", { class: "lib-group" }, element("h3", { class: "lib-label" }, title), element("div", { class: "lib-rows" }, rows));
 
-function decompositionRow(namespace, { name, yaml }) {
-  return disclosure(decompositionKey(namespace, name), element("span", { class: "lib-name" }, name), () => element("pre", { class: "code lib-pre" }, yaml));
+// ✓ or ✗: whether its turns make a worked example, as the server checked them
+function checkMark(problems) {
+  const count = problems.length;
+  const label = count ? `${count} problem${count === 1 ? "" : "s"}` : "checks pass";
+  return element("span", { class: `lib-check ${count ? "failed" : "passed"}`, role: "img", "aria-label": label, title: label }, count ? "✗" : "✓");
+}
+
+function decompositionRow(namespace, { name, yaml, problems }) {
+  const head = [element("span", { class: "lib-name" }, name), checkMark(problems)];
+  const content = () => [problems.length > 0 && element("div", { class: "lib-problems lib-warning" }, problems.map((text) => element("p", {}, text))), element("pre", { class: "code lib-pre" }, yaml)];
+  return disclosure(decompositionKey(namespace, name), head, content);
 }
 
 function renderDecompositions() {

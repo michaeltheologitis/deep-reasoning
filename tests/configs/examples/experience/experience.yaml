@@ -1,0 +1,191 @@
+# Experience manager — an agent that learns from its own past runs.
+#
+# Two namespaces, one memory:
+#   experience_manager  → owns a `rag` "memory" (seeded from memory.yaml). For each task it
+#                         (1) RECALLS the most relevant past lesson, (2) DELEGATES the task to
+#                         the solver with that lesson as a hint, (3) ASKS THE SOLVER HOW it
+#                         solved it, and (4) REMEMBERS that answer as the new lesson.
+#   solver              → a plain task solver. It solves the task using any hint it's given, and
+#                         says afterwards what method it used.
+#
+# Step (3) is the point of the design: the lesson is the solver's own account of its method, not
+# the manager's guess at it. That is why the manager HOLDS the sub-agent — `subagent(namespace=…)`
+# with NO task returns the agent instead of an answer, so the manager can put a second question to
+# the same solver, which still has the solve in its context.
+#
+# The memory is the `rag` corpus: `documents:` loads the lessons at startup, and `rag.add(...)`
+# grows it during the run so a later task can retrieve what an earlier one just learned. (rag
+# is in-memory; to carry lessons across separate `dr` runs, persist them back into memory.yaml —
+# see the walkthrough.)
+_compose:
+  - ../../catalog/client.yaml
+
+model: "qwen/qwen3.6-27b"
+entry_namespace: experience_manager
+
+tools:
+  rag:
+    embed_model: baai/bge-m3
+    documents: [configs/examples/experience/memory.yaml]   # seed lessons, loaded at startup
+
+system_prompt: |
+  You are a deep reasoning agent that solves a task through recursive decomposition inside a
+  Python REPL. Decompose the task into smaller sub-tasks, write Python to act on your
+  reasoning, observe the printed results, and repeat until it is solved.
+
+  **Format rules (strictly enforced):**
+   1. Each turn is a brief reasoning step in <think>…</think>, then EXACTLY ONE <repl>…</repl>
+      block of Python — nothing after it.
+   2. Do NOT write <observation> blocks yourself — the environment returns the printed output
+      in an <observation>…</observation> block on the next turn.
+   3. Finish by calling FinalAnswer(value) inside a <repl> block; the run ends there.
+
+  Tips:
+   - Prefer decomposing a problem into smaller subproblems over one monolithic block.
+   - **Inspect before you act** — print a small preview of unfamiliar data before using it.
+   - Follow the procedure your namespace's system text and examples lay out; it is the job, not a
+     suggestion, and a task that looks easy does not excuse skipping it.
+   - Prefer exact code and deterministic tool calls over an `llm` call; use `llm` only for what
+     genuinely needs natural-language understanding, and inspect its output before parsing it.
+   - Delegate a tightly-scoped sub-task with subagent(task, namespace="…").
+
+namespaces:
+  root:
+    tools: [llm]
+
+  # ── Entry: recall → delegate → ask the solver how → remember that ─────────────
+  experience_manager:
+    spawn: [solver]
+    tools: [rag]
+    # Per-namespace system text, appended after the shared prompt and before the examples.
+    # The shared prompt says how to write a turn; this says what THIS namespace's job is.
+    system_suffix: |
+      You are the experience manager. Your procedure is fixed and you run all four steps for
+      EVERY task, however easy it looks — what this agent is for is the record it leaves behind,
+      not the shortest path to one answer:
+        1. RECALL  — `hits = rag.search(task, k=1)`, the closest lesson from past runs.
+        2. DELEGATE — `solver = subagent(namespace="solver")` with NO task, so you keep the
+           sub-agent, then `answer = solver(task + the recalled lesson as a hint)`. You never
+           solve the task yourself.
+        3. ASK HOW — `method = solver("How did you solve that? ...")`. Put it to the SAME solver:
+           it still has the solve in its context, and the lesson has to be its account of its own
+           method, not your guess at it.
+        4. REMEMBER — `rag.add([...])` with `method` as the lesson text, then `solver.close()`
+           and `FinalAnswer(answer)`.
+      `rag`, `subagent` and `FinalAnswer` are already bound in your REPL — never import them.
+    decompositions:
+      - name: recall, delegate, ask how, then remember
+        messages:
+          - {role: user, content: "Solve and remember: What is 12 miles in kilometers?"}
+          - role: assistant
+            content: |
+              <think>
+              Before solving, recall the most relevant lesson from memory so I can hand the
+              solver a proven approach instead of making it rediscover one.
+              </think>
+              <repl>
+              task = "What is 12 miles in kilometers?"
+              hits = rag.search(task, k=1)
+              print(hits[0]["id"], "||", hits[0]["text"])
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              mem-miles-to-km || Task type: convert a distance in miles to kilometers.
+              Lesson: multiply the number of miles by 1.60934, round to 2 decimals, and answer "<x> km".
+              </observation>
+          - role: assistant
+            content: |
+              <think>
+              A matching lesson. Delegate to the solver with it as a hint. I will want to ask the
+              solver afterwards how it solved the task, so I HOLD the sub-agent instead of using the
+              one-shot form: subagent(namespace="solver") with no task returns the agent itself, and
+              calling it drives one task while keeping the conversation for the next one.
+              </think>
+              <repl>
+              solver = subagent(namespace="solver")
+              answer = solver(f"{task}\n\nHint from past experience:\n{hits[0]['text']}")
+              print(answer)
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              12 miles is 19.31 km.
+              </observation>
+          - role: assistant
+            content: |
+              <think>
+              Now ask that same solver how it got there. The lesson has to be the solver's account of
+              its own method, and it has to be stated for any task of this kind rather than for these
+              numbers, or nothing will ever retrieve it again.
+              </think>
+              <repl>
+              method = solver(
+                  "How did you solve that? Reply with the reusable method only, two lines:\n"
+                  "line 1: 'Task type: <the general kind of task>'\n"
+                  "line 2: 'Lesson: <the steps, stated for any input of that kind>'\n"
+                  "Do not mention the specific numbers from this task."
+              )
+              print(method)
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              Task type: convert a distance in miles to kilometers.
+              Lesson: multiply the number of miles by 1.60934, round to 2 decimals, and answer "<x> km".
+              </observation>
+          - role: assistant
+            content: |
+              <think>
+              That is the lesson, in the solver's words. Store it, release the solver I was holding
+              (the one-shot form closes the child for you; this form leaves it to me), and answer.
+              </think>
+              <repl>
+              rag.add([{"id": "mem-run-miles-12",
+                        "text": method,
+                        "metadata": {"kind": "memory", "skill": "unit-conversion"}}])
+              solver.close()
+              FinalAnswer(answer)
+              </repl>
+
+  # ── Solver: solve with the hint, then report the method when asked ───────────
+  solver:
+    tools: [llm]
+    system_suffix: |
+      You are the solver. Solve the task you are handed, using any hint it comes with. If you are
+      asked afterwards how you solved it, that is a question about the task you just did: answer
+      with the reusable method only — the kind of task, then the steps stated for any input of
+      that kind — and never the specific numbers from the task you just solved.
+    decompositions:
+      - name: solve with the hint, then report the method when asked
+        messages:
+          - {role: user, content: "What is 5 miles in kilometers?\n\nHint from past experience:\nmultiply miles by 1.60934, round to 2 decimals, answer \"<x> km\"."}
+          - role: assistant
+            content: |
+              <think>The hint says multiply by 1.60934 and round — apply it.</think>
+              <repl>
+              print(round(5 * 1.60934, 2))
+              </repl>
+          - role: user
+            content: |
+              <observation>
+              8.05
+              </observation>
+          - role: assistant
+            content: |
+              <think>That's the distance in km — answer in the requested form.</think>
+              <repl>
+              FinalAnswer("5 miles is 8.05 km.")
+              </repl>
+          - {role: user, content: "How did you solve that? Reply with the reusable method only, two lines:\nline 1: 'Task type: <the general kind of task>'\nline 2: 'Lesson: <the steps, stated for any input of that kind>'\nDo not mention the specific numbers from this task."}
+          - role: assistant
+            content: |
+              <think>
+              A follow-up about the task I just did, not a new one. The method was the hint applied —
+              state it generally, with none of that question's numbers in it.
+              </think>
+              <repl>
+              FinalAnswer("Task type: convert a distance in miles to kilometers.\n"
+                          "Lesson: multiply the number of miles by 1.60934, round to 2 decimals, "
+                          "and answer \"<x> km\".")
+              </repl>

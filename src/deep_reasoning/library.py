@@ -137,6 +137,16 @@ SHOWN_SETTINGS = ("max_iter", "max_depth", ENTRY_NAMESPACE, "repl")
 LINE_WIDTH = 88
 NEL = "\x85"
 ROLES = "user, assistant or system"
+# A worked example's turns, as deep_reasoner's own examples write them (its docs/configs).
+THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+REPL_BLOCK = re.compile(r"<repl>(.*?)</repl>", re.DOTALL)
+OBSERVATION = re.compile(r"<observation>.*?</observation>", re.DOTALL)
+FINAL_ANSWER = re.compile(r"\bFinalAnswer\s*\(")
+BETWEEN = {
+    "user": "the assistant's turn goes between them",
+    "assistant": "the user turn with the <observation> goes between them",
+}
+NO_TASK = "There is no task: add a user turn holding it."
 # make_tool builds `factory: llm` with v2's own builder, the rest from TOOL_BUILDERS.
 BUILDERS = {**TOOL_BUILDERS, "llm": build_llm_tool}
 BUILTIN_DESCRIPTIONS = {
@@ -195,7 +205,9 @@ assistant turns, each <think>…</think> and one <repl>…</repl> of Python; aft
 but the last, a user turn with the <observation>…</observation> its code printed; the \
 last calls FinalAnswer(...). The last <repl> block in your reply is the one that runs, \
 so in your cell write the repl tags as [repl] and [/repl]; the tool writes the real \
-ones.
+ones. It is stored even when it isn't yet a worked example like that: the result's \
+problems lists each way it isn't (empty when none), and until you write it again \
+without them the Library panel marks it ✗.
   library.add_namespace(name, yaml): adds namespace `name` ("research", or \
 "research.papers" under an existing research) with the fields its YAML sets, written as \
 show() gives a namespace's yaml: system_suffix (text added to its agents' system \
@@ -676,12 +688,97 @@ def parsed(text):
     return decomposition
 
 
+def answers(content):
+    """Whether the code of *content*'s last <repl> block, the one the engine runs, calls FinalAnswer."""
+    blocks = REPL_BLOCK.findall(content)
+    return bool(blocks) and FINAL_ANSWER.search(blocks[-1]) is not None
+
+
+def reply_problems(label, content):
+    """What the assistant turn *label* lacks: its reasoning, and the one block the engine runs."""
+    blocks = len(REPL_BLOCK.findall(content))
+    problems = [] if THINK.search(content) else [f"{label} has no <think>…</think>."]
+    if blocks == 0:
+        problems.append(f"{label} has no <repl>…</repl> block.")
+    elif blocks > 1:
+        problems.append(
+            f"{label} has {blocks} <repl> blocks; the engine runs only the last, so keep one."
+        )
+    return problems
+
+
+def problems_of_turn(turn, previous):
+    """The problems of *turn*, a (number, role, content), after *previous*, the latest turn
+    before it but a system one (None for none)."""
+    number, role, content = turn
+    label = f"Turn {number} ({role})"
+    if role == "system" and previous is None:
+        return []
+    if role == "system":
+        return [f"{label} comes after the task; system turns go before it."]
+    before, before_role, before_content = previous or (None, None, "")
+    problems = []
+    if before is None and role == "assistant":
+        problems.append(f"{label} should be the user's task; start with a user turn.")
+    if before_role == role:
+        problems.append(f"{label} follows another {role} turn; {BETWEEN[role]}.")
+    if role == "assistant":
+        return problems + reply_problems(label, content)
+    # What a cell printed follows it, unless it answered: then a new message may.
+    if (
+        before_role == "assistant"
+        and not answers(before_content)
+        and not OBSERVATION.search(content)
+    ):
+        problems.append(
+            f"{label} should hold the <observation>…</observation> that turn {before}'s code printed."
+        )
+    return problems
+
+
+def turn_problems(messages):
+    """What keeps *messages*, a decomposition's turns (each a mapping of role and content),
+    from being a worked example like deep_reasoner's own, in plain words; none when it is one.
+    Its code isn't run, so an observation isn't checked against what the code would print."""
+    problems = []
+    previous = None
+    for number, message in enumerate(messages, start=1):
+        turn = (number, message["role"], message["content"])
+        problems += problems_of_turn(turn, previous)
+        if turn[1] != "system":
+            previous = turn
+    if previous is None:
+        return [NO_TASK]
+    number, role, content = previous
+    if role == "user":
+        problems.append(
+            f"It ends on turn {number} (user); end with the assistant's turn that calls FinalAnswer(...)."
+        )
+    elif not answers(content):
+        problems.append(
+            f"Turn {number} (assistant), the last, should call FinalAnswer(...) in its <repl>."
+        )
+    return problems
+
+
+def stored_problems(text):
+    """The problems of the decomposition stored as YAML *text*: its shape's, as a shared
+    file may hold anything, or else its turns'."""
+    try:
+        decomposition = parsed(text)
+    except LibraryError as error:
+        return str(error).splitlines()
+    return turn_problems(decomposition.model_dump()["messages"])
+
+
 def add_decomposition(connection, namespace, text, replace=False, allowed=None):
     """Store the decomposition written as YAML *text* under *namespace*, or raise
     LibraryError saying why not: one of its name there is refused, or with *replace* put in
     its place. *allowed*, given the connection under the write lock first, raises to refuse.
-    The stored row, and the YAML it replaced (None when it is new)."""
-    name = parsed(text).name
+    A worked example with problems is stored all the same, so a draft can be saved.
+    The stored row with its problems, and the YAML it replaced (None when it is new)."""
+    decomposition = parsed(text)
+    name = decomposition.name
     stored = {"namespace": namespace, "name": name, "yaml": text}
     with writing(connection):
         if allowed is not None:
@@ -697,7 +794,8 @@ def add_decomposition(connection, namespace, text, replace=False, allowed=None):
                 f'{namespace} already has "{name}"; rename it, or pick another namespace.'
             )
         connection.execute(UPSERT_DECOMPOSITION, tuple(stored.values()))
-    return stored, None if found is None else found[0]
+    problems = turn_problems(decomposition.model_dump()["messages"])
+    return stored | {"problems": problems}, None if found is None else found[0]
 
 
 def namespace_problem(error):
@@ -1041,13 +1139,15 @@ def in_chain_order(registry):
 
 def namespace_rows(connection, config, registry):
     """Each namespace as the panel shows it: its depth, its fields as the engine resolves
-    them, its own decompositions and its own YAML."""
+    them, its own decompositions (each with its problems as a worked example) and its own
+    YAML."""
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, name, yaml FROM decompositions ORDER BY rowid"
     )
     for namespace, name, text in rows:
-        decompositions[namespace].append({"name": name, "yaml": text})
+        row = {"name": name, "yaml": text, "problems": stored_problems(text)}
+        decompositions[namespace].append(row)
     # What each one's Edit YAML opens on: blank for a namespace that sets nothing.
     rows = connection.execute("SELECT name, yaml FROM namespaces")
     own = {name: "" if text == EMPTY_NAMESPACE else text for name, text in rows}

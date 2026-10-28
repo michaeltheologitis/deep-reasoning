@@ -560,7 +560,7 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
                 connection, namespace, yaml, replace=True, allowed=may_write
             )
         done = "added" if before is None else "replaced"
-        return logged(
+        change = logged(
             done,
             before,
             yaml,
@@ -568,6 +568,7 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
             namespace=namespace,
             name=stored["name"],
         )
+        return {**change, "problems": stored["problems"]}
 
     def add(name: str, yaml: str) -> dict[str, Any]:
         """Add namespace *name* with the fields *yaml* sets."""

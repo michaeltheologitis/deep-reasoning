@@ -316,6 +316,10 @@ messages:
 """
 
 
+# EXAMPLE holds only the task, so as a worked example it is ✗.
+ONLY_THE_TASK = [
+    "It ends on turn 1 (user); end with the assistant's turn that calls FinalAnswer(...)."
+]
 NOT_THIS_CHAT = "The Library can be changed only in a chat whose namespace grants"
 SHELL_KEY_ENV = "A_PROVIDERS_KEY"
 SHELL_KEY = "sk-a-key-from-the-shell"
@@ -365,13 +369,27 @@ def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(fresh)
         "what": "decomposition",
         "namespace": "librarian",
         "name": "count the tickets",
+        "problems": ONLY_THE_TASK,
     }
     assert json.loads(json.dumps(shown)) == shown
     assert list(by_name) == ["root", "drafts", "librarian"]
     assert by_name["librarian"]["yaml"] == "tools:\n- library\n"
     assert by_name["librarian"]["decompositions"] == [
-        {"name": "count the tickets", "yaml": EXAMPLE}
+        {"name": "count the tickets", "yaml": EXAMPLE, "problems": ONLY_THE_TASK}
     ]
+
+
+@pytest.mark.parametrize(
+    ("text", "problems"),
+    [(HISTORY_EXAMPLE, []), (EXAMPLE, ONLY_THE_TASK)],
+    ids=["worked-example", "only-the-task"],
+)
+def test_a_written_decomposition_is_stored_and_the_result_gives_its_problems(
+    fresh, text, problems
+):
+    done = library_tool(fresh).write_decomposition("drafts", text)
+    assert done["problems"] == problems
+    assert ("drafts", done["name"]) in stored(fresh)
 
 
 @pytest.mark.parametrize(
@@ -393,7 +411,11 @@ def test_a_decomposition_written_with_repl_placeholders_is_stored_with_the_real_
     tool.write_decomposition("drafts", EXAMPLE + answer + content)
     by_name = {each["name"]: each for each in tool.show()}
     assert by_name["drafts"]["decompositions"] == [
-        {"name": "count the tickets", "yaml": EXAMPLE + answer + stored_content}
+        {
+            "name": "count the tickets",
+            "yaml": EXAMPLE + answer + stored_content,
+            "problems": ["Turn 2 (assistant) has no <think>…</think>."],
+        }
     ]
 
 
