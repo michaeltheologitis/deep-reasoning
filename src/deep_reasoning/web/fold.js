@@ -100,10 +100,10 @@ function endCell(fold, event) {
 }
 
 // A call's cost counts for its agent, every agent above it and the turn; once one call is unpriced, so is each of their totals
-// (unpriced, cost null), unlike a holder with no calls yet (cost null alone).
+// (unpriced, cost null), unlike a holder with no calls yet (cost null alone). A cost that isn't a number, as a shared file may hold, is unknown.
 function addUsage(fold, event) {
   for (const { holder } of lineage(fold, event.node)) {
-    holder.unpriced ||= event.cost == null;
+    holder.unpriced ||= typeof event.cost !== "number";
     holder.cost = holder.unpriced ? null : (holder.cost ?? 0) + event.cost;
   }
 }
@@ -117,7 +117,8 @@ function endAgent(fold, event) {
 function endTurn(fold, event) {
   const { outcome, answer, detail, cost, seconds } = event;
   // the run's own total, null only when a call was unpriced: it counts every call, and a run with none costs 0
-  Object.assign(fold.turn, { outcome, answer, detail, cost, unpriced: cost == null, seconds });
+  const priced = typeof cost === "number";
+  Object.assign(fold.turn, { outcome, answer, detail, cost: priced ? cost : null, unpriced: !priced, seconds });
   markStopped(fold.turn, event.t);
 }
 

@@ -23,6 +23,7 @@ const FROM_NEXT = "from the next message";
 const UNKNOWN_COST = "N/A";
 // no-break spaces keep a cost whole where its line wraps
 const COST_NA = `cost\u00a0${UNKNOWN_COST}`;
+const PLUS_NA = `\u00a0+\u00a0${UNKNOWN_COST}`;
 const PRICE_UNKNOWN = "this model's price isn't known";
 const MENU_STEPS = { ArrowDown: 1, ArrowUp: -1 };
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
@@ -502,7 +503,7 @@ function renderTotal(turns) {
   const unknown = turns.some((turn) => turn.unpriced);
   const total = byId("total");
   total.title = unknown ? PRICE_UNKNOWN : "";
-  if (unknown) total.textContent = known ? `${known}\u00a0+\u00a0${UNKNOWN_COST} this chat` : `${COST_NA} this chat`;
+  if (unknown) total.textContent = known ? `${known}${PLUS_NA} this chat` : `${COST_NA} this chat`;
   else total.textContent = known ? `${known} this chat` : "";
 }
 
