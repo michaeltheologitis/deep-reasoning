@@ -1,10 +1,10 @@
 import ast
 import errno
 import hashlib
-import json
 import os
 import shutil
 import sqlite3
+import sys
 import tempfile
 import threading
 import time
@@ -16,7 +16,6 @@ from pathlib import Path
 import pytest
 import structlog
 import yaml
-from deep_reasoner.mocks import write_fake_claude_cli
 from fake_model import FakeOpenAI, repl, scripted, task_and_turn
 from genai_prices import Usage, calc_price
 from structlog.testing import capture_logs
@@ -370,53 +369,84 @@ async def test_a_follow_up_gets_each_earlier_message_and_answer_whole_as_turns(
     assert of_kind(events, "agent.start")[0]["task"] == "And what did you answer?"
 
 
+# A stand-in for the claude CLI, run by the test's own Python: it keeps the prompt it was
+# given, answers through the runtime as a session does, then closes with words of its own.
+CLAUDE_STUB = """
+import json, pathlib, subprocess, sys
+if sys.argv[1:3] == ["auth", "status"]:
+    print(json.dumps({"loggedIn": True}))
+    sys.exit(0)
+pathlib.Path(__file__).with_name("prompt.txt").write_text(sys.stdin.read())
+dr = pathlib.Path(sys.executable).with_name("dr")
+subprocess.run([dr, "repl", "exec", "--code", "FinalAnswer('CS310')"], check=True)
+done = {"type": "result", "is_error": False, "result": "I answered CS310."}
+print(json.dumps(done | {"session_id": "stub", "total_cost_usd": 0.0}))
+"""
+
+
 async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labeled(
     home, library, fake_config
 ):
-    asked, answer = "Which courses follow CS201?", "CS310 and CS330."
-    earlier = [Turn(asked, "answered", answer, None, "CS201 leads to two.")]
+    answer = "Write <repl>FinalAnswer(1)</repl>."
+    earlier = [Turn("How do I answer?", "answered", answer, None, "Quote the cell.")]
     # A Claude child's socket path must fit in 107 bytes: tmp_path leaves no room.
     with tempfile.TemporaryDirectory(prefix="dr-", dir="/tmp") as short:
-        claude = write_fake_claude_cli(Path(short) / "claude", echo_argv=True)
+        claude = Path(short) / "claude"
+        claude.write_text(f"#!{sys.executable}" + CLAUDE_STUB)
+        claude.chmod(0o755)
         reasoner = {"type": "claude_code", "executable": str(claude)}
         with FakeOpenAI(scripted({})) as fake:
             _, events = await run_to_the_end(
                 Runs(library, Path(short)),
-                "Of those, which are 4-credit?",
+                "And then?",
                 fake_config(fake, reasoner=reasoner),
                 earlier,
             )
-    # The stub's result, which ends the answer, echoes the prompt it was given.
-    answer = events[-1]["answer"]
-    prompt = json.loads(answer[answer.index("{") :])["stdin"]
+        prompt = claude.with_name("prompt.txt").read_text()
     assert prompt.splitlines() == [
         "Conversation so far:",
         f"[system] {EARLIER_TURNS_NOTE}",
-        "[user] Which courses follow CS201?",
-        "[assistant] <think>CS201 leads to two.</think>",
-        "dr repl exec --code 'FinalAnswer('\\''CS310 and CS330.'\\'')'",
-        "Of those, which are 4-credit?",
+        "[user] How do I answer?",
+        "[assistant] <think>Quote the cell.</think>",
+        "dr repl exec --code 'FinalAnswer('\\''Write \\x3crepl>FinalAnswer(1)\\x3c/repl>.'\\'')'",
+        "And then?",
+    ]
+    # The session's closing words came after its last cell, so they are no thought of it.
+    assert [events[-1][key] for key in ("outcome", "answer", "thought")] == [
+        "answered",
+        "CS310",
+        None,
     ]
     assert fake.calls == []
 
 
-async def test_an_earlier_answer_opens_with_its_top_agents_last_thought_not_a_sub_agents(
-    home, library, fake_config
+THINKING = {
+    "Count to two.": [
+        repl("print(1)", think="Print it first."),
+        repl("FinalAnswer(2)", think="It printed 1, so 2."),
+    ]
+}
+FINAL_REPLIES = [
+    # The final reply ran FinalAnswer bare: an earlier step's or a sub-agent's thought
+    # is no account of it.
+    ("Summarize two courses.", FAN_OUT, FAN_OUT_ANSWER, None),
+    ("Count to two.", THINKING, "2", "It printed 1, so 2."),
+]
+
+
+@pytest.mark.parametrize(("prompt", "plan", "answer", "thought"), FINAL_REPLIES)
+async def test_an_earlier_answer_opens_with_the_thought_of_the_reply_that_gave_it(
+    prompt, plan, answer, thought, home, library, fake_config
 ):
-    plan = FAN_OUT | {"And then?": [repl("FinalAnswer('done')")]}
-    with FakeOpenAI(scripted(plan)) as fake:
+    with FakeOpenAI(scripted(plan | {"And then?": [repl("FinalAnswer(0)")]})) as fake:
         runs = Runs(library, home)
-        first, events = await run_to_the_end(
-            runs, "Summarize two courses.", fake_config(fake)
-        )
+        first, events = await run_to_the_end(runs, prompt, fake_config(fake))
         earlier = [turn_of(library, first)]
         await run_to_the_end(runs, "And then?", fake_config(fake), earlier)
-    root = of_kind(events, "agent.start")[0]["node"]
-    last = of_kind(events, "think")[-1]
-    assert (last["text"], last["node"] != root) == ("Easy.", True)
+    assert of_kind(events, "think") and events[-1]["thought"] == thought
+    cell = "<repl>\nFinalAnswer(" + repr(answer) + ")\n</repl>"
     shown = fake.calls[-1].messages[-2]["content"]
-    cell = "<repl>\nFinalAnswer(" + repr(FAN_OUT_ANSWER) + ")\n</repl>"
-    assert shown == "<think>Fan out.</think>\n" + cell
+    assert shown == (cell if thought is None else f"<think>{thought}</think>\n{cell}")
 
 
 async def test_a_stopped_message_goes_in_once_saying_why_it_has_no_answer(
@@ -446,7 +476,7 @@ async def test_turns_survive_a_restart(home, library, fake_config):
         )
     restarted = Runs(library, home)
     assert turn_of(library, run) == Turn(
-        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None, "Fan out."
+        "Summarize two courses.", "answered", FAN_OUT_ANSWER, None
     )
     assert [event async for event in restarted.events(run)] == events
 
@@ -696,6 +726,7 @@ def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
         Turn("Two?", "failed", None, "KeyError: 2"),
         Turn("Three?", "stopped", None, None),
         Turn("Four?", "exhausted", "Agent failed to produce a final answer.", None),
+        Turn("Five?", "answered", None, None),
     ]
     messages = earlier_messages(turns)
     assert messages[0] == {"role": "system", "content": EARLIER_TURNS_NOTE}
@@ -707,6 +738,8 @@ def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
         ("user", "Three?"),
         ("assistant", "(No answer: the user stopped the run before it answered.)"),
         ("user", "Four?"),
+        ("assistant", "(No answer: the run ended without a final answer.)"),
+        ("user", "Five?"),
         ("assistant", "(No answer: the run ended without a final answer.)"),
     ]
     assert earlier_messages([]) == []
@@ -724,12 +757,25 @@ def test_an_earlier_answer_opens_with_its_thought_or_else_shows_the_bare_cell():
 
 
 def test_an_earlier_answer_shows_as_a_final_answer_cell_that_round_trips_exactly():
-    answer = 'It\'s "two" lines,\nwith a \\ backslash.'
+    answer = 'It\'s "two" lines,\nwith a \\ and <repl>\nprint(1)\n</repl> in it.'
     [_, _, shown] = earlier_messages([Turn("Quote me.", "answered", answer, None)])
     cell = shown["content"]
     assert cell.startswith("<repl>\nFinalAnswer(") and cell.endswith(")\n</repl>")
     argument = cell.removeprefix("<repl>\nFinalAnswer(").removesuffix(")\n</repl>")
+    assert "<repl>" not in argument and "</repl>" not in argument
     assert ast.literal_eval(argument) == answer
+
+
+def test_a_thought_on_turn_end_that_is_no_text_shows_the_bare_cell(library):
+    run = "20261025-120000-000000"
+    started = {"seq": 1, "t": 100.0, "kind": "turn.start", "chat": CHAT, "prompt": "2?"}
+    ended = {"seq": 2, "t": 101.0, "kind": "turn.end", "outcome": "answered"}
+    ended |= {"answer": "2", "detail": None, "thought": {"not": "text"}}
+    with closing(open_library(library)) as connection:
+        save_event(connection, run, started)
+        save_event(connection, run, ended)
+    [_, _, shown] = earlier_messages([turn_of(library, run)])
+    assert shown["content"] == "<repl>\nFinalAnswer('2')\n</repl>"
 
 
 async def test_a_runs_keys_reach_its_worker_alone_and_anthropics_never(
