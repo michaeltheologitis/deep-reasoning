@@ -23,10 +23,13 @@ from typing import Any, NoReturn, TextIO
 import structlog
 import yaml
 from deep_reasoner.core import configure_structlog_fixture
+from deep_reasoner.v2.agent import _parts
 from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
-from deep_reasoner.v2.messages import NoCodeBlock, code, user
+from deep_reasoner.v2.decompositions import as_cli_act
+from deep_reasoner.v2.messages import NoCodeBlock, code
 from genai_prices import Usage, calc_price
 
+from deep_reasoning.app_tools import CLAUDE_CODE
 from deep_reasoning.runs import CHANGE_FIELDS, SPEC
 
 log = structlog.get_logger()
@@ -93,6 +96,14 @@ def cost_of(model: str, usage: dict[str, Any]) -> float | None:
         return None
 
 
+def for_claude(message: dict[str, str]) -> dict[str, str]:
+    """An earlier message as a Claude session is shown it: an assistant turn's <repl> cell
+    written as the command the session runs instead."""
+    if message["role"] != "assistant":
+        return message
+    return message | {"content": as_cli_act(message["content"])}
+
+
 def detail_of(error: BaseException) -> str:
     """An exception as deep_reasoner words agent.end's detail."""
     return f"{type(error).__name__}: {error}"
@@ -113,7 +124,8 @@ class Recorder:
     deep_reasoner calls it on every thread a run logs from, so it holds one lock for its
     state and its writes. It returns every event dict unchanged and never raises. It
     writes nothing after the turn.end: sub-agents' threads may still log while the run
-    closes, and the turn.end is the run's last event.
+    closes, and the turn.end is the run's last event. last_cell_thought is the thought of
+    the reply that ran the top agent's last cell, or None when that reply had none.
     """
 
     def __init__(self, out: TextIO, on_root_start: Callable[[], None]) -> None:
@@ -124,6 +136,9 @@ class Recorder:
         self._cells = 0
         self._root: int | None = None
         self._ended = False
+        # The top agent's last thought, until a cell of its takes it.
+        self._thought: str | None = None
+        self.last_cell_thought: str | None = None
         self._handlers = {
             "agent.start": self._agent_start,
             "llm.call": self._llm_call,
@@ -156,7 +171,14 @@ class Recorder:
             self._out.write(json.dumps({"kind": kind, **fields}, default=str) + "\n")
             self._out.flush()
 
+    def _think(self, node: int, text: str) -> None:
+        if node == self._root:
+            self._thought = text
+        self.emit("think", node=node, text=text)
+
     def _open_cell(self, node: int, source: str) -> int:
+        if node == self._root:
+            self.last_cell_thought, self._thought = self._thought, None
         self._cells += 1
         agent = self._agents[node]
         agent.cell, agent.code = self._cells, source
@@ -212,7 +234,7 @@ class Recorder:
             return
         reply = event.get("response") or ""
         if thought := thought_of(reply):
-            self.emit("think", node=node, text=thought)
+            self._think(node, thought)
         if (source := source_of(reply)) is not None:
             self._open_cell(node, source)
 
@@ -229,7 +251,7 @@ class Recorder:
             cost=event.get("cost_usd"),
         )
         if self._own(event) and (response := (event.get("response") or "").strip()):
-            self.emit("think", node=node, text=response)
+            self._think(node, response)
 
     def _repl_execute(self, event: dict[str, Any]) -> None:
         if not self._own(event):
@@ -333,9 +355,13 @@ async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:
     try:
         config = V2Config.model_validate(spec["config"])
         reasoner, alias = build_reasoner(config, run_dir=folder)
+        earlier = spec["earlier"]
+        if reasoner.backbone_type == CLAUDE_CODE:
+            earlier = [for_claude(message) for message in earlier]
+        # The conversation this run continues, as the agent's history= takes it: the
+        # engine's build_reasoner takes no history=.
+        reasoner._given_history = _parts(earlier, "history")
         with alias:
-            if spec["recap"] is not None:
-                reasoner.send(user(spec["recap"]))
             answer = await reasoner.acall(spec["prompt"])
     except Exception as error:
         log.exception("worker.run_failed")
@@ -347,7 +373,10 @@ async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:
         finish(reasoner)
     outcome = "exhausted" if reasoner.exhausted else "answered"
     text = answer if isinstance(answer, str) else repr(answer)
-    recorder.emit("turn.end", outcome=outcome, answer=text, detail=None)
+    thought = recorder.last_cell_thought
+    recorder.emit(
+        "turn.end", outcome=outcome, answer=text, detail=None, thought=thought
+    )
     finish(reasoner)
 
 
