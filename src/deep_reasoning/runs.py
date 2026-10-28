@@ -83,11 +83,14 @@ follow, then the user's next message. Their runs have ended, so their variables 
 and their sub-agents can't be called again. How each answer was worked out (its \
 thoughts, cells and its sub-agents' steps) is kept: to explain an earlier answer, print \
 it with the history tool, when you have it, and answer in a later cell from what it \
-printed. Your earlier answers show only their final text; reply in your usual format."""
-# An earlier turn's assistant turn: its answer, or why it has none.
+printed. Each earlier answer is shown as the FinalAnswer it gave."""
+# An earlier turn's assistant turn: the cell that gave its answer, as the engine's worked
+# examples show one, or why it has none.
 ANSWER = jinja2.Template(
     """\
-{% if turn.outcome == "answered" %}{{ turn.answer or "" }}
+{% if turn.outcome == "answered" %}<repl>
+FinalAnswer({{ answer }})
+</repl>
 {%- elif turn.outcome == "failed" %}(No answer: the run failed: {{ turn.detail }})
 {%- elif turn.outcome == "stopped" %}(No answer: the user stopped the run before it answered.)
 {%- else %}(No answer: the run ended without a final answer.){% endif %}""",
@@ -366,14 +369,15 @@ def withheld(value: Any, secrets: Sequence[str]) -> Any:
 
 def earlier_messages(turns: Sequence[Turn]) -> list[dict[str, str]]:
     """The chat so far as chat messages for a fresh run: a system note, then each earlier
-    message, whole, as the user's turn and its answer as the assistant's. None for the
-    chat's first message."""
+    message, whole, as the user's turn and its answer, whole, as the assistant's. Nothing
+    for the chat's first message."""
     if not turns:
         return []
     messages = [{"role": "system", "content": EARLIER_TURNS_NOTE}]
     for turn in turns:
         messages.append({"role": "user", "content": turn.message})
-        messages.append({"role": "assistant", "content": ANSWER.render(turn=turn)})
+        answer = ANSWER.render(turn=turn, answer=repr(turn.answer))
+        messages.append({"role": "assistant", "content": answer})
     return messages
 
 

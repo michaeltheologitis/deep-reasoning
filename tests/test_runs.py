@@ -1,3 +1,4 @@
+import ast
 import errno
 import hashlib
 import json
@@ -361,9 +362,9 @@ async def test_a_follow_up_gets_each_earlier_message_and_answer_whole_as_turns(
     assert messages[-6]["content"].startswith(EARLIER_TURNS_NOTE)
     assert [message["content"] for message in messages[-5:]] == [
         question,
-        answer,
+        "<repl>\nFinalAnswer('" + answer + "')\n</repl>",
         "What did I ask first?",
-        "that",
+        "<repl>\nFinalAnswer('that')\n</repl>",
         "And what did you answer?",
     ]
     assert of_kind(events, "agent.start")[0]["task"] == "And what did you answer?"
@@ -393,7 +394,7 @@ async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labele
         "Conversation so far:",
         f"[system] {EARLIER_TURNS_NOTE}",
         "[user] Which courses follow CS201?",
-        "[assistant] CS310 and CS330.",
+        "[assistant] dr repl exec --code 'FinalAnswer('\\''CS310 and CS330.'\\'')'",
         "Of those, which are 4-credit?",
     ]
     assert fake.calls == []
@@ -681,7 +682,7 @@ def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
     assert messages[0] == {"role": "system", "content": EARLIER_TURNS_NOTE}
     assert [(message["role"], message["content"]) for message in messages[1:]] == [
         ("user", "One?"),
-        ("assistant", "1"),
+        ("assistant", "<repl>\nFinalAnswer('1')\n</repl>"),
         ("user", "Two?"),
         ("assistant", "(No answer: the run failed: KeyError: 2)"),
         ("user", "Three?"),
@@ -690,6 +691,15 @@ def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
         ("assistant", "(No answer: the run ended without a final answer.)"),
     ]
     assert earlier_messages([]) == []
+
+
+def test_an_earlier_answer_shows_as_a_final_answer_cell_that_round_trips_exactly():
+    answer = 'It\'s "two" lines,\nwith a \\ backslash.'
+    [_, _, shown] = earlier_messages([Turn("Quote me.", "answered", answer, None)])
+    cell = shown["content"]
+    assert cell.startswith("<repl>\nFinalAnswer(") and cell.endswith(")\n</repl>")
+    argument = cell.removeprefix("<repl>\nFinalAnswer(").removesuffix(")\n</repl>")
+    assert ast.literal_eval(argument) == answer
 
 
 async def test_a_runs_keys_reach_its_worker_alone_and_anthropics_never(

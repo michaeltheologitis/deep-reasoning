@@ -24,7 +24,9 @@ import structlog
 import yaml
 from deep_reasoner.core import configure_structlog_fixture
 from deep_reasoner.v2.agent import _parts
+from deep_reasoner.v2.claude_reasoner import ClaudeDeepReasoner
 from deep_reasoner.v2.cli import V2Config, build_reasoner, close_run
+from deep_reasoner.v2.decompositions import as_cli_act
 from deep_reasoner.v2.messages import NoCodeBlock, code
 from genai_prices import Usage, calc_price
 
@@ -92,6 +94,14 @@ def cost_of(model: str, usage: dict[str, Any]) -> float | None:
         return float(calc_price(tokens, model).total_price)
     except LookupError:
         return None
+
+
+def for_claude(message: dict[str, str]) -> dict[str, str]:
+    """An earlier message as a Claude session is shown it: an assistant turn's <repl> cell
+    written as the command the session runs instead."""
+    if message["role"] != "assistant":
+        return message
+    return message | {"content": as_cli_act(message["content"])}
 
 
 def detail_of(error: BaseException) -> str:
@@ -334,9 +344,12 @@ async def run(spec: dict[str, Any], folder: Path, out: TextIO) -> NoReturn:
     try:
         config = V2Config.model_validate(spec["config"])
         reasoner, alias = build_reasoner(config, run_dir=folder)
+        earlier = spec["earlier"]
+        if isinstance(reasoner, ClaudeDeepReasoner):
+            earlier = [for_claude(message) for message in earlier]
         # The conversation this run continues, as the agent's history= takes it: the
         # engine's build_reasoner takes no history=.
-        reasoner._given_history = _parts(spec["earlier"], "history")
+        reasoner._given_history = _parts(earlier, "history")
         with alias:
             answer = await reasoner.acall(spec["prompt"])
     except Exception as error:
