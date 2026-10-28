@@ -134,13 +134,18 @@ def working_folder(data: Path, chat: dict[str, Any]) -> Path:
     return scratch
 
 
+def holds_any(folder: Path, folders: Iterable[str]) -> bool:
+    """Whether *folder* is or holds one of *folders*, each where it really is."""
+    # realpath, as Path.resolve raises on a symlink loop
+    real = Path(os.path.realpath(folder))
+    return any(Path(os.path.realpath(each)).is_relative_to(real) for each in folders)
+
+
 def remove_unless_kept(folder: Path, keep: Iterable[str]) -> None:
     """Delete *folder*, one of a deleted chat's, unless it is or holds a folder in *keep*,
     the folders chosen or in use; never through a symlink. The chat is gone already, so a
     folder left behind is logged, not raised."""
-    # realpath, as Path.resolve raises on a symlink loop
-    real = Path(os.path.realpath(folder))
-    if any(Path(os.path.realpath(each)).is_relative_to(real) for each in keep):
+    if holds_any(folder, keep):
         log.warning("folders.kept_as_chosen", folder=str(folder))
         return
     try:

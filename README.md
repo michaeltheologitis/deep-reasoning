@@ -75,6 +75,10 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
   onto its YAML (or a tool's block and Python) before and after; ask the agent to write the before back to undo it. The decompositions panel and the
   namespace menu under the message box show the change at once.
 - `uv run deep-reasoning import CONFIG.yaml` brings in a `deep_reasoner` config, replacing items with the same name.
+- `uv run deep-reasoning reset` starts afresh: it deletes the Library file (`--library PATH` for another), with its
+  chats and settings, and its run and scratch folders, after listing them and asking you to type `delete`
+  (`--yes` skips the question). Your keys in `.env` and the folders you picked stay. Stop the app first. It
+  deletes only a Library file: a folder, a symlink or any other file is refused and left as it is.
 - The Tools tab lists the app's own tools beside the built-in ones, and every tool in the Library; a tool of yours can't
   be named `history` or `library`.
 - Every run builds every tool some namespace grants, whatever namespace its chat is in (only which agents can call a

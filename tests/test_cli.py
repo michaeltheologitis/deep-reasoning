@@ -1,7 +1,16 @@
+import io
+import os
 import queue
+import re
+import shutil
 import socket
+import sqlite3
+import stat
+import sys
 import urllib.parse
 import webbrowser
+from contextlib import closing
+from pathlib import Path
 
 import pytest
 import structlog
@@ -9,9 +18,13 @@ import uvicorn
 from fastapi.testclient import TestClient
 
 from deep_reasoning import cli
+from deep_reasoning.chats import create_chat
+from deep_reasoning.folders import data_folder
+from deep_reasoning.library import LIBRARY_ONLY, open_library
 
 WAIT_SECONDS = 0.5
 KEY_IN_A_FRAME = "sk-held-in-a-frame"
+KEYS = "OPENAI_API_KEY=sk-kept-by-reset\n"
 
 
 @pytest.fixture
@@ -163,3 +176,275 @@ def test_a_file_that_is_not_a_library_exits_with_a_plain_error(
     with pytest.raises(SystemExit, match="Could not open the Library at .*notes.txt"):
         cli.main(["--port", str(free_port), "--no-browser", "--library", str(notes)])
     assert served == []
+
+
+class Terminal(io.StringIO):
+    """Standard input from a person at a terminal, who types what it holds."""
+
+    def isatty(self):
+        return True
+
+
+@pytest.fixture
+def deleting_fails(monkeypatch):
+    """Deleting anything fails the test, so a refusal gone wrong can't delete a home or /."""
+
+    def deleted(path, *args, **kwargs):
+        pytest.fail(f"deleted {path}")
+
+    monkeypatch.setattr(shutil, "rmtree", deleted)
+    monkeypatch.setattr(Path, "unlink", deleted)
+
+
+def app_file(app_home, library):
+    """A Library at *library* with its data folder, and what older versions left in
+    *app_home*: the paths a reset deletes, but SQLite's side files."""
+    open_library(library).close()
+    data = data_folder(app_home, library)
+    (data / "work" / "some-chat").mkdir(parents=True)
+    (data / "runs" / "some-run").mkdir(parents=True)
+    old_files = [app_home / "chats.sqlite", app_home / "settings.json"]
+    for path in old_files:
+        path.write_text("left by an older version\n")
+    old_folders = [app_home / "runs", app_home / "work"]
+    for folder in old_folders:
+        (folder / "old").mkdir(parents=True)
+    return [library, data, *old_files, *old_folders]
+
+
+def as_made_by(version, library):
+    """A Library file as *version* made it, without the tables of the versions after it."""
+    later = {LIBRARY_ONLY: ["events", "runs", "chats", "app_settings"]}
+    with closing(open_library(library)) as connection:
+        for table in later.get(version, ["events", "runs"]):
+            connection.execute(f"DROP TABLE {table}")
+        connection.execute(f"PRAGMA user_version = {version}")
+
+
+def side_files(library):
+    return [library.with_name(library.name + side) for side in ("-wal", "-shm")]
+
+
+def test_reset_yes_deletes_the_app_file_its_folders_and_old_leftovers(
+    app_home, tmp_path
+):
+    library = app_home / "library.sqlite"
+    project = tmp_path / "project"
+    project.mkdir()
+    create_chat(library, folder=str(project))
+    doomed = app_file(app_home, library)
+    for side_file in side_files(library):
+        side_file.write_text("left by a crash\n")
+    # Empty, as SQLite leaves no journal with a change in it but after a crash mid-change.
+    journal = library.with_name(library.name + "-journal")
+    journal.write_bytes(b"")
+    doomed += [*side_files(library), journal]
+    keys = app_home / ".env"
+    keys.write_text(KEYS)
+    other = data_folder(app_home, tmp_path / "other.sqlite")
+    other.mkdir(parents=True)
+    cli.main(["reset", "--yes"])
+    assert [path for path in doomed if os.path.lexists(path)] == []
+    assert keys.read_text() == KEYS
+    assert project.is_dir()
+    assert other.is_dir()
+
+
+@pytest.mark.parametrize("answer", ["no\n", "yes\n", "\n", "delete it\n", ""])
+def test_reset_lists_what_goes_and_deletes_nothing_unless_told_delete(
+    app_home, monkeypatch, capsys, answer
+):
+    library = app_home / "library.sqlite"
+    doomed = app_file(app_home, library)
+    monkeypatch.setattr(sys, "stdin", Terminal(answer))
+    with pytest.raises(SystemExit, match="Nothing was deleted"):
+        cli.main(["reset"])
+    said = capsys.readouterr().out
+    assert "~/.deep-reasoning/library.sqlite" in said
+    assert "~/.deep-reasoning/chats.sqlite" in said
+    assert "~/.deep-reasoning/.env" in said
+    assert "Stop Deep Reasoning" in said
+    assert all(os.path.lexists(path) for path in doomed)
+
+
+def test_typing_delete_resets(app_home, monkeypatch):
+    library = app_home / "library.sqlite"
+    doomed = app_file(app_home, library)
+    monkeypatch.setattr(sys, "stdin", Terminal("delete\n"))
+    cli.main(["reset"])
+    assert [path for path in doomed if os.path.lexists(path)] == []
+
+
+def test_reset_without_a_terminal_or_yes_deletes_nothing(app_home, monkeypatch):
+    library = app_home / "library.sqlite"
+    doomed = app_file(app_home, library)
+    monkeypatch.setattr(sys, "stdin", io.StringIO("delete\n"))
+    with pytest.raises(SystemExit, match="no terminal.*--yes"):
+        cli.main(["reset"])
+    assert all(os.path.lexists(path) for path in doomed)
+
+
+@pytest.mark.parametrize("before", [True, False], ids=["before reset", "after reset"])
+def test_reset_library_resets_that_file_alone_not_the_default_or_old_leftovers(
+    app_home, tmp_path, before
+):
+    kept = app_file(app_home, app_home / "library.sqlite")
+    shared = tmp_path / "shared.sqlite"
+    open_library(shared).close()
+    option = ["--library", str(shared)]
+    cli.main([*option, "reset", "--yes"] if before else ["reset", "--yes", *option])
+    assert not shared.exists()
+    assert all(os.path.lexists(path) for path in kept)
+
+
+def test_reset_with_nothing_there_says_so(app_home, capsys):
+    app_home.mkdir()
+    keys = app_home / ".env"
+    keys.write_text(KEYS)
+    cli.main(["reset"])
+    assert "Nothing to reset" in capsys.readouterr().out
+    assert keys.read_text() == KEYS
+
+
+def test_reset_warns_that_a_run_may_be_going_when_the_wal_file_holds_changes(
+    app_home, monkeypatch, capsys
+):
+    library = app_home / "library.sqlite"
+    app_file(app_home, library)
+    library.with_name(library.name + "-wal").write_text("a change\n")
+    monkeypatch.setattr(sys, "stdin", Terminal("no\n"))
+    with pytest.raises(SystemExit, match="Nothing was deleted"):
+        cli.main(["reset"])
+    assert "A run may be going" in capsys.readouterr().out
+
+
+def test_reset_never_deletes_through_a_symlink(app_home, tmp_path):
+    library = app_home / "library.sqlite"
+    app_file(app_home, library)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_text("mine\n")
+    data = data_folder(app_home, library)
+    (data / "work" / "some-chat" / "link").symlink_to(outside)
+    shutil.rmtree(app_home / "runs")
+    (app_home / "runs").symlink_to(outside)
+    cli.main(["reset", "--yes"])
+    assert (outside / "notes.txt").read_text() == "mine\n"
+    assert not data.exists()
+    assert not os.path.lexists(app_home / "runs")
+
+
+def test_reset_keeps_a_folder_holding_one_a_chat_chose(app_home):
+    library = app_home / "library.sqlite"
+    old_scratch = app_home / "work" / "old-chat"
+    old_scratch.mkdir(parents=True)
+    create_chat(library, folder=str(old_scratch))
+    cli.main(["reset", "--yes"])
+    assert old_scratch.is_dir()
+    assert not library.exists()
+
+
+@pytest.mark.parametrize("folder", ["", "projects"], ids=["the home", "a project"])
+def test_reset_refuses_a_folder_as_the_library(deleting_fails, home, app_home, folder):
+    target = home / folder
+    target.mkdir(exist_ok=True)
+    (target / "notes.txt").write_text("mine\n")
+    app_home.mkdir()
+    (app_home / ".env").write_text(KEYS)
+    with pytest.raises(SystemExit, match="is not a file, so nothing was deleted"):
+        cli.main(["reset", "--yes", "--library", str(target)])
+    assert (target / "notes.txt").read_text() == "mine\n"
+    assert (app_home / ".env").read_text() == KEYS
+
+
+def test_reset_refuses_a_fifo_as_the_library(deleting_fails, tmp_path):
+    pipe = tmp_path / "pipe"
+    os.mkfifo(pipe)
+    with pytest.raises(SystemExit, match="is not a file, so nothing was deleted"):
+        cli.main(["reset", "--yes", "--library", str(pipe)])
+    assert stat.S_ISFIFO(os.lstat(pipe).st_mode)
+
+
+def test_reset_refuses_a_path_naming_no_file(deleting_fails):
+    with pytest.raises(SystemExit, match="names no file, so nothing was deleted"):
+        cli.main(["reset", "--yes", "--library", "/"])
+
+
+def test_reset_refuses_a_symlinked_library_naming_its_target(
+    deleting_fails, app_home, tmp_path
+):
+    real = tmp_path / "real.sqlite"
+    open_library(real).close()
+    data = data_folder(app_home, real)
+    data.mkdir(parents=True)
+    link = tmp_path / "link.sqlite"
+    link.symlink_to(real)
+    refused = f"symlink to {re.escape(str(real))}, so nothing was deleted.*--library"
+    with pytest.raises(SystemExit, match=refused):
+        cli.main(["reset", "--yes", "--library", str(link)])
+    assert link.is_symlink()
+    assert real.is_file()
+    assert data.is_dir()
+
+
+def test_reset_leaves_side_files_with_no_library_beside_them(tmp_path, capsys):
+    diary = tmp_path / "diary"
+    sides = [*side_files(diary), diary.with_name("diary-journal")]
+    for side in sides:
+        side.write_text("mine\n")
+    cli.main(["reset", "--yes", "--library", str(diary)])
+    assert "Nothing to reset" in capsys.readouterr().out
+    assert all(side.read_text() == "mine\n" for side in sides)
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_a_declined_reset_leaves_an_older_library_as_it_was(
+    app_home, monkeypatch, version
+):
+    library = app_home / "library.sqlite"
+    as_made_by(version, library)
+    before = library.read_bytes()
+    monkeypatch.setattr(sys, "stdin", Terminal("no\n"))
+    with pytest.raises(SystemExit, match="Nothing was deleted"):
+        cli.main(["reset"])
+    assert library.read_bytes() == before
+
+
+def another_apps_database(path):
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute("CREATE TABLE todos (task TEXT)")
+        connection.commit()
+
+
+@pytest.mark.parametrize(
+    "make",
+    [
+        lambda path: path.write_bytes(b""),
+        lambda path: path.write_text("not a database\n"),
+        another_apps_database,
+    ],
+    ids=["empty", "text", "another app's database"],
+)
+def test_reset_refuses_a_file_that_is_not_a_library_and_leaves_it_as_it_was(
+    tmp_path, make
+):
+    todo = tmp_path / "todo.txt"
+    make(todo)
+    before = todo.read_bytes()
+    with pytest.raises(SystemExit, match="Could not read .*todo.txt.*nothing was"):
+        cli.main(["reset", "--yes", "--library", str(todo)])
+    assert todo.read_bytes() == before
+
+
+def test_reset_refuses_a_library_a_crash_left_mid_change_and_says_how_to_mend_it(
+    app_home,
+):
+    library = app_home / "library.sqlite"
+    open_library(library).close()
+    before = library.read_bytes()
+    journal = library.with_name(library.name + "-journal")
+    journal.write_text("a change part way through\n")
+    with pytest.raises(SystemExit, match="nothing was deleted.*start the app once"):
+        cli.main(["reset", "--yes"])
+    assert library.read_bytes() == before
+    assert journal.is_file()
