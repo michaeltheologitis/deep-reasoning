@@ -97,6 +97,10 @@ FRESH_ROOT = {"tools": ["llm", "history"]}
 LIBRARIAN = "librarian"
 LIBRARY_TOOL = "library"
 FRESH_LIBRARIAN = {"tools": [LIBRARY_TOOL]}
+# A fresh Library's worked example at root, which every namespace inherits: without it,
+# models answer in the cell that prints history.steps, before they see what it printed.
+HISTORY_EXAMPLE_FILE = Path(__file__).with_name("history_example.yaml")
+HISTORY_EXAMPLE = HISTORY_EXAMPLE_FILE.read_text(encoding="utf-8")
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
     " AND NOT EXISTS (SELECT 1 FROM decompositions WHERE namespace = :root)"
@@ -363,6 +367,8 @@ def written_by_an_earlier_version(found, names):
 def seed_new_library(connection):
     connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
     connection.execute(UPSERT_NAMESPACE, (LIBRARIAN, dump(FRESH_LIBRARIAN)))
+    example = (ROOT, parsed(HISTORY_EXAMPLE).name, HISTORY_EXAMPLE)
+    connection.execute(UPSERT_DECOMPOSITION, example)
     settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
     connection.executemany(UPSERT_SETTING, settings)
 

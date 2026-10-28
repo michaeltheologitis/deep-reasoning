@@ -20,6 +20,7 @@ from deep_reasoning.app_tools import (
     open_existing,
 )
 from deep_reasoning.library import (
+    HISTORY_EXAMPLE,
     UPSERT_TOOL,
     LibraryError,
     add_namespace,
@@ -27,6 +28,7 @@ from deep_reasoning.library import (
     delete_namespace,
     dump,
     open_library,
+    parsed,
     writing,
 )
 from deep_reasoning.runs import CHANGE_FIELDS, LOST, chat_runs, read_turn, save_event
@@ -334,6 +336,10 @@ def library_tool(library, namespace="librarian"):
     return build_library(None, told).value
 
 
+# A fresh app file's decompositions: the worked example at root.
+FRESH = [("root", parsed(HISTORY_EXAMPLE).name)]
+
+
 def stored(library):
     """Each decomposition in the app file, as (namespace, name)."""
     with closing(open_library(library)) as connection:
@@ -424,7 +430,7 @@ def test_a_write_the_tool_refuses_says_why_and_stores_nothing(
     monkeypatch.setenv(SHELL_KEY_ENV, SHELL_KEY)
     with pytest.raises(LibraryError, match=re.escape(refusal)):
         library_tool(fresh).write_decomposition(namespace, text)
-    assert stored(fresh) == []
+    assert stored(fresh) == FRESH
 
 
 @pytest.mark.parametrize(
@@ -439,14 +445,14 @@ def test_a_chat_whose_namespace_lost_the_grant_mid_run_may_not_write(
         change(connection, "librarian", argument)
     with pytest.raises(LibraryError, match=NOT_THIS_CHAT):
         tool.write_decomposition("drafts", EXAMPLE)
-    assert stored(fresh) == []
+    assert stored(fresh) == FRESH
 
 
 def test_a_busy_app_file_is_a_refusal_in_words(fresh):
     refused = pytest.raises(LibraryError, match="can't be used now .*; try again")
     with closing(open_library(fresh)) as connection, writing(connection), refused:
         library_tool(fresh).write_decomposition("drafts", EXAMPLE)
-    assert stored(fresh) == []
+    assert stored(fresh) == FRESH
 
 
 def test_a_moved_app_file_is_never_made_afresh(fresh, tmp_path):

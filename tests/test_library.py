@@ -27,6 +27,7 @@ from deep_reasoning.library import (
     APP_TOOLS_FILE,
     BEFORE_EVENTS,
     HISTORY_DESCRIPTION,
+    HISTORY_EXAMPLE,
     LIBRARIAN,
     LIBRARY_DESCRIPTION,
     LIBRARY_ONLY,
@@ -44,6 +45,7 @@ from deep_reasoning.library import (
     import_config,
     open_library,
     panel,
+    parsed,
     store_tool,
     stored_config,
     writing,
@@ -77,6 +79,8 @@ namespaces:
 ADDED = "name: added\nmessages: [{role: user, content: hi}]\n"
 RESEARCH = "vars: {topic: ml}\nsystem_suffix: |\n  Cite each source.\n"
 WAIT_FOR_THE_LOCK_S = 0.3
+# A fresh Library's worked example at root.
+SEEDED = parsed(HISTORY_EXAMPLE)
 # What the app puts in for a chat on OpenAI's gpt-6-luna.
 CHATS_MODEL = {
     "model": "gpt-6-luna",
@@ -112,6 +116,14 @@ def dumped(library):
         return list(connection.iterdump())
 
 
+def made_with_an_empty_root(library):
+    """The Library as a version made it before a fresh root granted tools or held the
+    worked example."""
+    with closing(open_library(library)) as connection, writing(connection):
+        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
+        connection.execute("DELETE FROM decompositions WHERE namespace = ?", (ROOT,))
+
+
 def test_a_fresh_library_has_root_and_leaves_the_model_and_its_key_to_the_chat(
     library, tmp_path, monkeypatch
 ):
@@ -133,11 +145,24 @@ def test_a_fresh_library_grants_llm_and_history_at_root_and_library_to_the_libra
     assert config.namespaces[LIBRARIAN].tools == ["library"]
 
 
+def test_a_fresh_library_shows_every_namespace_how_to_read_history_before_answering(
+    library, tmp_path
+):
+    registry = registry_of(library, tmp_path)
+    assert all(
+        SEEDED in registry.resolve(name).decompositions for name in registry.names
+    )
+    reading, answering = [
+        turn.content for turn in SEEDED.messages if turn.role == "assistant"
+    ]
+    assert "print(history.steps(1))" in reading and "FinalAnswer" not in reading
+    assert "FinalAnswer" in answering
+
+
 def test_a_library_made_with_an_empty_root_is_given_a_fresh_root_once(
     library, tmp_path
 ):
-    with closing(open_library(library)) as connection, writing(connection):
-        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
+    made_with_an_empty_root(library)
     upgraded = dumped(library)
     assert dumped(library) == upgraded
     assert run_config(library, tmp_path).namespaces[ROOT].tools == ["llm", "history"]
@@ -146,8 +171,7 @@ def test_a_library_made_with_an_empty_root_is_given_a_fresh_root_once(
 def test_a_read_only_library_with_an_empty_root_still_opens_as_it_is(
     library, monkeypatch
 ):
-    with closing(open_library(library)) as connection, writing(connection):
-        connection.execute(UPSERT_NAMESPACE, (ROOT, dump({})))
+    made_with_an_empty_root(library)
     connect = sqlite3.connect
 
     def read_only(path, **options):
@@ -241,10 +265,10 @@ def test_an_open_reader_does_not_hold_up_a_write(library):
     with closing(open_library(library)) as reader:
         stored_config(reader)
         with closing(open_library(library)) as writer:
-            add_decomposition(writer, ROOT, ADDED)
+            add_decomposition(writer, LIBRARIAN, ADDED)
         assert [
             each["name"]
-            for each in stored_config(reader)["namespaces"][ROOT]["decompositions"]
+            for each in stored_config(reader)["namespaces"][LIBRARIAN]["decompositions"]
         ] == ["added"]
 
 
@@ -302,10 +326,10 @@ def test_an_import_reads_back_as_the_engine_loads_the_config(library, tmp_path):
     assert config.namespaces[ROOT].vars["by_year"][2024] == 10
     assert config.namespaces[ROOT].vars["due"] == date(2026, 10, 25)
     assert config.namespaces[ROOT].vars["cap"] == math.inf
-    assert (
-        config.namespaces[ROOT].decompositions
-        == expected.namespaces[ROOT].decompositions
-    )
+    assert config.namespaces[ROOT].decompositions == [
+        SEEDED,
+        *expected.namespaces[ROOT].decompositions,
+    ]
 
 
 @pytest.mark.parametrize(
@@ -347,7 +371,7 @@ def test_a_configs_run_level_openings_are_left_out(library, tmp_path):
         "    messages: [{role: user, content: '{{ task }}'}]\n"
     )
     assert import_into(library, written)["decompositions"] == 0
-    assert run_config(library, tmp_path).namespaces[ROOT].decompositions == []
+    assert run_config(library, tmp_path).namespaces[ROOT].decompositions == [SEEDED]
 
 
 def test_import_replaces_same_named_items_and_keeps_the_rest(imported, tmp_path):
@@ -542,7 +566,7 @@ def test_the_engine_config_builds_a_registry_and_a_reasoner_without_a_model_call
         inline=list(config.namespaces.values()), default_repl=config.repl
     )
     lookup = registry.resolve("course_advisor").decompositions
-    assert [each.name for each in lookup] == ["catalog lookup"]
+    assert [each.name for each in lookup] == [SEEDED.name, "catalog lookup"]
     assert registry.resolve("course_advisor").tools == ["llm"]
     monkeypatch.setenv("OPENAI_API_KEY", FAKE_KEY)
     monkeypatch.chdir(tmp_path)

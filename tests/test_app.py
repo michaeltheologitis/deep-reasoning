@@ -39,12 +39,14 @@ from deep_reasoning.chats import create_chat
 from deep_reasoning.folders import data_folder
 from deep_reasoning.library import (
     HISTORY_DESCRIPTION,
+    HISTORY_EXAMPLE,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
     UPSERT_TOOL,
     dump,
     import_config,
     open_library,
+    parsed,
     writing,
 )
 from deep_reasoning.runs import CHANGE_FIELDS, LOST, save_event
@@ -550,6 +552,32 @@ async def test_a_follow_up_reads_how_an_earlier_message_was_worked_out_with_hist
     assert HISTORY_DESCRIPTION in fake.calls[-1].messages[0]["content"]
 
 
+EXAMPLE_PLAN = {
+    "What is 17 times 23?": [repl("17 * 23", "FinalAnswer(391)")],
+    "How did you get it?": [
+        repl("print(history.steps(1))"),
+        repl("FinalAnswer('17 * 23')"),
+    ],
+}
+
+
+@pytest.mark.anyio
+async def test_a_fresh_librarys_worked_example_shows_what_history_steps_prints(
+    library_on, connect
+):
+    with FakeOpenAI(scripted(EXAMPLE_PLAN)) as fake:
+        async with connect(library_on(fake)) as api:
+            chat = await new_chat(api)
+            await run_events(api, await send(api, chat, "What is 17 times 23?"))
+            events = await run_events(api, await send(api, chat, "How did you get it?"))
+    printed = kinds(events, "cell.end")[0]["output"]
+    # Asked before the follow-up ran a cell, so its only observation is the example's.
+    [_, asked, _] = fake.calls
+    texts = [each["content"] for each in asked.messages]
+    observations = [text for text in texts if text.startswith("<observation>")]
+    assert observations == [f"<observation>\n{printed}\n</observation>\n"]
+
+
 LIBRARY_PLAN = {
     "Save the example.": [write("librarian", EXAMPLE), repl("FinalAnswer('saved')")],
     "Reword it.": [write("librarian", REWORDED), repl("FinalAnswer('reworded')")],
@@ -650,6 +678,13 @@ async def test_a_change_to_the_library_applies_from_the_next_message(
     assert showing(thanking, ASKED) == [False]
 
 
+# A fresh Library's decompositions, root's then librarian's: the worked example at root.
+FRESH_DECOMPOSITIONS = [
+    [{"name": parsed(HISTORY_EXAMPLE).name, "yaml": HISTORY_EXAMPLE}],
+    [],
+]
+
+
 @pytest.mark.anyio
 async def test_a_refused_write_fails_its_cell_in_the_panels_words_and_stores_nothing(
     library_on, connect
@@ -666,7 +701,7 @@ async def test_a_refused_write_fails_its_cell_in_the_panels_words_and_stores_not
     for cell, (_, wording) in zip(ended, REFUSALS, strict=True):
         assert wording in cell["output"], cell["output"]
     assert changes(events) == []
-    assert [each["decompositions"] for each in namespaces] == [[], []]
+    assert [each["decompositions"] for each in namespaces] == FRESH_DECOMPOSITIONS
     assert events[-1]["outcome"] == "answered", events[-1]
 
 
@@ -1069,7 +1104,7 @@ async def test_a_sub_agent_spawned_into_librarian_from_another_chat_may_not_writ
         " tool; pick librarian under the message box."
     ) in cell["output"]
     assert changes(events) == []
-    assert [each["decompositions"] for each in namespaces] == [[], []]
+    assert [each["decompositions"] for each in namespaces] == FRESH_DECOMPOSITIONS
     assert events[-1]["outcome"] == "answered", events[-1]
 
 
