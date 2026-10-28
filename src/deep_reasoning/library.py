@@ -34,6 +34,7 @@ from deep_reasoner.v2.cli import (
     build_namespace_registry,
     declared_tool_names,
 )
+from deep_reasoner.v2.messages import NoCodeBlock, code
 from pydantic import ValidationError
 
 log = structlog.get_logger()
@@ -137,11 +138,14 @@ SHOWN_SETTINGS = ("max_iter", "max_depth", ENTRY_NAMESPACE, "repl")
 LINE_WIDTH = 88
 NEL = "\x85"
 ROLES = "user, assistant or system"
-# A worked example's turns, as deep_reasoner's own examples write them (its docs/configs).
+# A worked example's turns, as deep_reasoner's own namespace examples write them (its docs/configs).
 THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
-REPL_BLOCK = re.compile(r"<repl>(.*?)</repl>", re.DOTALL)
+REPL = "<repl>"
 OBSERVATION = re.compile(r"<observation>.*?</observation>", re.DOTALL)
-FINAL_ANSWER = re.compile(r"\bFinalAnswer\s*\(")
+# ASCII, as web/turns.js reads it; a whole-line comment calls nothing.
+FINAL_ANSWER = re.compile(r"\bFinalAnswer[ \t]*\(", re.ASCII)
+COMMENT_LINE = re.compile(r"[ \t]*#")
+BLANK_NAME = 'The name should be text, like "name: count the open tickets".'
 BETWEEN = {
     "user": "the assistant's turn goes between them",
     "assistant": "the user turn with the <observation> goes between them",
@@ -196,7 +200,7 @@ safe_url, claude_code), one of the app's, a Python keyword or a name the REPL bi
 itself; the system prompt and the run settings.
   library.show(): every namespace (a list of dicts): name, depth, yaml (the fields it \
 sets itself), fields (each as the engine resolves it, with where it comes from) and \
-decompositions (each with its name and yaml).
+decompositions (each with its name, yaml and problems).
   library.write_decomposition(namespace, yaml): adds the decomposition written as YAML \
 to namespace `namespace`, or replaces the one of that name there. Agents copy it, so \
 write it as they work, like those show() lists: name: <its name>, then messages:, a list \
@@ -309,6 +313,14 @@ def writing(connection):
     """One transaction that takes the write lock up front, so concurrent writers wait their turn instead of failing."""
     with connection:
         connection.execute("BEGIN IMMEDIATE")
+        yield
+
+
+@contextmanager
+def reading(connection):
+    """One read transaction, so what is read in it is the Library as it stood at one moment."""
+    with connection:
+        connection.execute("BEGIN")
         yield
 
 
@@ -682,27 +694,40 @@ def parsed(text):
     except ValidationError as error:
         raise LibraryError("\n".join(map(problem, error.errors()))) from error
     if not decomposition.name.strip():
-        raise LibraryError(
-            'The name should be text, like "name: count the open tickets".'
-        )
+        raise LibraryError(BLANK_NAME)
     return decomposition
 
 
+def running_code(content):
+    """The code the engine runs from the assistant turn *content*, blank for none."""
+    try:
+        return code(content).source
+    except NoCodeBlock:
+        return ""
+
+
 def answers(content):
-    """Whether the code of *content*'s last <repl> block, the one the engine runs, calls FinalAnswer."""
-    blocks = REPL_BLOCK.findall(content)
-    return bool(blocks) and FINAL_ANSWER.search(blocks[-1]) is not None
+    """Whether the code the engine runs from *content* calls FinalAnswer, outside a
+    whole-line comment."""
+    lines = running_code(content).split("\n")
+    return any(
+        FINAL_ANSWER.search(line) for line in lines if not COMMENT_LINE.match(line)
+    )
 
 
 def reply_problems(label, content):
     """What the assistant turn *label* lacks: its reasoning, and the one block the engine runs."""
-    blocks = len(REPL_BLOCK.findall(content))
+    blocks = content.count(REPL)
     problems = [] if THINK.search(content) else [f"{label} has no <think>…</think>."]
     if blocks == 0:
         problems.append(f"{label} has no <repl>…</repl> block.")
-    elif blocks > 1:
+    if blocks > 1:
         problems.append(
             f"{label} has {blocks} <repl> blocks; the engine runs only the last, so keep one."
+        )
+    if blocks and not running_code(content):
+        problems.append(
+            f"{label} has an empty <repl> block; the engine treats it as no block."
         )
     return problems
 
@@ -745,7 +770,7 @@ def turn_problems(messages):
     for number, message in enumerate(messages, start=1):
         turn = (number, message["role"], message["content"])
         problems += problems_of_turn(turn, previous)
-        if turn[1] != "system":
+        if message["role"] != "system":
             previous = turn
     if previous is None:
         return [NO_TASK]
@@ -761,14 +786,21 @@ def turn_problems(messages):
     return problems
 
 
+def example_problems(decomposition):
+    """The problems of *decomposition* as a worked example: a shared file's may have the
+    blank name parsed() refuses."""
+    if not decomposition.name.strip():
+        return [BLANK_NAME]
+    return turn_problems(decomposition.model_dump()["messages"])
+
+
 def stored_problems(text):
     """The problems of the decomposition stored as YAML *text*: its shape's, as a shared
     file may hold anything, or else its turns'."""
     try:
-        decomposition = parsed(text)
+        return example_problems(parsed(text))
     except LibraryError as error:
         return str(error).splitlines()
-    return turn_problems(decomposition.model_dump()["messages"])
 
 
 def add_decomposition(connection, namespace, text, replace=False, allowed=None):
@@ -794,7 +826,7 @@ def add_decomposition(connection, namespace, text, replace=False, allowed=None):
                 f'{namespace} already has "{name}"; rename it, or pick another namespace.'
             )
         connection.execute(UPSERT_DECOMPOSITION, tuple(stored.values()))
-    problems = turn_problems(decomposition.model_dump()["messages"])
+    problems = example_problems(decomposition)
     return stored | {"problems": problems}, None if found is None else found[0]
 
 
@@ -1140,14 +1172,13 @@ def in_chain_order(registry):
 def namespace_rows(connection, config, registry):
     """Each namespace as the panel shows it: its depth, its fields as the engine resolves
     them, its own decompositions (each with its problems as a worked example) and its own
-    YAML."""
+    YAML. *config* and *registry* are read in the same read (reading()) as its rows."""
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, name, yaml FROM decompositions ORDER BY rowid"
     )
     for namespace, name, text in rows:
-        row = {"name": name, "yaml": text, "problems": stored_problems(text)}
-        decompositions[namespace].append(row)
+        decompositions[namespace].append({"name": name, "yaml": text})
     # What each one's Edit YAML opens on: blank for a namespace that sets nothing.
     rows = connection.execute("SELECT name, yaml FROM namespaces")
     own = {name: "" if text == EMPTY_NAMESPACE else text for name, text in rows}
@@ -1156,22 +1187,35 @@ def namespace_rows(connection, config, registry):
             "name": name,
             "depth": len(registry.chain(name)) - 1,
             "fields": namespace_fields(registry, name, config),
-            "decompositions": decompositions[name],
+            "decompositions": checked(
+                decompositions[name], config.namespaces.get(name)
+            ),
             "yaml": own.get(name, ""),
         }
         for name in in_chain_order(registry)
     ]
 
 
+def checked(rows, namespace):
+    """A namespace's stored decompositions, *rows*, each with its problems as a worked
+    example, from *namespace*, the engine's reading of the same rows. Under a root the
+    file lacks, which the engine reads none of, they are parsed here."""
+    if namespace is None:
+        return [row | {"problems": stored_problems(row["yaml"])} for row in rows]
+    pairs = zip(rows, namespace.decompositions, strict=True)
+    return [row | {"problems": example_problems(each)} for row, each in pairs]
+
+
 def panel(connection):
     """What the Library panel shows: run settings, namespaces as the engine resolves them, tools, tabular vars."""
-    config, registry = config_and_registry(connection)
-    names = in_chain_order(registry)
-    sources = {name: source for name, _, source in library_tools(connection)}
-    return {
-        "default_namespace": config.entry_namespace,
-        "run_settings": run_settings(connection),
-        "namespaces": namespace_rows(connection, config, registry),
-        "tools": tool_rows(config, registry, names, sources),
-        "variables": variables(registry, names),
-    }
+    with reading(connection):
+        config, registry = config_and_registry(connection)
+        names = in_chain_order(registry)
+        sources = {name: source for name, _, source in library_tools(connection)}
+        return {
+            "default_namespace": config.entry_namespace,
+            "run_settings": run_settings(connection),
+            "namespaces": namespace_rows(connection, config, registry),
+            "tools": tool_rows(config, registry, names, sources),
+            "variables": variables(registry, names),
+        }

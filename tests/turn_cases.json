@@ -71,12 +71,86 @@
     "problems": ["Turn 2 (assistant) has no <repl>…</repl> block.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
   },
   {
-    "case": "an unclosed repl",
+    "case": "an unclosed repl that answers, which the engine closes",
     "messages": [
       {"role": "user", "content": "How many tickets are open?"},
       {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n"}
     ],
-    "problems": ["Turn 2 (assistant) has no <repl>…</repl> block.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+    "problems": []
+  },
+  {
+    "case": "an empty repl in a middle turn",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them.</think>\n<repl>\n</repl>\n"},
+      {"role": "user", "content": "<observation>\n</observation>\n"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has an empty <repl> block; the engine treats it as no block."]
+  },
+  {
+    "case": "a repl of only spaces Python strips",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\u0085\u001c\u3000</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has an empty <repl> block; the engine treats it as no block.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "FinalAnswer only in an unclosed block before the last",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Answer, then check.</think>\n<repl>FinalAnswer(1)\n<repl>print(2)</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has 2 <repl> blocks; the engine runs only the last, so keep one.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "<repl> inside the code",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nprint(\"<repl>\")\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has 2 <repl> blocks; the engine runs only the last, so keep one."]
+  },
+  {
+    "case": "FinalAnswer in a whole-line comment",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them.</think>\n<repl>\nx = len(tickets)\n    # FinalAnswer(x) later\nprint(x)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "FinalAnswer in a comment after a space only Python strips",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them.</think>\n<repl>\u001c# FinalAnswer(12)\nprint(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "a # mid-line before FinalAnswer",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Answer with a hash.</think>\n<repl>\nx = \"#\"; FinalAnswer(x)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "FinalAnswer after a letter outside ASCII",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\néFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "a space outside ASCII before FinalAnswer's bracket",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer\u0085(12)\nFinalAnswer\ufeff(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
   },
   {
     "case": "no observation",

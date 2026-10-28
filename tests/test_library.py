@@ -779,16 +779,6 @@ def test_a_decomposition_added_while_its_namespace_is_deleted_is_refused(importe
     assert "research" not in decomposition_rows(imported)
 
 
-def worked_examples(config):
-    """Each decomposition the namespaces of *config* hold, as (namespace, name, messages)."""
-    namespaces = yaml.safe_load(config.read_text(encoding="utf-8")).get("namespaces")
-    return [
-        (name, each["name"], each["messages"])
-        for name, namespace in (namespaces or {}).items()
-        for each in (namespace or {}).get("decompositions", [])
-    ]
-
-
 @pytest.mark.parametrize(
     ("messages", "problems"),
     [(case["messages"], case["problems"]) for case in TURN_CASES],
@@ -798,16 +788,19 @@ def test_a_decompositions_turns_are_checked_as_a_worked_example(messages, proble
     assert turn_problems(messages) == problems
 
 
-def test_the_seeded_example_and_the_engines_own_worked_examples_pass_the_turn_check():
-    examples = [
-        each for path in CONFIGS.rglob("*.yaml") for each in worked_examples(path)
+def test_the_seeded_example_and_the_engines_own_namespace_examples_pass(library):
+    for config in ("catalog/advisors.yaml", "examples/experience/experience.yaml"):
+        import_into(library, CONFIGS / config)
+    with closing(open_library(library)) as connection:
+        namespaces = panel(connection)["namespaces"]
+    rows = [
+        (each["name"], each["problems"])
+        for row in namespaces
+        for each in row["decompositions"]
     ]
-    # advisors.yaml's five, and experience.yaml's two, one with a message after its answer
-    assert len(examples) == 7
-    assert [(name, turn_problems(messages)) for _, name, messages in examples] == [
-        (name, []) for _, name, _ in examples
-    ]
-    assert turn_problems(SEEDED.model_dump()["messages"]) == []
+    # the seeded one, advisors.yaml's five, and experience.yaml's two, one with a message after its answer
+    assert len(rows) == 8
+    assert rows == [(name, []) for name, _ in rows]
 
 
 def test_a_decomposition_with_problems_is_stored_and_the_panel_lists_them(library):
@@ -839,4 +832,16 @@ def test_a_shared_files_decomposition_the_panel_would_refuse_shows_why_instead(
         [root, *_] = panel(connection)["namespaces"]
     assert root["decompositions"][-1]["problems"] == [
         'The name should be text, like "name: count the open tickets".'
+    ]
+
+
+def test_a_shared_files_decompositions_under_a_root_it_lacks_are_still_checked(library):
+    with closing(open_library(library)) as connection:
+        with writing(connection):
+            connection.execute("DELETE FROM namespaces WHERE name = ?", (ROOT,))
+            connection.execute(UPSERT_DECOMPOSITION, (ROOT, "no think", NO_THINK))
+        [root, *_] = panel(connection)["namespaces"]
+    assert [(each["name"], each["problems"]) for each in root["decompositions"]] == [
+        (SEEDED.name, []),
+        ("no think", ["Turn 2 (assistant) has no <think>…</think>."]),
     ]

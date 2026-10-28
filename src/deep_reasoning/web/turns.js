@@ -1,28 +1,37 @@
 // A decomposition's turns checked as a worked example, as library.py's turn_problems checks them, in its words.
 const THINK = /<think>[\s\S]*?<\/think>/;
-const REPL_BLOCK = /<repl>([\s\S]*?)<\/repl>/g;
+const REPL = "<repl>";
+const REPL_END = "</repl>";
 const OBSERVATION = /<observation>[\s\S]*?<\/observation>/;
-const FINAL_ANSWER = /\bFinalAnswer\s*\(/;
+const FINAL_ANSWER = /\bFinalAnswer[ \t]*\(/;
+const COMMENT_LINE = /^[ \t]*#/;
+// what Python's str.strip() strips, as the engine strips the code it runs: JS's trim() strips a different set
+const PYTHON_SPACE = /[\t-\r\x1c-\x20\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/.source;
+const PYTHON_STRIPPED = new RegExp(`^${PYTHON_SPACE}+|${PYTHON_SPACE}+$`, "g");
 const BETWEEN = {
   user: "the assistant's turn goes between them",
   assistant: "the user turn with the <observation> goes between them",
 };
 const NO_TASK = "There is no task: add a user turn holding it.";
 
-const blocksOf = (content) => [...content.matchAll(REPL_BLOCK)].map((match) => match[1]);
-
-// whether the code of the last <repl> block, the one the engine runs, calls FinalAnswer
-function answers(content) {
-  const code = blocksOf(content).at(-1);
-  return code !== undefined && FINAL_ANSWER.test(code);
+// the code the engine runs, as its code() takes it: after the last <repl>, up to the next </repl> or the end, stripped; blank for none
+function runningCode(content) {
+  const start = content.lastIndexOf(REPL);
+  if (start === -1) return "";
+  const rest = content.slice(start + REPL.length);
+  const end = rest.indexOf(REPL_END);
+  return (end === -1 ? rest : rest.slice(0, end)).replace(PYTHON_STRIPPED, "");
 }
 
+const answers = (content) => runningCode(content).split("\n").some((line) => !COMMENT_LINE.test(line) && FINAL_ANSWER.test(line));
+
 function replyProblems(label, content) {
-  const blocks = blocksOf(content).length;
+  const blocks = content.split(REPL).length - 1;
   return [
     !THINK.test(content) && `${label} has no <think>…</think>.`,
     blocks === 0 && `${label} has no <repl>…</repl> block.`,
     blocks > 1 && `${label} has ${blocks} <repl> blocks; the engine runs only the last, so keep one.`,
+    blocks > 0 && !runningCode(content) && `${label} has an empty <repl> block; the engine treats it as no block.`,
   ].filter(Boolean);
 }
 

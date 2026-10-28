@@ -54,6 +54,7 @@ from deep_reasoning.library import (
     loaded,
     namespace_rows,
     parsed_python,
+    reading,
     store_tool,
     tool_file,
     tool_text,
@@ -524,7 +525,7 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
 
     def show() -> list[dict[str, Any]]:
         """Every namespace, as the Library panel shows it."""
-        with app_file(library, "ro") as connection:
+        with app_file(library, "ro") as connection, reading(connection):
             return namespace_rows(connection, *config_and_registry(connection))
 
     def check_grant(registry: NamespaceRegistry) -> None:
