@@ -551,6 +551,9 @@ def build_library(client: Any, params: dict[str, Any]) -> Func:
 
     def write_decomposition(namespace: str, yaml: str) -> dict[str, Any]:
         """Add the decomposition *yaml* to *namespace*, or replace the one of its name."""
+        # The engine runs a reply's last <repl> block, so a cell writes [repl] instead.
+        if type(yaml) is str:
+            yaml = yaml.replace("[repl]", "<repl>").replace("[/repl]", "</repl>")
         check_writable(namespace, yaml, key_names)
         with app_file(library, "rw") as connection:
             stored, before = add_decomposition(

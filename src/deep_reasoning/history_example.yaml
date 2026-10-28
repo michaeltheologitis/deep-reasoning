@@ -1,0 +1,20 @@
+name: explain an earlier answer
+messages:
+  - {role: user, content: "How did you get your answer to my first message?"}
+  - role: assistant
+    content: |
+      <think>Read what I actually did, not guess; answer once I have seen it.</think>
+      <repl>
+      print(history.steps(1))
+      </repl>
+  - role: user
+    content: |
+      <observation>
+      [{'kind': 'cell', 'code': '17 * 23\nFinalAnswer(391)', 'output': 'FinalAnswer: 391', 'status': 'done', 'agents': [], 'drive': 1}]
+      </observation>
+  - role: assistant
+    content: |
+      <think>The record shows one cell: I evaluated 17 * 23 in Python and answered with its result.</think>
+      <repl>
+      FinalAnswer("I computed 17 * 23 directly in Python and answered with the result, 391.")
+      </repl>

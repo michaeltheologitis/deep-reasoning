@@ -20,6 +20,7 @@ from deep_reasoning.app_tools import (
     open_existing,
 )
 from deep_reasoning.library import (
+    HISTORY_EXAMPLE,
     UPSERT_TOOL,
     LibraryError,
     add_namespace,
@@ -27,6 +28,7 @@ from deep_reasoning.library import (
     delete_namespace,
     dump,
     open_library,
+    parsed,
     writing,
 )
 from deep_reasoning.runs import CHANGE_FIELDS, LOST, chat_runs, read_turn, save_event
@@ -334,6 +336,9 @@ def library_tool(library, namespace="librarian"):
     return build_library(None, told).value
 
 
+FRESH = [("root", parsed(HISTORY_EXAMPLE).name)]
+
+
 def stored(library):
     """Each decomposition in the app file, as (namespace, name)."""
     with closing(open_library(library)) as connection:
@@ -366,6 +371,29 @@ def test_show_gives_every_namespace_with_its_decompositions_as_plain_data(fresh)
     assert by_name["librarian"]["yaml"] == "tools:\n- library\n"
     assert by_name["librarian"]["decompositions"] == [
         {"name": "count the tickets", "yaml": EXAMPLE}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("content", "stored_content"),
+    [
+        (
+            "|\n    [repl]\n    FinalAnswer(3)\n    [/repl]\n",
+            "|\n    <repl>\n    FinalAnswer(3)\n    </repl>\n",
+        ),
+        ("[repl]FinalAnswer(3)[/repl]\n", "<repl>FinalAnswer(3)</repl>\n"),
+    ],
+    ids=["block", "one-line"],
+)
+def test_a_decomposition_written_with_repl_placeholders_is_stored_with_the_real_tags(
+    fresh, content, stored_content
+):
+    answer = "- role: assistant\n  content: "
+    tool = library_tool(fresh)
+    tool.write_decomposition("drafts", EXAMPLE + answer + content)
+    by_name = {each["name"]: each for each in tool.show()}
+    assert by_name["drafts"]["decompositions"] == [
+        {"name": "count the tickets", "yaml": EXAMPLE + answer + stored_content}
     ]
 
 
@@ -407,7 +435,7 @@ def test_a_write_the_tool_refuses_says_why_and_stores_nothing(
     monkeypatch.setenv(SHELL_KEY_ENV, SHELL_KEY)
     with pytest.raises(LibraryError, match=re.escape(refusal)):
         library_tool(fresh).write_decomposition(namespace, text)
-    assert stored(fresh) == []
+    assert stored(fresh) == FRESH
 
 
 @pytest.mark.parametrize(
@@ -422,14 +450,14 @@ def test_a_chat_whose_namespace_lost_the_grant_mid_run_may_not_write(
         change(connection, "librarian", argument)
     with pytest.raises(LibraryError, match=NOT_THIS_CHAT):
         tool.write_decomposition("drafts", EXAMPLE)
-    assert stored(fresh) == []
+    assert stored(fresh) == FRESH
 
 
 def test_a_busy_app_file_is_a_refusal_in_words(fresh):
     refused = pytest.raises(LibraryError, match="can't be used now .*; try again")
     with closing(open_library(fresh)) as connection, writing(connection), refused:
         library_tool(fresh).write_decomposition("drafts", EXAMPLE)
-    assert stored(fresh) == []
+    assert stored(fresh) == FRESH
 
 
 def test_a_moved_app_file_is_never_made_afresh(fresh, tmp_path):

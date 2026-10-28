@@ -97,6 +97,9 @@ FRESH_ROOT = {"tools": ["llm", "history"]}
 LIBRARIAN = "librarian"
 LIBRARY_TOOL = "library"
 FRESH_LIBRARIAN = {"tools": [LIBRARY_TOOL]}
+# Every namespace inherits it: without it, models answer in the cell printing history.
+HISTORY_EXAMPLE_FILE = Path(__file__).with_name("history_example.yaml")
+HISTORY_EXAMPLE = HISTORY_EXAMPLE_FILE.read_text(encoding="utf-8")
 UNTOUCHED_ROOT = (
     "name = :root AND yaml = :empty"
     " AND NOT EXISTS (SELECT 1 FROM decompositions WHERE namespace = :root)"
@@ -144,9 +147,15 @@ BUILTIN_DESCRIPTIONS = {
     "claude_code": DEFAULT_CLAUDE_DESCRIPTION,
 }
 HISTORY_DESCRIPTION = """\
-The `history` tool reads this chat's earlier messages and how you worked out each one, so \
-you can explain your earlier reasoning. Its methods return plain data (lists of dicts): \
-slice it in Python and print only what you need.
+When the user asks how you got an earlier answer, why you did something, or what an \
+earlier sub-agent did or found, read what you actually did with `history`: \
+print(history.steps(1)) prints message 1's thoughts and cells (code and output). For \
+what a sub-agent did, find its node with history.agents(1) and print \
+history.steps(1, node=<its node>): its own thoughts and cells. Then answer in a later \
+cell, from what it printed, not by redoing the work or guessing a method. The recap \
+holds only each earlier message and its answer, and ctx.history only this run's \
+conversation; history holds every step of the earlier ones. Its methods return plain \
+data (lists of dicts), and the REPL shows only what you print: print what you need.
   history.turns(): the earlier messages, numbered from 1 as the chat's recap numbers them: \
 turn, message, namespace, model, outcome, answer, detail, cost, seconds and agents (how \
 many sub-agents it ran).
@@ -161,26 +170,32 @@ name, before (None when added), after}, each with its drive."""
 LIBRARY_DESCRIPTION = """\
 The `library` tool reads and writes the app's Library: its namespaces, each with its own \
 fields, the decompositions (worked examples) each one's agents are shown, and the custom \
-tools namespaces may grant. A change \
-applies from the user's next message, not in this run, and only a chat whose namespace \
-grants this tool may make one. A namespace's agents get what it sets and what the \
-namespaces above it set (root, then research, then research.papers): their tools, vars \
-and system_suffix texts add up, and a decomposition of the same name lower down takes the \
-place of its parent's there; show() lists only each namespace's own. Locked, so you may \
-read them but not write them: root; a namespace's repl and reasoner; which namespaces \
-grant the app's own tools (library, history); granting a tool that runs Claude Code (its \
-factory is claude_code), which bills the user's subscription; a new namespace under one \
-that grants library or runs Claude Code (as its reasoner or a tool); a tool root grants, \
-or one the engine builds from its block alone (no Python of its own); a tool named as a \
-built-in (llm, rag, kg, safe_url, claude_code), one of the app's, a Python keyword or a \
-name the REPL binds itself; the system prompt and the run settings.
-  library.show(): every namespace, as plain data (a list of dicts): name, depth, yaml \
-(the fields it sets itself), fields (each as the engine resolves it, with where it comes \
-from) and decompositions (each with its name and yaml). Slice it in Python and print \
-only what you need.
+tools namespaces may grant. Its methods return plain data, and the REPL shows only what \
+you print: print what you inspect. A change applies from the user's next message, not in \
+this run, and only a chat whose namespace grants this tool may make one. A namespace's \
+agents get what it sets and what the namespaces above it set (root, then research, then \
+research.papers): their tools, vars and system_suffix texts add up, and a decomposition \
+of the same name lower down takes the place of its parent's there; show() lists only \
+each namespace's own. Locked, so you may read them but not write them: root; a \
+namespace's repl and reasoner; which namespaces grant the app's own tools (library, \
+history); granting a tool that runs Claude Code (its factory is claude_code), which \
+bills the user's subscription; a new namespace under one that grants library or runs \
+Claude Code (as its reasoner or a tool); a tool root grants, or one the engine builds \
+from its block alone (no Python of its own); a tool named as a built-in (llm, rag, kg, \
+safe_url, claude_code), one of the app's, a Python keyword or a name the REPL binds \
+itself; the system prompt and the run settings.
+  library.show(): every namespace (a list of dicts): name, depth, yaml (the fields it \
+sets itself), fields (each as the engine resolves it, with where it comes from) and \
+decompositions (each with its name and yaml).
   library.write_decomposition(namespace, yaml): adds the decomposition written as YAML \
-(a name: line, then messages:, a list of turns, each with a role and content) to \
-namespace `namespace`, or replaces the one of that name there.
+to namespace `namespace`, or replaces the one of that name there. Agents copy it, so \
+write it as they work, like those show() lists: name: <its name>, then messages:, a list \
+of turns, each a role and content (content: | for several lines): the user's task; then \
+assistant turns, each <think>…</think> and one <repl>…</repl> of Python; after each \
+but the last, a user turn with the <observation>…</observation> its code printed; the \
+last calls FinalAnswer(...). The last <repl> block in your reply is the one that runs, \
+so in your cell write the repl tags as [repl] and [/repl]; the tool writes the real \
+ones.
   library.add_namespace(name, yaml): adds namespace `name` ("research", or \
 "research.papers" under an existing research) with the fields its YAML sets, written as \
 show() gives a namespace's yaml: system_suffix (text added to its agents' system \
@@ -201,9 +216,8 @@ change_namespace, from the next message), but once any namespace grants it, its 
 and factory run at the start of every run of every chat, so a tool that stops building \
 stops every chat until the user takes it out of the namespaces' tools in the Library \
 panel.
-Each write returns what it did: {done: "added", "replaced" or "changed", what, name, \
-and the namespace for a decomposition or namespace}. A refusal raises ValueError saying \
-why."""
+Each write returns what it did, as {done, what, name} (and namespace, but for a \
+tool); a refusal raises ValueError saying why."""
 # Added in code, never stored: a shared file mustn't choose the code they run. Each one's
 # factory in app_tools.py, and what the agent is told it does.
 APP_TOOLS_FILE = Path(__file__).with_name("app_tools.py")
@@ -353,6 +367,8 @@ def written_by_an_earlier_version(found, names):
 def seed_new_library(connection):
     connection.execute(UPSERT_NAMESPACE, (ROOT, dump(FRESH_ROOT)))
     connection.execute(UPSERT_NAMESPACE, (LIBRARIAN, dump(FRESH_LIBRARIAN)))
+    example = (ROOT, parsed(HISTORY_EXAMPLE).name, HISTORY_EXAMPLE)
+    connection.execute(UPSERT_DECOMPOSITION, example)
     settings = [(key, dump(value)) for key, value in DEFAULT_SETTINGS.items()]
     connection.executemany(UPSERT_SETTING, settings)
 
