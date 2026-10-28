@@ -84,12 +84,11 @@ and their sub-agents can't be called again. How each answer was worked out (its 
 thoughts, cells and its sub-agents' steps) is kept: to explain an earlier answer, print \
 it with the history tool, when you have it, and answer in a later cell from what it \
 printed. Each earlier answer is shown as the FinalAnswer it gave."""
-# An earlier turn's assistant turn: the thought and the cell of the reply that gave its
-# answer, as the engine's worked examples show one, or why it has none.
+# An earlier turn's assistant turn: the cell that gave its answer, as the engine's worked
+# examples show one, or why it has none.
 ANSWER = jinja2.Template(
     """\
-{% if turn.outcome == "answered" and turn.answer is not none %}{% if turn.thought %}<think>{{ turn.thought }}</think>
-{% endif %}<repl>
+{% if turn.outcome == "answered" and turn.answer is not none %}<repl>
 FinalAnswer({{ answer }})
 </repl>
 {%- elif turn.outcome == "failed" %}(No answer: the run failed: {{ turn.detail }})
@@ -109,7 +108,6 @@ class Turn:
     outcome: Outcome
     answer: str | None
     detail: str | None
-    thought: str | None = None  # of the reply that gave its answer, shown before it
 
 
 @dataclass
@@ -258,9 +256,8 @@ def ended(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
-    """An ended run's message and how it ended, with the thought of the reply that gave
-    its answer, from its first and last events that load; None for a run that didn't
-    start, as one in a file from someone else may not have."""
+    """An ended run's message and how it ended, from its first and last events that load;
+    None for a run that didn't start, as one in a file from someone else may not have."""
     start = first_loaded(connection, run, FORWARD)
     if not started(start):
         log.warning("runs.turn_left_out", run=run)
@@ -268,10 +265,9 @@ def read_turn(connection: sqlite3.Connection, run: str) -> Turn | None:
     end = first_loaded(connection, run, BACKWARD)
     if not has_ended(end):
         end = LOST_END
-    outcome, thought = end.get("outcome"), end.get("thought")
-    if outcome != "answered" or not isinstance(thought, str):
-        thought = None
-    return Turn(start["prompt"], outcome, end.get("answer"), end.get("detail"), thought)
+    return Turn(
+        start["prompt"], end.get("outcome"), end.get("answer"), end.get("detail")
+    )
 
 
 def chat_runs(connection: sqlite3.Connection, chat: str) -> list[str]:

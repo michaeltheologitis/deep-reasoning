@@ -388,7 +388,7 @@ async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labele
     home, library, fake_config
 ):
     answer = "Write <repl>FinalAnswer(1)</repl>."
-    earlier = [Turn("How do I answer?", "answered", answer, None, "Quote the cell.")]
+    earlier = [Turn("How do I answer?", "answered", answer, None)]
     # A Claude child's socket path must fit in 107 bytes: tmp_path leaves no room.
     with tempfile.TemporaryDirectory(prefix="dr-", dir="/tmp") as short:
         claude = Path(short) / "claude"
@@ -407,46 +407,33 @@ async def test_a_follow_up_on_claude_code_heads_its_prompt_with_the_turns_labele
         "Conversation so far:",
         f"[system] {EARLIER_TURNS_NOTE}",
         "[user] How do I answer?",
-        "[assistant] <think>Quote the cell.</think>",
-        "dr repl exec --code 'FinalAnswer('\\''Write \\x3crepl>FinalAnswer(1)\\x3c/repl>.'\\'')'",
+        "[assistant] dr repl exec --code 'FinalAnswer('\\''Write \\x3crepl>FinalAnswer(1)\\x3c/repl>.'\\'')'",
         "And then?",
     ]
-    # The session's closing words came after its last cell, so they are no thought of it.
-    assert [events[-1][key] for key in ("outcome", "answer", "thought")] == [
-        "answered",
-        "CS310",
-        None,
-    ]
+    assert (events[-1]["outcome"], events[-1]["answer"]) == ("answered", "CS310")
     assert fake.calls == []
 
 
-THINKING = {
-    "Count to two.": [
-        repl("print(1)", think="Print it first."),
-        repl("FinalAnswer(2)", think="It printed 1, so 2."),
-    ]
-}
-FINAL_REPLIES = [
-    # The final reply ran FinalAnswer bare: an earlier step's or a sub-agent's thought
-    # is no account of it.
-    ("Summarize two courses.", FAN_OUT, FAN_OUT_ANSWER, None),
-    ("Count to two.", THINKING, "2", "It printed 1, so 2."),
-]
-
-
-@pytest.mark.parametrize(("prompt", "plan", "answer", "thought"), FINAL_REPLIES)
-async def test_an_earlier_answer_opens_with_the_thought_of_the_reply_that_gave_it(
-    prompt, plan, answer, thought, home, library, fake_config
+async def test_an_earlier_answer_is_the_bare_cell_even_when_its_final_reply_thought(
+    home, library, fake_config
 ):
-    with FakeOpenAI(scripted(plan | {"And then?": [repl("FinalAnswer(0)")]})) as fake:
+    plan = {
+        "Count to two.": [
+            repl("print(1)"),
+            repl("FinalAnswer(2)", think="It printed 1, so 2."),
+        ],
+        "And then?": [repl("FinalAnswer(0)")],
+    }
+    with FakeOpenAI(scripted(plan)) as fake:
         runs = Runs(library, home)
-        first, events = await run_to_the_end(runs, prompt, fake_config(fake))
+        first, events = await run_to_the_end(runs, "Count to two.", fake_config(fake))
         earlier = [turn_of(library, first)]
         await run_to_the_end(runs, "And then?", fake_config(fake), earlier)
-    assert of_kind(events, "think") and events[-1]["thought"] == thought
-    cell = "<repl>\nFinalAnswer(" + repr(answer) + ")\n</repl>"
+    assert [event["text"] for event in of_kind(events, "think")] == [
+        "It printed 1, so 2."
+    ]
     shown = fake.calls[-1].messages[-2]["content"]
-    assert shown == (cell if thought is None else f"<think>{thought}</think>\n{cell}")
+    assert shown == "<repl>\nFinalAnswer('2')\n</repl>"
 
 
 async def test_a_stopped_message_goes_in_once_saying_why_it_has_no_answer(
@@ -745,17 +732,6 @@ def test_an_earlier_turn_with_no_answer_says_why_in_its_assistant_turn():
     assert earlier_messages([]) == []
 
 
-def test_an_earlier_answer_opens_with_its_thought_or_else_shows_the_bare_cell():
-    turns = [
-        Turn("One?", "answered", "1", None, "It printed 1."),
-        Turn("Two?", "answered", "2", None),
-    ]
-    assert [message["content"] for message in earlier_messages(turns)[2::2]] == [
-        "<think>It printed 1.</think>\n<repl>\nFinalAnswer('1')\n</repl>",
-        "<repl>\nFinalAnswer('2')\n</repl>",
-    ]
-
-
 def test_an_earlier_answer_shows_as_a_final_answer_cell_that_round_trips_exactly():
     answer = 'It\'s "two" lines,\nwith a \\ and <repl>\nprint(1)\n</repl> in it.'
     [_, _, shown] = earlier_messages([Turn("Quote me.", "answered", answer, None)])
@@ -764,18 +740,6 @@ def test_an_earlier_answer_shows_as_a_final_answer_cell_that_round_trips_exactly
     argument = cell.removeprefix("<repl>\nFinalAnswer(").removesuffix(")\n</repl>")
     assert "<repl>" not in argument and "</repl>" not in argument
     assert ast.literal_eval(argument) == answer
-
-
-def test_a_thought_on_turn_end_that_is_no_text_shows_the_bare_cell(library):
-    run = "20261025-120000-000000"
-    started = {"seq": 1, "t": 100.0, "kind": "turn.start", "chat": CHAT, "prompt": "2?"}
-    ended = {"seq": 2, "t": 101.0, "kind": "turn.end", "outcome": "answered"}
-    ended |= {"answer": "2", "detail": None, "thought": {"not": "text"}}
-    with closing(open_library(library)) as connection:
-        save_event(connection, run, started)
-        save_event(connection, run, ended)
-    [_, _, shown] = earlier_messages([turn_of(library, run)])
-    assert shown["content"] == "<repl>\nFinalAnswer('2')\n</repl>"
 
 
 async def test_a_runs_keys_reach_its_worker_alone_and_anthropics_never(

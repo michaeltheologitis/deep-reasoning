@@ -485,7 +485,7 @@ async def test_a_follow_up_gets_the_chat_so_far_as_turns_after_the_examples(
         ("system", DEFAULT_EXAMPLE_FENCE),
         ("system", EARLIER_TURNS_NOTE),
         ("user", "Count to two."),
-        ("assistant", "<think>Then 2.</think>\n<repl>\nFinalAnswer('2')\n</repl>"),
+        ("assistant", "<repl>\nFinalAnswer('2')\n</repl>"),
         ("user", "What did I ask?"),
         ("assistant", "<repl>\nFinalAnswer('to count')\n</repl>"),
         ("user", "And what did you answer?"),
