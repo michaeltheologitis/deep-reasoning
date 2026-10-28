@@ -150,9 +150,10 @@ BUILTIN_DESCRIPTIONS = {
 HISTORY_DESCRIPTION = """\
 When the user asks how you got an earlier answer, why you did something, or what an \
 earlier sub-agent did or found, read what you actually did with `history`: \
-print(history.steps(1)) prints message 1's thoughts and cells (code and output). Then \
-answer in a later cell, from what it printed, not by redoing the work or guessing a \
-method. The recap holds only each earlier message and its answer, and ctx.history only \
+print(history.steps(1)) prints message 1's thoughts and cells (code and output). For \
+what a sub-agent did, find its node with history.agents(1) and print \
+history.steps(1, node=<its node>): its own thoughts and cells. Then answer in a later \
+cell, from what it printed, not by redoing the work or guessing a method. The recap holds only each earlier message and its answer, and ctx.history only \
 this run's conversation; history holds every step of the earlier ones. Its methods \
 return plain data (lists of dicts), and the REPL shows only what you print: print what \
 you need.
