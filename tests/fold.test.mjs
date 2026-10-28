@@ -178,10 +178,47 @@ test("a row the run's end stopped is timed to that end", () => {
 });
 
 test("one unpriced call makes every total above it unknown, not zero", () => {
-  const { turn } = foldEvents(recorded("unpriced"));
-  assert.equal(turn.cost, null);
-  assert.ok(allRows(turn).every((row) => row.cost === null));
+  const events = recorded("unpriced");
+  const { turn } = foldEvents(events);
+  assert.deepEqual([turn.cost, turn.unpriced], [null, true]);
+  assert.ok(allRows(turn).every((row) => row.cost === null && row.unpriced));
+  assert.equal(foldEvents(events.slice(0, -1)).turn.unpriced, true);
 });
+
+test("a priced run's totals are known", () => {
+  const { turn } = foldEvents(recorded("fanout"));
+  assert.ok(turn.cost > 0);
+  assert.equal(turn.unpriced, false);
+  assert.ok(allRows(turn).every((row) => row.cost > 0 && !row.unpriced));
+});
+
+test("a sub-agent with no calls yet has no cost, unlike one whose call was unpriced", () => {
+  const events = recorded("unpriced");
+  const firstCall = (start) => events.findIndex((event) => event.kind === "usage" && event.node === start.node);
+  // the sub-agents run in parallel, so whichever calls first: just before the other's first call, it has started and not called
+  const [early, late] = ofKind(events, "agent.start")
+    .filter((event) => event.parent != null)
+    .sort((a, b) => firstCall(a) - firstCall(b));
+  const rows = rowsOf(foldEvents(events.slice(0, firstCall(late))).turn);
+  const row = (start) => rows.find((candidate) => candidate.task === start.task);
+  assert.deepEqual([row(early).cost, row(early).unpriced], [null, true]);
+  assert.deepEqual([row(late).cost, row(late).unpriced], [null, false]);
+});
+
+for (const cost of ["0.5", "abc"]) {
+  test(`a cost that isn't a number (${JSON.stringify(cost)}), as a crafted file may hold, reads as unknown`, () => {
+    const events = [
+      ...parentCycle.slice(0, 3),
+      { seq: 4, t: 2, kind: "agent.start", node: 2, parent: 1, cell: 1, task: "A.", drive: 1 },
+      { seq: 5, t: 3, kind: "usage", node: 2, cost },
+      { seq: 6, t: 4, kind: "turn.end", outcome: "answered", answer: "done", detail: null, cost, seconds: 4 },
+    ];
+    for (const { turn } of [foldEvents(events.slice(0, -1)), foldEvents(events)]) {
+      const [row] = rowsOf(turn);
+      assert.deepEqual([turn.cost, turn.unpriced, row.cost, row.unpriced], [null, true, null, true]);
+    }
+  });
+}
 
 test("a running sub-agent is a running row, and it costs what its calls so far cost", () => {
   const events = recorded("fanout");

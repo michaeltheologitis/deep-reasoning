@@ -20,6 +20,11 @@ const PANEL_CLOSE = "panel-close";
 const PANEL_OPEN = "panel-open";
 const LIBRARY_CHANGED = "library-changed";
 const FROM_NEXT = "from the next message";
+const UNKNOWN_COST = "N/A";
+// no-break spaces keep a cost whole where its line wraps
+const COST_NA = `cost\u00a0${UNKNOWN_COST}`;
+const PLUS_NA = `\u00a0+\u00a0${UNKNOWN_COST}`;
+const PRICE_UNKNOWN = "this model's price isn't known";
 const MENU_STEPS = { ArrowDown: 1, ArrowUp: -1 };
 // ︎ keeps ✳ a text glyph where the system would draw it as an emoji
 const SPIN = ["·", "✢", "✳︎", "✶", "✻", "✽", "✻", "✶", "✳︎", "✢"];
@@ -81,6 +86,9 @@ function formatCost(usd) {
   if (usd === 0) return "$0";
   return `$${usd.toFixed(usd >= 0.01 ? 2 : 4)}`;
 }
+
+// An unpriced call's cost is unknown, not free; a holder with no calls yet shows none.
+const costView = ({ cost, unpriced }) => (unpriced ? element("span", { title: PRICE_UNKNOWN }, COST_NA) : formatCost(cost));
 
 function formatSeconds(seconds) {
   if (seconds == null) return null;
@@ -232,7 +240,8 @@ function delegationMeta(cell) {
     ? clock(Math.min(...running.map((agent) => agent.started)))
     : formatSeconds(Math.max(...agents.map((agent) => agent.seconds ?? 0)));
   const costs = agents.map((agent) => agent.cost).filter((cost) => cost != null);
-  const total = costs.length > 0 && formatCost(costs.reduce((sum, cost) => sum + cost, 0));
+  const unpriced = agents.some((agent) => agent.unpriced);
+  const total = costView({ cost: costs.length > 0 ? costs.reduce((sum, cost) => sum + cost, 0) : null, unpriced });
   return join([...counts, longest, total].filter(Boolean), " · ");
 }
 
@@ -314,7 +323,7 @@ function renderAgent(agent) {
   const meta = [
     agent.status !== "done" && element("span", { class: `word ${tone}` }, word),
     running ? clock(agent.started) : formatSeconds(agent.seconds),
-    formatCost(agent.cost),
+    costView(agent),
   ].filter(Boolean);
   const el = element(
     "div",
@@ -345,7 +354,7 @@ function summary(turn, switched) {
   const seconds = formatSeconds(turn.seconds);
   const agents = countAgents(turn);
   const lead = word ? [element("span", { class: `word ${tone}` }, word), ` after ${seconds}`] : `Reasoned for ${seconds}`;
-  return join([lead, agents > 0 && plural(agents, "sub-agent"), formatCost(turn.cost), turn.model, switched].filter(Boolean), " · ");
+  return join([lead, agents > 0 && plural(agents, "sub-agent"), costView(turn), turn.model, switched].filter(Boolean), " · ");
 }
 
 function liveSummary(turn, followed, switched) {
@@ -483,9 +492,19 @@ function renderComposer() {
   hint.classList.toggle("err", state.problem != null);
   // the hint is a live region: setting the same text again would announce it again
   if (hint.textContent !== text) hint.textContent = text;
-  const total = (state.current?.turns ?? []).reduce((sum, turn) => sum + (turn.cost ?? 0), 0);
-  byId("total").textContent = total ? `${formatCost(total)} this chat` : "";
+  renderTotal(state.current?.turns ?? []);
   renderChoices(state.current);
+}
+
+// What the chat's turns cost, with N/A when any turn's is unknown.
+function renderTotal(turns) {
+  const sum = turns.reduce((total, turn) => total + (turn.cost ?? 0), 0);
+  const known = sum > 0 && formatCost(sum);
+  const unknown = turns.some((turn) => turn.unpriced);
+  const total = byId("total");
+  total.title = unknown ? PRICE_UNKNOWN : "";
+  if (unknown) total.textContent = known ? `${known}${PLUS_NA} this chat` : `${COST_NA} this chat`;
+  else total.textContent = known ? `${known} this chat` : "";
 }
 
 // Updated in place, as the composer redraws with each frame of a live run. The server says what the chat's next message runs on.
