@@ -62,6 +62,10 @@ The first run takes a minute. It opens http://127.0.0.1:8000 in a tab (`--port 8
 - What a run prints travels with the file. The app withholds any provider's key from it, but can't know other
   secrets a cell reads from your shell.
 - The **decompositions** panel (top right) adds decompositions as YAML, and adds, edits and deletes namespaces.
+  It marks each decomposition ✓ or ✗ by whether its turns make a worked example like `deep_reasoner`'s own (the
+  task; each assistant turn's `<think>` and one `<repl>`, then the `<observation>` it printed; `FinalAnswer` last),
+  and opening a ✗ says why. The add form warns as you type but still adds it, so a draft can be saved. The code
+  isn't run, so an observation isn't checked against it.
 - In a chat in the `librarian` namespace, picked under the message box, the agent can add or edit a decomposition in
   a namespace you name, add a namespace or change one's own fields (its system suffix, vars, tools and spawn), and
   write a new tool of its own in Python (or replace one) that it then grants to a namespace, with the app's own

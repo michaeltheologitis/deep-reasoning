@@ -1,3 +1,4 @@
+import json
 import math
 import re
 import socket
@@ -31,6 +32,7 @@ from deep_reasoning.library import (
     LIBRARIAN,
     LIBRARY_DESCRIPTION,
     LIBRARY_ONLY,
+    UPSERT_DECOMPOSITION,
     UPSERT_NAMESPACE,
     UPSERT_SETTING,
     UPSERT_TOOL,
@@ -48,6 +50,7 @@ from deep_reasoning.library import (
     parsed,
     store_tool,
     stored_config,
+    turn_problems,
     writing,
 )
 
@@ -79,6 +82,16 @@ namespaces:
 ADDED = "name: added\nmessages: [{role: user, content: hi}]\n"
 RESEARCH = "vars: {topic: ml}\nsystem_suffix: |\n  Cite each source.\n"
 WAIT_FOR_THE_LOCK_S = 0.3
+CONFIGS = Path(__file__).parent / "configs"
+# Each case's turns and the problems they have, shared with tests/turns.test.mjs.
+TURN_CASES = json.loads(
+    (Path(__file__).parent / "turn_cases.json").read_text(encoding="utf-8")
+)
+NO_THINK = """name: no think
+messages:
+- {role: user, content: "How many?"}
+- {role: assistant, content: "<repl>FinalAnswer(3)</repl>"}
+"""
 SEEDED = parsed(HISTORY_EXAMPLE)
 # What the app puts in for a chat on OpenAI's gpt-6-luna.
 CHATS_MODEL = {
@@ -764,3 +777,71 @@ def test_a_decomposition_added_while_its_namespace_is_deleted_is_refused(importe
         with pytest.raises(LibraryError, match='no namespace "research"'):
             added.result()
     assert "research" not in decomposition_rows(imported)
+
+
+@pytest.mark.parametrize(
+    ("messages", "problems"),
+    [(case["messages"], case["problems"]) for case in TURN_CASES],
+    ids=[case["case"] for case in TURN_CASES],
+)
+def test_a_decompositions_turns_are_checked_as_a_worked_example(messages, problems):
+    assert turn_problems(messages) == problems
+
+
+def test_the_seeded_example_and_the_engines_own_namespace_examples_pass(library):
+    for config in ("catalog/advisors.yaml", "examples/experience/experience.yaml"):
+        import_into(library, CONFIGS / config)
+    with closing(open_library(library)) as connection:
+        namespaces = panel(connection)["namespaces"]
+    rows = [
+        (each["name"], each["problems"])
+        for row in namespaces
+        for each in row["decompositions"]
+    ]
+    # the seeded one, advisors.yaml's five, and experience.yaml's two, one with a message after its answer
+    assert len(rows) == 8
+    assert rows == [(name, []) for name, _ in rows]
+
+
+def test_a_decomposition_with_problems_is_stored_and_the_panel_lists_them(library):
+    stored, _ = change(library, add_decomposition, ROOT, NO_THINK)
+    with closing(open_library(library)) as connection:
+        [root, *_] = panel(connection)["namespaces"]
+    no_think = ["Turn 2 (assistant) has no <think>…</think>."]
+    assert stored == {
+        "namespace": ROOT,
+        "name": "no think",
+        "yaml": NO_THINK,
+        "problems": no_think,
+    }
+    assert [(each["name"], each["problems"]) for each in root["decompositions"]] == [
+        (SEEDED.name, []),
+        ("no think", no_think),
+    ]
+
+
+def test_a_shared_files_decomposition_the_panel_would_refuse_shows_why_instead(
+    library,
+):
+    blank = "name: ' '\nmessages: [{role: user, content: hi}]\n"
+    with closing(open_library(library)) as connection:
+        with writing(connection):
+            connection.execute(UPSERT_DECOMPOSITION, (ROOT, " ", blank))
+            # Under a namespace no longer there, so the engine never reads it.
+            connection.execute(UPSERT_DECOMPOSITION, ("gone", "x", "just text\n"))
+        [root, *_] = panel(connection)["namespaces"]
+    assert root["decompositions"][-1]["problems"] == [
+        'The name should be text, like "name: count the open tickets".'
+    ]
+
+
+def test_a_shared_files_decompositions_under_a_root_it_lacks_are_still_checked(library):
+    with closing(open_library(library)) as connection:
+        with writing(connection):
+            connection.execute("DELETE FROM namespaces WHERE name = ?", (ROOT,))
+            connection.execute(UPSERT_DECOMPOSITION, (ROOT, "no think", NO_THINK))
+        [root, *_] = panel(connection)["namespaces"]
+    assert [(each["name"], each["problems"]) for each in root["decompositions"]] == [
+        (SEEDED.name, []),
+        ("no think", ["Turn 2 (assistant) has no <think>…</think>."]),
+    ]

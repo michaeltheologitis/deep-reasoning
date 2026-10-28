@@ -34,6 +34,7 @@ from deep_reasoner.v2.cli import (
     build_namespace_registry,
     declared_tool_names,
 )
+from deep_reasoner.v2.messages import NoCodeBlock, code
 from pydantic import ValidationError
 
 log = structlog.get_logger()
@@ -137,6 +138,19 @@ SHOWN_SETTINGS = ("max_iter", "max_depth", ENTRY_NAMESPACE, "repl")
 LINE_WIDTH = 88
 NEL = "\x85"
 ROLES = "user, assistant or system"
+# A worked example's turns, as deep_reasoner's own namespace examples write them (its docs/configs).
+THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+REPL = "<repl>"
+OBSERVATION = re.compile(r"<observation>.*?</observation>", re.DOTALL)
+# ASCII, as web/turns.js reads it; a whole-line comment calls nothing.
+FINAL_ANSWER = re.compile(r"\bFinalAnswer[ \t]*\(", re.ASCII)
+COMMENT_LINE = re.compile(r"[ \t]*#")
+BLANK_NAME = 'The name should be text, like "name: count the open tickets".'
+BETWEEN = {
+    "user": "the assistant's turn goes between them",
+    "assistant": "the user turn with the <observation> goes between them",
+}
+NO_TASK = "There is no task: add a user turn holding it."
 # make_tool builds `factory: llm` with v2's own builder, the rest from TOOL_BUILDERS.
 BUILDERS = {**TOOL_BUILDERS, "llm": build_llm_tool}
 BUILTIN_DESCRIPTIONS = {
@@ -186,7 +200,7 @@ safe_url, claude_code), one of the app's, a Python keyword or a name the REPL bi
 itself; the system prompt and the run settings.
   library.show(): every namespace (a list of dicts): name, depth, yaml (the fields it \
 sets itself), fields (each as the engine resolves it, with where it comes from) and \
-decompositions (each with its name and yaml).
+decompositions (each with its name, yaml and problems).
   library.write_decomposition(namespace, yaml): adds the decomposition written as YAML \
 to namespace `namespace`, or replaces the one of that name there. Agents copy it, so \
 write it as they work, like those show() lists: name: <its name>, then messages:, a list \
@@ -195,7 +209,9 @@ assistant turns, each <think>…</think> and one <repl>…</repl> of Python; aft
 but the last, a user turn with the <observation>…</observation> its code printed; the \
 last calls FinalAnswer(...). The last <repl> block in your reply is the one that runs, \
 so in your cell write the repl tags as [repl] and [/repl]; the tool writes the real \
-ones.
+ones. It is stored even when it isn't yet a worked example like that: the result's \
+problems lists each way it isn't (empty when none), and until you write it again \
+without them the Library panel marks it ✗.
   library.add_namespace(name, yaml): adds namespace `name` ("research", or \
 "research.papers" under an existing research) with the fields its YAML sets, written as \
 show() gives a namespace's yaml: system_suffix (text added to its agents' system \
@@ -297,6 +313,14 @@ def writing(connection):
     """One transaction that takes the write lock up front, so concurrent writers wait their turn instead of failing."""
     with connection:
         connection.execute("BEGIN IMMEDIATE")
+        yield
+
+
+@contextmanager
+def reading(connection):
+    """One read transaction, so what is read in it is the Library as it stood at one moment."""
+    with connection:
+        connection.execute("BEGIN")
         yield
 
 
@@ -670,18 +694,123 @@ def parsed(text):
     except ValidationError as error:
         raise LibraryError("\n".join(map(problem, error.errors()))) from error
     if not decomposition.name.strip():
-        raise LibraryError(
-            'The name should be text, like "name: count the open tickets".'
-        )
+        raise LibraryError(BLANK_NAME)
     return decomposition
+
+
+def running_code(content):
+    """The code the engine runs from the assistant turn *content*, blank for none."""
+    try:
+        return code(content).source
+    except NoCodeBlock:
+        return ""
+
+
+def answers(content):
+    """Whether the code the engine runs from *content* calls FinalAnswer, outside a
+    whole-line comment."""
+    lines = running_code(content).split("\n")
+    return any(
+        FINAL_ANSWER.search(line) for line in lines if not COMMENT_LINE.match(line)
+    )
+
+
+def reply_problems(label, content):
+    """What the assistant turn *label* lacks: its reasoning, and the one block the engine runs."""
+    blocks = content.count(REPL)
+    problems = [] if THINK.search(content) else [f"{label} has no <think>…</think>."]
+    if blocks == 0:
+        problems.append(f"{label} has no <repl>…</repl> block.")
+    if blocks > 1:
+        problems.append(
+            f"{label} has {blocks} <repl> blocks; the engine runs only the last, so keep one."
+        )
+    if blocks and not running_code(content):
+        problems.append(
+            f"{label} has an empty <repl> block; the engine treats it as no block."
+        )
+    return problems
+
+
+def problems_of_turn(turn, previous):
+    """The problems of *turn*, a (number, role, content), after *previous*, the latest turn
+    before it but a system one (None for none)."""
+    number, role, content = turn
+    label = f"Turn {number} ({role})"
+    if role == "system" and previous is None:
+        return []
+    if role == "system":
+        return [f"{label} comes after the task; system turns go before it."]
+    before, before_role, before_content = previous or (None, None, "")
+    problems = []
+    if before is None and role == "assistant":
+        problems.append(f"{label} should be the user's task; start with a user turn.")
+    if before_role == role:
+        problems.append(f"{label} follows another {role} turn; {BETWEEN[role]}.")
+    if role == "assistant":
+        return problems + reply_problems(label, content)
+    # What a cell printed follows it, unless it answered: then a new message may.
+    if (
+        before_role == "assistant"
+        and not answers(before_content)
+        and not OBSERVATION.search(content)
+    ):
+        problems.append(
+            f"{label} should hold the <observation>…</observation> that turn {before}'s code printed."
+        )
+    return problems
+
+
+def turn_problems(messages):
+    """What keeps *messages*, a decomposition's turns (each a mapping of role and content),
+    from being a worked example like deep_reasoner's own, in plain words; none when it is one.
+    Its code isn't run, so an observation isn't checked against what the code would print."""
+    problems = []
+    previous = None
+    for number, message in enumerate(messages, start=1):
+        turn = (number, message["role"], message["content"])
+        problems += problems_of_turn(turn, previous)
+        if message["role"] != "system":
+            previous = turn
+    if previous is None:
+        return [NO_TASK]
+    number, role, content = previous
+    if role == "user":
+        problems.append(
+            f"It ends on turn {number} (user); end with the assistant's turn that calls FinalAnswer(...)."
+        )
+    elif not answers(content):
+        problems.append(
+            f"Turn {number} (assistant), the last, should call FinalAnswer(...) in its <repl>."
+        )
+    return problems
+
+
+def example_problems(decomposition):
+    """The problems of *decomposition* as a worked example: a shared file's may have the
+    blank name parsed() refuses."""
+    if not decomposition.name.strip():
+        return [BLANK_NAME]
+    return turn_problems(decomposition.model_dump()["messages"])
+
+
+def stored_problems(text):
+    """The problems of the decomposition stored as YAML *text*: its shape's, as a shared
+    file may hold anything, or else its turns'."""
+    try:
+        return example_problems(parsed(text))
+    except LibraryError as error:
+        return str(error).splitlines()
 
 
 def add_decomposition(connection, namespace, text, replace=False, allowed=None):
     """Store the decomposition written as YAML *text* under *namespace*, or raise
     LibraryError saying why not: one of its name there is refused, or with *replace* put in
     its place. *allowed*, given the connection under the write lock first, raises to refuse.
-    The stored row, and the YAML it replaced (None when it is new)."""
-    name = parsed(text).name
+    A worked example with problems is stored all the same, so a draft can be saved.
+    The stored row with its problems, and the YAML it replaced (None when it is new)."""
+    decomposition = parsed(text)
+    name = decomposition.name
     stored = {"namespace": namespace, "name": name, "yaml": text}
     with writing(connection):
         if allowed is not None:
@@ -697,7 +826,8 @@ def add_decomposition(connection, namespace, text, replace=False, allowed=None):
                 f'{namespace} already has "{name}"; rename it, or pick another namespace.'
             )
         connection.execute(UPSERT_DECOMPOSITION, tuple(stored.values()))
-    return stored, None if found is None else found[0]
+    problems = example_problems(decomposition)
+    return stored | {"problems": problems}, None if found is None else found[0]
 
 
 def namespace_problem(error):
@@ -1041,7 +1171,8 @@ def in_chain_order(registry):
 
 def namespace_rows(connection, config, registry):
     """Each namespace as the panel shows it: its depth, its fields as the engine resolves
-    them, its own decompositions and its own YAML."""
+    them, its own decompositions (each with its problems as a worked example) and its own
+    YAML. *config* and *registry* are read in the same read (reading()) as its rows."""
     decompositions = defaultdict(list)
     rows = connection.execute(
         "SELECT namespace, name, yaml FROM decompositions ORDER BY rowid"
@@ -1056,22 +1187,35 @@ def namespace_rows(connection, config, registry):
             "name": name,
             "depth": len(registry.chain(name)) - 1,
             "fields": namespace_fields(registry, name, config),
-            "decompositions": decompositions[name],
+            "decompositions": checked(
+                decompositions[name], config.namespaces.get(name)
+            ),
             "yaml": own.get(name, ""),
         }
         for name in in_chain_order(registry)
     ]
 
 
+def checked(rows, namespace):
+    """A namespace's stored decompositions, *rows*, each with its problems as a worked
+    example, from *namespace*, the engine's reading of the same rows. Under a root the
+    file lacks, which the engine reads none of, they are parsed here."""
+    if namespace is None:
+        return [row | {"problems": stored_problems(row["yaml"])} for row in rows]
+    pairs = zip(rows, namespace.decompositions, strict=True)
+    return [row | {"problems": example_problems(each)} for row, each in pairs]
+
+
 def panel(connection):
     """What the Library panel shows: run settings, namespaces as the engine resolves them, tools, tabular vars."""
-    config, registry = config_and_registry(connection)
-    names = in_chain_order(registry)
-    sources = {name: source for name, _, source in library_tools(connection)}
-    return {
-        "default_namespace": config.entry_namespace,
-        "run_settings": run_settings(connection),
-        "namespaces": namespace_rows(connection, config, registry),
-        "tools": tool_rows(config, registry, names, sources),
-        "variables": variables(registry, names),
-    }
+    with reading(connection):
+        config, registry = config_and_registry(connection)
+        names = in_chain_order(registry)
+        sources = {name: source for name, _, source in library_tools(connection)}
+        return {
+            "default_namespace": config.entry_namespace,
+            "run_settings": run_settings(connection),
+            "namespaces": namespace_rows(connection, config, registry),
+            "tools": tool_rows(config, registry, names, sources),
+            "variables": variables(registry, names),
+        }

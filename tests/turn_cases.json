@@ -1,0 +1,243 @@
+[
+  {
+    "case": "a task and its answer",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "a cell, what it printed, then the answer",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them, and print the count to check it.</think>\n<repl>\nprint(len(tickets))\n</repl>\n"},
+      {"role": "user", "content": "<observation>\n12\n</observation>\n"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "system turns before the task",
+    "messages": [
+      {"role": "system", "content": "Answer in numbers."},
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "a new message after the answer",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"},
+      {"role": "user", "content": "And how many are closed?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "what an answering cell printed when it failed",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"},
+      {"role": "user", "content": "<observation>\nNameError: name 'tickets' is not defined\n</observation>\n"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "no think",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has no <think>…</think>."]
+  },
+  {
+    "case": "two repl blocks",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count, then answer.</think>\n<repl>\nprint(len(tickets))\n</repl>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has 2 <repl> blocks; the engine runs only the last, so keep one."]
+  },
+  {
+    "case": "no repl",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\nThe answer is 12.\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has no <repl>…</repl> block.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "an unclosed repl that answers, which the engine closes",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "an empty repl in a middle turn",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them.</think>\n<repl>\n</repl>\n"},
+      {"role": "user", "content": "<observation>\n</observation>\n"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has an empty <repl> block; the engine treats it as no block."]
+  },
+  {
+    "case": "a repl of only spaces Python strips",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\u0085\u001c\u3000</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has an empty <repl> block; the engine treats it as no block.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "FinalAnswer only in an unclosed block before the last",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Answer, then check.</think>\n<repl>FinalAnswer(1)\n<repl>print(2)</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has 2 <repl> blocks; the engine runs only the last, so keep one.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "<repl> inside the code",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nprint(\"<repl>\")\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has 2 <repl> blocks; the engine runs only the last, so keep one."]
+  },
+  {
+    "case": "FinalAnswer in a whole-line comment",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them.</think>\n<repl>\nx = len(tickets)\n    # FinalAnswer(x) later\nprint(x)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "FinalAnswer in a comment after a space only Python strips",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them.</think>\n<repl>\u001c# FinalAnswer(12)\nprint(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "a # mid-line before FinalAnswer",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Answer with a hash.</think>\n<repl>\nx = \"#\"; FinalAnswer(x)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "FinalAnswer after a letter outside ASCII",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\néFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": []
+  },
+  {
+    "case": "a space outside ASCII before FinalAnswer's bracket",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer\u0085(12)\nFinalAnswer\ufeff(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "no observation",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them, and print the count to check it.</think>\n<repl>\nprint(len(tickets))\n</repl>\n"},
+      {"role": "user", "content": "12"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 3 (user) should hold the <observation>…</observation> that turn 2's code printed."]
+  },
+  {
+    "case": "no FinalAnswer at the end",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them, and print the count to check it.</think>\n<repl>\nprint(len(tickets))\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "FinalAnswer outside the block that runs",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Answer, then check.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n<repl>\nprint(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (assistant) has 2 <repl> blocks; the engine runs only the last, so keep one.", "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>."]
+  },
+  {
+    "case": "two assistant turns in a row",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them, and print the count to check it.</think>\n<repl>\nprint(len(tickets))\n</repl>\n"},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 3 (assistant) follows another assistant turn; the user turn with the <observation> goes between them."]
+  },
+  {
+    "case": "two user turns in a row",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "user", "content": "Count only this week's."},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (user) follows another user turn; the assistant's turn goes between them."]
+  },
+  {
+    "case": "ends on an observation",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "assistant", "content": "<think>Count them, and print the count to check it.</think>\n<repl>\nprint(len(tickets))\n</repl>\n"},
+      {"role": "user", "content": "<observation>\n12\n</observation>\n"}
+    ],
+    "problems": ["It ends on turn 3 (user); end with the assistant's turn that calls FinalAnswer(...)."]
+  },
+  {
+    "case": "only the task",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"}
+    ],
+    "problems": ["It ends on turn 1 (user); end with the assistant's turn that calls FinalAnswer(...)."]
+  },
+  {
+    "case": "starts with the assistant",
+    "messages": [
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 1 (assistant) should be the user's task; start with a user turn."]
+  },
+  {
+    "case": "a system turn after the task",
+    "messages": [
+      {"role": "user", "content": "How many tickets are open?"},
+      {"role": "system", "content": "Answer in numbers."},
+      {"role": "assistant", "content": "<think>12 are open.</think>\n<repl>\nFinalAnswer(12)\n</repl>\n"}
+    ],
+    "problems": ["Turn 2 (system) comes after the task; system turns go before it."]
+  },
+  {
+    "case": "only system turns",
+    "messages": [
+      {"role": "system", "content": "Answer in numbers."}
+    ],
+    "problems": ["There is no task: add a user turn holding it."]
+  },
+  {
+    "case": "no turns",
+    "messages": [],
+    "problems": ["There is no task: add a user turn holding it."]
+  }
+]

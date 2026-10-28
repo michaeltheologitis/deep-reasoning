@@ -1,0 +1,24 @@
+# The experience store's seed memory — one entry per lesson the agent has learned from a
+# past task. `text` is what gets embedded and retrieved; `metadata.answer` records what the
+# past run concluded. The `experience` agent (experience.yaml) loads this file as its `rag`
+# corpus on startup, retrieves the closest lesson for each new task, and appends new lessons
+# here as it solves more. These are curated lessons, not raw run logs — short, reusable, and
+# safe to feed back into a fresh solve.
+documents:
+  - id: mem-miles-to-km
+    text: |
+      Task type: convert a distance in miles to kilometers.
+      Lesson: multiply the number of miles by 1.60934, round to 2 decimals, and answer "<x> km".
+    metadata: {kind: memory, skill: unit-conversion}
+
+  - id: mem-average-speed
+    text: |
+      Task type: find an average speed from a distance and an elapsed time.
+      Lesson: average speed = distance / time; keep the distance and time units consistent (km and hours give km/h).
+    metadata: {kind: memory, skill: rates}
+
+  - id: mem-recipe-scaling
+    text: |
+      Task type: scale a recipe ingredient for a different number of servings.
+      Lesson: multiply the base amount by (new_servings / base_servings), then round UP with math.ceil for whole items.
+    metadata: {kind: memory, skill: proportion}

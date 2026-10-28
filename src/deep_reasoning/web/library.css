@@ -85,6 +85,11 @@
 .lib-file-pick input { position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; }
 .lib-problems { display: flex; flex-direction: column; gap: 2px; color: var(--err); }
 .lib-problems p { margin: 0; overflow-wrap: anywhere; }
+/* a decomposition's turn problems: they mark it ✗ but never stop Add */
+.lib-warning { color: var(--warn); }
+.lib-check { flex: none; }
+.lib-check.passed { color: var(--ok); }
+.lib-check.failed { color: var(--warn); }
 .lib-primary { color: var(--accent); }
 .lib-primary:disabled { color: var(--dim); cursor: default; }
 .lib-confirm { margin: 0; color: var(--ok); overflow-wrap: anywhere; }

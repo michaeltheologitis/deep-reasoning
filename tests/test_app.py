@@ -273,6 +273,7 @@ def test_a_valid_decomposition_is_stored_and_listed_under_its_namespace(client):
         "namespace": "course_advisor",
         "name": "next course",
         "yaml": VALID,
+        "problems": ["Turn 2 (assistant) has no <think>…</think>."],
     }
     stored = namespaces(client)["course_advisor"]["decompositions"]
     assert [each["name"] for each in stored] == ["catalog lookup", "next course"]
@@ -578,6 +579,12 @@ async def test_a_fresh_librarys_worked_example_shows_what_history_steps_prints(
     assert observations == [f"<observation>\n{printed}\n</observation>\n"]
 
 
+# What EXAMPLE and REWORDED lack as worked examples: their one reply is prose.
+EXAMPLE_PROBLEMS = [
+    "Turn 2 (assistant) has no <think>…</think>.",
+    "Turn 2 (assistant) has no <repl>…</repl> block.",
+    "Turn 2 (assistant), the last, should call FinalAnswer(...) in its <repl>.",
+]
 LIBRARY_PLAN = {
     "Save the example.": [write("librarian", EXAMPLE), repl("FinalAnswer('saved')")],
     "Reword it.": [write("librarian", REWORDED), repl("FinalAnswer('reworded')")],
@@ -643,8 +650,10 @@ async def test_the_library_tool_adds_a_decomposition_then_replaces_it_each_chang
     assert "'done': 'replaced'" in kinds(replaced, "cell.end")[0]["output"]
     assert [changes(turn["events"]) for turn in turns] == [[first], [second]]
     librarian = next(each for each in namespaces if each["name"] == "librarian")
+    output = kinds(replaced, "cell.end")[0]["output"]
+    assert f"'problems': {EXAMPLE_PROBLEMS}" in output
     assert librarian["decompositions"] == [
-        {"name": "count the tickets", "yaml": REWORDED}
+        {"name": "count the tickets", "yaml": REWORDED, "problems": EXAMPLE_PROBLEMS}
     ]
     assert [events[-1]["outcome"] for events in (added, replaced)] == ["answered"] * 2
     assert "The `library` tool" in fake.calls[-1].messages[0]["content"]
@@ -679,7 +688,7 @@ async def test_a_change_to_the_library_applies_from_the_next_message(
 
 
 FRESH_DECOMPOSITIONS = [
-    [{"name": parsed(HISTORY_EXAMPLE).name, "yaml": HISTORY_EXAMPLE}],
+    [{"name": parsed(HISTORY_EXAMPLE).name, "yaml": HISTORY_EXAMPLE, "problems": []}],
     [],
 ]
 
@@ -1125,7 +1134,7 @@ async def test_in_a_librarian_chat_a_sub_agent_handed_the_tool_elsewhere_writes(
     )
     librarian = next(each for each in namespaces if each["name"] == "librarian")
     assert librarian["decompositions"] == [
-        {"name": "count the tickets", "yaml": EXAMPLE}
+        {"name": "count the tickets", "yaml": EXAMPLE, "problems": EXAMPLE_PROBLEMS}
     ]
 
 
